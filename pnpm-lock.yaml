@@ -53,6 +53,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.102.8
         version: 5.102.8(react@19.2.8)
+      '@varuna/tokens':
+        specifier: workspace:*
+        version: link:../../packages/tokens
       class-variance-authority:
         specifier: ^0.7.1
         version: 0.7.1
@@ -168,6 +171,8 @@ importers:
       vitest:
         specifier: ^5.0.0
         version: 5.0.0(@types/node@20.19.43)(jsdom@30.0.1)(vite@8.2.2(@types/node@20.19.43)(jiti@2.7.0))
+
+  packages/tokens: {}
 
 packages:
 
