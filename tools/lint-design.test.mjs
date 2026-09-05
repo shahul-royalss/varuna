@@ -37,7 +37,7 @@ describe("hex", () => {
     const [f] = checkHex('className="hover:bg-[#383838]"');
     assert.equal(f.rule, "hex");
     assert.equal(f.excerpt, "#383838");
-    assert.equal(f.col, 23);
+    assert.equal(f.col, 22, "1-based column of the # character");
     assert.match(f.message, /var\(--tide\)/);
   });
 
@@ -149,6 +149,9 @@ describe("caps", () => {
     assert.equal(capsViolations("DISPATCH PUMPS")[0].word, "DISPATCH");
     assert.equal(capsViolations("SEVERE").length, 1);
     assert.equal(capsViolations("ABC-DEFGH").length, 1, "a hyphenated word with an unknown long part is flagged");
+    assert.deepEqual(capsViolations("KING'S CIRCLE").map((v) => v.word), ["KING", "CIRCLE"], "possessives are stripped before the check");
+    assert.equal(capsViolations("VARUNA'S run").length, 0);
+    assert.equal(capsViolations("TODO FIXME").length, 0, "placeholder words belong to the copy rule");
     assert.ok(ACRONYMS.has("EnKF"));
   });
 });
@@ -156,8 +159,14 @@ describe("caps", () => {
 describe("copy", () => {
   it("flags lorem ipsum, TODO and FIXME", () => {
     assert.equal(copyViolations("Lorem ipsum dolor sit amet")[0].phrase, "Lorem ipsum");
+    assert.equal(copyViolations("LOREM IPSUM").length, 1);
     assert.equal(copyViolations("TODO: wire the fan chart")[0].phrase, "TODO");
     assert.equal(copyViolations("FIXME later").length, 1);
+    assert.deepEqual(
+      copyViolations("TODO lorem ipsum").map((v) => v.col),
+      [0, 5],
+      "findings are ordered by column",
+    );
     assert.equal(copyViolations("No runs yet - press Play on the replay, or Compute live.").length, 0);
     assert.equal(copyViolations("todos are fine as a word").length, 0);
   });
@@ -182,7 +191,18 @@ describe("JSX text extraction", () => {
     assert.ok(texts.includes("ACKNOWLEDGE ALERT"));
     assert.ok(texts.includes("streets"));
     assert.equal(nodes.find((n) => n.text === "SEVERE").line, 4);
+    assert.equal(nodes.find((n) => n.text === "SEVERE").col, 7);
     assert.equal(nodes.find((n) => n.text === "ACKNOWLEDGE ALERT").line, 3);
+  });
+
+  it("splits text around expressions and keeps every copy segment", () => {
+    const texts = extractJsxText("<p>Depth {d} cm at {t} on Dr Ambedkar Road</p>").map((n) => n.text);
+    assert.deepEqual(texts, ["Depth", "cm at", "on Dr Ambedkar Road"]);
+    assert.deepEqual(
+      extractJsxText('<li>{items.map((i) => <b key={i.id}>{i.name} FLOODED</b>)}</li>').map((n) => n.text),
+      ["FLOODED"],
+    );
+    assert.deepEqual(extractJsxText("<p>{value}</p>"), []);
   });
 
   it("ignores generics, expressions and code between angle brackets", () => {
@@ -198,8 +218,19 @@ describe("JSX text extraction", () => {
   it("checkJsxText reports caps and copy with the rule names", () => {
     const src = "<p>Lorem ipsum</p>\n<h2>WATERLOGGING AT KING'S CIRCLE</h2>\n<i>TODO</i>";
     const found = checkJsxText(src, { file: "x.tsx" });
-    assert.deepEqual(rules(found).sort(), ["caps", "caps", "copy", "copy"]);
-    assert.equal(found.find((f) => f.rule === "caps").line, 2);
+    assert.deepEqual(rules(found).sort(), ["caps", "caps", "caps", "copy", "copy"]);
+    assert.deepEqual(
+      found.filter((f) => f.rule === "caps").map((f) => f.line),
+      [2, 2, 2],
+      "WATERLOGGING, KING and CIRCLE are flagged; AT is short and TODO belongs to the copy rule",
+    );
+    assert.deepEqual(
+      found.filter((f) => f.rule === "copy").map((f) => [f.line, f.excerpt]),
+      [
+        [1, "Lorem ipsum"],
+        [3, "TODO"],
+      ],
+    );
     assert.equal(checkJsxText(src, { file: "x.ts" }).length, 0, "plain TypeScript has no JSX text");
   });
 });
@@ -282,6 +313,7 @@ describe("file selection", () => {
     assert.ok(shouldScan("apps/command/lib/stores/replay.ts"));
     assert.ok(shouldScan("apps/command/app/design/page.mdx"));
     assert.ok(!shouldScan("apps/command/components/ui/button.tsx"));
+    assert.ok(shouldScan("apps/command/lib/ui/format.ts"), "only components/ui is vendor code");
     assert.ok(!shouldScan("apps/command/lib/api/types.ts"));
     assert.ok(!shouldScan("apps/command/lib/ramps.test.ts"));
     assert.ok(!shouldScan("apps/command/lib/__tests__/ramps.ts"));

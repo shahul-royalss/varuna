@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from itertools import pairwise
 
 from varuna_schemas import tokens
 from varuna_schemas.paths import tokens_path
@@ -23,7 +24,7 @@ def test_depth_bands_match_file_and_are_contiguous() -> None:
     assert [b.key for b in bands] == ["dry", "1", "2", "3", "4", "5"]
     assert [b.hex for b in bands] == [raw[b.key]["value"] for b in bands]
     assert [b.min_cm for b in bands] == [0, 5, 15, 30, 45, 60]
-    for lower, upper in zip(bands, bands[1:], strict=False):
+    for lower, upper in pairwise(bands):
         assert lower.max_cm == upper.min_cm
     assert bands[-1].max_cm is None
     assert bands[4].contains(45) and not bands[4].contains(60)

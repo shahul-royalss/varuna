@@ -1,0 +1,18 @@
+Kathipara, Guindy, Chennai | ERR Expecting value: line 1 column 1 (char 0)
+Thyagaraya Road, T. Nagar, Chennai | ERR Expecting value: line 1 column 1 (char 0)
+Ekkattuthangal, Chennai | 13.0242453 | 80.2065506 | node/364280369 | place=suburb | Ekkattuthangal, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, 600032, India
+Vijaya Nagar, Velachery, Chennai | 12.9710710 | 80.2184087 | way/815878266 | building=apartments | M/s. PHARMA CAREER SUPPORT, Plot no:49, Mira Pearl Apts, Flat-2A, 2nd Floor, 13th Main Rd,
+Adyar, Chennai | 13.0064500 | 80.2577791 | relation/7880736 | boundary=administrative | Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, India
+Mylapore, Chennai | 13.0316473 | 80.2700166 | node/247677540 | place=suburb | Mylapore, Zone 9 Teynampet, Chennai Corporation, Chennai, Tamil Nadu, 600004, India
+AGS Colony, Velachery, Chennai | 12.9782313 | 80.2120528 | way/318725675 | highway=residential | AGS Colony 4th Main Road, AGS Officers Colony, Ward 177, Zone 13 Adyar, Chennai Corporatio
+Dhandeeswaram, Velachery, Chennai | 12.9826389 | 80.2241880 | node/4294644649 | place=neighbourhood | Dhandeeswaram, Ward 179, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, 600042, 
+Ram Nagar, Velachery, Chennai | 12.9653278 | 80.2069929 | node/9412787727 | highway=bus_stop | Ram Nagar, Bazaar Road, Ramalinga Nagar, Ward 169, Zone 14 Perungudi, Chennai Corporation,
+Baby Nagar, Velachery, Chennai | 12.9803651 | 80.2291946 | node/4294644648 | place=neighbourhood | Baby Nagar, Ward 179, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, 600042, Ind
+Guindy, Chennai | ERR Expecting value: line 1 column 1 (char 0)
+Velachery, Chennai | 12.9801655 | 80.2228506 | way/422418168 | place=suburb | Velachery, Chennai Corporation, Chennai, Tamil Nadu, 600042, India
+Adyar Bridge, Chennai | 13.0053430 | 80.2574322 | node/2587530807 | shop=confectionery | Adyar Ananda Bhavan, Dr Muthulakshmi Salai, Bakthavatchalam Nagar, Ward 175, Zone 13 Adyar
+Foreshore Estate, Chennai | ERR Expecting value: line 1 column 1 (char 0)
+Ullagaram, Chennai | ERR Expecting value: line 1 column 1 (char 0)
+Puzhuthivakkam, Chennai | ERR Expecting value: line 1 column 1 (char 0)
+Indira Nagar, Adyar, Chennai | 12.9960623 | 80.2497160 | node/5311755238 | railway=station | Indira Nagar, Buckingham Canal Greenway, Kasturibai Nagar, Ward 175, Zone 13 Adyar, Chenna
+Anna Salai, Saidapet, Chennai | 13.0340102 | 80.2438515 | way/355074698 | building=yes | The Raintree Hotel Anna Salai, Teynampet-Saidapet steel flyover, Todhunter Nagar, Ward 122

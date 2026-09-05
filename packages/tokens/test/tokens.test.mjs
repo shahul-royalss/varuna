@@ -96,7 +96,8 @@ describe("tokens.css custom properties", () => {
   it("defines every hex from tokens.json under the CLAUDE.md 6.2 name", () => {
     const vars = parseRootVars(css);
     const expected = expectedSolidColors();
-    assert.ok(expected.length >= 45, "tokens.json has the full colour set");
+    // 10 base + 6 depth + 4 drain + 4 semantic + 5 obs + 4 status + 5 chart. A new colour must update this.
+    assert.equal(expected.length, 38, "tokens.json has the full CLAUDE.md 6.2 colour set");
     for (const [name, hex] of expected) assert.equal(vars[name], hex, `${name} is ${hex}`);
   });
 
@@ -222,7 +223,9 @@ describe("tokens.js helpers", () => {
       [60, "5"],
       [200, "5"],
       [Number.NaN, "dry"],
+      [Number.NEGATIVE_INFINITY, "dry"],
       [Number.POSITIVE_INFINITY, "5"],
+      [undefined, "dry"],
     ];
     for (const [cm, key] of cases) assert.equal(depthBand(cm).key, key, `${cm} cm -> band ${key}`);
     assert.deepEqual(depthBand(20), { key: "2", hex: "#F59E0B", label: "15-30 cm", meaning: "two-wheelers impassable", min_cm: 15, max_cm: 30 });
@@ -321,10 +324,10 @@ describe("tokens.d.ts", () => {
       "export declare function hexToRgb(hex: string): Rgb;",
       "export declare function depthColorRgba(cm: number, alpha?: number): Rgba;",
       "export declare const DEPTH_THRESHOLDS_CM: readonly [5, 15, 30, 45, 60];",
-      'readonly tide: {\n      readonly value: "#2DD4BF";',
     ]) {
       assert.ok(dts.includes(sig), `d.ts contains ${JSON.stringify(sig)}`);
     }
+    assert.match(dts, /readonly tide: \{\s+readonly value: "#2DD4BF";/, "tokens literal type carries the exact hex values");
   });
 });
 

@@ -63,9 +63,11 @@ def export(out_dir: Path | None = None, *, check: bool = False) -> tuple[list[Pa
         if not check:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text, encoding="utf-8", newline="\n")
-    stale = sorted(
-        p for p in target.glob(f"*{SUFFIX}") if p.is_file() and p not in wanted
-    ) if target.is_dir() else []
+    stale = (
+        sorted(p for p in target.glob(f"*{SUFFIX}") if p.is_file() and p not in wanted)
+        if target.is_dir()
+        else []
+    )
     if not check:
         for path in stale:
             path.unlink()
@@ -74,7 +76,9 @@ def export(out_dir: Path | None = None, *, check: bool = False) -> tuple[list[Pa
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Export VARUNA JSON schemas.")
-    parser.add_argument("--out", type=Path, default=None, help="Output folder (default: packages/schemas/json).")
+    parser.add_argument(
+        "--out", type=Path, default=None, help="Output folder (default: packages/schemas/json)."
+    )
     parser.add_argument(
         "--check", action="store_true", help="Do not write; exit 1 if any file is missing or stale."
     )

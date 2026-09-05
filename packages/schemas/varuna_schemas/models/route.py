@@ -87,7 +87,8 @@ class RouteResult(VarunaModel):
     distance_km: float = Field(ge=0)
     max_expected_depth_cm: float = Field(ge=0, description="Max p50 depth met along the route.")
     safe_until: Timestamp | None = Field(
-        default=None, description="Latest departure for which the route stays passable; None = horizon."
+        default=None,
+        description="Latest departure for which the route stays passable; None = horizon.",
     )
     arrival_ts: Timestamp | None = None
     segment_ids: list[IdStr] = Field(default_factory=list)
@@ -105,7 +106,9 @@ class RouteResponse(VarunaModel):
     depart_at: Timestamp
     risk_tolerance: Probability
     route: RouteResult
-    naive: RouteResult | None = Field(default=None, description="Shortest route ignoring the forecast.")
+    naive: RouteResult | None = Field(
+        default=None, description="Shortest route ignoring the forecast."
+    )
     avoided: list[AvoidedSegment] = Field(default_factory=list)
     alternates: list[RouteResult] = Field(default_factory=list)
     confidence: RouteConfidence

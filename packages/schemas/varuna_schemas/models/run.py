@@ -130,7 +130,12 @@ def parse_run_id(run_id: str) -> RunIdParts:
 
 
 def is_run_id(value: str) -> bool:
-    return _RUN_ID_RE.match(value.strip()) is not None
+    """True when :func:`parse_run_id` would accept ``value`` (format and a real calendar time)."""
+    try:
+        parse_run_id(value)
+    except RunIdError:
+        return False
+    return True
 
 
 class EngineVersions(VarunaModel):

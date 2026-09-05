@@ -22,7 +22,9 @@ class ReplayClock(VarunaModel):
     t1: Timestamp
     cycle_index: int = Field(ge=0, description="Cycles triggered since t0.")
     n_cycles: int | None = Field(default=None, ge=1, description="Total cycles in the bundle.")
-    mode: RunMode = Field(description="baked = publish pre-computed runs; live = compute each cycle.")
+    mode: RunMode = Field(
+        description="baked = publish pre-computed runs; live = compute each cycle."
+    )
     last_run_id: str | None = None
     next_cycle_ts: Timestamp | None = None
 

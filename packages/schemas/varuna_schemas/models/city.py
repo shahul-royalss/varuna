@@ -54,7 +54,9 @@ class DesignIntensity(VarunaModel):
     """Rational-method design rain intensities in mm/h used to size inferred drains."""
 
     legacy: float = Field(default=25.0, gt=0, description="Legacy BMC drains, mm/h.")
-    upgraded: float = Field(default=50.0, gt=0, description="Upgraded (BRIMSTOWAD) corridors, mm/h.")
+    upgraded: float = Field(
+        default=50.0, gt=0, description="Upgraded (BRIMSTOWAD) corridors, mm/h."
+    )
 
 
 class TidalOutfall(VarunaModel):
@@ -108,7 +110,9 @@ class CityConfig(VarunaModel):
         default=900.0, gt=0, description="Pits smaller than this are breached as spurious."
     )
     building_burn_m: float = Field(default=5.0, ge=0, description="Height added to building cells.")
-    road_carve_m: float = Field(default=0.15, ge=0, description="Depth carved along road centrelines.")
+    road_carve_m: float = Field(
+        default=0.15, ge=0, description="Depth carved along road centrelines."
+    )
     min_drain_slope: float = Field(default=0.003, gt=0, description="Minimum inferred pipe slope.")
     inlet_spacing_m: float = Field(default=40.0, gt=0, description="Inlet spacing along roads.")
 

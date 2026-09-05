@@ -45,7 +45,9 @@ class DrainNode(VarunaModel):
     z_ground_m: float = Field(description="Ground level in metres above datum.")
     z_invert_m: float = Field(description="Invert level in metres above datum.")
     storage_area_m2: float = Field(gt=0, description="Manhole plan area for node continuity.")
-    inlet_type: str | None = Field(default=None, description="e.g. kerb, grate; None if not an inlet.")
+    inlet_type: str | None = Field(
+        default=None, description="e.g. kerb, grate; None if not an inlet."
+    )
     inlet_len_m: float | None = Field(default=None, ge=0, description="Weir length L_i.")
     inlet_area_m2: float | None = Field(default=None, ge=0, description="Orifice area A_o.")
     kappa_mean: Kappa = Field(default=0.25, description="Prior mean inlet clogging.")
@@ -68,7 +70,9 @@ class DrainEdge(VarunaModel):
     id: IdStr
     from_node: IdStr
     to_node: IdStr
-    street: str | None = Field(default=None, description="Street it runs under, e.g. Dr Ambedkar Road.")
+    street: str | None = Field(
+        default=None, description="Street it runs under, e.g. Dr Ambedkar Road."
+    )
     length_m: float = Field(gt=0)
     shape: DrainShape = "circular"
     diameter_mm: int | None = Field(

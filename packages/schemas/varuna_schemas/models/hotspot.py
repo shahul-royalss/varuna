@@ -25,7 +25,9 @@ FacilityKind = Literal["hospital", "fire_station", "station", "transit", "school
 class HotspotExposure(VarunaModel):
     """What is at stake around a hotspot (blueprint 6.8: traffic, hospitals, transit, population)."""
 
-    weight: float = Field(ge=0, description="Exposure weight from the city pipeline (dimensionless).")
+    weight: float = Field(
+        ge=0, description="Exposure weight from the city pipeline (dimensionless)."
+    )
     traffic_volume_proxy: float | None = Field(
         default=None, ge=0, description="Relative traffic volume proxy by road class."
     )
@@ -33,7 +35,9 @@ class HotspotExposure(VarunaModel):
     nearest_hospital_m: float | None = Field(default=None, ge=0)
     nearest_station: str | None = Field(default=None, description="e.g. Dadar station.")
     nearest_station_m: float | None = Field(default=None, ge=0)
-    transit_lines: list[str] = Field(default_factory=list, description="Bus and rail lines affected.")
+    transit_lines: list[str] = Field(
+        default_factory=list, description="Bus and rail lines affected."
+    )
     population_300m: int | None = Field(default=None, ge=0)
     facilities: list[FacilityKind] = Field(
         default_factory=list, description="Icon set shown on the hotspot row."
@@ -76,7 +80,9 @@ class Hotspot(VarunaModel):
     name: str = Field(description="e.g. Hindmata junction.")
     lon: Longitude
     lat: Latitude
-    segment_ids: list[IdStr] = Field(default_factory=list, description="Segments forming the hotspot.")
+    segment_ids: list[IdStr] = Field(
+        default_factory=list, description="Segments forming the hotspot."
+    )
     selected_ts: Timestamp | None = Field(
         default=None, description="Valid time the p50 depth refers to (None = peak)."
     )

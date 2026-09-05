@@ -162,7 +162,9 @@ def reach_levels(path: Path | None = None) -> list[ReachLevel]:
     """Isochrone levels (5, 10, 15 min) with their opacities."""
     section = load_tokens(path)["color"]["reach"]
     levels = [
-        ReachLevel(minutes=int(entry["minutes"]), hex=entry["value"], opacity=float(entry["opacity"]))
+        ReachLevel(
+            minutes=int(entry["minutes"]), hex=entry["value"], opacity=float(entry["opacity"])
+        )
         for entry in section.values()
     ]
     return sorted(levels, key=lambda lvl: lvl.minutes)

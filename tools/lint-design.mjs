@@ -45,7 +45,9 @@ export const SCAN_DIRS = [
 
 /** Generated or vendor files never scanned, relative to the repository root. */
 export const EXCLUDED_FILES = ["apps/command/lib/api/types.ts"];
-export const EXCLUDED_DIR_NAMES = new Set(["node_modules", ".next", "ui", "__tests__", "dist", "coverage"]);
+/** Vendor folders never scanned (shadcn primitives), relative to the repository root. */
+export const EXCLUDED_DIRS = ["apps/command/components/ui"];
+export const EXCLUDED_DIR_NAMES = new Set(["node_modules", ".next", "__tests__", "dist", "coverage"]);
 export const EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".css", ".mdx"]);
 const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
 
@@ -273,20 +275,57 @@ export function checkEmoji(line) {
  * Rules on JSX text (whole-source, because text nodes can span lines)
  * ---------------------------------------------------------------------------------------------- */
 
-const JSX_TEXT_RE = /<\/?[A-Za-z][^<>]*?>([^<>{}]+?)(?=<)/g;
+const JSX_TAG_RE = /<\/?[A-Za-z][^<>]*?>/g;
 const JSX_ATTR_RE = /\b(title|aria-label|placeholder|alt|label|headline|description|caption|tooltip)=(["'])([^"']*)\2/g;
 
-/** Visible text nodes and user-facing attribute strings in JSX, with the line they start on. */
+/**
+ * Visible text nodes and user-facing attribute strings in JSX, with the line they start on.
+ *
+ * A text node is what sits between a tag and the next "<". {expressions} inside it are skipped, so
+ * "<span>{count} streets</span>" yields "streets". A run is dropped when it looks like code rather
+ * than copy: it contains ";" or "=", hits an unbalanced "}" or a stray ">" (arrow functions,
+ * generics, comparisons), or never reaches a closing "<".
+ */
 export function extractJsxText(source) {
   const out = [];
   const lineAt = (index) => source.slice(0, index).split("\n").length;
-  for (const m of source.matchAll(JSX_TEXT_RE)) {
-    const text = m[1];
-    if (!/[A-Za-z]/.test(text)) continue;
-    if (/[;=]/.test(text)) continue;
-    const offset = m.index + m[0].length - text.length;
+  const colAt = (index) => index - source.lastIndexOf("\n", index - 1);
+  const node = (start, end) => {
+    const text = source.slice(start, end);
+    if (!/[A-Za-z]/.test(text) || /[;=]/.test(text)) return null;
     const leading = text.match(/^\s*/)[0].length;
-    out.push({ text: text.trim(), line: lineAt(offset + leading), col: offset + leading - source.lastIndexOf("\n", offset + leading) });
+    return { text: text.trim(), line: lineAt(start + leading), col: colAt(start + leading) };
+  };
+  for (const tag of source.matchAll(JSX_TAG_RE)) {
+    const segments = [];
+    let i = tag.index + tag[0].length;
+    let segmentStart = i;
+    let depth = 0;
+    let closed = false;
+    while (i < source.length) {
+      const c = source[i];
+      if (depth === 0 && c === "<") {
+        segments.push([segmentStart, i]);
+        closed = true;
+        break;
+      }
+      if (c === "{") {
+        if (depth === 0) segments.push([segmentStart, i]);
+        depth += 1;
+      } else if (c === "}") {
+        if (depth === 0) break;
+        depth -= 1;
+        if (depth === 0) segmentStart = i + 1;
+      } else if (c === ">" && depth === 0) {
+        break;
+      }
+      i += 1;
+    }
+    if (!closed) continue;
+    for (const [start, end] of segments) {
+      const found = node(start, end);
+      if (found) out.push(found);
+    }
   }
   for (const m of source.matchAll(JSX_ATTR_RE)) {
     if (!/[A-Za-z]/.test(m[3])) continue;
@@ -297,27 +336,31 @@ export function extractJsxText(source) {
 }
 
 const WORD_RE = /[A-Za-z0-9][A-Za-z0-9'’-]*/g;
+/** Placeholder words the copy rule reports; the caps rule leaves them alone so each is reported once. */
+const COPY_WORDS = new Set(["TODO", "FIXME"]);
 
 /** ALL-CAPS words (four or more letters) that are not known acronyms; the label should be sentence case. */
 export function capsViolations(text) {
   const out = [];
   for (const m of text.matchAll(WORD_RE)) {
-    const word = m[0].replace(/['’]s$/, "");
+    const word = m[0].replace(/['’][sS]$/, "");
     if (!/^[A-Z][A-Z0-9-]*$/.test(word)) continue;
     if (word.replace(/[^A-Z]/g, "").length <= 3) continue;
-    if (ACRONYMS.has(word)) continue;
+    if (ACRONYMS.has(word) || COPY_WORDS.has(word)) continue;
     if (word.split("-").every((part) => ACRONYMS.has(part) || part.replace(/[^A-Z]/g, "").length <= 3)) continue;
     out.push({ word, col: m.index });
   }
   return out;
 }
 
-const COPY_RE = /\blorem\s+ipsum\b|\b(TODO|FIXME)\b/g;
+const LOREM_RE = /\blorem\s+ipsum\b/gi;
+const TODO_RE = /\b(TODO|FIXME)\b/g;
 
-/** Placeholder copy that must never reach a screen. */
+/** Placeholder copy that must never reach a screen: lorem ipsum in any case, TODO and FIXME in caps. */
 export function copyViolations(text) {
   const out = [];
-  for (const m of text.matchAll(COPY_RE)) out.push({ phrase: m[0], col: m.index });
+  for (const re of [LOREM_RE, TODO_RE]) for (const m of text.matchAll(re)) out.push({ phrase: m[0], col: m.index });
+  out.sort((a, b) => a.col - b.col);
   return out;
 }
 
@@ -378,6 +421,7 @@ export function shouldScan(relFile) {
   const rel = toPosix(relFile);
   if (!EXTENSIONS.has(path.extname(rel).toLowerCase())) return false;
   if (EXCLUDED_FILES.includes(rel)) return false;
+  if (EXCLUDED_DIRS.some((dir) => rel === dir || rel.startsWith(`${dir}/`))) return false;
   if (TEST_FILE.test(rel)) return false;
   if (rel.endsWith(".d.ts")) return false;
   const parts = rel.split("/");

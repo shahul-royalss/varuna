@@ -53,8 +53,8 @@ from varuna_schemas.models.common import (
     Kappa,
     Latitude,
     LineString,
-    LonLat,
     Longitude,
+    LonLat,
     MultiLineString,
     MultiPolygon,
     Point,
@@ -97,6 +97,13 @@ from varuna_schemas.models.hotspot import (
     Hotspot,
     HotspotExposure,
     HotspotList,
+)
+from varuna_schemas.models.layers import (
+    Asset,
+    AssetKind,
+    RoadClass,
+    RoadSegment,
+    SurfaceUnit,
 )
 from varuna_schemas.models.observation import (
     Observation,
@@ -211,6 +218,10 @@ _MODELS: tuple[type[VarunaModel], ...] = (
     Boundary,
     DrainEdgeHealth,
     DrainHealthProduct,
+    # static layers
+    RoadSegment,
+    SurfaceUnit,
+    Asset,
     # city
     RadarDomain,
     NestSpec,
@@ -275,6 +286,8 @@ __all__ = [
     "AlertScope",
     "AlertState",
     "AlertStateChange",
+    "Asset",
+    "AssetKind",
     "AttributionItem",
     "AvoidedSegment",
     "BBox",
@@ -362,7 +375,9 @@ __all__ = [
     "ReplaySpeedRequest",
     "ReportAck",
     "ReportIn",
+    "RoadClass",
     "RoadCondition",
+    "RoadSegment",
     "RoadStatus",
     "RouteConfidence",
     "RouteLabel",
@@ -382,6 +397,7 @@ __all__ = [
     "SeriesPoint",
     "SkillByLead",
     "StageStatus",
+    "SurfaceUnit",
     "TidalOutfall",
     "TideSourceKind",
     "Tier",

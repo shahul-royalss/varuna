@@ -63,7 +63,9 @@ class NodeForecastRow(VarunaModel):
     run_id: str
     node_id: IdStr
     valid_ts: Timestamp
-    head_p50_m: float = Field(description="Median hydraulic head at the node in metres above datum.")
+    head_p50_m: float = Field(
+        description="Median hydraulic head at the node in metres above datum."
+    )
     p_surcharge: Probability = Field(description="P(head above ground level).")
     q_surcharge_p50_m3s: float = Field(
         ge=0, description="Median surcharge discharge onto the street in m^3/s."
@@ -72,7 +74,8 @@ class NodeForecastRow(VarunaModel):
         default_factory=list, description="Pipes ranked by attribution for this node's surcharge."
     )
     reversed_flow: bool = Field(
-        default=False, description="True when the downstream trunk carries negative flow (tide lock)."
+        default=False,
+        description="True when the downstream trunk carries negative flow (tide lock).",
     )
 
 
