@@ -1,0 +1,1739 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-09-04T15:35:41Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 4625570573,
+  "lat": 19.1544735,
+  "lon": 72.9581137,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Bhandup Pumping Centre",
+    "public_transport": "stop_position"
+  }
+},
+{
+  "type": "node",
+  "id": 4644026834,
+  "lat": 19.1543599,
+  "lon": 72.9580531,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Bhandup Pumping Centre",
+    "public_transport": "stop_position"
+  }
+},
+{
+  "type": "node",
+  "id": 7663961417,
+  "lat": 19.0797861,
+  "lon": 72.8827185,
+  "tags": {
+    "addr:district": "Mumbai Suburban",
+    "addr:full": "88, New Hall Road, Jai Ambika Nagar, Christian Gaon, Kurla West, Mumbai",
+    "addr:postcode": "400070",
+    "addr:state": "Maharastra",
+    "amenity": "hospital",
+    "name": "Buddh Colony BMC Hospital",
+    "source": "Local Knowledge"
+  }
+},
+{
+  "type": "node",
+  "id": 7664032219,
+  "lat": 19.0154430,
+  "lon": 72.8261774,
+  "tags": {
+    "addr:district": "Mumbai City",
+    "addr:full": "Old Prabhadevi Road, G-South Ward, Dadar West, Prabhadevi, Mumbai",
+    "addr:postcode": "400025",
+    "addr:state": "Maharastra",
+    "amenity": "hospital",
+    "healthcare": "hospital",
+    "healthcare:speciality": "general",
+    "name": "BMC Hospital",
+    "source": "Local Knowledge"
+  }
+},
+{
+  "type": "node",
+  "id": 7664032224,
+  "lat": 19.0397800,
+  "lon": 72.8400270,
+  "tags": {
+    "addr:district": "Mumbai City",
+    "addr:full": "Welkarwadi BMC Building, LJ Cross Road, Opp.Darga Sarff, Mahim West, Mahim, Mumbai",
+    "addr:postcode": "400016",
+    "addr:state": "Maharastra",
+    "amenity": "hospital",
+    "healthcare": "hospital",
+    "name": "Welkarwadi BMC Hospital",
+    "source": "Local Knowledge"
+  }
+},
+{
+  "type": "node",
+  "id": 8797904410,
+  "lat": 19.1304842,
+  "lon": 72.8720801,
+  "tags": {
+    "addr:district": "Mumbai",
+    "addr:full": "Sunder Nagar, Jogeshwari East",
+    "addr:postcode": "400093",
+    "addr:state": "Maharashtra",
+    "amenity": "hospital",
+    "healthcare": "hospital",
+    "name": "BMC arogya Kendra",
+    "source": "Local Knowledge"
+  }
+},
+{
+  "type": "node",
+  "id": 10247412242,
+  "lat": 19.1555082,
+  "lon": 72.9572244,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Bhandup Pumping Centre",
+    "network": "Thane Municipal Transport",
+    "network:en": "Thane Municipal Transport",
+    "network:hi": "ठाणे नगरपालिका परिवहन",
+    "network:wikidata": "Q7710243",
+    "operator": "Thane Muncipal Transport",
+    "public_transport": "platform",
+    "ref": "3789,",
+    "route_ref": "126,"
+  }
+},
+{
+  "type": "node",
+  "id": 10251478061,
+  "lat": 19.1537427,
+  "lon": 72.9566687,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Bhandup Pumping Centre",
+    "network": "Thane Municipal Transport",
+    "network:en": "Thane Municipal Transport",
+    "network:hi": "ठाणे नगरपालिका परिवहन",
+    "network:wikidata": "Q7710243",
+    "operator": "Thane Muncipal Transport",
+    "public_transport": "platform",
+    "ref": "3929,",
+    "route_ref": "126,"
+  }
+},
+{
+  "type": "node",
+  "id": 10786769351,
+  "lat": 19.1554672,
+  "lon": 72.9571926,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Bhandup Pumping Centre",
+    "operator": "BEST",
+    "public_transport": "platform",
+    "ref": "37046",
+    "shelter": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 11716428236,
+  "lat": 19.0394084,
+  "lon": 72.9122517,
+  "tags": {
+    "man_made": "pumping_station"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092870,
+  "lat": 18.9757600,
+  "lon": 72.8437368,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400027",
+    "addr:street": "Sant Savata Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Sant Sawta Marg Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका संत सावता मार्ग उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092871,
+  "lat": 18.9759713,
+  "lon": 72.8459324,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400010",
+    "addr:street": "Sant Savata Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Tank Bunder Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका टँक बंदर उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092872,
+  "lat": 18.9646170,
+  "lon": 72.8466800,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400010",
+    "addr:street": "Muzawar Pakhadi Road",
+    "man_made": "pumping_station",
+    "name": "BMC Mazgaon Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका माझगाव उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092873,
+  "lat": 19.0069822,
+  "lon": 72.8352077,
+  "tags": {
+    "addr:district": "Mumbai City",
+    "addr:postcode": "400012",
+    "addr:street": "Balasheth Mandurkar Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Carol Road Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका कॅरोल रोड उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092874,
+  "lat": 18.9978109,
+  "lon": 72.8274921,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400013",
+    "addr:street": "Senapati Bapat Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Tulsi Pipe Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका तुलसी पाईप उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092875,
+  "lat": 19.0049614,
+  "lon": 72.8231536,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai",
+    "addr:postcode": "400018",
+    "addr:street": "PCM Ground Road",
+    "man_made": "pumping_station",
+    "name": "BMC Globe Mill Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका ग्लोब मिल उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092876,
+  "lat": 18.9748359,
+  "lon": 72.8242483,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "mumbai",
+    "addr:postcode": "400011",
+    "addr:street": "Motibai Street",
+    "man_made": "pumping_station",
+    "name": "BMC Wylie Road Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका वायली रोड उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092877,
+  "lat": 19.0166913,
+  "lon": 72.8179307,
+  "tags": {
+    "addr:postcode": "400030",
+    "addr:street": "Golpha Devi Mandir Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Cleaveland Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका क्लीव्हलँड उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092878,
+  "lat": 19.0251978,
+  "lon": 72.8451640,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai",
+    "addr:postcode": "400016",
+    "addr:street": "Senapati Bapat Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Mahim Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका माहीम उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092879,
+  "lat": 19.0156475,
+  "lon": 72.8580948,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai City",
+    "addr:postcode": "400031",
+    "addr:street": "R.A. Kidwai Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Wadala Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका वडाळा उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092880,
+  "lat": 18.9565427,
+  "lon": 72.8084080,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai City",
+    "addr:postcode": "400007",
+    "addr:street": "Babulnath Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Harvey Road Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका हार्वे रोड उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092881,
+  "lat": 18.9602081,
+  "lon": 72.8007471,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400036",
+    "addr:street": "Laxmibai Jagmohandas Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Nepean Sea Road Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका नेपियन सी रोड उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092882,
+  "lat": 18.9485660,
+  "lon": 72.7919862,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400006",
+    "addr:street": "Bhagwanal Indrajit Road",
+    "man_made": "pumping_station",
+    "name": "BMC Banganga Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका बाणगंगा उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092883,
+  "lat": 19.0603070,
+  "lon": 72.8648425,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400051",
+    "addr:street": "Street 3",
+    "man_made": "pumping_station",
+    "name": "BMC BKC Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका बीकेसी उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092884,
+  "lat": 19.0746847,
+  "lon": 72.8658101,
+  "tags": {
+    "addr:city": "Mumabi",
+    "addr:postcode": "400098",
+    "addr:street": "Sunder Nagar Road Number 2",
+    "man_made": "pumping_station",
+    "name": "BMC Kalina Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका कलिना उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247269,
+  "lat": 19.0582469,
+  "lon": 72.8221476,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400050",
+    "addr:street": "Naushad Ali Road",
+    "man_made": "pumping_station",
+    "name": "BMC Kadeshwari Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका कादेश्वरी उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247270,
+  "lat": 18.9303203,
+  "lon": 72.8244107,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400020",
+    "addr:street": "Dinshaw Wachha Road",
+    "man_made": "pumping_station",
+    "name": "BMC Churchgate Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका चर्चगेट उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247271,
+  "lat": 18.9004973,
+  "lon": 72.8107434,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400005",
+    "addr:street": "Robert Road",
+    "man_made": "pumping_station",
+    "name": "BMC Robert Road Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका रॉबर्ट रोड उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247272,
+  "lat": 18.9192566,
+  "lon": 72.8315796,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai City",
+    "addr:postcode": "400001",
+    "addr:street": "Boman Behram Road",
+    "man_made": "pumping_station",
+    "name": "BMC Merry Weather Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका मेरी वेदर उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247273,
+  "lat": 18.9166066,
+  "lon": 72.8232410,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai City",
+    "addr:postcode": "400005",
+    "addr:street": "Captain Prakash Pethe Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Kitridge Road Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका किट्रिज रोड उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247274,
+  "lat": 19.0519196,
+  "lon": 72.9171382,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400088",
+    "addr:street": "Deonar Village Road",
+    "man_made": "pumping_station",
+    "name": "BMC Deonar Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका देवनार उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247275,
+  "lat": 19.1072103,
+  "lon": 72.8850229,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400072",
+    "addr:street": "Mathuradas Vasanji Road (Andheri Kurla Road)",
+    "man_made": "pumping_station",
+    "name": "BMC Sakinaka Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका साकीनाका उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247276,
+  "lat": 19.1376684,
+  "lon": 72.9042727,
+  "tags": {
+    "addr:postcode": "400087",
+    "addr:street": "Dargah Road",
+    "man_made": "pumping_station",
+    "name": "BMC Perubaug Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका पेरुबाग उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247277,
+  "lat": 19.1680208,
+  "lon": 72.9667461,
+  "tags": {
+    "addr:city": "Mulund (East)",
+    "addr:district": "Mumbai",
+    "addr:postcode": "400081",
+    "addr:street": "RR Educational Trust Marg",
+    "man_made": "pumping_station",
+    "name": "BMC BUDP Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका बीयुडीपी उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247278,
+  "lat": 19.1384723,
+  "lon": 72.8060957,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400061",
+    "addr:street": "Ramchandra Kharde Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Versova Village Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका वर्सोवा व्हिलेज उदंचन केंद्र"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247279,
+  "lat": 19.1805253,
+  "lon": 72.8195433,
+  "tags": {
+    "addr:city": "Malad west mumbai",
+    "addr:postcode": "400095",
+    "man_made": "pumping_station",
+    "name": "BMC Malvani Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका मालवणी उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247280,
+  "lat": 19.2145422,
+  "lon": 72.8371812,
+  "tags": {
+    "addr:city": "mumbai",
+    "addr:postcode": "400067",
+    "addr:street": "Goregaon Link Road",
+    "man_made": "pumping_station",
+    "name": "BMC Charkop Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका चारकोप उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "node",
+  "id": 14125247281,
+  "lat": 19.2443594,
+  "lon": 72.8449695,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:housenumber": "Eksar Village",
+    "addr:postcode": "400103",
+    "addr:street": "Link Road",
+    "man_made": "pumping_station",
+    "name": "BMC Vallabhnagar Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका वल्लभनगर उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "way",
+  "id": 22848795,
+  "center": {
+    "lat": 19.0066923,
+    "lon": 72.8433830
+  },
+  "tags": {
+    "highway": "residential",
+    "name": "Saint Xavier Street"
+  }
+},
+{
+  "type": "way",
+  "id": 74864968,
+  "center": {
+    "lat": 19.1413183,
+    "lon": 72.8218451
+  },
+  "tags": {
+    "highway": "tertiary",
+    "name": "BMC Marg",
+    "oneway": "yes",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 113566065,
+  "center": {
+    "lat": 19.0065272,
+    "lon": 72.8423877
+  },
+  "tags": {
+    "leisure": "pitch",
+    "name": "Saint Xavier's Football Ground",
+    "sport": "soccer"
+  }
+},
+{
+  "type": "way",
+  "id": 115628091,
+  "center": {
+    "lat": 19.0265628,
+    "lon": 72.8542714
+  },
+  "tags": {
+    "building": "yes",
+    "name": "F/N BMC Ward Office"
+  }
+},
+{
+  "type": "way",
+  "id": 159128141,
+  "center": {
+    "lat": 19.0855386,
+    "lon": 72.8443324
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400055",
+    "addr:street": "Prabhat colony",
+    "building": "office",
+    "name": "BMC Municipal School",
+    "smoking": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 165571612,
+  "center": {
+    "lat": 19.0561073,
+    "lon": 72.8529520
+  },
+  "tags": {
+    "amenity": "parking",
+    "name": "BMC Parking",
+    "parking": "surface"
+  }
+},
+{
+  "type": "way",
+  "id": 196092387,
+  "center": {
+    "lat": 19.1372911,
+    "lon": 72.8141494
+  },
+  "tags": {
+    "leisure": "park",
+    "name": "Brihan Mumbai Municipal Corporation Park"
+  }
+},
+{
+  "type": "way",
+  "id": 220302517,
+  "center": {
+    "lat": 19.0465941,
+    "lon": 72.8373454
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400016",
+    "addr:street": "Lady Jamshedji Road",
+    "man_made": "pumping_station",
+    "name": "BMC Influent Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका इन्फ्लुएंट उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "way",
+  "id": 220302518,
+  "center": {
+    "lat": 19.0449383,
+    "lon": 72.8417261
+  },
+  "tags": {
+    "amenity": "college",
+    "name": "Xavier Institute of Engineering"
+  }
+},
+{
+  "type": "way",
+  "id": 236596240,
+  "center": {
+    "lat": 19.0299554,
+    "lon": 72.8542680
+  },
+  "tags": {
+    "check_date": "2026-03-20",
+    "landuse": "commercial",
+    "name": "BMC Ward Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 250281482,
+  "center": {
+    "lat": 19.0424843,
+    "lon": 72.9277524
+  },
+  "tags": {
+    "landuse": "industrial",
+    "name": "Water pumping station"
+  }
+},
+{
+  "type": "way",
+  "id": 310047762,
+  "center": {
+    "lat": 19.0358478,
+    "lon": 72.8687995
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Maharashtra",
+    "addr:postcode": "400022",
+    "addr:street": "Nirmal Nagar, Sion East, Sion",
+    "building": "yes",
+    "name": "BMC Ravali Camp nagari Aarogya Kendra"
+  }
+},
+{
+  "type": "way",
+  "id": 310047776,
+  "center": {
+    "lat": 19.0367287,
+    "lon": 72.8678375
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No 12"
+  }
+},
+{
+  "type": "way",
+  "id": 310047778,
+  "center": {
+    "lat": 19.0364193,
+    "lon": 72.8676148
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No 13"
+  }
+},
+{
+  "type": "way",
+  "id": 310055815,
+  "center": {
+    "lat": 19.0351981,
+    "lon": 72.8671044
+  },
+  "tags": {
+    "building": "residential",
+    "building:levels": "5",
+    "name": "BMC Building No C2"
+  }
+},
+{
+  "type": "way",
+  "id": 310057703,
+  "center": {
+    "lat": 19.0348508,
+    "lon": 72.8669012
+  },
+  "tags": {
+    "building": "residential",
+    "building:levels": "5",
+    "name": "BMC Building No C1"
+  }
+},
+{
+  "type": "way",
+  "id": 310057704,
+  "center": {
+    "lat": 19.0364064,
+    "lon": 72.8663944
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No E6"
+  }
+},
+{
+  "type": "way",
+  "id": 310057705,
+  "center": {
+    "lat": 19.0365418,
+    "lon": 72.8664894
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No E5"
+  }
+},
+{
+  "type": "way",
+  "id": 310057706,
+  "center": {
+    "lat": 19.0366789,
+    "lon": 72.8665705
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No E4"
+  }
+},
+{
+  "type": "way",
+  "id": 310057707,
+  "center": {
+    "lat": 19.0368218,
+    "lon": 72.8666880
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No E3"
+  }
+},
+{
+  "type": "way",
+  "id": 310057708,
+  "center": {
+    "lat": 19.0369721,
+    "lon": 72.8667851
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No E2"
+  }
+},
+{
+  "type": "way",
+  "id": 310057710,
+  "center": {
+    "lat": 19.0372360,
+    "lon": 72.8665587
+  },
+  "tags": {
+    "building": "apartments",
+    "name": "BMC Building No A1"
+  }
+},
+{
+  "type": "way",
+  "id": 310057711,
+  "center": {
+    "lat": 19.0372613,
+    "lon": 72.8662957
+  },
+  "tags": {
+    "building": "apartments",
+    "name": "BMC Building No A2"
+  }
+},
+{
+  "type": "way",
+  "id": 310687515,
+  "center": {
+    "lat": 19.0359950,
+    "lon": 72.8666414
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No B4"
+  }
+},
+{
+  "type": "way",
+  "id": 310687516,
+  "center": {
+    "lat": 19.0359092,
+    "lon": 72.8668235
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No B3"
+  }
+},
+{
+  "type": "way",
+  "id": 310687517,
+  "center": {
+    "lat": 19.0358373,
+    "lon": 72.8669966
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No B2"
+  }
+},
+{
+  "type": "way",
+  "id": 310812690,
+  "center": {
+    "lat": 19.1184781,
+    "lon": 72.8229484
+  },
+  "tags": {
+    "Legality": "Illegal",
+    "addr:city": "Mumbai",
+    "addr:housenumber": "Juhu Moragaon",
+    "addr:street": "Nirmaladevi Arunkumar Ahuja Marg",
+    "building": "industrial",
+    "building:levels": "4",
+    "name": "BMC Pumping station Building no 1"
+  }
+},
+{
+  "type": "way",
+  "id": 311078770,
+  "center": {
+    "lat": 19.0371153,
+    "lon": 72.8668764
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No E1"
+  }
+},
+{
+  "type": "way",
+  "id": 346412155,
+  "center": {
+    "lat": 19.0556370,
+    "lon": 72.9070603
+  },
+  "tags": {
+    "amenity": "school",
+    "name": "BMC school"
+  }
+},
+{
+  "type": "way",
+  "id": 352067173,
+  "center": {
+    "lat": 19.0369490,
+    "lon": 72.8659122
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No E 8"
+  }
+},
+{
+  "type": "way",
+  "id": 352067174,
+  "center": {
+    "lat": 19.0368473,
+    "lon": 72.8660455
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No E 7"
+  }
+},
+{
+  "type": "way",
+  "id": 352348070,
+  "center": {
+    "lat": 19.0381158,
+    "lon": 72.8686224
+  },
+  "tags": {
+    "building": "apartments",
+    "name": "BMC Quarter-A8"
+  }
+},
+{
+  "type": "way",
+  "id": 352350216,
+  "center": {
+    "lat": 19.0383500,
+    "lon": 72.8683146
+  },
+  "tags": {
+    "building": "apartments",
+    "name": "BMC Quarter-E9"
+  }
+},
+{
+  "type": "way",
+  "id": 352801523,
+  "center": {
+    "lat": 19.2240793,
+    "lon": 72.8345427
+  },
+  "tags": {
+    "man_made": "pumping_station",
+    "name": "Gorai Pumping Station"
+  }
+},
+{
+  "type": "way",
+  "id": 353207905,
+  "center": {
+    "lat": 19.0682149,
+    "lon": 72.8803226
+  },
+  "tags": {
+    "building": "school",
+    "name": "Moreshwar Patankar BMC School"
+  }
+},
+{
+  "type": "way",
+  "id": 353378849,
+  "center": {
+    "lat": 19.0433600,
+    "lon": 72.8656281
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "building": "yes",
+    "name": "BMC Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 353395882,
+  "center": {
+    "lat": 19.0357849,
+    "lon": 72.8671784
+  },
+  "tags": {
+    "building": "yes",
+    "name": "BMC Quarters Sankraman Shibir"
+  }
+},
+{
+  "type": "way",
+  "id": 353395895,
+  "center": {
+    "lat": 19.0356387,
+    "lon": 72.8673694
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "4",
+    "name": "BMC Building No B1"
+  }
+},
+{
+  "type": "way",
+  "id": 353423443,
+  "center": {
+    "lat": 18.9194762,
+    "lon": 72.8317806
+  },
+  "tags": {
+    "building": "yes",
+    "name": "Merry Weather Pumping Station"
+  }
+},
+{
+  "type": "way",
+  "id": 353424820,
+  "center": {
+    "lat": 19.0705444,
+    "lon": 72.8788995
+  },
+  "tags": {
+    "building": "apartments",
+    "name": "BMC L Ward Office"
+  }
+},
+{
+  "type": "way",
+  "id": 353757968,
+  "center": {
+    "lat": 19.0083095,
+    "lon": 72.8304651
+  },
+  "tags": {
+    "admin_level": "4",
+    "building": "yes",
+    "government": "administrative",
+    "name": "BMC G South Ward Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 353825842,
+  "center": {
+    "lat": 18.9979418,
+    "lon": 72.8242110
+  },
+  "tags": {
+    "amenity": "school",
+    "building": "yes",
+    "name": "Ganpatrao Kadam Marg BMC School"
+  }
+},
+{
+  "type": "way",
+  "id": 356450738,
+  "center": {
+    "lat": 19.0563696,
+    "lon": 72.8355608
+  },
+  "tags": {
+    "building": "yes",
+    "government": "administrative",
+    "name": "H W Ward Office",
+    "name:en": "H W Ward Office",
+    "name:mr": "एच पश्चिम विभाग कार्यालय",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 360330474,
+  "center": {
+    "lat": 19.0487157,
+    "lon": 72.8263012
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "3",
+    "name": "Xavier Apartments",
+    "name:en": "Xavier Apartments"
+  }
+},
+{
+  "type": "way",
+  "id": 430223751,
+  "center": {
+    "lat": 18.9809240,
+    "lon": 72.8266647
+  },
+  "tags": {
+    "addr:postcode": "400011",
+    "addr:street": "Sant Gadge Maharaj Chowk",
+    "man_made": "pumping_station",
+    "name": "BMC Sant Gadge Maharaj Chowk Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका संत गाडगे महाराज चौक उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "way",
+  "id": 437423589,
+  "center": {
+    "lat": 19.1393787,
+    "lon": 72.8246961
+  },
+  "tags": {
+    "highway": "tertiary",
+    "name": "BMC Marg",
+    "oneway": "yes",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 437423590,
+  "center": {
+    "lat": 19.1395351,
+    "lon": 72.8246886
+  },
+  "tags": {
+    "highway": "tertiary",
+    "name": "BMC Marg",
+    "oneway": "yes",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 437423591,
+  "center": {
+    "lat": 19.1414021,
+    "lon": 72.8218531
+  },
+  "tags": {
+    "highway": "tertiary",
+    "name": "BMC Marg",
+    "oneway": "yes",
+    "surface": "concrete"
+  }
+},
+{
+  "type": "way",
+  "id": 666092079,
+  "center": {
+    "lat": 19.1213498,
+    "lon": 72.8477257
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "footway",
+    "layer": "1",
+    "name": "BMC FOB Metro Andheri",
+    "surface": "paved"
+  }
+},
+{
+  "type": "way",
+  "id": 685338286,
+  "center": {
+    "lat": 19.0261241,
+    "lon": 72.8652448
+  },
+  "tags": {
+    "building": "school",
+    "name": "Haji Ismail Haji Alna Bmc School"
+  }
+},
+{
+  "type": "way",
+  "id": 746574059,
+  "center": {
+    "lat": 19.0821001,
+    "lon": 72.8850282
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400070",
+    "addr:street": "Premier Road",
+    "description": "The park is open to people of all ages and is frequented by people particularly in the mornings when it is cool",
+    "dog": "no",
+    "ele": "0",
+    "leisure": "park",
+    "name": "Mother Teresa Brihanmumbai Mahanagarpalika Udyan",
+    "name:etymology:wikidata": "Q30547",
+    "opening_hours": "Mo-Su 06:00-12:00,15:00-21:00",
+    "operator": "Brihanmumbai Municipal Corporation"
+  }
+},
+{
+  "type": "way",
+  "id": 774171686,
+  "center": {
+    "lat": 19.0858216,
+    "lon": 72.8811295
+  },
+  "tags": {
+    "building": "hospital",
+    "name": "Brihanmumbai Municipal Corporation Hospital"
+  }
+},
+{
+  "type": "way",
+  "id": 909478803,
+  "center": {
+    "lat": 19.0786158,
+    "lon": 72.8254107
+  },
+  "tags": {
+    "man_made": "wastewater_plant",
+    "name": "Danda Stormwater Pumping Station"
+  }
+},
+{
+  "type": "way",
+  "id": 909874963,
+  "center": {
+    "lat": 19.1328077,
+    "lon": 72.8416203
+  },
+  "tags": {
+    "leisure": "park",
+    "name": "BMC park",
+    "opening_hours:covid19": "restricted"
+  }
+},
+{
+  "type": "way",
+  "id": 910256811,
+  "center": {
+    "lat": 18.9079312,
+    "lon": 72.8189501
+  },
+  "tags": {
+    "man_made": "wastewater_plant",
+    "name": "Colaba Pumping Station"
+  }
+},
+{
+  "type": "way",
+  "id": 931947215,
+  "center": {
+    "lat": 19.2097716,
+    "lon": 72.9825694
+  },
+  "tags": {
+    "building": "yes",
+    "man_made": "pumping_station"
+  }
+},
+{
+  "type": "way",
+  "id": 961376676,
+  "center": {
+    "lat": 19.0251440,
+    "lon": 72.8684803
+  },
+  "tags": {
+    "amenity": "school",
+    "isced:level": "1",
+    "name": "Brihanmumbai Mahanagarpalika Sangamnagar Urdu Primary School"
+  }
+},
+{
+  "type": "way",
+  "id": 979583330,
+  "center": {
+    "lat": 19.0096347,
+    "lon": 72.8158338
+  },
+  "tags": {
+    "amenity": "school",
+    "name": "Worli Seaface BMC High School"
+  }
+},
+{
+  "type": "way",
+  "id": 1014379014,
+  "center": {
+    "lat": 19.1004649,
+    "lon": 72.8685580
+  },
+  "tags": {
+    "access": "yes",
+    "addr:city": "andheri",
+    "addr:place": "sahar",
+    "addr:postcode": "400099",
+    "leisure": "playground",
+    "name": "BMC Ground",
+    "playground:theme": "playground",
+    "surface": "ground"
+  }
+},
+{
+  "type": "way",
+  "id": 1060046624,
+  "center": {
+    "lat": 19.0727405,
+    "lon": 72.8396565
+  },
+  "tags": {
+    "building": "yes",
+    "government": "administrative",
+    "name": "MCGM H West Ward Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 1104696784,
+  "center": {
+    "lat": 18.9801942,
+    "lon": 72.8363832
+  },
+  "tags": {
+    "man_made": "pumping_station"
+  }
+},
+{
+  "type": "way",
+  "id": 1108409758,
+  "center": {
+    "lat": 19.0916835,
+    "lon": 72.8857480
+  },
+  "tags": {
+    "building": "yes",
+    "name": "Kajupada BMC Hindi Medium School"
+  }
+},
+{
+  "type": "way",
+  "id": 1127314714,
+  "center": {
+    "lat": 19.0611050,
+    "lon": 72.8991057
+  },
+  "tags": {
+    "addr:city": "Chembur, Mumbai",
+    "addr:housename": "Brihanmumbai Mahanagar Palika M Ward Office",
+    "addr:street": "Road No 1",
+    "landuse": "commercial",
+    "name": "BMC M Ward Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 1241954448,
+  "center": {
+    "lat": 19.0435378,
+    "lon": 72.8735257
+  },
+  "tags": {
+    "building": "school",
+    "name": "Pratiksha Nagar BMC shcool"
+  }
+},
+{
+  "type": "way",
+  "id": 1246431654,
+  "center": {
+    "lat": 19.0611592,
+    "lon": 72.8991412
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai Suburban",
+    "addr:street": "Chembur Market Bridge",
+    "building": "yes",
+    "building:levels": "3",
+    "height": "0",
+    "layer": "1",
+    "name": "BMC M WARD"
+  }
+},
+{
+  "type": "way",
+  "id": 1265759259,
+  "center": {
+    "lat": 19.0295124,
+    "lon": 72.8898764
+  },
+  "tags": {
+    "leisure": "park",
+    "name": "bmc park",
+    "operator": "brihanmumbai Municipal Corporation",
+    "operator:type": "public"
+  }
+},
+{
+  "type": "way",
+  "id": 1265759261,
+  "center": {
+    "lat": 19.0298036,
+    "lon": 72.8912436
+  },
+  "tags": {
+    "leaf_cycle": "mixed",
+    "leaf_type": "mixed",
+    "name": "BMC owned trees",
+    "natural": "wood"
+  }
+},
+{
+  "type": "way",
+  "id": 1265759325,
+  "center": {
+    "lat": 19.0310931,
+    "lon": 72.8889927
+  },
+  "tags": {
+    "leisure": "park",
+    "name": "BMC PARK",
+    "operator": "Brihanmumbai Municipality Corporation"
+  }
+},
+{
+  "type": "way",
+  "id": 1270777926,
+  "center": {
+    "lat": 19.0294495,
+    "lon": 72.8898753
+  },
+  "tags": {
+    "bicycle": "no",
+    "foot": "yes",
+    "highway": "path",
+    "horse": "no",
+    "name": "BMC PARK WALKING PATH",
+    "surface": "ground",
+    "vehicle": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1271089945,
+  "center": {
+    "lat": 19.0297706,
+    "lon": 72.8898741
+  },
+  "tags": {
+    "bicycle": "no",
+    "foot": "yes",
+    "highway": "path",
+    "horse": "no",
+    "name": "BMC PARK WALKING PATH",
+    "surface": "ground",
+    "vehicle": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1289073487,
+  "center": {
+    "lat": 18.9786563,
+    "lon": 72.8122843
+  },
+  "tags": {
+    "man_made": "water_works",
+    "name": "Storm Water Pumping Station - Haji Ali",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "way",
+  "id": 1289081182,
+  "center": {
+    "lat": 18.9924341,
+    "lon": 72.8159113
+  },
+  "tags": {
+    "addr:city": "Worli, Mumbai",
+    "addr:postcode": "400018",
+    "addr:street": "Dr Annie Besant Road (Love Grove Road)",
+    "man_made": "wastewater_plant",
+    "name": "Love Grove Sewage Pumping Station",
+    "note": "Run by the Municipal Solid Waste Department, Muncipal Corporation of Greater Mumbai",
+    "phone": "+91-22-24962125"
+  }
+},
+{
+  "type": "way",
+  "id": 1361612793,
+  "center": {
+    "lat": 19.0370406,
+    "lon": 72.8664715
+  },
+  "tags": {
+    "building": "apartments",
+    "name": "BMC Building No A3"
+  }
+},
+{
+  "type": "way",
+  "id": 1378123580,
+  "center": {
+    "lat": 19.0226815,
+    "lon": 72.8484004
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai",
+    "addr:postcode": "400019",
+    "addr:street": "Lakhamasi Nappu Road",
+    "man_made": "pumping_station",
+    "name": "BMC Matunga Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका माटुंगा उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "way",
+  "id": 1379626318,
+  "center": {
+    "lat": 19.0003434,
+    "lon": 72.8137397
+  },
+  "tags": {
+    "access": "yes",
+    "leisure": "swimming_pool",
+    "location": "outdoor",
+    "name": "BMC Swimming Pool, Worli"
+  }
+},
+{
+  "type": "way",
+  "id": 1382934733,
+  "center": {
+    "lat": 19.2764448,
+    "lon": 72.8636831
+  },
+  "tags": {
+    "addr:street": "Sector-8 Internal Rd",
+    "man_made": "pumping_station"
+  }
+},
+{
+  "type": "way",
+  "id": 1428261585,
+  "center": {
+    "lat": 19.1402889,
+    "lon": 72.8138935
+  },
+  "tags": {
+    "access": "yes",
+    "addr:city": "Mumbai",
+    "addr:district": "mumbai suburban",
+    "addr:postcode": "400061",
+    "addr:street": "Fisheries university road",
+    "description": "Food and Drinks are strictly prohibited. There is a children's play area, an adult's exercise area, and numerous covered bench swings and gazebos.",
+    "dog": "no",
+    "leisure": "park",
+    "name": "BMC Park",
+    "name:mr": "प्रबोधनकर थाच्केरय उद्यान पार्क",
+    "opening_hours": "Mo-Su 06:00-21:00",
+    "operator": "Brihanmumbai Municipal Corporation",
+    "operator:type": "government",
+    "smoking": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 1431104816,
+  "center": {
+    "lat": 19.0042547,
+    "lon": 72.8301949
+  },
+  "tags": {
+    "Floor": "-1",
+    "access": "yes",
+    "amenity": "parking",
+    "building": "yes",
+    "building:levels": "3",
+    "capacity": "300",
+    "fee": "yes",
+    "level": "-4",
+    "name": "BMC Pay & Park - Lower Parel",
+    "operator": "BMC",
+    "operator:type": "public",
+    "parking": "multi-storey",
+    "payment:cash": "yes",
+    "payment:upi": "yes",
+    "payment:upi_qr": "yes",
+    "surface": "concrete"
+  }
+},
+{
+  "type": "way",
+  "id": 1526167373,
+  "center": {
+    "lat": 19.0635672,
+    "lon": 72.8376590
+  },
+  "tags": {
+    "building": "yes",
+    "man_made": "pumping_station"
+  }
+},
+{
+  "type": "way",
+  "id": 1552519270,
+  "center": {
+    "lat": 18.9850022,
+    "lon": 72.8369000
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "Mumbai",
+    "addr:postcode": "400027",
+    "addr:street": "T B Kadam Marg (Chinchpokli Road)",
+    "man_made": "pumping_station",
+    "name": "BMC Chinchpokli Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका चिंचपोकळी उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "relation",
+  "id": 17333009,
+  "center": {
+    "lat": 19.1899850,
+    "lon": 72.8364877
+  },
+  "tags": {
+    "from": "Mahapalika Pumping Centre Malvani",
+    "name": "Bus 270: Mahapalika Pumping Centre Malvani => Malad Station W",
+    "network": "BEST",
+    "operator": "The Brihanmumbai Electric Supply & Transport Undertaking",
+    "public_transport:version": "2",
+    "ref": "270",
+    "route": "bus",
+    "to": "Malad Station W",
+    "type": "route"
+  }
+},
+{
+  "type": "relation",
+  "id": 17333010,
+  "center": {
+    "lat": 19.1899331,
+    "lon": 72.8359286
+  },
+  "tags": {
+    "from": "Malad Station W",
+    "name": "Bus 270: Malad Station W => Mahapalika Pumping Centre Malvani",
+    "network": "BEST",
+    "operator": "The Brihanmumbai Electric Supply & Transport Undertaking",
+    "public_transport:version": "2",
+    "ref": "270",
+    "route": "bus",
+    "to": "Mahapalika Pumping Centre Malvani",
+    "type": "route"
+  }
+}
+
+  ]
+}
