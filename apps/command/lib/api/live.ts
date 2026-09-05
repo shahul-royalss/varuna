@@ -307,7 +307,9 @@ const SERVER_SNAPSHOT: Snapshot = {
 export function useLive(options: UseLiveOptions = {}): UseLiveResult {
   const { onEvent, topics = DEFAULT_TOPICS, enabled = true, url } = options;
   const handlerRef = useRef<LiveHandler | undefined>(onEvent);
-  handlerRef.current = onEvent;
+  useEffect(() => {
+    handlerRef.current = onEvent;
+  }, [onEvent]);
 
   const topicKey = topics === "*" ? "*" : [...topics].sort().join("|");
   const resolvedUrl = url ?? (typeof window === "undefined" ? "" : wsUrl());
