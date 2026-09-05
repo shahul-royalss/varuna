@@ -1,0 +1,36 @@
+Hindmata, Dadar East, Mumbai | NO RESULT
+Dadar TT Circle, Dadar East, Mumbai | NO RESULT
+Gandhi Market, Sion, Mumbai | 19.0325417 | 72.8590161 | node/9788462276 | Gandhi Market Matunga, Laxmibai Kelkar Marg, Agarwada Colony, Guru Tegh Bahadur Nagar, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400022, India
+Maheshwari Udyan, King's Circle, Matunga, Mumbai | 19.0269378 | 72.8560752 | node/12760272407 | Maheshwari Udyan, King's Circle, Matunga East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400019, India
+Sion Circle, Sion, Mumbai | 19.0421789 | 72.8635934 | way/1235473850 | Sion Circle, Sion Koliwada, Sion East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400022, India
+Sion Road No. 24, Sion, Mumbai | 19.0369195 | 72.8582046 | node/7225067271 | L.T.Muncipal Medical College and Sion Hospital, Road No 24, Agarwada Colony, Guru Tegh Bahadur Nagar, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400022, India
+Sion railway station, Mumbai | 19.0465213 | 72.8632834 | node/2663263713 | Sion, Sion Bandra Link Road, Sion East, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400051, India
+Kurla railway station, Mumbai | 19.0658169 | 72.8802836 | way/122303852 | Kurla Railway Station, Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, India
+Kranti Nagar, Kurla, Mumbai | 19.0679196 | 72.8868461 | node/2930720778 | shankar mandir (kranti nagar central railway colony), 1, Railway Colony Road, Sabale Nagar, Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400024, India
+Andheri Subway, Andheri, Mumbai | 19.1192749 | 72.8470336 | node/1646774126 | Andheri, Railway-Subway Connection, Andheri East, K/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, 400069, India
+Milan Subway, Santacruz West, Mumbai | NO RESULT
+Khar Subway, Khar West, Mumbai | NO RESULT
+Vakola Police Station, Santacruz East, Mumbai | NO RESULT
+Kalanagar, Bandra East, Mumbai | 19.0546701 | 72.8485093 | node/1647344904 | Kalanagar, Bandra East, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, 400017, India
+Matunga railway station, Mumbai | 19.0278384 | 72.8504291 | way/1502525805 | Matunga Railway Station, Matunga West, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, India
+Chunabhatti railway station, Mumbai | NO RESULT
+Wadala, Mumbai | 19.0269192 | 72.8759337 | node/700688007 | Wadala, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400037, India
+Antop Hill, Mumbai | 19.0301805 | 72.8669504 | node/13284781018 | Antop Hill, M Ambedkar Marg, CGS Colony, Indira Nagar, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400037, India
+Parel, Mumbai | 18.9884590 | 72.8393913 | way/353366831 | Parel, 22, Dattaram Lad Marg (Kala Chowky Road), Byculla East, E Ward, Mumbai Zone 1, Mumbai City District, Maharashtra, 400011, India
+Bharat Mata Cinema, Parel, Mumbai | NO RESULT
+Lal Bahadur Shastri Marg, Kurla West, Mumbai | 19.0840726 | 72.8835101 | way/1492631618 | Lal Bahadur Shastri Marg, Sunder Baug, Asalpha, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400070, India
+Malad Subway, Malad West, Mumbai | NO RESULT
+Pimpripada, Malad East, Mumbai | 19.1790510 | 72.8712025 | way/213710849 | Pimpripada road, Malad East, P/N Ward, Mumbai Zone 4, Mumbai, Mumbai Suburban District, Maharashtra, 400097, India
+Dindoshi Fire Station, Malad East, Mumbai | 19.1750627 | 72.8609981 | way/359074975 | Dindoshi Fire Station, Khatu Shyam Mandir Marg, Malad East, P/N Ward, Mumbai Zone 4, Mumbai, Mumbai Suburban District, Maharashtra, 400097, India
+Dadar railway station, Mumbai | 19.0192269 | 72.8428479 | node/2630075004 | Dadar, Ranade Road Extension, Dadar West, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400028, India
+Mahim, Mumbai | 19.0423145 | 72.8398344 | node/631525426 | Mahim, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400016, India
+Bandra railway station, Mumbai | 19.0550693 | 72.8401435 | way/434887908 | Bandra Railway Station, Gurunanak Marg (Turner Road), Lal Mati (Lal Mitti), Khar, H/W Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, 400050, India
+Kurla East, Mumbai | 19.0628944 | 72.8825604 | node/1640248215 | Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400024, India
+Byculla, Mumbai | 18.9766219 | 72.8327936 | node/2630075001 | Byculla, N M Joshi Marg, Byculla West, E Ward, Mumbai Zone 1, Mumbai City District, Maharashtra, 400027, India
+Chembur, Mumbai | 19.0548180 | 72.8979713 | node/632314632 | Chembur, M/W Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400089, India
+Santacruz railway station, Mumbai | 19.0792887 | 72.8471185 | node/12074909130 | Santacruz, Service Road, Anand Nagar, Golibar, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, 400055, India
+Vidyavihar railway station, Mumbai | 19.0795850 | 72.8976198 | way/122184154 | Vidyavihar Railway Station, Vidya Vihar East, N Ward, Mumbai Zone 6, Mumbai, Mumbai Suburban District, Maharashtra, India
+Tilak Nagar, Chembur, Mumbai | 19.0692377 | 72.8978464 | node/1640461335 | Tilak Nagar, Chheda Nagar, M/W Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400089, India
+Nehru Nagar, Kurla East, Mumbai | 19.0610000 | 72.8810000 | node/245666177 | Nehru Nagar, Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400024, India
+Mithi River, Kurla, Mumbai | NO RESULT
+Hindmata Cinema, Dadar East, Mumbai | NO RESULT

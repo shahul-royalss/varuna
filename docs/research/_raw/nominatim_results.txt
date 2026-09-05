@@ -1,0 +1,176 @@
+Q: Hindmata, Dadar East, Mumbai
+    NO RESULT
+Q: Hindmata Cinema, Mumbai
+    19.0100990 | 72.8421396 | node/9739425792 | highway / bus_stop | Hindmata Cinema, Dr Babasaheb Ambedkar Marg (Vincent Road), Shindewadi, Parel, F/S Ward, Mumbai Zone 2, Mumbai
+Q: Khodadad Circle, Dadar, Mumbai
+    19.0241348 | 72.8529972 | node/9788462281 | highway / bus_stop | Khodadad Circle, Dr Babasaheb Ambedkar Marg (Vincent Road), Dadar Parsi Colony, Matunga East, F/N Ward, Mumbai
+Q: Dadar TT, Mumbai
+    19.0154279 | 72.8498260 | way/112798409 | landuse / industrial | Dadar BEST Workshop, Matunga East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, India
+Q: Bharatmata Cinema, Parel, Mumbai
+    NO RESULT
+Q: Maheshwari Udyan, Matunga, Mumbai
+    19.0260112 | 72.8547943 | node/9788462279 | highway / bus_stop | Maheshwari Udyan, Dr Babasaheb Ambedkar Marg (Vincent Road), Dadar Parsi Colony, Matunga East, F/N Ward, Mumba
+    19.0277075 | 72.8559074 | node/9788462280 | highway / bus_stop | Maheshwari Udyan, Laxmibai Kelkar Marg, Matunga East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharasht
+    19.0269378 | 72.8560752 | node/12760272407 | highway / bus_stop | Maheshwari Udyan, King's Circle, Matunga East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400
+Q: King's Circle, Mumbai
+    19.0316822 | 72.8577375 | node/1650694464 | railway / station | King's Circle, Laxmibai Kelkar Marg, Guru Tegh Bahadur Nagar, F/N Ward, Mumbai Zone 2, Mumbai City District, M
+    19.0272742 | 72.8558265 | way/1235473854 | highway / trunk | King's Circle, Matunga East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400019, India
+Q: Gandhi Market, Sion, Mumbai
+    19.0325417 | 72.8590161 | node/9788462276 | highway / bus_stop | Gandhi Market Matunga, Laxmibai Kelkar Marg, Agarwada Colony, Guru Tegh Bahadur Nagar, F/N Ward, Mumbai Zone 2
+Q: Sion Circle, Mumbai
+    19.0427327 | 72.8634910 | way/1235473849 | highway / primary | Sion Circle, Sion Koliwada, Sion East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400022, Ind
+Q: Kamani Junction, Kurla, Mumbai
+    NO RESULT
+Q: Lal Bahadur Shastri Marg, Kurla West, Mumbai
+    19.0816540 | 72.8816381 | way/554898799 | highway / primary | Lal Bahadur Shastri Marg, Hallow Pul, Kurla West, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Mah
+    19.0834546 | 72.8826162 | way/1492631619 | highway / primary | Lal Bahadur Shastri Marg, Sunder Baug, Kurla West, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Ma
+    19.0840726 | 72.8835101 | way/1492631618 | highway / primary | Lal Bahadur Shastri Marg, Sunder Baug, Asalpha, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Mahar
+Q: Khar Subway, Mumbai
+    NO RESULT
+Q: Milan Subway, Santacruz, Mumbai
+    NO RESULT
+Q: Andheri Subway, Mumbai
+    19.1192854 | 72.8469802 | node/1646774128 | railway / stop | Andheri, Railway-Subway Connection, Andheri East, K/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, M
+Q: Wadala, Mumbai
+    19.0269192 | 72.8759337 | node/700688007 | place / suburb | Wadala, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400037, India
+Q: Matunga, Mumbai
+    19.0314768 | 72.8468509 | node/11298191069 | shop / supermarket | Reliance Smart Bazaar, Matunga, Senapati Bapat Marg, Telephone Colony, Matunga West, G/N Ward, Mumbai Zone 2, 
+    19.0261579 | 72.8520846 | node/1288965355 | place / suburb | Matunga East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400019, India
+    19.0317259 | 72.8433917 | node/1365560111 | place / suburb | Matunga West, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400016, India
+Q: Nana Chowk, Mumbai
+    18.9621640 | 72.8125218 | node/9034231132 | highway / bus_stop | Nana Chowk, August Kranti Marg, Gamdevi, D Ward, Mumbai Zone 1, Mumbai City District, Maharashtra, 400036, Ind
+    18.9620220 | 72.8142064 | node/9034231130 | highway / bus_stop | Nana Chowk, Frere Flyover, Gamdevi, D Ward, Mumbai Zone 1, Mumbai City District, Maharashtra, 400036, India
+Q: Kalanagar, Bandra East, Mumbai
+    19.0546701 | 72.8485093 | node/1647344904 | place / neighbourhood | Kalanagar, Bandra East, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, 400017, India
+    19.0531775 | 72.8469019 | node/9739950327 | highway / bus_stop | Kalanagar, Sion Bandra Link Road, Kalanagar, Kherwadi, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban Distri
+    19.0553385 | 72.8479483 | node/14006259816 | highway / bus_stop | Kalanagar, Nanasaheb Dharmadhikari Marg, Kalanagar, Kherwadi, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban
+Q: Bandra Talao, Mumbai
+    19.0567440 | 72.8377699 | way/107295488 | water / reservoir | Bandra Talao, Khar, H/W Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, India
+    19.0576069 | 72.8367365 | node/3467501927 | highway / bus_stop | Bandra Talao, Swami Vivekanand Road, Lal Mati (Lal Mitti), Khar, H/W Ward, Mumbai Zone 3, Mumbai, Mumbai Subur
+    19.0585751 | 72.8377522 | node/5332861143 | highway / bus_stop | Bandra Talao, Gurunanak Marg, Lal Mati (Lal Mitti), Khar, H/W Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban Dis
+Q: Mahim, Mumbai
+    19.0423145 | 72.8398344 | node/631525426 | place / suburb | Mahim, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400016, India
+Q: Sion Koliwada, Mumbai
+    19.0407302 | 72.8642303 | node/5907330383 | place / neighbourhood | Sion Koliwada, Sion East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400022, India
+Q: Chembur, Mumbai
+    19.0548180 | 72.8979713 | node/632314632 | place / suburb | Chembur, M/W Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400089, India
+    19.0626319 | 72.9011399 | node/2454571178 | railway / station | Chembur, Chembur Station Middle FOB, Phule Nagar, Chheda Nagar, M/W Ward, Mumbai Zone 5, Mumbai, Mumbai Suburb
+Q: Dharavi, Mumbai
+    19.0444630 | 72.8586177 | way/280668341 | boundary / administrative | Dharavi, Mumbai Zone 2, Mumbai City District, Maharashtra, India
+    19.0413858 | 72.8496881 | way/220302496 | landuse / residential | Dharavi, Mahim, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, India
+Q: Sakinaka, Mumbai
+    19.0988580 | 72.8809552 | way/790337874 | highway / residential | Sakinaka Tele Exchange Lane, Bindal Estate, Asalpha, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, 
+    19.1004190 | 72.8826122 | way/215075825 | highway / tertiary | Sakinaka Tele Exchange Lane, Bindal Estate, Asalpha, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, 
+    19.0979473 | 72.8895436 | way/345165153 | highway / service | way to towers, sangrila co.op hos soc,sakinaka 90feet rd,sethiya nagar, Asalpha, L Ward, Mumbai Zone 5, Mumbai
+Q: Chunabhatti, Mumbai
+    19.0520886 | 72.8674141 | node/9788462267 | highway / bus_stop | Chunabhatti, N S Mankikar Marg, Kurla East, F/N Ward, Mumbai Zone 2, Mumbai, Mumbai City District, Maharashtra
+    19.0528390 | 72.8737783 | way/376503086 | highway / secondary | Chunabhatti Road, Rahul Nagar No.2, Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Mahar
+Q: Postal Colony, Chembur, Mumbai
+    19.0607418 | 72.8949685 | node/245666110 | place / neighbourhood | Postal Colony, Chembur, M/W Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400089, India
+    19.0619766 | 72.8965007 | way/315510913 | amenity / hospital | Maa General Hospital, Postal Colony, Postal Colony Road, Postal Colony, Chembur, M/W Ward, Mumbai Zone 5, Mumb
+    19.0615161 | 72.8934087 | node/3204171920 | highway / bus_stop | Postal Colony, Eastern Express Highway, Postal Colony, Chembur, M/W Ward, Mumbai Zone 5, Mumbai, Mumbai Suburb
+Q: Antop Hill, Mumbai
+    19.0301805 | 72.8669504 | node/13284781018 | railway / station | Antop Hill, M Ambedkar Marg, CGS Colony, Indira Nagar, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharash
+    19.0207608 | 72.8652556 | node/771136229 | natural / peak | Antop Hill, Mumbai City District, Maharashtra, 400037, India
+    19.0239461 | 72.8685474 | node/4292746740 | place / suburb | Antop Hill, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400037, India
+Q: Pratiksha Nagar, Sion, Mumbai
+    19.0396000 | 72.8693000 | node/245663124 | place / locality | Pratiksha Nagar, Rawal Camp, Sion East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400022, In
+Q: Vakola, Santacruz East, Mumbai
+    NO RESULT
+Q: Kalina, Mumbai
+    19.0792730 | 72.8612672 | node/1375215062 | place / suburb | Kalina, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, 400098, India
+    19.0901376 | 72.8638223 | way/22826676 | aeroway / aerodrome | Chhatrapati Shivaji Maharaj International Airport, Road No 11, Anand Nagar, Golibar, H/E Ward, Mumbai Zone 3, 
+    19.0778321 | 72.8619049 | node/13331200001 | highway / bus_stop | Kalina, Jawaharlal Nehru Road, Sundar Nagar, Kalina, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District
+Q: Bandra Kurla Complex, Mumbai
+    19.0592671 | 72.8613260 | way/353181581 | building / commercial | Securities Exchange Board of India, mumbai, Bandra Kurla Complex Road, Sant Dnyaneshwar Nagar, Bandra Kurla Co
+    19.0606629 | 72.8546797 | node/5221297179 | railway / station | Bandra Kurla Complex, Ramakrishna Paramahansa Marg, Sant Dnyaneshwar Nagar, Bandra East, H/E Ward, Mumbai Zone
+    19.0671150 | 72.8657245 | node/1640262758 | place / suburb | Bandra Kurla Complex, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, 400098, India
+Q: Sion Hospital, Mumbai
+    19.0348427 | 72.8582305 | way/1413471846 | amenity / hospital | Sion Hospital, Bhaudaji Road Extension, Guru Tegh Bahadur Nagar, F/N Ward, Mumbai Zone 2, Mumbai City District
+    19.0363806 | 72.8598664 | node/7664032232 | amenity / hospital | Sion Hospital, Laxmibai Kelkar Marg, Agarwada Colony, Guru Tegh Bahadur Nagar, F/N Ward, Mumbai Zone 2, Mumbai
+Q: KEM Hospital, Parel, Mumbai
+    19.0015510 | 72.8421800 | way/113561413 | landuse / hospital Grounds | King Edward Memorial Hospital, Parel, F/S Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400012, Indi
+Q: Tata Memorial Hospital, Parel, Mumbai
+    19.0049840 | 72.8432125 | node/7052388277 | amenity / hospital | Tata Memorial Hospital, Jerbai Wadia Marg, Bhoiwada, Parel, F/S Ward, Mumbai Zone 2, Mumbai City District, Mah
+Q: Bai Jerbai Wadia Hospital for Children, Parel, Mumbai
+    NO RESULT
+Q: Nowrosjee Wadia Maternity Hospital, Mumbai
+    19.0039375 | 72.8423867 | way/618791586 | amenity / hospital | Nowrosjee Wadia Maternity Hospital, Wadia Chowk, Bhoiwada, Parel, F/S Ward, Mumbai Zone 2, Mumbai City Distric
+Q: Pramod Mahajan Kala Park, Dadar, Mumbai
+    NO RESULT
+Q: St Xavier's Ground, Parel, Mumbai
+    NO RESULT
+Q: Irla Pumping Station, Juhu, Mumbai
+    NO RESULT
+Q: Gazdar Bandh Pumping Station, Mumbai
+    NO RESULT
+Q: Cleveland Bunder Pumping Station, Worli, Mumbai
+    NO RESULT
+Q: Lovegrove Pumping Station, Worli, Mumbai
+    NO RESULT
+Q: Haji Ali Pumping Station, Mumbai
+    NO RESULT
+Q: Britannia Pumping Station, Reay Road, Mumbai
+    NO RESULT
+Q: Mogra Nullah, Andheri, Mumbai
+    NO RESULT
+Q: Kurla West, Mumbai
+    19.0686026 | 72.8765830 | node/1366008926 | place / suburb | Kurla West, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400024, India
+    19.0675510 | 72.8788005 | way/403646143 | amenity / bus_station | Kurla West, S G Barve Marg, Brahmanwadi, Kurla West, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, 
+Q: Santacruz East, Mumbai
+    19.0740097 | 72.8689943 | way/1478056950 | tourism / hotel | ibis Mumbai BKC, CTS No 6951, Santa Cruz – Chembur Link Road, Kalina Village, Bandra Kurla Complex, H/E Ward, 
+    19.0781806 | 72.8677752 | way/353355129 | building / school | Mary Immaculate Girls' High School, church road santacruz (east), Church Road, Kolivery Village, Kalina, H/E W
+    19.0803934 | 72.8553306 | way/353981916 | building / school | St. Charles Girls' High School, Santacruz east, vakola village, St Anthony Road, Vakola Village, Kalina, H/E W
+Q: Dharavi T Junction, Mumbai
+    19.0470130 | 72.8518049 | way/1488801300 | junction / yes | Dharavi T Junction, Sion Bandra Link Road, Koliwada, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtr
+    19.0475478 | 72.8527801 | way/1394097474 | amenity / bus_station | Dharavi T-junction, Sion Bandra Link Road, Koliwada, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtr
+Q: Sion Bandra Link Road, Mumbai
+    19.0484576 | 72.8540480 | way/22856005 | highway / primary | Sion Bandra Link Road, Koliwada, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400017, India
+    19.0449931 | 72.8640559 | way/1140776074 | highway / primary | Sion Bandra Link Road, Sion Koliwada, Sion East, F/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 4
+    19.0531510 | 72.8469990 | way/151938285 | highway / primary | Sion Bandra Link Road, Kalanagar, Kherwadi, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharas
+Q: Wadala Antop Hill, Mumbai
+    19.0210175 | 72.8568955 | way/118555655 | building / yes | nkes jr college, wadala, Nathalal Parekh Road, Wadala Village, Matunga East, F/N Ward, Mumbai Zone 2, Mumbai C
+    19.0388244 | 72.8740249 | node/632342238 | railway / station | Wadala Depot, Kokri Agar Road, Sardar Vallabhbhai Patel Nagar, Indira Nagar, F/N Ward, Mumbai Zone 2, Mumbai C
+    19.0347644 | 72.8767433 | way/49678854 | landuse / industrial | Wadala Truck Terminal, Wadala, F/N Ward, Mumbai Zone 2, Mumbai, Mumbai City District, Maharashtra, 400037, Ind
+Q: F/S Ward Office, Parel Naka, Mumbai
+    NO RESULT
+Q: Municipal Office, Harishchandra Yelve Marg, Dadar West, Mumbai
+    NO RESULT
+Q: H/E Ward Office, Prabhat Colony, Santacruz East, Mumbai
+    NO RESULT
+Q: K/E Ward Office, Gundavali, Andheri East, Mumbai
+    NO RESULT
+Q: K/W Ward Office, Andheri West, Mumbai
+    NO RESULT
+Q: Bai Jerbai Wadia Hospital, Mumbai
+    NO RESULT
+Q: Wadia Children's Hospital, Parel, Mumbai
+    NO RESULT
+Q: Kamani, Kurla, Mumbai
+    19.0851644 | 72.8871162 | node/11071531770 | highway / bus_stop | Kamani, Lal Bahadur Shastri Marg, Sunder Baug, Asalpha, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban Distric
+Q: Khar Subway, Khar, Mumbai
+    NO RESULT
+Q: Milan Subway, Vile Parle, Mumbai
+    NO RESULT
+Q: Pramod Mahajan Kala Udyan, Dadar, Mumbai
+    NO RESULT
+Q: Bharat Mata, Parel, Mumbai
+    NO RESULT
+Q: Vakola, Mumbai
+    19.0813635 | 72.8538930 | node/6126211462 | place / neighbourhood | Vakola, Kalina, H/E Ward, Mumbai Zone 3, Mumbai, Mumbai Suburban District, Maharashtra, 400055, India
+Q: Hindmata Junction, Mumbai
+    NO RESULT
+Q: Kurla Depot, Mumbai
+    19.0745661 | 72.8760580 | node/3878597746 | amenity / bus_station | Kurla Depot, Lal Bahadur Shastri Marg, Kismat Nagar, Kurla West, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburba
+Q: Sakinaka Junction, Andheri East, Mumbai
+    NO RESULT
+Q: Nehru Nagar, Kurla East, Mumbai
+    19.0610000 | 72.8810000 | node/245666177 | place / neighbourhood | Nehru Nagar, Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban District, Maharashtra, 400024, India
+    19.0622015 | 72.8831962 | node/9788462263 | highway / bus_stop | Nehru Nagar, S.G. Barve Marg, Naware Baug Jagruti Nagar, Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Sub
+Q: Kurla Station, Mumbai
+    19.0652797 | 72.8793805 | node/2663447640 | railway / station | Kurla, Kurla FOB 4, Naware Baug Jagruti Nagar, Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban Dist
+    19.0653814 | 72.8793692 | way/427199220 | railway / station | Kurla, Kurla FOB 2, Naware Baug Jagruti Nagar, Kurla East, L Ward, Mumbai Zone 5, Mumbai, Mumbai Suburban Dist
+Q: Municipal Garage, Worli, Mumbai
+    NO RESULT
+Q: Mahim Causeway, Mumbai
+    19.0482556 | 72.8382392 | way/46417981 | highway / primary | Mahim Causeway, Mahim Koliwada, Mahim, G/N Ward, Mumbai Zone 2, Mumbai City District, Maharashtra, 400050, Ind

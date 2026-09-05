@@ -1,0 +1,360 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-09-05T08:42:51Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "relation",
+  "id": 7885376,
+  "bounds": {
+    "minlat": 19.1851018,
+    "minlon": 72.8033859,
+    "maxlat": 19.2173228,
+    "maxlon": 72.9024395
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "R/S Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885377,
+  "bounds": {
+    "minlat": 19.1356132,
+    "minlon": 72.8110411,
+    "maxlat": 19.1797659,
+    "maxlon": 72.8953377
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "P/S Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885378,
+  "bounds": {
+    "minlat": 19.0510269,
+    "minlon": 72.8408890,
+    "maxlat": 19.0944252,
+    "maxlon": 72.8759350
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "H/E Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885379,
+  "bounds": {
+    "minlat": 19.0816811,
+    "minlon": 72.8428127,
+    "maxlat": 19.1435575,
+    "maxlon": 72.8906851
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "K/E Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885380,
+  "bounds": {
+    "minlat": 19.0478237,
+    "minlon": 72.8635585,
+    "maxlat": 19.1291784,
+    "maxlon": 72.9080100
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "L Ward",
+    "name:ur": "ایل وارڈ",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885381,
+  "bounds": {
+    "minlat": 19.0073725,
+    "minlon": 72.8269446,
+    "maxlat": 19.0523739,
+    "maxlon": 72.8673767
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "G/N Ward",
+    "type": "boundary",
+    "wikidata": "Q119202505"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885382,
+  "bounds": {
+    "minlat": 19.0404441,
+    "minlon": 72.8175685,
+    "maxlat": 19.0905683,
+    "maxlon": 72.8432184
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "H/W Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885383,
+  "bounds": {
+    "minlat": 19.0807538,
+    "minlon": 72.7802821,
+    "maxlat": 19.1565348,
+    "maxlon": 72.8499765
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "K/W Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885384,
+  "bounds": {
+    "minlat": 19.1397171,
+    "minlon": 72.7791989,
+    "maxlat": 19.2256100,
+    "maxlon": 72.9002653
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "P/N Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885386,
+  "bounds": {
+    "minlat": 19.1345277,
+    "minlon": 72.8894130,
+    "maxlat": 19.2169335,
+    "maxlon": 72.9817485
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "T Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885387,
+  "bounds": {
+    "minlat": 19.0990121,
+    "minlon": 72.8847716,
+    "maxlat": 19.1672211,
+    "maxlon": 72.9700595
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "S Ward",
+    "route": "foot",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885388,
+  "bounds": {
+    "minlat": 19.0564356,
+    "minlon": 72.8910617,
+    "maxlat": 19.1170473,
+    "maxlon": 72.9616642
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "N Ward",
+    "name:ur": "این وارڈ",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885389,
+  "bounds": {
+    "minlat": 18.9924937,
+    "minlon": 72.8772802,
+    "maxlat": 19.0736437,
+    "maxlon": 72.9123733
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "M/W Ward",
+    "name:ur": "ایم/ڈبلیو وارڈ",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885391,
+  "bounds": {
+    "minlat": 18.9780390,
+    "minlon": 72.8060888,
+    "maxlat": 19.0267769,
+    "maxlon": 72.8363326
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "G/S Ward",
+    "type": "boundary",
+    "wikidata": "Q119202388"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885392,
+  "bounds": {
+    "minlat": 18.9952683,
+    "minlon": 72.8938865,
+    "maxlat": 19.0758225,
+    "maxlon": 72.9638636
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "M/E Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885393,
+  "bounds": {
+    "minlat": 18.9616880,
+    "minlon": 72.8185817,
+    "maxlat": 18.9884984,
+    "maxlon": 72.8558788
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "E Ward",
+    "type": "boundary",
+    "wikidata": "Q119202081"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885394,
+  "bounds": {
+    "minlat": 18.9391541,
+    "minlon": 72.7916763,
+    "maxlat": 18.9803721,
+    "maxlon": 72.8262471
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "D Ward",
+    "type": "boundary",
+    "wikidata": "Q119202010"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885395,
+  "bounds": {
+    "minlat": 18.9783549,
+    "minlon": 72.8330203,
+    "maxlat": 19.0169661,
+    "maxlon": 72.8702223
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "F/S Ward",
+    "type": "boundary",
+    "wikidata": "Q119202197"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885396,
+  "bounds": {
+    "minlat": 19.0043534,
+    "minlon": 72.8428405,
+    "maxlat": 19.0525850,
+    "maxlon": 72.8848346
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "F/N Ward",
+    "type": "boundary",
+    "wikidata": "Q119202567"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885397,
+  "bounds": {
+    "minlat": 18.9474703,
+    "minlon": 72.8317457,
+    "maxlat": 18.9651078,
+    "maxlon": 72.8509637
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "B Ward",
+    "type": "boundary",
+    "wikidata": "Q119201831"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885398,
+  "bounds": {
+    "minlat": 18.9414418,
+    "minlon": 72.8187309,
+    "maxlat": 18.9618729,
+    "maxlon": 72.8336646
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "C Ward",
+    "type": "boundary",
+    "wikidata": "Q119201903"
+  }
+}
+
+  ]
+}

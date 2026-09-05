@@ -14,7 +14,7 @@
   "files": ["dist", "tokens.json"],
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test test/",
+    "test": "node --test \"test/**/*.test.mjs\"",
     "lint": "node build.mjs --check",
     "typecheck": "node build.mjs --check"
   }

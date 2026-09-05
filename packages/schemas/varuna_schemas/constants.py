@@ -140,6 +140,32 @@ CLEANED_BETA: Final[float] = 0.05
 CLEAN_TOP_N_DEFAULT: Final[int] = 14
 """The demo's 'clean top 14 by beta' what-if (CLAUDE.md 7.7)."""
 
+# ------------------------------------------------------------------- reachability
+REACH_MINUTES: Final[tuple[int, int, int]] = (5, 10, 15)
+"""Isochrone levels in minutes (CLAUDE.md 6.2 ``--reach-5/10/15``)."""
+
+REACH_COLLAPSE_RATIO: Final[float] = 0.4
+"""A facility's reachability 'collapses' when the 15-min catchment area falls below 40 % of
+its dry baseline (CLAUDE.md 7.2, 11.9)."""
+
+# ------------------------------------------------------------------- what-if and feedback
+WHATIF_RAIN_SCALE_RANGE: Final[tuple[float, float]] = (0.5, 2.0)
+"""Allowed rain multiplier in a what-if (CLAUDE.md 7.7)."""
+
+WHATIF_TIDE_OFFSET_RANGE_M: Final[tuple[float, float]] = (-0.5, 1.0)
+"""Allowed tide stage offset in metres in a what-if (CLAUDE.md 7.7)."""
+
+DELTA_UNCHANGED_CM: Final[float] = 3.0
+"""A segment counts as changed (improved / worse / 'improved the forecast for N streets')
+when its p50 depth moves by more than 3 cm (CLAUDE.md 11.6)."""
+
+PHYSICS_CHECK_TOLERANCE_CM: Final[float] = 5.0
+"""Emulator versus Twin agreement tolerance at hotspots for the what-if physics check
+(CLAUDE.md 7.7 'agrees within the stated tolerance'; the prototype states 5 cm)."""
+
+RAIN_SKILL_THRESHOLDS_MM_H: Final[tuple[int, int]] = (20, 40)
+"""Rain-rate thresholds for the skill-versus-lead-time chart (CLAUDE.md 11.12)."""
+
 # ------------------------------------------------------------------- cycle
 CycleStage = Literal[
     "decode",

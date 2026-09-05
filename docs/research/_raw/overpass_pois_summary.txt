@@ -1,0 +1,179 @@
+=== overpass_pois: 593 elements; osm3s=2026-09-04T15:32:36Z
+{'station': 76, 'hospital': 373, 'other': 63, 'fire_station': 11, 'government': 43, 'school': 4, 'library': 1, 'pumping_station': 13, 'tunnel': 5, 'parking': 2, 'wastewater_plant': 1, 'cinema': 1}
+  node/2187315849 | Testing Fire Station | fire_station | 19.03962 72.85389 | admin_level= | operator=
+  node/2311428475 | Chembur Fire Station | fire_station | 19.05452 72.89352 | admin_level= | operator=Mumbai fire brigade
+  node/2647295137 | Bharat Petroleum | station | 19.03528 72.89556 | admin_level= | operator=
+  node/2663263713 | Sion | station | 19.04652 72.86328 | admin_level= | operator=CR
+  node/4998848423 | Bharatiya Arogya Nidhi Sheth Kantilal C. Parikh General Hospital | hospital | 19.11178 72.82834 | admin_level= | operator=
+  node/6175360983 | Lokmanya Tilak Terminus | station | 19.06947 72.89198 | admin_level= | operator=CR
+  node/7225067271 | L.T.Muncipal Medical College and Sion Hospital | hospital | 19.03692 72.85820 | admin_level= | operator=
+  node/7664032232 | Sion Hospital | hospital | 19.03638 72.85987 | admin_level= | operator=
+  node/9024751917 |  | fire_station | 19.03312 72.84121 | admin_level= | operator=
+  node/9739425791 | Hindmata Cinema |  | 19.00914 72.84193 | admin_level= | operator=
+  node/9739425792 | Hindmata Cinema |  | 19.01010 72.84214 | admin_level= | operator=
+  node/9739425796 | Bharatmata Cinema |  | 18.99514 72.83678 | admin_level= | operator=
+  node/9739425797 | Bharatmata Cinema |  | 18.99581 72.83660 | admin_level= | operator=
+  node/14125092873 | BMC Carol Road Sewage Water Pumping Station | pumping_station | 19.00698 72.83521 | admin_level= | operator=MCGM
+  node/14125092874 | BMC Tulsi Pipe Sewage Water Pumping Station | pumping_station | 18.99781 72.82749 | admin_level= | operator=MCGM
+  node/14125092875 | BMC Globe Mill Sewage Water Pumping Station | pumping_station | 19.00496 72.82315 | admin_level= | operator=MCGM
+  node/14125092877 | BMC Cleaveland Sewage Water Pumping Station | pumping_station | 19.01669 72.81793 | admin_level= | operator=MCGM
+  node/14125092878 | BMC Mahim Sewage Water Pumping Station | pumping_station | 19.02520 72.84516 | admin_level= | operator=MCGM
+  node/14125092879 | BMC Wadala Sewage Water Pumping Station | pumping_station | 19.01565 72.85809 | admin_level= | operator=MCGM
+  node/14125092883 | BMC BKC Sewage Water Pumping Station | pumping_station | 19.06031 72.86484 | admin_level= | operator=MCGM
+  node/14125092884 | BMC Kalina Sewage Water Pumping Station | pumping_station | 19.07468 72.86581 | admin_level= | operator=MCGM
+  node/14125247269 | BMC Kadeshwari Sewage Water Pumping Station | pumping_station | 19.05825 72.82215 | admin_level= | operator=MCGM
+  node/14125247275 | BMC Sakinaka Sewage Water Pumping Station | pumping_station | 19.10721 72.88502 | admin_level= | operator=MCGM
+  way/39532540 | Milan Subway |  | 19.09045 72.84283 | admin_level= | operator=
+  way/49681498 | Lokmanya Tilak Hospital | hospital | 19.03636 72.85921 | admin_level= | operator=
+  way/100841069 | Hindmata Flyover |  | 19.00551 72.83983 | admin_level= | operator=
+  way/100841079 | Hindmata Flyover |  | 19.00548 72.83991 | admin_level= | operator=
+  way/102170846 | Hindmata Flyover |  | 19.00725 72.84094 | admin_level= | operator=
+  way/102170847 | Hindmata Flyover |  | 19.00925 72.84196 | admin_level= | operator=
+  way/102171414 | Hindmata Flyover |  | 19.00920 72.84203 | admin_level= | operator=
+  way/102172129 | Hindmata Flyover |  | 19.01094 72.84293 | admin_level= | operator=
+  way/102172132 | Hindmata Flyover |  | 19.00721 72.84102 | admin_level= | operator=
+  way/115628091 | F/N BMC Ward Office |  | 19.02656 72.85427 | admin_level= | operator=
+  way/116072855 | Dadar Fire Brigade | fire_station | 19.01418 72.84571 | admin_level= | operator=
+  way/156055065 | Pedestrian Subway |  | 19.06786 72.90290 | admin_level= | operator=
+  way/216492416 | Hindmata Flyover |  | 19.00399 72.83895 | admin_level= | operator=
+  way/216492417 | Hindmata Flyover |  | 19.01103 72.84289 | admin_level= | operator=
+  way/216492418 | Hindmata Flyover |  | 19.00400 72.83883 | admin_level= | operator=
+  way/220302517 | BMC Influent Sewage Water Pumping Station | pumping_station | 19.04659 72.83735 | admin_level= | operator=MCGM
+  way/236596240 | BMC Ward Office |  | 19.02996 72.85427 | admin_level= | operator=
+  way/310812690 | BMC Pumping station Building no 1 |  | 19.11848 72.82295 | admin_level= | operator=
+  way/353174234 | Kurla Agnishaman Kendra | fire_station | 19.08443 72.88594 | admin_level= | operator=MCGM
+  way/353424820 | BMC L Ward Office |  | 19.07054 72.87890 | admin_level= | operator=
+  way/353757968 | BMC G South Ward Office |  | 19.00831 72.83047 | admin_level=4 | operator=
+  way/354294947 | Babasaheb Worlikar Fire Station | fire_station | 19.01322 72.82353 | admin_level= | operator=
+  way/356450738 | H W Ward Office |  | 19.05637 72.83556 | admin_level= | operator=
+  way/434887905 | Bandra Fire Brigade | fire_station | 19.05044 72.83756 | admin_level= | operator=
+  way/632206820 | Sion Pedestrian Subway |  | 19.04438 72.86447 | admin_level= | operator=
+  way/632207092 | Sion Subway 1 |  | 19.04206 72.86361 | admin_level= | operator=
+  way/909478803 | Danda Stormwater Pumping Station | wastewater_plant | 19.07862 72.82541 | admin_level= | operator=
+  way/1060046624 | MCGM H West Ward Office |  | 19.07274 72.83966 | admin_level= | operator=
+  way/1127314714 | BMC M Ward Office |  | 19.06111 72.89911 | admin_level= | operator=
+  way/1145007662 | Sion Pedestrian Subway |  | 19.04438 72.86458 | admin_level= | operator=
+  way/1187354637 | Bharat Mata Cinema | cinema | 18.99564 72.83626 | admin_level= | operator=
+  way/1243105383 | Mini Fire Station | fire_station | 19.08537 72.83127 | admin_level= | operator=
+  way/1376380212 | Aerodrome Rescue and Fire Fighting | fire_station | 19.09137 72.87361 | admin_level= | operator=
+  way/1378123580 | BMC Matunga Sewage Water Pumping Station | pumping_station | 19.02268 72.84840 | admin_level= | operator=MCGM
+  way/1413471846 | Sion Hospital | hospital | 19.03484 72.85823 | admin_level= | operator=
+  way/1479265653 | Andheri Fire Station | fire_station | 19.11216 72.84086 | admin_level= | operator=
+  way/1526167373 |  | pumping_station | 19.06357 72.83766 | admin_level= | operator=
+  relation/21105810 | Marol fire brigade | fire_station | 19.10956 72.87788 | admin_level= | operator=
+=== overpass_pumps: 120 elements; osm3s=2026-09-04T15:35:41Z
+{'other': 61, 'hospital': 4, 'pumping_station': 38, 'parking': 2, 'college': 1, 'government': 6, 'school': 4, 'wastewater_plant': 3, 'water_works': 1}
+  node/4625570573 | Bhandup Pumping Centre |  | 19.15447 72.95811 | admin_level= | operator=
+  node/4644026834 | Bhandup Pumping Centre |  | 19.15436 72.95805 | admin_level= | operator=
+  node/10247412242 | Bhandup Pumping Centre |  | 19.15551 72.95722 | admin_level= | operator=Thane Muncipal Transport
+  node/10251478061 | Bhandup Pumping Centre |  | 19.15374 72.95667 | admin_level= | operator=Thane Muncipal Transport
+  node/10786769351 | Bhandup Pumping Centre |  | 19.15547 72.95719 | admin_level= | operator=BEST
+  node/11716428236 |  | pumping_station | 19.03941 72.91225 | admin_level= | operator=
+  node/14125092870 | BMC Sant Sawta Marg Sewage Water Pumping Station | pumping_station | 18.97576 72.84374 | admin_level= | operator=MCGM
+  node/14125092871 | BMC Tank Bunder Sewage Water Pumping Station | pumping_station | 18.97597 72.84593 | admin_level= | operator=MCGM
+  node/14125092872 | BMC Mazgaon Sewage Water Pumping Station | pumping_station | 18.96462 72.84668 | admin_level= | operator=MCGM
+  node/14125092873 | BMC Carol Road Sewage Water Pumping Station | pumping_station | 19.00698 72.83521 | admin_level= | operator=MCGM
+  node/14125092874 | BMC Tulsi Pipe Sewage Water Pumping Station | pumping_station | 18.99781 72.82749 | admin_level= | operator=MCGM
+  node/14125092875 | BMC Globe Mill Sewage Water Pumping Station | pumping_station | 19.00496 72.82315 | admin_level= | operator=MCGM
+  node/14125092876 | BMC Wylie Road Sewage Water Pumping Station | pumping_station | 18.97484 72.82425 | admin_level= | operator=MCGM
+  node/14125092877 | BMC Cleaveland Sewage Water Pumping Station | pumping_station | 19.01669 72.81793 | admin_level= | operator=MCGM
+  node/14125092878 | BMC Mahim Sewage Water Pumping Station | pumping_station | 19.02520 72.84516 | admin_level= | operator=MCGM
+  node/14125092879 | BMC Wadala Sewage Water Pumping Station | pumping_station | 19.01565 72.85809 | admin_level= | operator=MCGM
+  node/14125092880 | BMC Harvey Road Sewage Water Pumping Station | pumping_station | 18.95654 72.80841 | admin_level= | operator=MCGM
+  node/14125092881 | BMC Nepean Sea Road Sewage Water Pumping Station | pumping_station | 18.96021 72.80075 | admin_level= | operator=MCGM
+  node/14125092882 | BMC Banganga Sewage Water Pumping Station | pumping_station | 18.94857 72.79199 | admin_level= | operator=MCGM
+  node/14125092883 | BMC BKC Sewage Water Pumping Station | pumping_station | 19.06031 72.86484 | admin_level= | operator=MCGM
+  node/14125092884 | BMC Kalina Sewage Water Pumping Station | pumping_station | 19.07468 72.86581 | admin_level= | operator=MCGM
+  node/14125247269 | BMC Kadeshwari Sewage Water Pumping Station | pumping_station | 19.05825 72.82215 | admin_level= | operator=MCGM
+  node/14125247270 | BMC Churchgate Sewage Water Pumping Station | pumping_station | 18.93032 72.82441 | admin_level= | operator=MCGM
+  node/14125247271 | BMC Robert Road Sewage Water Pumping Station | pumping_station | 18.90050 72.81074 | admin_level= | operator=MCGM
+  node/14125247272 | BMC Merry Weather Sewage Water Pumping Station | pumping_station | 18.91926 72.83158 | admin_level= | operator=MCGM
+  node/14125247273 | BMC Kitridge Road Sewage Water Pumping Station | pumping_station | 18.91661 72.82324 | admin_level= | operator=MCGM
+  node/14125247274 | BMC Deonar Sewage Water Pumping Station | pumping_station | 19.05192 72.91714 | admin_level= | operator=MCGM
+  node/14125247275 | BMC Sakinaka Sewage Water Pumping Station | pumping_station | 19.10721 72.88502 | admin_level= | operator=MCGM
+  node/14125247276 | BMC Perubaug Sewage Water Pumping Station | pumping_station | 19.13767 72.90427 | admin_level= | operator=MCGM
+  node/14125247277 | BMC BUDP Sewage Water Pumping Station | pumping_station | 19.16802 72.96675 | admin_level= | operator=MCGM
+  node/14125247278 | BMC Versova Village Sewage Water Pumping Station | pumping_station | 19.13847 72.80610 | admin_level= | operator=
+  node/14125247279 | BMC Malvani Sewage Water Pumping Station | pumping_station | 19.18053 72.81954 | admin_level= | operator=MCGM
+  node/14125247280 | BMC Charkop Sewage Water Pumping Station | pumping_station | 19.21454 72.83718 | admin_level= | operator=MCGM
+  node/14125247281 | BMC Vallabhnagar Sewage Water Pumping Station | pumping_station | 19.24436 72.84497 | admin_level= | operator=MCGM
+  way/115628091 | F/N BMC Ward Office |  | 19.02656 72.85427 | admin_level= | operator=
+  way/220302517 | BMC Influent Sewage Water Pumping Station | pumping_station | 19.04659 72.83735 | admin_level= | operator=MCGM
+  way/236596240 | BMC Ward Office |  | 19.02996 72.85427 | admin_level= | operator=
+  way/250281482 | Water pumping station |  | 19.04248 72.92775 | admin_level= | operator=
+  way/310812690 | BMC Pumping station Building no 1 |  | 19.11848 72.82295 | admin_level= | operator=
+  way/352801523 | Gorai Pumping Station | pumping_station | 19.22408 72.83454 | admin_level= | operator=
+  way/353423443 | Merry Weather Pumping Station |  | 18.91948 72.83178 | admin_level= | operator=
+  way/353424820 | BMC L Ward Office |  | 19.07054 72.87890 | admin_level= | operator=
+  way/353757968 | BMC G South Ward Office |  | 19.00831 72.83047 | admin_level=4 | operator=
+  way/356450738 | H W Ward Office |  | 19.05637 72.83556 | admin_level= | operator=
+  way/430223751 | BMC Sant Gadge Maharaj Chowk Sewage Water Pumping Station | pumping_station | 18.98092 72.82666 | admin_level= | operator=MCGM
+  way/909478803 | Danda Stormwater Pumping Station | wastewater_plant | 19.07862 72.82541 | admin_level= | operator=
+  way/910256811 | Colaba Pumping Station | wastewater_plant | 18.90793 72.81895 | admin_level= | operator=
+  way/931947215 |  | pumping_station | 19.20977 72.98257 | admin_level= | operator=
+  way/1060046624 | MCGM H West Ward Office |  | 19.07274 72.83966 | admin_level= | operator=
+  way/1104696784 |  | pumping_station | 18.98019 72.83638 | admin_level= | operator=
+  way/1127314714 | BMC M Ward Office |  | 19.06111 72.89911 | admin_level= | operator=
+  way/1289073487 | Storm Water Pumping Station - Haji Ali | water_works | 18.97866 72.81228 | admin_level= | operator=MCGM
+  way/1289081182 | Love Grove Sewage Pumping Station | wastewater_plant | 18.99243 72.81591 | admin_level= | operator=
+  way/1378123580 | BMC Matunga Sewage Water Pumping Station | pumping_station | 19.02268 72.84840 | admin_level= | operator=MCGM
+  way/1382934733 |  | pumping_station | 19.27644 72.86368 | admin_level= | operator=
+  way/1526167373 |  | pumping_station | 19.06357 72.83766 | admin_level= | operator=
+  way/1552519270 | BMC Chinchpokli Sewage Water Pumping Station | pumping_station | 18.98500 72.83690 | admin_level= | operator=MCGM
+  relation/17333009 | Bus 270: Mahapalika Pumping Centre Malvani => Malad Station W |  | 19.18999 72.83649 | admin_level= | operator=The Brihanmumbai Electric Supply & Transport Undertaking
+  relation/17333010 | Bus 270: Malad Station W => Mahapalika Pumping Centre Malvani |  | 19.18993 72.83593 | admin_level= | operator=The Brihanmumbai Electric Supply & Transport Undertaking
+=== overpass_wards: 53 elements; osm3s=2026-09-04T15:35:41Z
+{'administrative': 53}
+  way/280668341 | Dharavi | administrative | 19.04556 72.85678 | admin_level=10 | operator=
+  way/324059134 | Garib Nagar | administrative | 19.05538 72.84152 | admin_level=10 | operator=
+  way/324061338 | CPWD Colony | administrative | 19.09947 72.86692 | admin_level=10 | operator=
+  way/551583322 |  | administrative | 19.05800 72.88547 | admin_level=10 | operator=
+  way/551583323 |  | administrative | 19.06937 72.90223 | admin_level=10 | operator=
+  way/551583324 |  | administrative | 19.04964 72.84067 | admin_level=10 | operator=
+  way/551583327 |  | administrative | 19.13215 72.88772 | admin_level=10 | operator=
+  way/551583329 |  | administrative | 19.11866 72.89645 | admin_level=10 | operator=
+  way/551583330 |  | administrative | 19.10803 72.93480 | admin_level=10 | operator=
+  way/551583331 |  | administrative | 19.01112 72.85653 | admin_level=10 | operator=
+  way/551583333 |  | administrative | 19.05235 72.86547 | admin_level=10 | operator=
+  way/551583335 |  | administrative | 19.08815 72.89954 | admin_level=10 | operator=
+  way/551583348 |  | administrative | 19.01335 72.83164 | admin_level=10 | operator=
+  way/551583349 |  | administrative | 19.01217 72.83959 | admin_level=10 | operator=
+  way/551583358 |  | administrative | 18.99775 72.83468 | admin_level=10 | operator=
+  way/551583359 |  | administrative | 19.05168 72.85339 | admin_level=10 | operator=
+  way/551583360 |  | administrative | 19.07072 72.84205 | admin_level=10 | operator=
+  way/551583364 |  | administrative | 19.05020 72.87280 | admin_level=10 | operator=
+  way/551583367 |  | administrative | 19.06703 72.86975 | admin_level=10 | operator=
+  way/551583389 |  | administrative | 19.08566 72.83343 | admin_level=10 | operator=
+  way/551583390 |  | administrative | 19.11699 72.84639 | admin_level=10 | operator=
+  way/551583391 |  | administrative | 19.13886 72.89258 | admin_level=10 | operator=
+  way/551583397 |  | administrative | 19.03467 72.85511 | admin_level=10 | operator=
+  way/551583409 |  | administrative | 19.10520 72.87936 | admin_level=10 | operator=
+  way/551583411 |  | administrative | 19.13959 72.87033 | admin_level=10 | operator=
+  way/551583412 |  | administrative | 19.08805 72.85647 | admin_level=10 | operator=
+  way/551583413 |  | administrative | 19.02823 72.88106 | admin_level=10 | operator=
+  way/551583414 |  | administrative | 19.03018 72.90313 | admin_level=10 | operator=
+  way/1534917967 |  | administrative | 19.14032 72.90547 | admin_level=10 | operator=
+  way/1534917969 |  | administrative | 19.13981 72.90676 | admin_level=10 | operator=
+  way/1534917970 |  | administrative | 19.13965 72.90861 | admin_level=10 | operator=
+  way/1534917971 |  | administrative | 19.14510 72.91695 | admin_level=10 | operator=
+  way/1534917973 |  | administrative | 19.14099 72.89808 | admin_level=10 | operator=
+  relation/7885377 | P/S Ward | administrative | 19.15769 72.85319 | admin_level=10 | operator=
+  relation/7885378 | H/E Ward | administrative | 19.07273 72.85841 | admin_level=10 | operator=
+  relation/7885379 | K/E Ward | administrative | 19.11262 72.86675 | admin_level=10 | operator=
+  relation/7885380 | L Ward | administrative | 19.08850 72.88578 | admin_level=10 | operator=
+  relation/7885381 | G/N Ward | administrative | 19.02987 72.84716 | admin_level=10 | operator=
+  relation/7885382 | H/W Ward | administrative | 19.06551 72.83039 | admin_level=10 | operator=
+  relation/7885383 | K/W Ward | administrative | 19.11864 72.81513 | admin_level=10 | operator=
+  relation/7885386 | T Ward | administrative | 19.17573 72.93558 | admin_level=10 | operator=
+  relation/7885387 | S Ward | administrative | 19.13312 72.92742 | admin_level=10 | operator=
+  relation/7885388 | N Ward | administrative | 19.08674 72.92636 | admin_level=10 | operator=
+  relation/7885389 | M/W Ward | administrative | 19.03307 72.89483 | admin_level=10 | operator=
+  relation/7885391 | G/S Ward | administrative | 19.00241 72.82121 | admin_level=10 | operator=
+  relation/7885392 | M/E Ward | administrative | 19.03555 72.92888 | admin_level=10 | operator=
+  relation/7885395 | F/S Ward | administrative | 18.99766 72.85162 | admin_level=10 | operator=
+  relation/7885396 | F/N Ward | administrative | 19.02847 72.86384 | admin_level=10 | operator=
+  relation/7888964 | Mumbai Zone 6 | administrative | 19.13668 72.93326 | admin_level=9 | operator=
+  relation/7888965 | Mumbai Zone 5 | administrative | 19.06084 72.91371 | admin_level=9 | operator=
+  relation/7888966 | Mumbai Zone 4 | administrative | 19.20255 72.84554 | admin_level=9 | operator=
+  relation/7888967 | Mumbai Zone 3 | administrative | 19.09849 72.83548 | admin_level=9 | operator=
+  relation/7888968 | Mumbai Zone 2 | administrative | 19.01531 72.84546 | admin_level=9 | operator=

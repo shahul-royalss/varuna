@@ -1,0 +1,3 @@
+<br />
+<b>Warning</b>:  Undefined array key "station_id" in <b>/var/www/html/get_records.php</b> on line <b>7</b><br />
+0
