@@ -1,0 +1,753 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-09-04T15:35:41Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "way",
+  "id": 280668341,
+  "center": {
+    "lat": 19.0455561,
+    "lon": 72.8567794
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "Dharavi",
+    "wikidata": "Q649632"
+  }
+},
+{
+  "type": "way",
+  "id": 324059134,
+  "center": {
+    "lat": 19.0553845,
+    "lon": 72.8415232
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "Garib Nagar"
+  }
+},
+{
+  "type": "way",
+  "id": 324061338,
+  "center": {
+    "lat": 19.0994727,
+    "lon": 72.8669205
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "CPWD Colony"
+  }
+},
+{
+  "type": "way",
+  "id": 551583322,
+  "center": {
+    "lat": 19.0579960,
+    "lon": 72.8854724
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583323,
+  "center": {
+    "lat": 19.0693719,
+    "lon": 72.9022259
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583324,
+  "center": {
+    "lat": 19.0496423,
+    "lon": 72.8406727
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583327,
+  "center": {
+    "lat": 19.1321512,
+    "lon": 72.8877225
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583329,
+  "center": {
+    "lat": 19.1186576,
+    "lon": 72.8964520
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583330,
+  "center": {
+    "lat": 19.1080297,
+    "lon": 72.9347964
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583331,
+  "center": {
+    "lat": 19.0111221,
+    "lon": 72.8565314
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583333,
+  "center": {
+    "lat": 19.0523535,
+    "lon": 72.8654676
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583335,
+  "center": {
+    "lat": 19.0881525,
+    "lon": 72.8995359
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583348,
+  "center": {
+    "lat": 19.0133517,
+    "lon": 72.8316386
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583349,
+  "center": {
+    "lat": 19.0121693,
+    "lon": 72.8395866
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583358,
+  "center": {
+    "lat": 18.9977505,
+    "lon": 72.8346765
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583359,
+  "center": {
+    "lat": 19.0516800,
+    "lon": 72.8533884
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583360,
+  "center": {
+    "lat": 19.0707249,
+    "lon": 72.8420537
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583364,
+  "center": {
+    "lat": 19.0502043,
+    "lon": 72.8728043
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583367,
+  "center": {
+    "lat": 19.0670293,
+    "lon": 72.8697467
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583389,
+  "center": {
+    "lat": 19.0856610,
+    "lon": 72.8334260
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583390,
+  "center": {
+    "lat": 19.1169902,
+    "lon": 72.8463946
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583391,
+  "center": {
+    "lat": 19.1388600,
+    "lon": 72.8925773
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583397,
+  "center": {
+    "lat": 19.0346700,
+    "lon": 72.8551086
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583409,
+  "center": {
+    "lat": 19.1052028,
+    "lon": 72.8793558
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583411,
+  "center": {
+    "lat": 19.1395899,
+    "lon": 72.8703308
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583412,
+  "center": {
+    "lat": 19.0880532,
+    "lon": 72.8564680
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583413,
+  "center": {
+    "lat": 19.0282261,
+    "lon": 72.8810574
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 551583414,
+  "center": {
+    "lat": 19.0301842,
+    "lon": 72.9031299
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 1534917967,
+  "center": {
+    "lat": 19.1403242,
+    "lon": 72.9054704
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 1534917969,
+  "center": {
+    "lat": 19.1398150,
+    "lon": 72.9067621
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 1534917970,
+  "center": {
+    "lat": 19.1396517,
+    "lon": 72.9086075
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 1534917971,
+  "center": {
+    "lat": 19.1450982,
+    "lon": 72.9169495
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "way",
+  "id": 1534917973,
+  "center": {
+    "lat": 19.1409918,
+    "lon": 72.8980823
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885377,
+  "center": {
+    "lat": 19.1576896,
+    "lon": 72.8531894
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "P/S Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885378,
+  "center": {
+    "lat": 19.0727260,
+    "lon": 72.8584120
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "H/E Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885379,
+  "center": {
+    "lat": 19.1126193,
+    "lon": 72.8667489
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "K/E Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885380,
+  "center": {
+    "lat": 19.0885010,
+    "lon": 72.8857843
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "L Ward",
+    "name:ur": "ایل وارڈ",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885381,
+  "center": {
+    "lat": 19.0298732,
+    "lon": 72.8471607
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "G/N Ward",
+    "type": "boundary",
+    "wikidata": "Q119202505"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885382,
+  "center": {
+    "lat": 19.0655062,
+    "lon": 72.8303935
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "H/W Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885383,
+  "center": {
+    "lat": 19.1186443,
+    "lon": 72.8151293
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "K/W Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885386,
+  "center": {
+    "lat": 19.1757306,
+    "lon": 72.9355807
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "T Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885387,
+  "center": {
+    "lat": 19.1331166,
+    "lon": 72.9274156
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "S Ward",
+    "route": "foot",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885388,
+  "center": {
+    "lat": 19.0867414,
+    "lon": 72.9263629
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "N Ward",
+    "name:ur": "این وارڈ",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885389,
+  "center": {
+    "lat": 19.0330687,
+    "lon": 72.8948267
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "M/W Ward",
+    "name:ur": "ایم/ڈبلیو وارڈ",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885391,
+  "center": {
+    "lat": 19.0024079,
+    "lon": 72.8212107
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "G/S Ward",
+    "type": "boundary",
+    "wikidata": "Q119202388"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885392,
+  "center": {
+    "lat": 19.0355454,
+    "lon": 72.9288750
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "M/E Ward",
+    "type": "boundary"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885395,
+  "center": {
+    "lat": 18.9976605,
+    "lon": 72.8516213
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "F/S Ward",
+    "type": "boundary",
+    "wikidata": "Q119202197"
+  }
+},
+{
+  "type": "relation",
+  "id": 7885396,
+  "center": {
+    "lat": 19.0284692,
+    "lon": 72.8638375
+  },
+  "tags": {
+    "admin_level": "10",
+    "boundary": "administrative",
+    "name": "F/N Ward",
+    "type": "boundary",
+    "wikidata": "Q119202567"
+  }
+},
+{
+  "type": "relation",
+  "id": 7888964,
+  "center": {
+    "lat": 19.1366845,
+    "lon": 72.9332601
+  },
+  "tags": {
+    "admin_level": "9",
+    "boundary": "administrative",
+    "name": "Mumbai Zone 6",
+    "name:en": "Mumbai Zone 6",
+    "name:hi": "मुंबई झोन ६",
+    "name:mr": "मुंबई झोन ६",
+    "name:ur": "زون 6",
+    "type": "boundary",
+    "wikidata": "Q119171087"
+  }
+},
+{
+  "type": "relation",
+  "id": 7888965,
+  "center": {
+    "lat": 19.0608360,
+    "lon": 72.9137110
+  },
+  "tags": {
+    "admin_level": "9",
+    "boundary": "administrative",
+    "name": "Mumbai Zone 5",
+    "name:en": "Mumbai Zone 5",
+    "name:hi": "मुंबई झोन ५",
+    "name:mr": "मुंबई झोन ५",
+    "name:ur": "زون 5",
+    "type": "boundary",
+    "wikidata": "Q119170724"
+  }
+},
+{
+  "type": "relation",
+  "id": 7888966,
+  "center": {
+    "lat": 19.2025451,
+    "lon": 72.8455388
+  },
+  "tags": {
+    "admin_level": "9",
+    "boundary": "administrative",
+    "name": "Mumbai Zone 4",
+    "name:en": "Mumbai Zone 4",
+    "name:hi": "मुंबई झोन ४",
+    "name:mr": "मुंबई झोन ४",
+    "type": "boundary",
+    "wikidata": "Q119170716"
+  }
+},
+{
+  "type": "relation",
+  "id": 7888967,
+  "center": {
+    "lat": 19.0984895,
+    "lon": 72.8354836
+  },
+  "tags": {
+    "admin_level": "9",
+    "boundary": "administrative",
+    "name": "Mumbai Zone 3",
+    "name:en": "Mumbai Zone 3",
+    "name:hi": "मुंबई झोन ३",
+    "name:mr": "मुंबई झोन ३",
+    "type": "boundary",
+    "wikidata": "Q119170704"
+  }
+},
+{
+  "type": "relation",
+  "id": 7888968,
+  "center": {
+    "lat": 19.0153120,
+    "lon": 72.8454617
+  },
+  "tags": {
+    "admin_level": "9",
+    "boundary": "administrative",
+    "name": "Mumbai Zone 2",
+    "name:en": "Mumbai Zone 2",
+    "name:hi": "मुंबई झोन २",
+    "name:mr": "मुंबई झोन २",
+    "name:ur": "زون 2",
+    "type": "boundary",
+    "wikidata": "Q119170695"
+  }
+}
+
+  ]
+}
