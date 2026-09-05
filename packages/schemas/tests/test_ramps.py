@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from varuna_schemas import ramps
 from varuna_schemas.tokens import depth_bands, drain_bands
 

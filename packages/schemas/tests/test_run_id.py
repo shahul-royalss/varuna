@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-
 from varuna_schemas.constants import IST
 from varuna_schemas.models.run import (
     RunIdError,
@@ -33,7 +32,17 @@ def test_parse_round_trip() -> None:
     assert parts.cycle_ts_ist.hour == 17 and parts.cycle_ts_ist.minute == 40
     assert (parts.sky_version, parts.twin_version, parts.flash_version) == ("1.0", "2.1", "0.3")
     assert parts.mode == "live"
-    assert build_run_id(parts.city, parts.cycle_ts, parts.sky_version, parts.twin_version, parts.flash_version, parts.mode) == run_id
+    assert (
+        build_run_id(
+            parts.city,
+            parts.cycle_ts,
+            parts.sky_version,
+            parts.twin_version,
+            parts.flash_version,
+            parts.mode,
+        )
+        == run_id
+    )
     assert is_run_id(run_id)
 
 

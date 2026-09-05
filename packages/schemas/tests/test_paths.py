@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from varuna_schemas import paths
 
 
@@ -19,7 +18,9 @@ def test_derived_paths_are_under_root(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
     root = paths.repo_root()
     assert paths.runs_dir() == root / "data" / "runs"
-    assert paths.run_dir("MUM-20190702T1210Z-sky1.0-twin1.0-flash0.3-baked").parent == paths.runs_dir()
+    assert (
+        paths.run_dir("MUM-20190702T1210Z-sky1.0-twin1.0-flash0.3-baked").parent == paths.runs_dir()
+    )
     assert paths.city_dir("mumbai") == root / "city" / "mumbai"
     assert paths.city_cache_dir("chennai") == root / "city" / "cache" / "chennai"
     assert paths.bundle_dir("MUM-2019-07-02") == root / "bundles" / "MUM-2019-07-02"
@@ -28,7 +29,9 @@ def test_derived_paths_are_under_root(monkeypatch: pytest.MonkeyPatch) -> None:
     assert paths.docs_dir() == root / "docs"
     assert paths.schemas_json_dir() == root / "packages" / "schemas" / "json"
     assert paths.city_config_path("mumbai").name == "mumbai.yaml"
-    assert all(isinstance(p, Path) for p in (paths.runs_dir(), paths.city_root(), paths.bundles_dir()))
+    assert all(
+        isinstance(p, Path) for p in (paths.runs_dir(), paths.city_root(), paths.bundles_dir())
+    )
 
 
 def test_env_overrides(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

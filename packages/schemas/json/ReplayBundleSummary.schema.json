@@ -1,0 +1,97 @@
+{
+  "$id": "urn:varuna:schema:ReplayBundleSummary",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One card on the replay page (``GET /v1/replay/bundles``).",
+  "properties": {
+    "baked": {
+      "description": "True when every cycle exists under data/runs.",
+      "title": "Baked",
+      "type": "boolean"
+    },
+    "baked_cycles": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Baked Cycles",
+      "type": "integer"
+    },
+    "city": {
+      "title": "City",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "ground_truth_n": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Ground Truth N",
+      "type": "integer"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "label": {
+      "enum": [
+        "Reconstructed replay",
+        "Design storm"
+      ],
+      "title": "Label",
+      "type": "string"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "sources_n": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Sources N",
+      "type": "integer"
+    },
+    "synthetic_notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Synthetic Notes",
+      "type": "array"
+    },
+    "t0": {
+      "format": "date-time",
+      "title": "T0",
+      "type": "string"
+    },
+    "t1": {
+      "format": "date-time",
+      "title": "T1",
+      "type": "string"
+    },
+    "total_cycles": {
+      "minimum": 1,
+      "title": "Total Cycles",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "city",
+    "label",
+    "t0",
+    "t1",
+    "seed",
+    "baked",
+    "total_cycles"
+  ],
+  "title": "ReplayBundleSummary",
+  "type": "object"
+}

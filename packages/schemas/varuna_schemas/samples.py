@@ -18,6 +18,7 @@ from varuna_schemas.models import (
     MODEL_REGISTRY,
     Alert,
     AlertStateChange,
+    Asset,
     AttributionItem,
     AvoidedSegment,
     BBox,
@@ -79,6 +80,7 @@ from varuna_schemas.models import (
     ReportAck,
     ReportIn,
     RoadCondition,
+    RoadSegment,
     RouteRequest,
     RouteResponse,
     RouteResult,
@@ -91,6 +93,7 @@ from varuna_schemas.models import (
     SegmentSeries,
     SeriesPoint,
     SkillByLead,
+    SurfaceUnit,
     TidalOutfall,
     VarunaModel,
     VerificationSummary,
@@ -165,7 +168,14 @@ def _run_meta() -> RunMeta:
         mode="baked",
         replay_mode="replay",
         ensemble_n=50,
-        stage_ms={"decode": 120, "sky": 3900, "twin": 7100, "flash": 210, "pulse": 900, "products": 800},
+        stage_ms={
+            "decode": 120,
+            "sky": 3900,
+            "twin": 7100,
+            "flash": 210,
+            "pulse": 900,
+            "products": 800,
+        },
         mass_balance_err=0.0004,
         bundle=BUNDLE_ID,
         created_at=T0,
@@ -186,7 +196,13 @@ def _segment_row() -> SegmentForecastRow:
         p_gt_30=0.9,
         p_gt_45=0.82,
         p_gt_60=0.41,
-        safe_until={"two_wheeler": t(5), "car": t(15), "bus": t(30), "ambulance": t(10), "pedestrian": None},
+        safe_until={
+            "two_wheeler": t(5),
+            "car": t(15),
+            "bus": t(30),
+            "ambulance": t(10),
+            "pedestrian": None,
+        },
         velocity_p50_ms=0.3,
     )
 
@@ -205,7 +221,9 @@ def _node_row() -> NodeForecastRow:
 
 
 def _safe_until_entry() -> SafeUntilEntry:
-    return SafeUntilEntry(profile="ambulance", threshold_cm=30, safe_until=t(10), risk_tolerance=0.2)
+    return SafeUntilEntry(
+        profile="ambulance", threshold_cm=30, safe_until=t(10), risk_tolerance=0.2
+    )
 
 
 def _segment_series() -> SegmentSeries:
@@ -269,7 +287,9 @@ def _report_ack() -> ReportAck:
 
 
 def _alert_state_change() -> AlertStateChange:
-    return AlertStateChange(ts=t(7), state="acknowledged", user="ward-officer-fn", note="Pumps requested")
+    return AlertStateChange(
+        ts=t(7), state="acknowledged", user="ward-officer-fn", note="Pumps requested"
+    )
 
 
 def _alert() -> Alert:
@@ -365,7 +385,9 @@ def _exposure() -> HotspotExposure:
 
 
 def _attribution() -> AttributionItem:
-    return AttributionItem(rank=1, edge_id="e-1021", street="Dr Ambedkar Road", beta=0.82, depth_explained_cm=9.0)
+    return AttributionItem(
+        rank=1, edge_id="e-1021", street="Dr Ambedkar Road", beta=0.82, depth_explained_cm=9.0
+    )
 
 
 def _clean_top_n() -> CleanTopNEffect:
@@ -464,6 +486,56 @@ def _drain_health_product() -> DrainHealthProduct:
     return DrainHealthProduct(run_id=RUN_ID, valid_ts=T0, edges=[_drain_health()])
 
 
+def _road_segment() -> RoadSegment:
+    return RoadSegment(
+        id="88213",
+        osm_way_id="4489120",
+        name="Dr Ambedkar Road",
+        road_class="primary",
+        highway="primary",
+        lanes=3,
+        oneway=False,
+        length_m=182.0,
+        z_min_m=5.9,
+        z_mean_m=6.4,
+        ward_id="F/North",
+        exposure_weight=1.8,
+        speed_kmh=40,
+        underpass=False,
+        hotspot_id="hindmata",
+        geometry=LineString(coordinates=[(72.8402, 19.0113), (72.8418, 19.0126)]),
+    )
+
+
+def _surface_unit() -> SurfaceUnit:
+    return SurfaceUnit(
+        id="su-01822",
+        inlet_node_id="in-hindmata-11",
+        segment_id="88213",
+        area_m2=9800,
+        imperviousness=0.86,
+        cn=95,
+        n_manning=0.018,
+        depression_depth_m=0.42,
+        depression_area_m2=1300,
+        cells=[81204, 81205, 81520, 81521],
+        method="watershed",
+        geometry=Polygon(coordinates=[_square(*HINDMATA, half=0.0006)]),
+    )
+
+
+def _asset() -> Asset:
+    return Asset(
+        id="kem",
+        name="KEM Hospital, Parel",
+        kind="hospital",
+        lon=KEM[0],
+        lat=KEM[1],
+        source_url="https://www.openstreetmap.org/",
+        synthetic=False,
+    )
+
+
 def _radar_domain() -> RadarDomain:
     return RadarDomain(center_lon=72.86, center_lat=19.065, size_km=60, res_m=500)
 
@@ -507,12 +579,23 @@ def _bundle_manifest() -> BundleManifest:
         label="Reconstructed replay",
         t0=datetime(2019, 7, 2, 15, 0, tzinfo=IST),
         t1=datetime(2019, 7, 2, 21, 0, tzinfo=IST),
-        cadences={"radar": 10, "truth": 5, "gauges": 15, "tide": 15, "traffic": 5, "reports": 5, "cycle": 5},
+        cadences={
+            "radar": 10,
+            "truth": 5,
+            "gauges": 15,
+            "tide": 15,
+            "traffic": 5,
+            "reports": 5,
+            "cycle": 5,
+        },
         radar_domain=_radar_domain(),
         aoi=AOI,
         sources=[_bundle_source()],
         seed=2019,
-        synthetic_notes=["Radar frames: storm-designer reconstruction", "Traffic speeds: synthetic"],
+        synthetic_notes=[
+            "Radar frames: storm-designer reconstruction",
+            "Traffic speeds: synthetic",
+        ],
         event_date=date(2019, 7, 2),
         tide_source="illustrative",
         ground_truth_n=12,
@@ -581,7 +664,9 @@ def _cycle_status() -> CycleStatus:
 
 
 def _cycle_stage_event() -> CycleStageEvent:
-    return CycleStageEvent(run_id=RUN_ID, cycle_ts=T0, stage="sky", status="finished", ms=3900, budget_ms=5000)
+    return CycleStageEvent(
+        run_id=RUN_ID, cycle_ts=T0, stage="sky", status="finished", ms=3900, budget_ms=5000
+    )
 
 
 def _cycle_log_entry() -> CycleLogEntry:
@@ -652,7 +737,12 @@ def _route_response() -> RouteResponse:
 
 
 def _isochrone() -> Isochrone:
-    return Isochrone(minutes=15, polygon=Polygon(coordinates=[_square(*KEM, half=0.01)]), area_km2=3.1, reachable_nodes=420)
+    return Isochrone(
+        minutes=15,
+        polygon=Polygon(coordinates=[_square(*KEM, half=0.01)]),
+        area_km2=3.1,
+        reachable_nodes=420,
+    )
 
 
 def _reachability() -> ReachabilityResponse:
@@ -667,8 +757,12 @@ def _reachability() -> ReachabilityResponse:
         lat=KEM[1],
         profile="ambulance",
         isochrones=[
-            Isochrone(minutes=5, polygon=Polygon(coordinates=[_square(*KEM, half=0.004)]), area_km2=0.6),
-            Isochrone(minutes=10, polygon=Polygon(coordinates=[_square(*KEM, half=0.007)]), area_km2=1.7),
+            Isochrone(
+                minutes=5, polygon=Polygon(coordinates=[_square(*KEM, half=0.004)]), area_km2=0.6
+            ),
+            Isochrone(
+                minutes=10, polygon=Polygon(coordinates=[_square(*KEM, half=0.007)]), area_km2=1.7
+            ),
             _isochrone(),
         ],
         dry_area_15_km2=9.4,
@@ -690,7 +784,9 @@ def _road_condition() -> RoadCondition:
 
 
 def _whatif_request() -> WhatIfRequest:
-    return WhatIfRequest(run_id=RUN_ID, rain_scale=1.3, tide_offset_m=0.0, clean_top_n=14, pump_plan=False)
+    return WhatIfRequest(
+        run_id=RUN_ID, rain_scale=1.3, tide_offset_m=0.0, clean_top_n=14, pump_plan=False
+    )
 
 
 def _hotspot_delta() -> HotspotDelta:
@@ -732,7 +828,9 @@ def _physics_check_request() -> PhysicsCheckRequest:
 
 
 def _physics_check_hotspot() -> PhysicsCheckHotspot:
-    return PhysicsCheckHotspot(hotspot_id="sion-circle", name="Sion Circle", emulator_cm=32, twin_cm=36)
+    return PhysicsCheckHotspot(
+        hotspot_id="sion-circle", name="Sion Circle", emulator_cm=32, twin_cm=36
+    )
 
 
 def _physics_check_response() -> PhysicsCheckResponse:
@@ -741,7 +839,9 @@ def _physics_check_response() -> PhysicsCheckResponse:
         whatif_id="wi-0007",
         valid_ts=T0,
         hotspots=[
-            PhysicsCheckHotspot(hotspot_id="hindmata", name="Hindmata junction", emulator_cm=20, twin_cm=22),
+            PhysicsCheckHotspot(
+                hotspot_id="hindmata", name="Hindmata junction", emulator_cm=20, twin_cm=22
+            ),
             _physics_check_hotspot(),
         ],
         twin_ms=6400,
@@ -787,7 +887,9 @@ def _missed_pin() -> MissedPin:
 
 
 def _flash_lite_score() -> FlashLiteScore:
-    return FlashLiteScore(rmse_cm=4.2, csi_30=0.87, n_train_runs=200, n_heldout_runs=40, fitted_at=T0)
+    return FlashLiteScore(
+        rmse_cm=4.2, csi_30=0.87, n_train_runs=200, n_heldout_runs=40, fitted_at=T0
+    )
 
 
 def _verification_summary() -> VerificationSummary:
@@ -831,7 +933,13 @@ def _error_envelope() -> ErrorEnvelope:
 
 
 def _live_event() -> LiveEvent:
-    return LiveEvent(topic="runs.published", ts=T0, payload={"run_id": RUN_ID, "mode": "baked"}, run_id=RUN_ID, seq=412)
+    return LiveEvent(
+        topic="runs.published",
+        ts=T0,
+        payload={"run_id": RUN_ID, "mode": "baked"},
+        run_id=RUN_ID,
+        seq=412,
+    )
 
 
 def _health() -> HealthStatus:
@@ -870,16 +978,22 @@ def _run_list() -> RunList:
 
 
 def _feature() -> Feature:
-    return Feature(id="88213", geometry=Point(coordinates=HINDMATA), properties={"name": "Hindmata junction"})
+    return Feature(
+        id="88213", geometry=Point(coordinates=HINDMATA), properties={"name": "Hindmata junction"}
+    )
 
 
 _BUILDERS: dict[str, Callable[[], VarunaModel]] = {
     "BBox": lambda: AOI,
     "Point": lambda: Point(coordinates=HINDMATA),
     "LineString": lambda: LineString(coordinates=[KEM, SION_HOSPITAL]),
-    "MultiLineString": lambda: MultiLineString(coordinates=[[KEM, HINDMATA], [HINDMATA, SION_HOSPITAL]]),
+    "MultiLineString": lambda: MultiLineString(
+        coordinates=[[KEM, HINDMATA], [HINDMATA, SION_HOSPITAL]]
+    ),
     "Polygon": lambda: Polygon(coordinates=[_square(*HINDMATA)]),
-    "MultiPolygon": lambda: MultiPolygon(coordinates=[[_square(*HINDMATA)], [_square(*SION_CIRCLE)]]),
+    "MultiPolygon": lambda: MultiPolygon(
+        coordinates=[[_square(*HINDMATA)], [_square(*SION_CIRCLE)]]
+    ),
     "Feature": _feature,
     "FeatureCollection": lambda: FeatureCollection(features=[_feature()], bbox=AOI.as_tuple()),
     "EngineVersions": _engine_versions,
@@ -910,6 +1024,9 @@ _BUILDERS: dict[str, Callable[[], VarunaModel]] = {
     "Boundary": _boundary,
     "DrainEdgeHealth": _drain_health,
     "DrainHealthProduct": _drain_health_product,
+    "RoadSegment": _road_segment,
+    "SurfaceUnit": _surface_unit,
+    "Asset": _asset,
     "RadarDomain": _radar_domain,
     "NestSpec": _nest,
     "DesignIntensity": DesignIntensity,

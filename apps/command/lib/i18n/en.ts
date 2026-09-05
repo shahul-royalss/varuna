@@ -1,0 +1,85 @@
+/**
+ * English strings for the screens that will be translated first: the public map and the citizen
+ * report flow (CLAUDE.md 7.11, P1 for HI and MR). Keys are dotted paths; `{name}` is interpolated.
+ * Copy follows section 6.8: sentence case, units on numbers, empty states say what to do.
+ */
+export const en = {
+  common: {
+    appName: "VARUNA",
+    cm: "{n} cm",
+    minutes: "{n} min",
+    language: "Language",
+    close: "Close",
+    back: "Back",
+    next: "Next",
+    retry: "Retry",
+  },
+  vehicles: {
+    "two-wheeler": "Two-wheeler",
+    car: "Car",
+    bus: "Bus",
+    ambulance: "Ambulance",
+    "fire-tender": "Fire tender",
+    pedestrian: "On foot",
+  },
+  passability: {
+    passable: "Passable",
+    caution: "Caution",
+    impassable: "Impassable",
+    passableUntil: "Passable until {time}",
+    legendTitle: "Streets for {vehicle}",
+  },
+  map: {
+    title: "Streets near you",
+    honestyWithRun: "Forecast from the last VARUNA run at {time}. Updates every 5 minutes.",
+    honestyNoRun:
+      "No VARUNA run yet. The map updates every 5 minutes once the replay or a live cycle publishes.",
+    vehiclePrompt: "Show streets for",
+    sheetTitle: "Nearby streets",
+    emptyTitle: "No streets scored yet",
+    emptyBody:
+      "Street depths appear here after the first VARUNA run. Pick your vehicle above so the colours match what you drive.",
+    savedLocations: "Saved locations",
+    savedEmpty: "Save a street to be told when it stops being passable.",
+    reportWater: "Report water",
+    mapCanvas: "Public map canvas",
+    mapArrives: "The street map with three colours arrives with the console map in Phase 6.",
+    languageComing: "{language} lands in the pilot with its font; English for now.",
+  },
+  report: {
+    title: "Report water on a street",
+    intro: "Three steps. Your report goes straight into VARUNA's drain learning.",
+    step1: "Where is the water",
+    step2: "Add a photo",
+    step3: "How deep",
+    stepOf: "Step {n} of {total}",
+    useLocation: "Use my location",
+    locating: "Finding your position",
+    locationDenied: "Location was blocked. Type the coordinates or adjust the pin.",
+    locationUnavailable: "This device cannot find its position. Type the coordinates instead.",
+    latitude: "Latitude",
+    longitude: "Longitude",
+    adjustPin: "Adjust the pin",
+    mapArrives: "The map to adjust the pin arrives in Phase 6; the coordinates below are what is sent.",
+    photoOptional: "Optional. A photo helps Pulse weigh the report.",
+    takePhoto: "Take or choose a photo",
+    removePhoto: "Remove photo",
+    depthPrompt: "Pick the depth that matches what you see",
+    ankle: "Ankle",
+    knee: "Knee",
+    waist: "Waist",
+    about: "about {n} cm",
+    note: "Anything else (optional)",
+    notePlaceholder: "Street name, which side, since when",
+    submit: "Send report",
+    sending: "Sending report",
+    sent: "Report sent",
+    thanksCount: "Thanks. Your report improved the forecast for {n} streets.",
+    thanksQueued: "Thanks. Your report is queued and joins the next VARUNA cycle.",
+    another: "Report another street",
+    backToMap: "Back to the map",
+    errorTitle: "The report did not go through",
+  },
+} as const;
+
+export type Dictionary = typeof en;

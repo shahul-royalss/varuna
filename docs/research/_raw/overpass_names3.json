@@ -1,0 +1,594 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-07-26T12:18:38Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 2446139795,
+  "lat": 19.0169314,
+  "lon": 72.8473478,
+  "tags": {
+    "bench": "yes",
+    "bin": "no",
+    "bus": "yes",
+    "check_date:bench": "2025-12-19",
+    "covered": "yes",
+    "highway": "bus_stop",
+    "lit": "no",
+    "name": "Khodadad Circle",
+    "public_transport": "platform",
+    "ref": "02049",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 6286272876,
+  "lat": 19.0190729,
+  "lon": 72.8489133,
+  "tags": {
+    "bench": "yes",
+    "bin": "no",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "lit": "no",
+    "name": "Khodadad Circle",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 6286272880,
+  "lat": 19.0185815,
+  "lon": 72.8480762,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 6286272884,
+  "lat": 19.0170111,
+  "lon": 72.8469330,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 6884803660,
+  "lat": 19.0033837,
+  "lon": 72.8427270,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:district": "MUMBAI",
+    "addr:full": "Acharya Donde Marg, Parel, Mumbai",
+    "addr:postcode": "400012",
+    "addr:state": "Maharashtra",
+    "amenity": "blood_bank",
+    "check_date": "2026-03-20",
+    "contact:mobile": "9004362229",
+    "contact:phone": "02224165638; 02224146963; 02224146964; 02224146965; (Extn124)",
+    "email": "wadiabloodbank@gmail.com",
+    "name": "N. Wadia Maternity Hospital Blood Bank",
+    "opening_hours": "24/7",
+    "operator:type": "ngo",
+    "source": "OpenGovernmentData",
+    "website": "http://www.nowrosjeewadiamaternityhospital.com"
+  }
+},
+{
+  "type": "node",
+  "id": 9739425785,
+  "lat": 19.0170701,
+  "lon": 72.8474477,
+  "tags": {
+    "bench": "yes",
+    "bin": "no",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "lit": "no",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 9739425786,
+  "lat": 19.0186753,
+  "lon": 72.8481933,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 9739425787,
+  "lat": 19.0181554,
+  "lon": 72.8471285,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 9788462281,
+  "lat": 19.0241348,
+  "lon": 72.8529972,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Khodadad Circle",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 9788462283,
+  "lat": 19.0208434,
+  "lon": 72.8503042,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Khodadad Circle",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 13388552782,
+  "lat": 19.0188084,
+  "lon": 72.8487161,
+  "tags": {
+    "bench": "yes",
+    "bin": "no",
+    "bus": "yes",
+    "highway": "bus_stop",
+    "lit": "no",
+    "name": "Khodadad Circle",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 22848363,
+  "center": {
+    "lat": 19.0178072,
+    "lon": 72.8481951
+  },
+  "tags": {
+    "highway": "trunk",
+    "junction": "roundabout",
+    "lanes": "4",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 102176163,
+  "center": {
+    "lat": 19.0165404,
+    "lon": 72.8468163
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "bridge": "yes",
+    "foot": "no",
+    "highway": "trunk",
+    "horse": "no",
+    "lanes": "4",
+    "layer": "1",
+    "maxspeed": "40",
+    "name": "Dadar TT flyover",
+    "oneway": "yes",
+    "source": "GPS",
+    "surface": "asphalt"
+  }
+},
+{
+  "type": "way",
+  "id": 102177465,
+  "center": {
+    "lat": 19.0164922,
+    "lon": 72.8468832
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "bridge": "yes",
+    "highway": "trunk",
+    "lanes": "2",
+    "layer": "1",
+    "name": "Dadar TT flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 102177908,
+  "center": {
+    "lat": 19.0199907,
+    "lon": 72.8493525
+  },
+  "tags": {
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Jaganath Shankur Seth (Dadar TT) Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 113566067,
+  "center": {
+    "lat": 19.0178178,
+    "lon": 72.8478207
+  },
+  "tags": {
+    "alt_name": "Dadar TT Circle",
+    "alt_name:en": "Dadar TT Circle",
+    "leisure": "garden",
+    "name": "Khodadad Circle",
+    "name:en": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल"
+  }
+},
+{
+  "type": "way",
+  "id": 125287945,
+  "center": {
+    "lat": 19.0752480,
+    "lon": 72.8410511
+  },
+  "tags": {
+    "highway": "tertiary",
+    "layer": "-1",
+    "name": "Church Avenue",
+    "oneway": "yes",
+    "sidewalk:right": "yes",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 151748416,
+  "center": {
+    "lat": 19.0197101,
+    "lon": 72.8448329
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "primary",
+    "layer": "1",
+    "name": "Tilak Bridge",
+    "name:en": "Tilak Bridge",
+    "name:etymology:wikidata": "Q312555",
+    "name:mr": "लोकमान्य टिळक पूल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 216492422,
+  "center": {
+    "lat": 19.0130068,
+    "lon": 72.8443501
+  },
+  "tags": {
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Jaganath Shankur Seth (Dadar TT) Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 216492423,
+  "center": {
+    "lat": 19.0130656,
+    "lon": 72.8442573
+  },
+  "tags": {
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Jaganath Shankur Seth (Dadar TT) Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 618139793,
+  "center": {
+    "lat": 19.0199190,
+    "lon": 72.8494107
+  },
+  "tags": {
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Jaganath Shankur Seth (Dadar TT) Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 618791586,
+  "center": {
+    "lat": 19.0036051,
+    "lon": 72.8423727
+  },
+  "tags": {
+    "addr:district": "Mumbai",
+    "addr:full": "Acharya Donde Marg, Parel East, Parel",
+    "addr:postcode": "400012",
+    "addr:state": "Maharashtra",
+    "amenity": "hospital",
+    "check_date": "2026-03-20",
+    "healthcare": "hospital",
+    "healthcare:speciality": "paediatrics",
+    "name": "Nowrosjee Wadia Maternity Hospital",
+    "source": "OpenGovernmentData"
+  }
+},
+{
+  "type": "way",
+  "id": 1235213730,
+  "center": {
+    "lat": 19.0178033,
+    "lon": 72.8474044
+  },
+  "tags": {
+    "highway": "trunk",
+    "junction": "roundabout",
+    "lanes": "4",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1235236198,
+  "center": {
+    "lat": 19.0175293,
+    "lon": 72.8475763
+  },
+  "tags": {
+    "highway": "trunk",
+    "junction": "roundabout",
+    "lanes": "4",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1235236199,
+  "center": {
+    "lat": 19.0180629,
+    "lon": 72.8479856
+  },
+  "tags": {
+    "highway": "trunk",
+    "junction": "roundabout",
+    "lanes": "4",
+    "maxheight:signed": "no",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1235236200,
+  "center": {
+    "lat": 19.0181446,
+    "lon": 72.8476766
+  },
+  "tags": {
+    "highway": "trunk",
+    "junction": "roundabout",
+    "lanes": "4",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1235236201,
+  "center": {
+    "lat": 19.0180294,
+    "lon": 72.8474910
+  },
+  "tags": {
+    "highway": "trunk",
+    "junction": "roundabout",
+    "lanes": "4",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1235781080,
+  "center": {
+    "lat": 19.0176011,
+    "lon": 72.8481516
+  },
+  "tags": {
+    "highway": "trunk",
+    "junction": "roundabout",
+    "lanes": "4",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1235781083,
+  "center": {
+    "lat": 19.0174676,
+    "lon": 72.8479267
+  },
+  "tags": {
+    "highway": "trunk",
+    "junction": "roundabout",
+    "lanes": "4",
+    "name": "Khodadad Circle",
+    "name:hi": "खोदादाद सर्कल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1333709266,
+  "center": {
+    "lat": 19.0204892,
+    "lon": 72.8437374
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "primary",
+    "layer": "1",
+    "name": "Tilak Bridge",
+    "name:en": "Tilak Bridge",
+    "name:etymology:wikidata": "Q312555",
+    "name:mr": "लोकमान्य टिळक रस्ता",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1333709267,
+  "center": {
+    "lat": 19.0204721,
+    "lon": 72.8436549
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "primary",
+    "layer": "1",
+    "name": "Tilak Bridge",
+    "name:en": "Tilak Bridge",
+    "name:etymology:wikidata": "Q312555",
+    "name:mr": "लोकमान्य टिळक पूल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1333709269,
+  "center": {
+    "lat": 19.0197694,
+    "lon": 72.8448480
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "primary",
+    "layer": "1",
+    "name": "Tilak Bridge",
+    "name:en": "Tilak Bridge",
+    "name:etymology:wikidata": "Q312555",
+    "name:mr": "लोकमान्य टिळक पूल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1471538760,
+  "center": {
+    "lat": 19.0752003,
+    "lon": 72.8410445
+  },
+  "tags": {
+    "highway": "tertiary",
+    "oneway": "yes",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1471871370,
+  "center": {
+    "lat": 19.0672644,
+    "lon": 72.8360248
+  },
+  "tags": {
+    "access": "private",
+    "highway": "residential",
+    "layer": "-1",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1474722315,
+  "center": {
+    "lat": 19.0202543,
+    "lon": 72.8439922
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "primary",
+    "layer": "1",
+    "name": "Tilak Bridge",
+    "name:en": "Tilak Bridge",
+    "name:mr": "लोकमान्य टिळक पूल",
+    "oneway": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 1516192856,
+  "center": {
+    "lat": 19.0202103,
+    "lon": 72.8440583
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "primary",
+    "layer": "1",
+    "name": "Tilak Bridge",
+    "name:en": "Tilak Bridge",
+    "name:etymology:wikidata": "Q312555",
+    "oneway": "yes"
+  }
+}
+
+  ]
+}

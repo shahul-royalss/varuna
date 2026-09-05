@@ -43,7 +43,9 @@ class WhatIfRequest(VarunaModel):
     clean_top_n: int | None = Field(
         default=None, ge=1, description="Alternative to cleaned_edges: clean the top N by beta."
     )
-    pump_plan: bool = Field(default=False, description="Apply the current pump plan as extra outflow.")
+    pump_plan: bool = Field(
+        default=False, description="Apply the current pump plan as extra outflow."
+    )
 
     @property
     def is_baseline(self) -> bool:

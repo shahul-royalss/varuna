@@ -1,0 +1,269 @@
+{
+  "$defs": {
+    "BBox": {
+      "additionalProperties": false,
+      "description": "A WGS84 bounding box. Accepts ``[min_lon, min_lat, max_lon, max_lat]`` as well as an object.",
+      "properties": {
+        "max_lat": {
+          "maximum": 90.0,
+          "minimum": -90.0,
+          "title": "Max Lat",
+          "type": "number"
+        },
+        "max_lon": {
+          "maximum": 180.0,
+          "minimum": -180.0,
+          "title": "Max Lon",
+          "type": "number"
+        },
+        "min_lat": {
+          "maximum": 90.0,
+          "minimum": -90.0,
+          "title": "Min Lat",
+          "type": "number"
+        },
+        "min_lon": {
+          "maximum": 180.0,
+          "minimum": -180.0,
+          "title": "Min Lon",
+          "type": "number"
+        }
+      },
+      "required": [
+        "min_lon",
+        "min_lat",
+        "max_lon",
+        "max_lat"
+      ],
+      "title": "BBox",
+      "type": "object"
+    },
+    "BundleSource": {
+      "additionalProperties": false,
+      "description": "A public source cited by the bundle (gauge totals, event timeline, tide table).",
+      "properties": {
+        "name": {
+          "description": "e.g. IMD Santacruz 24-h total, 2 July 2019",
+          "title": "Name",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What number was taken and how.",
+          "title": "Note"
+        },
+        "url": {
+          "minLength": 8,
+          "title": "Url",
+          "type": "string"
+        },
+        "used_for": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. 'AOI 3-hour accumulation target 15:00-21:00 IST'.",
+          "title": "Used For"
+        }
+      },
+      "required": [
+        "name",
+        "url"
+      ],
+      "title": "BundleSource",
+      "type": "object"
+    },
+    "RadarDomain": {
+      "additionalProperties": false,
+      "description": "The Sky domain: a square centred on the AOI (60 km at 500 m for Mumbai, CLAUDE.md 3.3).",
+      "properties": {
+        "center_lat": {
+          "maximum": 90.0,
+          "minimum": -90.0,
+          "title": "Center Lat",
+          "type": "number"
+        },
+        "center_lon": {
+          "maximum": 180.0,
+          "minimum": -180.0,
+          "title": "Center Lon",
+          "type": "number"
+        },
+        "res_m": {
+          "description": "Pixel size in metres (500 for pySTEPS).",
+          "exclusiveMinimum": 0,
+          "title": "Res M",
+          "type": "number"
+        },
+        "size_km": {
+          "description": "Side length of the square domain in km.",
+          "exclusiveMinimum": 0,
+          "title": "Size Km",
+          "type": "number"
+        }
+      },
+      "required": [
+        "center_lon",
+        "center_lat",
+        "size_km",
+        "res_m"
+      ],
+      "title": "RadarDomain",
+      "type": "object"
+    }
+  },
+  "$id": "urn:varuna:schema:BundleManifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "``bundles/<ID>/manifest.json``.",
+  "properties": {
+    "aoi": {
+      "$ref": "#/$defs/BBox",
+      "description": "WGS84 AOI bbox the bundle was built for."
+    },
+    "cadences": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "description": "Stream cadences in minutes: radar, truth, gauges, tide, traffic, reports, cycle.",
+      "title": "Cadences",
+      "type": "object"
+    },
+    "calibration": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "description": "Calibration targets, e.g. {'aoi_3h_accumulation_mm': 152.0}.",
+      "title": "Calibration",
+      "type": "object"
+    },
+    "city": {
+      "description": "City slug, e.g. mumbai.",
+      "title": "City",
+      "type": "string"
+    },
+    "description": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Description"
+    },
+    "event_date": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Event Date"
+    },
+    "ground_truth_n": {
+      "default": 0,
+      "description": "Sourced pins inside the AOI.",
+      "minimum": 0,
+      "title": "Ground Truth N",
+      "type": "integer"
+    },
+    "id": {
+      "description": "e.g. MUM-2019-07-02",
+      "pattern": "^[A-Z]{3}-[A-Za-z0-9-]+$",
+      "title": "Id",
+      "type": "string"
+    },
+    "label": {
+      "enum": [
+        "Reconstructed replay",
+        "Design storm"
+      ],
+      "title": "Label",
+      "type": "string"
+    },
+    "radar_domain": {
+      "$ref": "#/$defs/RadarDomain"
+    },
+    "seed": {
+      "description": "Seed of every synthetic generator (2019 for the demo).",
+      "title": "Seed",
+      "type": "integer"
+    },
+    "sources": {
+      "items": {
+        "$ref": "#/$defs/BundleSource"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
+    "synthetic_notes": {
+      "description": "What is synthetic, in UI-ready copy, e.g. 'Radar frames: storm-designer reconstruction'.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Synthetic Notes",
+      "type": "array"
+    },
+    "t0": {
+      "description": "First replay instant (IST).",
+      "format": "date-time",
+      "title": "T0",
+      "type": "string"
+    },
+    "t1": {
+      "description": "Last replay instant (IST).",
+      "format": "date-time",
+      "title": "T1",
+      "type": "string"
+    },
+    "tide_source": {
+      "anyOf": [
+        {
+          "enum": [
+            "tide_table",
+            "illustrative"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tide Source"
+    }
+  },
+  "required": [
+    "id",
+    "city",
+    "label",
+    "t0",
+    "t1",
+    "cadences",
+    "radar_domain",
+    "aoi",
+    "seed"
+  ],
+  "title": "BundleManifest",
+  "type": "object"
+}

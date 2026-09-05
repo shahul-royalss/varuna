@@ -31,7 +31,9 @@ class AlertStateChange(VarunaModel):
 class Alert(VarunaModel):
     """One alert as stored in ``alerts.json`` and served by ``GET /v1/alerts``."""
 
-    id: IdStr = Field(description="Also the CAP identifier stem, e.g. VARUNA-MUM-20190702T1745-FN-0031.")
+    id: IdStr = Field(
+        description="Also the CAP identifier stem, e.g. VARUNA-MUM-20190702T1745-FN-0031."
+    )
     run_id: str = Field(description="Run that raised (or last updated) the alert.")
     scope: AlertScope
     scope_id: IdStr | None = Field(
@@ -46,12 +48,15 @@ class Alert(VarunaModel):
         description="e.g. 'Hindmata junction: depth likely above 45 cm from 18:20 to 20:00'."
     )
     instruction: str | None = Field(
-        default=None, description="Route hint and pump plan, e.g. 'Avoid Hindmata and Parel TT ...'."
+        default=None,
+        description="Route hint and pump plan, e.g. 'Avoid Hindmata and Parel TT ...'.",
     )
     area_desc: str = Field(description="e.g. 'Ward F/North, Hindmata'.")
     polygon: Polygon | None = Field(default=None, description="CAP area polygon (WGS84).")
     trigger_p: Probability = Field(description="P(depth > threshold) at the trigger cycle.")
-    window_from: Timestamp | None = Field(default=None, description="Start of the exceedance window.")
+    window_from: Timestamp | None = Field(
+        default=None, description="Start of the exceedance window."
+    )
     window_to: Timestamp | None = Field(default=None, description="End of the exceedance window.")
     raised_ts: Timestamp
     persists_cycles: int = Field(

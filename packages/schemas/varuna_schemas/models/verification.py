@@ -57,7 +57,9 @@ class HotspotScore(VarunaModel):
     timing_err_min: float | None = Field(
         default=None, description="Forecast peak minus observed onset in minutes (signed)."
     )
-    mae_cm: float | None = Field(default=None, ge=0, description="Depth MAE where pins carry depth.")
+    mae_cm: float | None = Field(
+        default=None, ge=0, description="Depth MAE where pins carry depth."
+    )
     lead_time_gained_min: float | None = Field(
         default=None, description="Minutes between the first alert and the first observed report."
     )

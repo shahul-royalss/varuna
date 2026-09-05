@@ -1,0 +1,104 @@
+
+### https://copernicus-dem-30m.s3.amazonaws.com/tileList.txt
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 18:23:01 GMT
+Content-Type: text/plain
+Content-Length: 1110900
+
+### https://copernicus-dem-30m.s3.amazonaws.com/readme.html
+HTTP/1.1 200 OK
+Last-Modified: Wed, 22 Nov 2023 10:39:04 GMT
+Content-Type: text/html
+Content-Length: 8536
+
+### https://registry.opendata.aws/copernicus-dem/
+HTTP/1.1 200 OK
+Content-Type: text/html
+Content-Length: 9202
+Last-Modified: Thu, 03 Sep 2026 23:38:56 GMT
+
+### https://esa-worldcover.s3.eu-central-1.amazonaws.com/readme.html
+HTTP/1.1 200 OK
+Last-Modified: Tue, 25 Oct 2022 13:30:55 GMT
+Content-Type: text/html
+Content-Length: 2830
+
+### https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N18E072_Map.tif
+HTTP/1.1 200 OK
+Last-Modified: Wed, 26 Oct 2022 12:51:44 GMT
+Content-Type: binary/octet-stream
+Content-Length: 125766199
+
+### https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N12E078_Map.tif
+HTTP/1.1 200 OK
+Last-Modified: Wed, 26 Oct 2022 12:44:22 GMT
+Content-Type: binary/octet-stream
+Content-Length: 119065806
+
+### https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N18E072_InputQuality.tif
+HTTP/1.1 404 Not Found
+Content-Type: application/xml
+
+### https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N12E078_InputQuality.tif
+HTTP/1.1 404 Not Found
+Content-Type: application/xml
+
+### https://esa-worldcover.org/en/data-access
+HTTP/1.1 200 OK
+Content-Length: 49866
+Content-Type: text/html; charset=UTF-8
+
+### https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N18_00_E072_00_DEM/Copernicus_DSM_COG_10_N18_00_E072_00_DEM.tif
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 14:07:11 GMT
+Content-Type: image/tiff
+Content-Length: 4027713
+
+### https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N19_00_E072_00_DEM/Copernicus_DSM_COG_10_N19_00_E072_00_DEM.tif
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 14:07:42 GMT
+Content-Type: image/tiff
+Content-Length: 13336459
+
+### https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N12_00_E080_00_DEM/Copernicus_DSM_COG_10_N12_00_E080_00_DEM.tif
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 14:04:30 GMT
+Content-Type: image/tiff
+Content-Length: 7135610
+
+### https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N13_00_E080_00_DEM/Copernicus_DSM_COG_10_N13_00_E080_00_DEM.tif
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 14:04:55 GMT
+Content-Type: image/tiff
+Content-Length: 12362785
+
+### https://overpass-api.de/api/status
+HTTP/1.1 200 OK
+Content-Length: 213
+Content-Type: text/plain; charset=utf-8
+
+### https://overpass.kumi.systems/api/status
+
+### https://mausam.imd.gov.in/Radar/caz_vrv.gif
+HTTP/1.1 200 OK
+Last-Modified: Sat, 05 Sep 2026 11:00:03 GMT
+Content-Length: 1282387
+Content-Type: image/gif
+
+### https://mausam.imd.gov.in/mumbai/
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=UTF-8
+
+### https://mausam.imd.gov.in/imd_latest/contents/index_radar_new_menu.php
+HTTP/1.1 404 Not Found
+Content-Type: text/html; charset=iso-8859-1
+
+### https://www.mosdac.gov.in/
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=UTF-8
+
+### https://portal.opentopography.org/apidocs/
+HTTP/1.1 200 200
+Last-Modified: Mon, 02 Oct 2023 22:26:23 GMT
+Content-Length: 2524
+Content-Type: text/html

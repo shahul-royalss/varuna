@@ -54,7 +54,9 @@ class HotspotPumpBenefit(VarunaModel):
     hotspot_name: str
     minutes_above_45_before: float = Field(ge=0)
     minutes_above_45_after: float = Field(ge=0)
-    excess_volume_m3: float = Field(ge=0, description="Inflow minus drain outflow over the horizon.")
+    excess_volume_m3: float = Field(
+        ge=0, description="Inflow minus drain outflow over the horizon."
+    )
     assigned_pumps: list[IdStr] = Field(default_factory=list)
 
 

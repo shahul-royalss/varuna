@@ -117,7 +117,7 @@ def run(
         console.print(f"[bold]$[/bold] {escape(display(argv))}", style="dim")
     started = time.perf_counter()
     try:
-        completed = subprocess.run(list(argv), cwd=cwd, env=merged_env, check=False)  # noqa: S603
+        completed = subprocess.run(list(argv), cwd=cwd, env=merged_env, check=False)
         code = completed.returncode
     except FileNotFoundError:
         console.print(f"[red]Executable not found:[/red] {escape(argv[0])}")
@@ -134,7 +134,7 @@ def run(
 def capture(argv: Sequence[str], *, timeout_s: float = 20.0) -> str | None:
     """Run a command and return its combined output stripped, or ``None`` when it fails."""
     try:
-        completed = subprocess.run(  # noqa: S603
+        completed = subprocess.run(
             list(argv),
             capture_output=True,
             text=True,
@@ -178,7 +178,7 @@ def kill_tree(proc: subprocess.Popen[str], *, grace_s: float = 5.0) -> None:
     if proc.poll() is not None:
         return
     if IS_WINDOWS:
-        subprocess.run(  # noqa: S603
+        subprocess.run(
             ["taskkill", "/PID", str(proc.pid), "/T", "/F"],
             capture_output=True,
             check=False,
@@ -229,7 +229,7 @@ def run_concurrently(services: Sequence[Service]) -> int:
                 f"[dim]$ {escape(display(service.argv))}[/dim]"
             )
             try:
-                proc = subprocess.Popen(  # noqa: S603
+                proc = subprocess.Popen(
                     service.argv,
                     cwd=service.cwd,
                     env={**os.environ, **service.env},

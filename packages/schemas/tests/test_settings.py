@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from varuna_schemas.settings import Settings, get_settings, reload_settings
 
 _ENV_NAMES = (

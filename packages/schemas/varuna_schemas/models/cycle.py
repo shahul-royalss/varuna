@@ -36,7 +36,8 @@ class CycleStatus(VarunaModel):
     total_budget_ms: int = Field(default=TOTAL_CYCLE_BUDGET_MS, gt=0)
     degraded_feeds: list[str] = Field(default_factory=list)
     error: str | None = Field(
-        default=None, description="What failed and what to do, e.g. 'Twin exceeded 8 s; using Flash-lite'."
+        default=None,
+        description="What failed and what to do, e.g. 'Twin exceeded 8 s; using Flash-lite'.",
     )
 
     @computed_field  # type: ignore[prop-decorator]
@@ -91,7 +92,9 @@ class CycleLogEntry(VarunaModel):
 class ComputeRequest(VarunaModel):
     """Body of ``POST /v1/cycle/compute`` ('Compute live')."""
 
-    bundle: str | None = Field(default=None, description="Bundle to read streams from; None = current.")
+    bundle: str | None = Field(
+        default=None, description="Bundle to read streams from; None = current."
+    )
     cycle_ts: Timestamp | None = Field(
         default=None, description="Cycle time; None = the replay clock's current time."
     )

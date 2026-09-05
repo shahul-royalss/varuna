@@ -360,6 +360,7 @@ const PRELUDE = String.raw`const deepFreeze = (value) => {
   return value;
 };
 const finite = (n, fallback) => (typeof n === "number" && Number.isFinite(n) ? n : fallback);
+const real = (n, fallback) => (typeof n === "number" && !Number.isNaN(n) ? n : fallback);
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
 const clampAlpha = (alpha) => Math.round(clamp(finite(alpha, 255), 0, 255));
 const bandAtOrAbove = (bands, value, field) => {
@@ -382,10 +383,11 @@ export function drainRampStops() {
 
 /**
  * The depth band for a depth in centimetres. Lower bounds are inclusive, upper bounds exclusive:
- * 4.9 -> dry, 5 -> 1, 15 -> 2, 30 -> 3, 45 -> 4, 60 and above -> 5. Negative or non-finite -> dry.
+ * 4.9 -> dry, 5 -> 1, 15 -> 2, 30 -> 3, 45 -> 4, 60 and above -> 5. NaN, non-numbers, negatives
+ * and -Infinity -> dry; +Infinity -> 5.
  */
 export function depthBand(cm) {
-  return bandAtOrAbove(DEPTH_BANDS, finite(cm, 0), "min_cm");
+  return bandAtOrAbove(DEPTH_BANDS, real(cm, 0), "min_cm");
 }
 
 /** Hex colour of the depth band for a depth in centimetres. */
@@ -398,9 +400,9 @@ export function depthColorRgba(cm, alpha = 255) {
   return hexToRgba(depthColor(cm), alpha);
 }
 
-/** The drain band for a posterior blockage beta in [0, 1]: 0.25 -> 1, 0.5 -> 2, 0.75 -> 3. */
+/** The drain band for a posterior blockage beta clamped to [0, 1]: 0.25 -> 1, 0.5 -> 2, 0.75 -> 3; NaN -> 0. */
 export function drainBand(beta) {
-  return bandAtOrAbove(DRAIN_BANDS, clamp(finite(beta, 0), 0, 1), "min_beta");
+  return bandAtOrAbove(DRAIN_BANDS, clamp(real(beta, 0), 0, 1), "min_beta");
 }
 
 /** Hex colour of the drain band for a posterior blockage beta. */
@@ -618,7 +620,7 @@ export function generateDts(t, hash) {
     "export declare function depthRampStops(): DepthBand[];",
     "/** Drain bands in ramp order (0 clear ... 3 blocked). */",
     "export declare function drainRampStops(): DrainBand[];",
-    "/** Band for a depth in cm; lower bounds inclusive (5 -> band 1), negatives and NaN -> dry. */",
+    "/** Band for a depth in cm; lower bounds inclusive (5 -> band 1); NaN, negatives and -Infinity -> dry; +Infinity -> the top band. */",
     "export declare function depthBand(cm: number): DepthBand;",
     "/** Hex colour for a depth in cm. */",
     "export declare function depthColor(cm: number): Hex;",

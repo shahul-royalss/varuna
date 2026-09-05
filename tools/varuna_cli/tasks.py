@@ -16,9 +16,10 @@ import platform
 import re
 import shutil
 import sys
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import typer
 from rich.table import Table
@@ -62,6 +63,7 @@ ENGINES: tuple[str, ...] = (
 )
 
 COMMAND_APP = "@varuna/command"
+PYTEST_PATHS: tuple[str, ...] = ("packages", "services", "tests", "tools")
 DEFAULT_CITY = "mumbai"
 DEFAULT_BUNDLE = "MUM-2019-07-02"
 DEFAULT_API_PORT = 8000
@@ -103,7 +105,7 @@ def load_config() -> RuntimeConfig:
         from varuna_schemas.settings import reload_settings
 
         settings = reload_settings()
-    except Exception:  # noqa: BLE001 - a broken .env must not stop the task runner
+    except Exception:  # a broken .env must not stop the task runner
         return RuntimeConfig()
     return RuntimeConfig(
         city=settings.varuna_city,
@@ -185,11 +187,11 @@ def engine_status(name: str) -> tuple[bool, bool]:
     """(package importable, ``varuna_<name>.cli`` exposes a Typer ``app``)."""
     try:
         importlib.import_module(f"varuna_{name}")
-    except Exception:  # noqa: BLE001 - a broken engine must not break the doctor
+    except Exception:  # a broken engine must not break the doctor
         return False, False
     try:
         cli = importlib.import_module(f"varuna_{name}.cli")
-    except Exception:  # noqa: BLE001
+    except Exception:
         return True, False
     return True, isinstance(getattr(cli, "app", None), typer.Typer)
 
@@ -292,6 +294,7 @@ def doctor(
         "docker": _version(["docker", "--version"]),
     }
     engines = {name: engine_status(name) for name in ENGINES}
+    reasons = engine_reasons()
     city_path = city_dir(config.city)
     city_files = sum(1 for p in city_path.rglob("*") if p.is_file()) if city_path.is_dir() else 0
     bundles = list_bundles()
@@ -303,7 +306,8 @@ def doctor(
         "tools": tools,
         "env_file": (root / ".env").is_file(),
         "engines": {
-            name: {"package": pkg, "cli": cli} for name, (pkg, cli) in engines.items()
+            name: {"package": pkg, "cli": cli, "reason": None if cli else reasons.get(name)}
+            for name, (pkg, cli) in engines.items()
         },
         "city": {"name": config.city, "path": str(city_path), "files": city_files},
         "bundles": bundles,
@@ -350,6 +354,30 @@ def doctor(
     table.add_row("default bundle", config.bundle)
     table.add_row("ports", f"API {config.api_port}, UI {config.ui_port}")
     console.print(table)
+    broken = {
+        name: reason
+        for name, reason in reasons.items()
+        if reason and not engines.get(name, (False, False))[1] and not _is_missing_cli(name, reason)
+    }
+    for name, reason in broken.items():
+        console.print(f"[yellow]{name}[/yellow]: sub-command not loaded: {reason}", style="dim")
+
+
+def engine_reasons() -> dict[str, str | None]:
+    """Why each engine sub-command is absent, from the root app's registry.
+
+    Imported lazily because ``varuna_cli.main`` imports this module.
+    """
+    try:
+        from varuna_cli.main import registry
+    except Exception:
+        return {}
+    return {name: item.reason for name, item in registry.engines.items()}
+
+
+def _is_missing_cli(name: str, reason: str) -> bool:
+    """True for the expected case: the engine has no ``cli`` module yet (arrives per phase)."""
+    return reason.startswith("ModuleNotFoundError") and f"varuna_{name}.cli" in reason
 
 
 def _version(argv: list[str]) -> str | None:
@@ -545,7 +573,8 @@ def test(
             ("pnpm lint:design", procs.pnpm("lint:design"), root),
         ]
     if not web_only:
-        pytest_argv = procs.python("-m", "pytest")
+        # Explicit paths: pyproject's testpaths plus the task runner's own tests under tools/.
+        pytest_argv = procs.python("-m", "pytest", *PYTEST_PATHS)
         if not no_cov:
             pytest_argv += ["--cov", "--cov-report=term-missing:skip-covered"]
             if fail_under is not None:
@@ -744,7 +773,7 @@ def help_targets() -> None:
 # Registration
 # ---------------------------------------------------------------------------
 
-TASKS: tuple[tuple[str, object], ...] = (
+TASKS: tuple[tuple[str, Callable[..., Any]], ...] = (
     ("setup", setup),
     ("doctor", doctor),
     ("city", city),
@@ -767,16 +796,23 @@ TASKS: tuple[tuple[str, object], ...] = (
 )
 
 
-def register(app: typer.Typer) -> None:
-    """Attach every task command to ``app``."""
+def register(app: typer.Typer, *, skip: Iterable[str] = ()) -> None:
+    """Attach every task command to ``app``, except the names in ``skip``.
+
+    ``main.build_app`` passes the engine sub-apps it found so that a placeholder task (for
+    example ``city``) yields to the real engine group of the same name.
+    """
+    skipped = set(skip)
     for name, fn in TASKS:
+        if name in skipped:
+            continue
         if name == "e2e":
             app.command(
                 name,
                 context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
-            )(fn)  # type: ignore[arg-type]
+            )(fn)
         else:
-            app.command(name)(fn)  # type: ignore[arg-type]
+            app.command(name)(fn)
 
 
 __all__ = [
