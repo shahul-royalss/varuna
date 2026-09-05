@@ -1,0 +1,1836 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>MUMBAI RAINFALL</title>
+<script src="assets/js/jquery-1.12.3.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.3/jquery.min.js"></script>
+<script src='select2/dist/js/select2.min.js' type='text/javascript'></script>
+<!--<link rel ="stylesheet" href="leaflet/leaflet.css"/>
+ <script src ="leaflet/leaflet.js"></script>-->
+ <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- CSS -->
+<link href='select2/dist/css/select2.min.css' rel='stylesheet' type='text/css'>
+<script src='https://www.google.com/recaptcha/api.js'></script>
+<style>
+.grad {
+    background:#151B54;
+}
+.temp-control {
+  /* min-width: 400px; */
+    /* padding: 5px; */
+	padding: 8px;
+    color: #ffffff;
+    font-weight:normal;
+	border-radius:6px;
+	border:3px solid #993300;
+}
+.map_data{
+	border: 1px solid #337ab7;
+    height: 485px;
+   /*  width: auto; */
+}
+ 
+}
+thead th {
+    background: #f5f5f2;
+    border: solid #bfbfba;
+    border-width: 1px 0;
+    color: #333;
+    text-transform: uppercase;
+}
+tr {
+    border-bottom: 1px solid #e6e4df;
+    padding: 0.1em 0.6em;
+}
+.center {
+    background: #fff;
+    color: #017f;
+}
+.section1 {
+    height:8px;
+    background-size: cover;
+    background-repeat: no-repeat;
+    background-position: center;
+   /* margin-top: 6%; */
+}
+.marquee{
+	color:maroon;
+	font-size:13.5px;
+	/* background-color:#CCFFCC; */
+	margin-top:5px;
+}
+<style>
+.blinking{
+    animation:blinkingText 0.20s infinite;
+}
+@keyframes blinkingText{
+    0%{     color: #dff50f;    }
+    49%{    color: #006400; }
+    99%{    color: #FF4500; }
+  
+    100%{   color:#dff50f;    }
+}
+.navbar-brand img {
+    width: 95px;
+}
+.logo-txt {
+    margin-left: 30px;
+    font-size: 20px;
+    margin-top: 18px;
+	color:white;
+}
+.awNotices {
+    position: relative;
+    color: #ffffff;
+   /*  margin: -5px -15px; */
+    background: #ffffff;
+}
+.blue-panel {
+	text-align: center;
+	background: #e9f0f4;
+}
+.blue-panel .blue-header {
+	background: #54bae6;
+	padding: 2px;
+	margin-bottom: 15px;
+}
+.blue-panel h5 {
+	color:black;
+	font-weight: bold;
+	font-size:20px;
+	margin-top: 10px;
+}
+.blue-panel p {
+	margin-left: 5px;
+}
+
+
+/* Specific Conf for Donut Charts*/
+.donut-chart p {
+	margin-top: 5px;
+	font-weight: 700;
+	margin-left: 15px;
+}
+.donut-chart h2 {
+	font-weight: 900;
+	color: #FF6B6B;
+	font-size: 38px;
+}
+.mb {
+    margin-bottom: 25px;
+}
+.pn_new {
+    margin-bottom: 15px;
+}
+.pn_table {
+    margin-bottom: 1px;
+}
+.pn_new2 {
+    margin-bottom: 7px;
+}
+.mySlides {display: none;}  
+img {vertical-align: middle;}
+
+.slideshow-container {
+  max-width: 100%;
+  position: relative;
+  margin: auto;
+}
+
+
+.text {
+  color: #f2f2f2;
+  font-size: 15px;
+  padding: 8px 12px;
+  position: absolute;
+  bottom: 8px;
+  width: 100%;
+  text-align: center;
+}
+
+/* Number text (1/3 etc) */
+.numbertext {
+  color: #f2f2f2;
+  font-size: 12px;
+  padding: 8px 12px;
+  position: absolute;
+  top: 0;
+}
+
+/* The dots/bullets/indicators */
+.dot {
+  height: 15px;
+  width: 15px;
+  margin: 0 2px;
+  background-color: #bbb;
+  border-radius: 50%;
+  display: inline-block;
+  transition: background-color 0.6s ease;
+}
+
+.active {
+  background-color: #717171;
+}
+
+/* Fading animation 
+.fades {
+  -webkit-animation-name: fade;
+  -webkit-animation-duration: 1.5s;
+  animation-name: fade;
+  animation-duration: 1.5s;
+}
+*/
+@-webkit-keyframes fade {
+  from {opacity: .4} 
+  to {opacity: 1}
+}
+
+@keyframes fade {
+  from {opacity: .4} 
+  to {opacity: 1}
+}
+
+/* On smaller screens, decrease text size */
+@media only screen and (max-width: 300px) {
+  .text {font-size: 11px}
+}
+
+
+
+.mySlides_new {display: none;}  
+img {vertical-align: middle;}
+
+.slideshow-container-new {
+  max-width: 100%;
+  position: relative;
+  margin: auto;
+}
+
+
+.text {
+  color: #f2f2f2;
+  font-size: 15px;
+  padding: 8px 12px;
+  position: absolute;
+  bottom: 8px;
+  width: 100%;
+  text-align: center;
+}
+
+/* Number text (1/3 etc) */
+.numbertext {
+  color: #f2f2f2;
+  font-size: 12px;
+  padding: 8px 12px;
+  position: absolute;
+  top: 0;
+}
+
+/* The dots/bullets/indicators */
+.dot_new {
+  height: 15px;
+  width: 15px;
+  margin: 0 2px;
+  background-color: #bbb;
+  border-radius: 50%;
+  display: inline-block;
+  transition: background-color 0.6s ease;
+}
+
+.active {
+  background-color: #717171;
+}
+
+/* Fading animation 
+.fades_new {
+  -webkit-animation-name: fade;
+  -webkit-animation-duration: 1.5s;
+  animation-name: fade;
+  animation-duration: 1.5s;
+}
+*/
+@-webkit-keyframes fade {
+  from {opacity: .4} 
+  to {opacity: 1}
+}
+
+@keyframes fade {
+  from {opacity: .4} 
+  to {opacity: 1}
+}
+
+/* On smaller screens, decrease text size */
+@media only screen and (max-width: 300px) {
+  .text {font-size: 11px}
+}
+.header-main {
+    padding: 10px 0;
+}
+.footer-social a {
+    color: #969595;
+    margin: 15px;
+}
+
+
+.tabbuttons{
+	color: black;
+    background-color:#78AB46;
+    border: none;
+    padding: 10px;
+}
+
+.tabbuttons:hover {
+    background-color:#808000;
+}
+.tabcontent{
+ background: #ddd;
+    min-height: 100px;
+}
+
+.activeTab { 
+background-color:#808000 ;
+}
+
+
+.text-style-2 {
+    color: white;
+    font-size: 25px;
+}
+.text-style-3 {
+    color: white;
+    font-size: 17px;
+	text-align:justify
+}
+.table_data{
+cursor:pointer;
+border:1px solid black;
+ font-size:12px;
+ text-align:center;
+ width:10%	;
+}
+
+</style>
+
+<style>
+.collapsible {
+  background-color: #777;
+  color: white;
+  cursor: pointer;
+  padding: 5px;
+  width: 100%;
+  border: none;
+  /*text-align: left;*/
+  outline: none;
+  font-size: 15px;
+}
+
+.active, .collapsible:hover {
+  background-color: #555;
+}
+
+.content {
+  padding: 0 18px;
+  display: none;
+  overflow: hidden;
+  color:black;
+  background-color: #90EE90;
+}
+</style>
+<style>
+    .language-switcher {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start; /* Align to start of flex item */
+        padding-left: 10px;
+        color: white;
+    }
+
+    .language-switcher span {
+        margin: 0 10px;
+        cursor: pointer;
+    }
+
+    .language-switcher span:hover {
+        text-decoration: underline;
+    }
+
+    .footer-social {
+        display: flex;
+        justify-content: flex-end; /* Align to end of flex item */
+        gap: 10px;
+    }
+</style>
+
+    </head>
+    <body data-spy="scroll" data-target="#main-navbar">
+	<!--<div style="height:28px;background-color:chocolate;">
+	
+	
+	<div class="col-sm-3">
+       <div class="footer-social">
+		<!-- <a href="#"><i class="ion-social-facebook" style="color:white;font-size:20px;"></i></a>
+		<a href="#"><i class="ion-social-linkedin-outline" style="color:white;font-size:20px;"></i></a>
+		<a href="#"><i class="ion-social-skype-outline" style="color:white;font-size:20px;"></i></a>
+		<a href="#"><i class="ion-social-twitter" style="color:white;font-size:20px;"></i></a>-->
+        <!--</div> 
+        </div>
+	</div>-->
+  <div class="header-main" style="background-color:#24487D;">
+        <div class="container">
+                    <div class="row">
+					<div class="col-md-12" > 
+					 <div class="col-sm-4 col-md-4 col-xs-12" align="center" style="margin-top:4px">
+                            <div class="logo img-hide">
+                               <!--<img src="images/logo-new4.png" alt="IITM-logo">-->
+							<img src="images/iitmlogo.png" alt="logo"  width="30%" style="margin-top:15px">
+                          					  
+                            <img src="images/bmc_logo.png" alt="logo" width="30%" style="margin-top:30px">	
+
+                             <img src="images/imd_new_logo.png" alt="logo" width="25%" style="">								
+                          
+							</div>
+                        </div>   
+                        <div class="col-sm-5 col-md-5 col-xs-12 pull-left" style="padding-left: 0;">
+                            <div class="header-info">
+                                
+                                <div align="center" class="col-sm-1 col-md-1 col-xs-1 hide-m" id="middel_hedder_border" style="width: 0.333333%; padding-left: 0; padding-right: 0;"></div>
+                                <div class="" align="center" style="text-align:center">
+                                    <h2 class="" style="color:white;font-size:30px;">Mumbai Mesonet Observations <br/> 
+                                    <span class="text-style-2">
+                                    RainFall Live                                    </span><br/>
+									<span class="text-style-3">
+									Indian Institute of Tropical Meteorology, Pune									</span><br/>
+									<span class="text-style-3">
+									India Meteorological Department									</span><br/>
+                                   <span class="text-style-3">
+                                   Ministry of Earth Sciences, Govt. of India                                    </span><br/>
+									
+                                </h2>
+
+                               
+							   </div>
+                                
+                            </div>
+
+
+                        </div>
+                        <div class="col-sm-3 col-md-3 col-xs-12" align="center" style="margin-top:4px">
+                            <div class="logo img-hide">
+                               <!--<img src="images/logo-new4.png" alt="IITM-logo">-->
+							   <img src="images/esso-logo.png" alt="logo" width="35%" style="margin-top:15px"> 
+							    <img src="images/satyamev-jayate-logo-png-.png" alt="logo"  width="53%" style="margin-top:10px">
+                         
+                            </div>
+                        </div> 
+                         </div>                    
+                    </div>
+                </div>
+            </div>
+        <!-- NavigationBar Section -->
+            <nav class="navbar navbar-default navbar-fixed-top" style="position:relative;background: #06517C;margin-bottom:0px;">
+                <div class="container">
+				<div class="col-md-12 col-sm-12 col-xs-12">
+                <!-- Brand and toggle get grouped for better mobile display -->
+                <div class="navbar-header">
+                  <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#main-navbar" aria-expanded="false">
+                    <span class="sr-only">Toggle navigation</span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                    <span class="icon-bar"></span>
+                  </button>
+                  
+                       
+                </div>
+
+                <!-- Collect the nav links, forms, and other content for toggling -->
+                <div class="collapse navbar-collapse" id="main-navbar">
+				
+                  <ul class="nav navbar-nav navbar-right">
+				   <li class="language-switcher">
+            <a href="#" id="first-lang-switch" data-language="marathi">मराठी</a>
+        </li>
+        <li class="language-switcher">
+            <a href="#" id="second-lang-switch" data-language="hindi">हिंदी</a>
+        </li> <li class="active"><a href="#header">Home  <span class="sr-only">(current)</span></a></li>
+                    <li><a href="#choose">About Us</a></li>
+                    <li><a href="#contact">Contact</a></li>
+                  </ul>
+				  </div>
+                </div><!-- /.navbar-collapse -->
+                </div><!-- /.container-fluid -->
+                </nav>
+
+        <!-- Header Section -->
+            <!--<header id="header" class="header overlay-dark">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-sm-6 col-sm-offset-3">
+                            <div class="intro-box c-table">
+                                <div class="intro ct-cell">
+                                    <h1>Law is order</h1>
+                                </div>
+                            </div>
+                            <a class="btn btn-default btn-header" href="#">Contact us</a>
+                        </div>
+                    </div>
+                </div>
+            </header>-->
+			
+			
+    <div class="container">
+    <div class="row">
+		<div class="col-md-12 col-sm-12">
+       
+		<div class="col-md-12 awNotices" >
+		
+		
+
+				
+		 <marquee class="marquee pn_new2" onmouseover="this.stop()" onmouseout="this.start()"><span>Generally cloudy sky with intermittent light to moderate rainfall in city and suburbs. Heavy rainfall at isolated places.</span><span> - (Source IMD)</span></marquee>
+		</div>
+		</div>
+	</div>	
+	</div>
+        
+		
+            <!--<section class="mb" id="choose"  style="background-color:rgba(255, 102, 0, 0.58);">-->
+                <div class="container">
+                   
+                <div class="row">
+			    <div class="col-md-12">
+				
+				<h5 style="color:white;padding:8px;font-size:15px;text-align:center;background-color:#1647A3;margin-top:0px;"><span id="rain_head"></span> <span id="rain_tittle"> </span></h5>
+                </div>
+				<div class="col-lg-8 col-md-8 col-sm-6 col-xs-12">
+				
+		<div class="tabbuttonsdiv pn_table" align="center">
+		
+		<table style="border:1px solid black;height:20px;width:100%;" align="center" class="col-md-12 pn_table">
+					<tr>
+					<td class="tabbuttons activeTab table_data" onClick="show_map(15);"> 15 min					</td>
+					<td class="tabbuttons table_data" onClick="show_map(1);"> 1 hour					</td>
+					<td class="tabbuttons table_data" onClick="show_map(3);"> 3 hour					</td>
+					<td class="tabbuttons table_data" onClick="show_map(6);"> 6 hour					</td>
+					<td class="tabbuttons table_data" onClick="show_map(12);"> 12 hour					</td>
+					<td class="tabbuttons table_data" onClick="show_map(24);"> 24 hour					</td>
+					</tr>
+	                </table> 
+		
+		
+      
+      </div>
+				
+		            <div id="weathermap" class="map_data">
+					 <div id="map" style="width:100%; height:446px;"></div>
+					</div>
+
+                    <table id="range" style="border:1px solid black;height:20px;width:100%;" align="center" class="col-md-12">
+					<tr>
+					<td style="border:1px solid black;font-size:10px; text-align:center; background-color:#017fb9; color:White;width:10%" > No Rain					</td>
+					<td style="border:1px solid black; font-size:10px; text-align:center; background-color:#476b01; color:White;width:10%"> 0.1 - 5 mm					</td>
+					<td style="border:1px solid black; font-size:10px; text-align:center; background-color:#d79108; color:White;width:10%"> 5 - 10 mm					</td>
+					<td style="border:1px solid black; font-size:10px; text-align:center; background-color:#993200; color:White;width:10%"> 10 - 20 mm					</td>
+					<td style="border:1px solid black; font-size:10px; text-align:center; background-color:#5d0099; color:White;width:10%">20 - 40 mm					</td>
+					<td style="border:1px solid black; font-size:10px; text-align:center; background-color:#f45b5b; color:White;width:10%"> 40 - 70 mm					</td>
+					<td style="border:1px solid black; font-size:10px; text-align:center; background-color:#7B68EE; color:White;width:10%"> 70 - 100 mm					</td>
+					<td style="border:1px solid black; font-size:10px; text-align:center; background-color:#3CB371; color:White;width:10%"> 100 - 120 mm					</td>
+					<td style="border:1px solid black; font-size:10px; text-align:center; background-color:#000000; color:White;width:12%">More than 120 mm					</td>
+					</tr>
+	                </table> 
+					
+                </div>				
+						
+						
+						
+                <div class="col-lg-4 col-lg-md-4 col-sm-6 col-xs-12 pn_new" style="">
+			    <div class="temp-control grad" align="center">
+				<table>
+					<tr>
+						<td style="color:white;" >
+							<select style="height:25px;color:black" name="stn_name" id="station_id" onchange="display_data(this.value);display_graph(this.value);display_record(this.value);">
+							<option>Select Station</option>
+								
+								<option value="154"  selected>Airoli (IITM)</option>
+								
+								<option value="157"  >Digha  gaon (IITM)</option>
+								
+								<option value="222"  >AMITY UNIVERSITY, MUMBAI (IITM)</option>
+								
+								<option value="26"  >Andheri Fire Stn (BMC)</option>
+								
+								<option value="109"  >BANDRA (IMD)</option>
+								
+								<option value="199"  >Bandra Fire Station (BMC)</option>
+								
+								<option value="160"  >Belapur (IITM)</option>
+								
+								<option value="28"  >Bhandup Complex (BMC)</option>
+								
+								<option value="107"  >BHAYANDER (IMD)</option>
+								
+								<option value="185"  >Bhoirwadi (IITM)</option>
+								
+								<option value="29"  >BKC Fire Station (BMC)</option>
+								
+								<option value="30"  >Borivali Fire Station (BMC)</option>
+								
+								<option value="198"  >Britannia Storm Water Pumping Station (BMC)</option>
+								
+								<option value="2"  >B Ward Office (BMC)</option>
+								
+								<option value="31"  >Byculla Fire Station (BMC)</option>
+								
+								<option value="176"  >CBD Belapur (IITM)</option>
+								
+								<option value="200"  >Chembur Fire Station (BMC)</option>
+								
+								<option value="33"  >Chincholi Fire Station (BMC)</option>
+								
+								<option value="10"  >City Institute of DM (BMC)</option>
+								
+								<option value="205"  >MUMBAI_COLABA (IMD)</option>
+								
+								<option value="34"  >Colaba Fire Station (BMC)</option>
+								
+								<option value="100"  >Colaba Pumping Station (BMC)</option>
+								
+								<option value="196"  >Cooper Hospital (BMC)</option>
+								
+								<option value="215"  >CSMT_MUMBAI (IMD)</option>
+								
+								<option value="3"  >C Ward Office (BMC)</option>
+								
+								<option value="35"  >Dadar Fire Station (BMC)</option>
+								
+								<option value="191"  >Dahisar Fire Station (IMD)</option>
+								
+								<option value="36"  >Dahisar Fire Station (BMC)</option>
+								
+								<option value="156"  >Darave (IITM)</option>
+								
+								<option value="172"  >Daulat nagar (IITM)</option>
+								
+								<option value="38"  >Dharavi Fire Station (BMC)</option>
+								
+								<option value="165"  >Dhokali (IITM)</option>
+								
+								<option value="39"  >Dindoshi Fire Station (BMC)</option>
+								
+								<option value="155"  >Diwale (IITM)</option>
+								
+								<option value="186"  >Dombivli East (IITM)</option>
+								
+								<option value="180"  >Dombivli west (IITM)</option>
+								
+								<option value="40"  >D Ward Office (BMC)</option>
+								
+								<option value="6"  >Eye Hospital Grant Rd (BMC)</option>
+								
+								<option value="4"  >F North Ward Office (BMC)</option>
+								
+								<option value="193"  >Frosberry Reserviour (BMC)</option>
+								
+								<option value="5"  >F South Ward Office (BMC)</option>
+								
+								<option value="41"  >Gawanpad Fire Station (BMC)</option>
+								
+								<option value="158"  >Ghansoli gaon (IITM)</option>
+								
+								<option value="112"  >Goregaon (BMC)</option>
+								
+								<option value="178"  >Greater Khanda Panvel (IITM)</option>
+								
+								<option value="7"  >G South Ward Office (BMC)</option>
+								
+								<option value="192"  >Haji Ali Pumping Station (BMC)</option>
+								
+								<option value="197"  >HBT Trauma Hospital (BMC)</option>
+								
+								<option value="9"  >H West Ward Office (BMC)</option>
+								
+								<option value="150"  >Jahu nagar,washi (IITM)</option>
+								
+								<option value="206"  >JUHU_AIRPORT (IMD)</option>
+								
+								<option value="43"  >Kandivali Fire Station (BMC)</option>
+								
+								<option value="25"  >Kandivali Workshop (BMC)</option>
+								
+								<option value="175"  >Kasarvadavali (IITM)</option>
+								
+								<option value="163"  >Kausa (IITM)</option>
+								
+								<option value="8"  >K East Ward Office (BMC)</option>
+								
+								<option value="162"  >Khairna village (IITM)</option>
+								
+								<option value="168"  >Khardipada (IITM)</option>
+								
+								<option value="152"  >Kopar khairane (IITM)</option>
+								
+								<option value="208"  >KOPARKHAIRANE (IMD)</option>
+								
+								<option value="167"  >Kopri (IITM)</option>
+								
+								<option value="44"  >Kurla Fire Station (BMC)</option>
+								
+								<option value="12"  >K West Ward Office (BMC)</option>
+								
+								<option value="182"  >Lok gram (IITM)</option>
+								
+								<option value="13"  >L Ward Office (BMC)</option>
+								
+								<option value="37"  >M East Ward Office (Deonar) (BMC)</option>
+								
+								<option value="105"  >MAHALAXMI (IMD)</option>
+								
+								<option value="202"  >malad fire station (BMC)</option>
+								
+								<option value="204"  >Malbar Hill (BMC)</option>
+								
+								<option value="14"  >Malwani Fire Stn (BMC)</option>
+								
+								<option value="18"  >Mandavi Fire Station (BMC)</option>
+								
+								<option value="174"  >Manpada, Thane (IITM)</option>
+								
+								<option value="46"  >Marol Fire Station (BMC)</option>
+								
+								<option value="213"  >MATUNGA_MUMBAI (IMD)</option>
+								
+								<option value="195"  >MCGM1 (BMC)</option>
+								
+								<option value="49"  >Memonwada Fire Station (BMC)</option>
+								
+								<option value="159"  >MIDC,Pawne (IITM)</option>
+								
+								<option value="190"  >MIRA_ROAD (IMD)</option>
+								
+								<option value="187"  >Mohane (IITM)</option>
+								
+								<option value="50"  >Mulund Fire Station (BMC)</option>
+								
+								<option value="211"  >MUMBAI_SANTA_CRUZ (IMD)</option>
+								
+								<option value="169"  >Mumbra (IITM)</option>
+								
+								<option value="15"  >MWestWard (BMC)</option>
+								
+								<option value="17"  >Nariman Point Fire Station (BMC)</option>
+								
+								<option value="164"  >Naupada (IITM)</option>
+								
+								<option value="209"  >NERUL (IMD)</option>
+								
+								<option value="161"  >Nerul (IITM)</option>
+								
+								<option value="184"  >Netvli (IITM)</option>
+								
+								<option value="19"  >NWard (BMC)</option>
+								
+								<option value="173"  >Oswal park, Thane (IITM)</option>
+								
+								<option value="1"  >Pr. Thackeray Natya Mandir (BMC)</option>
+								
+								<option value="189"  >RAM_MANDIR (IMD)</option>
+								
+								<option value="21"  >Rawali Camp (BMC)</option>
+								
+								<option value="120"  >SANPADA (IITM)</option>
+								
+								<option value="210"  >SHAHAPUR (IMD)</option>
+								
+								<option value="179"  >Shivaji Chowk, Kalyan (IITM)</option>
+								
+								<option value="218"  >SION_MUMBAI (IMD)</option>
+								
+								<option value="22"  >SWard Office (BMC)</option>
+								
+								<option value="23"  >SWD Workshop Dadar (BMC)</option>
+								
+								<option value="110"  >SWM Santacruz Workshop (BMC)</option>
+								
+								<option value="207"  >TATA POWER CHEMBUR (IMD)</option>
+								
+								<option value="212"  >THANE (IMD)</option>
+								
+								<option value="183"  >Titwala (IITM)</option>
+								
+								<option value="219"  >vidyavardhini eng college, Vasai (IITM)</option>
+								
+								<option value="194"  >Versova Pumping Station (BMC)</option>
+								
+								<option value="171"  >Vidya Prasarak Mandal, Thane (IITM)</option>
+								
+								<option value="217"  >VIDYAVIHAR (IMD)</option>
+								
+								<option value="223"  >Vikhroli (IMD)</option>
+								
+								<option value="51"  >Building Proposal office Vikhroli (W) (BMC)</option>
+								
+								<option value="220"  >DJ Sanghavi collegE, Vileparle (IITM)</option>
+								
+								<option value="52"  >Vile Parle Fire Station (BMC)</option>
+								
+								<option value="181"  >Vitthal wadi (IITM)</option>
+								
+								<option value="221"  >Virar (IITM)</option>
+								
+								<option value="53"  >Wadala Fire Station (BMC)</option>
+								
+								<option value="151"  >Washi village (IITM)</option>
+								
+								<option value="54"  >Worli Fire Station (BMC)</option>
+							                    		<!-- <option value="two">Mulund</option> -->
+                    		</select>
+                    	</td>
+						
+					</tr>
+				</table>
+			</div>
+            <div class="temp-control grad" style="margin-top:2px;padding:2px;">									
+			<table class="table">
+				<tr style="border:0px none">
+					<td class="text-center" style="border:0px none">
+						<span id="para1" style="font-size:25px;"></span><br/>
+						<span id="para2" style="font-size:14px;">
+						<div id="clockbox">
+							</div>
+												</span>	
+					</td>
+				</tr>
+			</table>
+			</div>
+			<div class="temp-control grad" style="margin-top:2px;">						
+			<table class="table">
+				<thead>
+				<tr>
+				<td class="head">Rainfall In Past::</td>
+				<td>15 min</td>
+				<td>1 hr</td>
+				
+				<td>24 hrs</td>
+				</tr>
+				</thead>
+				<tbody>				
+				<tr>
+					<td class="head">mm::</td>
+					<td id="rain15min">0.0</td>
+					<td id="rain1hour">0.0</td>
+					<td id="rain24hour">0.0</td>
+									
+				</tr>
+
+				</tbody>
+			</table>
+			</div>
+						<div class="temp-control grad head" style="margin-top:2px;text-align:center;">	
+			<!---button class=" head" title="Click Here">IMD RANGE</button--->
+			<!---div class=""-->
+			<p style="margin:0px;">2026-09-04 8:30 AM to 2026-09-05 8:30 AM:&nbsp; <strong><span id="rain_830"></span></strong> mm</p>
+			<!--/div--->
+			</div>
+				
+			
+			<div class="temp-control grad" style="margin-top:2px;padding:5px;">
+			<table class="table center">
+				<thead>
+					<tr>
+					<th colspan="2" style="text-align:center">Max Rainfall Location</th>
+					</tr>
+					<tr>
+					<th style="text-align:center;">Current (Past 15Min)</th>
+					<th style="text-align:center;">Total (Past 24Hour)</th>
+					</tr>
+				</thead>
+				<tbody>
+				<tr>
+					<td style="text-align:center;"><span>0</span></td>
+					<td style="text-align:center;"><span id="max_rain">18</span></td>
+					</tr>
+					<tr>
+					<td style="text-align:center;"><span>HWestWar</span></td>
+					<td style="text-align:center;"><span id="max_station">Dhokali</span></td>
+					</tr>
+				</tbody>
+			</table>
+			</div>          
+		   
+            </div>
+                       
+						
+                           </div>
+                        </div>
+                    
+                </div>
+            <!--</section>-->
+			
+			<!--<graph>-->
+			
+			<div class="container">
+		<div class="row">
+					<div class="col-md-12 col-sm-12 pn_new">
+					
+                      		<!--<div class="grey-panel pn donut-chart">
+                      			<div class="grey-header">-->
+								<div class="col-md-12" style="box-shadow: 0 5px 14px rgba(3,9,32,0.20);">
+                               
+					  	        <div class="blue-header" style="background-color:#1647A3;text-align:center">
+						  			<h5 style="color:white;padding:8px;font-size:15px">Past 24 hour Rainfall</h5>
+                      			</div>
+                                  
+								<div id="rain_graph"> </div>
+	                      	<!--/grey-panel -->
+                      	</div>
+                       
+                           </div>						
+					</div>
+         </div>
+			
+			
+			<!--</graph>-->
+			 <div class="container">
+		<div class="row">
+					<div class="col-md-12 col-sm-12 pn_new">
+					
+                      		<!--<div class="grey-panel pn donut-chart">
+                      			<div class="grey-header">-->
+								<div class="col-md-12" style="box-shadow: 0 5px 14px rgba(3,9,32,0.20);">
+                               
+					  	        <div class="blue-header" style="background-color:#1647A3;text-align:center" onclick="myFunction();">
+						  			<h5 style="color:white;padding:8px;font-size:15px;cursor:pointer">Total Rainfall in Mumbai Past 24 hour<span style="color:pink;margin-left:20px;"><- click here</span></h5>
+                      			</div>
+                                  
+								<div style="display:none;" id="past_hour_graph"></div>
+	                      	<!--/grey-panel -->
+                      	</div>
+                       
+                           </div>						
+					</div>
+         </div>
+           <!--</graph>-->
+			
+		<div class="container">
+		<div class="row">
+					<div class="col-md-12 col-sm-12 pn_new">
+					
+                      		<!--<div class="grey-panel pn donut-chart">
+                      			<div class="grey-header">-->
+								<div class="col-md-12" style="box-shadow: 0 5px 14px rgba(3,9,32,0.20);">
+                                
+					  	        <div class="blue-header" style="background-color:#1647A3;text-align:center;cursor:pointer" >
+								  <h5 style="color:white;padding:8px;font-size:15px">For IMD 								  </h5>
+                      			</div>
+                                  
+								<div  id="total_rain_graph"> </div>
+	                      	<!--/grey-panel -->
+                      	</div>
+                       
+                           </div>						
+					</div>
+         </div>
+           <!--</graph>-->
+		   
+		  
+		   
+		   
+			<!-- 3RD ROW OF PANELS -->
+			<div class="container">
+			<div class="row">
+					
+					
+						
+                        <div class="col-md-6 col-sm-6">
+                      		<!--<div class="grey-panel pn donut-chart">
+                      			<div class="grey-header">-->
+                                
+					  	        <div class="blue-header" style="background-color:#1647A3;">
+						  			<h5 style="color:white;padding:8px;font-size:15px;text-align:center">Satellite Image</h5>
+                      			</div>
+                                <div>
+
+
+    <!--<div class="mySlides fades">-->
+                  
+                  <!--<img src="" style="width:100%" height="550px">-->
+                <img src="https://mausam.imd.gov.in/Satellite/3Dasiasec_ir1.jpg" style="width:100%" height="550px"> 
+    <!--</div>-->
+	</div>
+<br>
+
+<!--<div style="text-align:center; display:none">
+  <span class="dot"></span> 
+   
+</div>-->
+			<!--/grey-panel -->
+                    </div>
+                        <!--/col-md-4 -->
+                        
+<div class="col-md-6 col-sm-6">
+					  		
+<div class="blue-header" style="background-color:#1647A3;">
+<h5 style="color:white;padding:8px;font-size:15px;text-align:center">Urban Radar Network Mumbai</h5>
+</div>
+								
+<div class="slideshow-container-new">
+<ul class="slides">
+<li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0645_20260905-064568aa.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0645_20260905-064568ab.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0650_20260905-065068ac.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0650_20260905-065068ad.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0655_20260905-065568ae.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0655_20260905-065568af.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0700_20260905-070068b0.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0700_20260905-070068b1.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0705_20260905-070568b2.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0705_20260905-070568b3.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0710_20260905-071068b4.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0710_20260905-071068b5.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0715_20260905-071568b6.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0715_20260905-071568b7.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0720_20260905-072068b8.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0720_20260905-072068b9.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0725_20260905-072568ba.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0725_20260905-072568bb.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0730_20260905-073068bc.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0730_20260905-073068bd.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0735_20260905-073568be.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0735_20260905-073568bf.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0740_20260905-074068c0.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0740_20260905-074068c1.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0745_20260905-074568c2.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0745_20260905-074568c3.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0750_20260905-075068c4.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0750_20260905-075068c5.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0755_20260905-075568c6.gif" class="slide" width="100%" height="550px"></li><li><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0755_20260905-075568c7.gif" class="slide" width="100%" height="550px"></li></ul>
+</div>
+
+<br>
+							
+								
+					  	</div><!--/col-md-4 -->
+                          					
+					</div>
+		    </div>
+		
+		
+<div class="container">
+    <div class="row">
+        <div class="col-md-12 col-sm-12 pn_new">
+            <div class="row">
+                <div class="col-md-12 mx-auto" style="box-shadow: 0 5px 14px rgba(3,9,32,0.20);">
+                    <!-- Header -->
+                    <div class="blue-header" style="background-color:#1647A3;text-align:center;cursor:pointer" onclick="myFunction2();">
+                        <h5 style="color:white;padding:8px;font-size:15px">
+                            Real-Time Image Of Radar                            <span style="color:pink;margin-left:20px;"><- click here</span>
+                        </h5>
+                    </div>
+
+                    <!-- Hidden Radar Image -->
+                    <div style="display:none;" id="latest_radar_image">
+					
+<div style="text-align:center"><img src="https://mumbairain.tropmet.res.in/mumbai_radar/IITM Mo-20260905-0755_20260905-075568c6.gif" style="height: 550px; display: block; margin: 0 auto;"></div>
+
+
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+			
+			
+        <!-- Why choose us -->
+            <section id="choose" class="choose" style="padding:0px 0 31px;background: url(images/MumbaiRainfall_background.jpg)">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="blue-header">
+						  			<h5 style="color:white;font-size:25px;text-align:center;">About Mumbai Rain (MESONET)</h5>
+                      		</div>
+                        </div>
+                    </div>
+					<div class="row">
+                        <div class="col-sm-12">
+                            <div class="blue-header">
+						  			
+							<p class='text-style-3'> <b>Background::</b>
+									<br />
+									<br />Mumbai, country's financial capital with about 12 million people, 
+	weather plays a very important role especially during south west monsoon season. As Mumbai receives an 
+	average ~230 cm in monsoon season with high spatio-temporal variability. rainfall needs to be monitored in 
+	real-time with dense network of rain gauges. This information is very crucial for all stake holders mainly 
+	Disaster Management Department, Municipal Corporation for Greater Bombay(MCGM), Western and Central Railways,
+	 Road transport and many others including the floating population of the city and disaster management 
+	 practices									</p>
+									<br />
+									<p class='text-style-3'><b>Information on Mumbai Weather live apps and  webportal</b><br />
+									IITM, MoES initiated an effort to collate measurements from India Meteorological Department (IMD) and MCGM measurements into a live mobile application. This mobile app is designed to provide live location specific information on rainfall, currently at about 139 sites spread across Mumbai city, suburban areas, with Navi Mumbai region and around to citizens. Along with this the other important weather parameters like Temperature, Relative Humidity, and Wind also will be made available to Mumbaikars in their mobile phones. These parameters are dominating over entire year around with impact, being the coastal city on west coast. Further, MoES is putting efforts in augmenting more rain gauges so as to increase the network over Mumbai to get an overall picture of every locality. In addition, this app also provides radar-derived precipitation over 150 km range and latest Satellite Imagery for better understanding of the clouds around. This information will help alert people and can be used in improving preparedness.									<br />
+									<br />
+									<br />
+									<b>Participating agencies: </b>
+									
+									<br />
+									IITM,  IMD, MCGM, Central and Western Railways, Navi Mumbai Municipal Corporation and few more agencies to join.									</p>
+                      		</div>
+                        </div>
+                    </div>
+				</div>
+			</section>	
+					
+
+        <!-- Practice areas -->
+		
+		   
+        <!-- Team -->
+          
+        <!-- Testimonial -->
+       
+		
+		
+        <!-- FAQ -->
+            
+        
+        <!-- Contact -->
+            <section id="contact" class="contact" style="padding:0px 0 31px;background: url(images/MumbaiRainfall_background.jpg)">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <div class="blue-header">
+						  		<h5 style="color:white;font-size:30px;text-align:center;">Contact us:</h5>
+                      		</div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                       
+					<div class="col-sm-6"><p class='text-style-3'>
+						<b>MESONET </b> high-resolution rain gauge data is freely accessible to users for research and academic purpose.						<br /> <br /><br />
+						<br /> IITM officials: Dr. Subrata Kumar Das, Email: <u>subrata@tropmet.res.in</u>
+						<br /> Data curator: Dr. Sunil Kumar Khadgarai, Email: <u>sunil.khadgarai@tropmet.res.in</u>
+						</p>
+						</div>
+                        <div class="col-sm-6">
+						
+                            <form id="contactForm" action="php/contact_form.php" method="post" name="jquery_forms">
+                                <div class="input-group">      
+                                    <span class="input-group-addon">
+                                        <i class="ion-person"></i>
+                                    </span> 
+                                    <input class="form-control" type="text" id="first_name" placeholder="Name" name="name" required>
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-addon">
+                                        <i class="ion-email"></i>
+                                    </span>
+                                    <input class="form-control" name="email" id="email_id" type="email" placeholder="Email address" required>
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-addon custom-addon">
+                                        <i class="ion-chatbubbles"></i>
+                                    </span>
+                                    <textarea class="form-control" rows="8" id="comment" placeholder="Write Message" name="message"></textarea>
+                                </div>
+								<div class="col-md-12 form-group has-feedback">
+    			                <div class="g-recaptcha" name="g-recaptcha-response" data-sitekey="6Le9G64UAAAAAApAb5yG_oJ9cSWw-Yi3MlEKFLAz"></div>
+    		                    </div>
+                               <input type="submit" name="submit" id="submit" class="btn11 btn12" style="color:green;padding:5px" value="SUBMIT" onclick="return onSubmit();"/>
+                            </form>
+
+                           
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+       
+        <!-- Footer -->
+           <footer class="footer">
+                <div class="container">
+                    <div class="row">
+                        <div class="col-sm-12">
+                            <p style="text-align:center;">
+							Copyright © Mumbai Rainfall, IITM Pune							 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; 
+							<!-- hitwebcounter Code START -->
+                            <!--a href="http://www.hitwebcounter.com" target="_blank"-->
+                            <!--img src="http://hitwebcounter.com/counter/counter.php?page=7119113&style=0011&nbdigits=5&type=ip&initCount=0" title="website counter" Alt="website counter"   border="0"--->
+<img src="https://hitwebcounter.com/counter/counter.php?page=7123984&style=0001&nbdigits=5&type=ip&initCount=295" title="webs counters" Alt="webs counters"   border="0" > 
+ <!--/a-->                                        
+                    <!-- hitwebcounter.com --><a href="http://www.hitwebcounter.com" title="" target="_blank" style="font-family: ; font-size: px; color: #; text-decoration:  ;display:none;"><>                                        </>
+                                        </a>    
+							  
+							  
+                            </p>
+							<!-- hitwebcounter Code START -->
+                             
+                            
+                        </div>
+                        <!--<div class="col-sm-3">
+                            <div class="footer-social">
+                                <a href="#"><i class="ion-social-facebook"></i></a>
+                                <a href="#"><i class="ion-social-linkedin-outline"></i></a>
+                                <a href="#"><i class="ion-social-skype-outline"></i></a>
+                                <a href="#"><i class="ion-social-twitter"></i></a>
+                            </div>
+                        </div>-->
+                    </div>
+                </div>
+            </footer>
+		<style>
+        .slides {
+            position: relative;
+            list-style: none;
+            padding: 0;
+        }
+        .slide {
+            display: none; /* Hide all slides by default */
+            width: 100%;
+        }
+        .slide.showing {
+            display: block; /* Show the current slide */
+        }
+    </style>
+	 <script>
+        var slides = document.querySelectorAll('.slides .slide');
+        var currentSlide = 0;
+        var slideInterval = setInterval(nextSlide, 2000); // Change slide every 2 seconds
+
+        function nextSlide() {
+            slides[currentSlide].classList.remove('showing'); // Hide current slide
+            currentSlide = (currentSlide + 1) % slides.length; // Move to the next slide
+            slides[currentSlide].classList.add('showing'); // Show the next slide
+        }
+
+        // Show the first slide initially
+        if (slides.length > 0) {
+            slides[0].classList.add('showing');
+        }
+    </script>
+<script>
+function onSubmit()
+ {
+	frm=document.jquery_forms;
+	error='';
+	var step;
+	var i;
+	disp_error = 'Clear The Following Errors : \n\n';
+		   if(frm.name.value=='')
+
+			{
+
+			disp_error +='Please Enter your Name.\n';
+
+			 document.getElementById('first_name').style.border = '1px solid #f00';
+
+			 frm.name.focus();
+
+			 error='yes';
+			}
+			if(frm.email.value=='')
+
+			{
+
+			disp_error +='Please Enter your Email ID.\n';
+
+			 document.getElementById('email_id').style.border = '1px solid #f00';
+
+			 frm.email.focus();
+
+			 error='yes';
+			}
+			
+			
+			
+			if(frm.message.value=='')
+
+			{
+
+			disp_error +='Please Send some Message';
+
+			 document.getElementById('comment').style.border = '1px solid #f00';
+
+			 frm.message.focus();
+
+			 error='yes';
+			}
+			
+			
+			if(error=='yes')
+
+		 {
+
+			 alert(disp_error);
+
+			 return false;
+
+		 }
+
+
+		 else
+		 {
+		 return save_data();
+		 return true;
+		 
+		 }
+ }
+function save_data()
+{
+	//alert("hii");
+	var names=document.getElementById('first_name').value;
+	//alert(names);
+	var email=document.getElementById('email_id').value;
+	//alert(email);
+	var msg=document.getElementById('comment').value;
+	//alert(msg);
+	var data_parameter="names="+names+"&email="+email+"&msg="+msg;
+	var response = grecaptcha.getResponse();
+
+	if(response.length == 0)
+	{
+		alert("Please Select reCaptcha");
+	}
+	else
+	{
+		alert("reCaptch verified");
+	}
+	  $.ajax ({
+            url:"save_contact_info.php", type: "post", data: data_parameter, cache: false,
+           success: function(htmls)
+		{
+			//alert(htmls);
+			//$("#rain_830").html(htmls);
+			window.location="index.php";
+		}
+	});
+
+	return true;
+}
+</script>  
+<script>
+function myFunction() {
+  var x = document.getElementById("past_hour_graph");
+  if (x.style.display === "none") {
+    x.style.display = "block";
+  } else {
+    x.style.display = "none";
+  }
+}
+</script>
+<script>
+function myFunction2() {
+	//alert("hii");
+  var y = document.getElementById("latest_radar_image");
+  if (y.style.display === "none") {
+	 // alert("hii");
+    y.style.display = "block";
+  } else {
+	 // alert("hyy");
+    y.style.display = "none";
+  }
+}
+</script>
+    <script>
+var slideIndexNew = 0;
+showSlidesNew();
+
+function showSlidesNew() {
+    var i;
+    var slidesnew = document.getElementsByClassName("mySlides_new");
+    var dotsnew = document.getElementsByClassName("dot_new");
+    for (i = 0; i < slidesnew.length; i++) {
+       slidesnew[i].style.display = "none";  
+    }
+    slideIndexNew++;
+    for (i = 0; i < dotsnew.length; i++) {
+        dotsnew[i].className = dotsnew[i].className.replace("active", "");
+    }
+    slidesnew[slideIndexNew-1].style.display = "block";  
+    dotsnew[slideIndexNew-1].className += " active";
+    if (slideIndexNew < slidesnew.length)
+    setTimeout(showSlidesNew, 1000); // Change image every 2 seconds
+}
+</script>
+	
+	<script>
+var slideIndex = 0;
+showSlides();
+
+function showSlides() {
+    var i;
+    var slides = document.getElementsByClassName("mySlides");
+    var dots = document.getElementsByClassName("dot");
+    for (i = 0; i < slides.length; i++) {
+       slides[i].style.display = "none";  
+    }
+    slideIndex++;
+    for (i = 0; i < dots.length; i++) {
+        dots[i].className = dots[i].className.replace(" active", "");
+    }
+    slides[slideIndex-1].style.display = "block";  
+    dots[slideIndex-1].className += " active";
+    if (slideIndex < slides.length)
+    setTimeout(showSlides, 1000); // Change image every 2 seconds
+}
+</script>
+				
+	
+    <script>
+ $(document).ready(function(){
+ 
+  // Initialize select2
+  $("#station_id").select2();
+
+  
+});
+        </script>    <!-- Scripts -->
+		
+<script>
+function display_record(station_id)
+{
+	var station_id = station_id;
+	
+	var data_parameter="station_id="+station_id;
+	
+	  $.ajax ({
+            url:"get_records.php", type: "post", data: data_parameter, cache: false,
+           success: function(htmls)
+		{
+			//alert(htmls);
+			$("#rain_830").html(htmls);
+			
+		}
+	});
+}
+
+function display_data(station_id)
+{
+	//alert("hii");
+	var station_id = station_id;
+	//var station_id=document.getElementById('station_id').value;
+	//alert(station_id);
+	
+	var data_parameter="station_id="+station_id;
+	
+	  $.ajax ({
+            url:"get_data.php", type: "post", data: data_parameter, cache: false,
+           success: function(htmls)
+		{
+			//alert(htmls);
+			result = htmls.split('##');
+			new_res=result[0];
+			new_res2=result[1];
+			new_res3=result[2];
+			new_res4=result[3];
+			new_res5=result[4];
+			new_res6=result[5];
+			new_res7=result[6];
+			//document.getElementById('rain15min').value =result[0];
+			$("#rain15min").html(new_res);
+			$("#rain1hour").html(new_res2);
+			$("#rain24hour").html(new_res3);
+			$("#Temperature").html(new_res4);
+			$("#Humidity").html(new_res5);
+			$("#Speed").html(new_res6);
+			$("#Direction").html(new_res7);
+		}
+	});
+}
+</script>
+<script src="https://code.highcharts.com/highcharts.js"></script>
+<script src="https://code.highcharts.com/modules/exporting.js"></script>
+<script src="https://code.highcharts.com/modules/export-data.js"></script>
+    		
+    
+<script>
+function display_graph(station_id)
+{
+	//alert("hii");
+	
+	var station_id = station_id;
+	//var station_id=document.getElementById('station_id').value;
+	//alert(station_id);
+	
+	var data_parameters="station_id="+station_id;
+	//alert(data_parameters);
+	  $.ajax ({
+            url:"get_graph_data.php", type: "post", data: data_parameters, cache: false,
+           success: function(htmls)
+		{
+			//alert(htmls);
+			$("#rain_graph").html(htmls);
+		}
+	});
+}
+
+</script>
+	<style>
+.leaflet-container .leaflet-control-attribution
+{
+	display:none;
+}
+</style>
+<script>
+    // Add event listeners to switch language on click
+       document.getElementById('first-lang-switch').addEventListener('click', function() {
+        const newLang = this.getAttribute('data-language');
+        window.location.href = window.location.pathname + "?language=" + newLang;
+    });
+
+    document.getElementById('second-lang-switch').addEventListener('click', function() {
+        const newLang = this.getAttribute('data-language');
+        window.location.href = window.location.pathname + "?language=" + newLang;
+    });
+
+</script>	
+<script>
+var map; // Global map variable
+
+var currentLanguage = "english";
+
+function show_map(type) {
+
+    type = type || '15';
+
+    var titls = '';
+    var heading = '';
+
+    // Title text
+    if (type == '15') {
+
+        titls = type + ' min ';
+
+    } else {
+
+        titls = type + ' hour ';
+    }
+
+    // Hindi special condition
+    if (currentLanguage == 'hindi') {
+
+        heading = 'पिछले ' + titls + ' में हुई बारिश';
+
+        // Remove extra title
+        titls = '';
+
+    } else {
+
+        heading = 'Rainfall in last ';
+    }
+
+    document.getElementById('rain_head').innerHTML = heading;
+
+    document.getElementById('rain_tittle').innerHTML = titls;
+	
+    $.ajax({
+        url: "json/map_file/read_map_" + type + ".php",
+        type: "GET",
+        data: { type: type },
+        cache: false,
+
+        success: function(htmls) {
+
+            var JSONObject = JSON.parse(htmls);
+
+            // =========================
+            // INITIALIZE MAP ONLY ONCE
+            // =========================
+            if (!map) {
+
+                map = L.map('map', {
+                    center: [19.0760, 72.8777], // Mumbai
+                    zoom: 10,
+                    minZoom: 5,
+                    maxZoom: 18,
+                    zoomSnap: 0.25,
+                    zoomDelta: 0.25,
+                    preferCanvas: true
+                });
+
+                // =========================
+                // Bhuvan Base Layer
+                // =========================
+                L.tileLayer.wms(
+                    "https://bhuvan-vec1.nrsc.gov.in/bhuvan/gwc/service/wms",
+                    {
+                        layers: 'india3',
+                        format: 'image/png',
+                        transparent: false,
+                        version: '1.1.1',
+                        attribution: "NRSC Bhuvan"
+                    }
+                ).addTo(map);
+
+            } else {
+
+                // =========================
+                // REMOVE OLD MARKERS ONLY
+                // =========================
+                map.eachLayer(function(layer) {
+
+                    if (layer instanceof L.Marker) {
+                        map.removeLayer(layer);
+                    }
+
+                });
+            }
+
+            // =========================
+            // ADD MARKERS
+            // =========================
+            JSONObject.forEach(function(item) {
+
+                var lat = parseFloat(item.lat);
+                var lng = parseFloat(item.longitude);
+
+                if (isNaN(lat) || isNaN(lng)) return;
+
+                // =========================
+                // RAINFALL ICONS
+                // =========================
+                var rain = parseFloat(item.rain);
+
+                var image = '';
+
+                if (rain === 0.0)
+                    image = 'images/blue.png';
+                else if (rain <= 5.0)
+                    image = 'images/green.png';
+                else if (rain <= 10.0)
+                    image = 'images/yellow.png';
+                else if (rain <= 20.0)
+                    image = 'images/red.png';
+                else if (rain <= 40.0)
+                    image = 'images/purple.png';
+                else if (rain <= 70.0)
+                    image = 'images/Red_water-drop.png';
+                else if (rain <= 100.0)
+                    image = 'images/03.png';
+                else if (rain <= 120.0)
+                    image = 'images/04.png';
+                else
+                    image = 'images/06.png';
+
+                // =========================
+                // CUSTOM ICON
+                // =========================
+                var icon = L.icon({
+                    iconUrl: image,
+                    iconSize: [25, 25]
+                });
+
+                // =========================
+                // MULTI LANGUAGE ADDRESS
+                // =========================
+                var address =
+                    currentLanguage === 'marathi'
+                    ? item.marathi_stn_address
+                    : currentLanguage === 'hindi'
+                    ? item.hindi_stn_address
+                    : item.stn_address;
+
+                // =========================
+                // POPUP HTML
+                // =========================
+                var html = `
+                    <div style="text-align:center;">
+                        <table width="270px"
+                               align="center"
+                               border="1"
+                               cellpadding="1"
+                               cellspacing="0"
+                               style="cursor:pointer;
+                                      border-collapse:collapse;
+                                      border-color:black;">
+
+                            <tr>
+                                <td align="center"
+                                    style="white-space:nowrap;
+                                           background-color:#66CDAA;
+                                           color:black;font-size:15px">
+
+                                    ${address} [${item.str_type}]
+                                </td>
+                            </tr>
+
+                            <tr>
+                                <td>
+
+                                    <table width="270px"
+                                           align="center"
+                                           border="1"
+                                           cellpadding="2"
+                                           cellspacing="0"
+                                           style="border-collapse:collapse;
+                                                  background-color:#66CDAA;font-size:13px">
+
+                                        <tr>
+
+                                            <td align="center"
+                                                style="color:black;">
+                                                rain                                            </td>
+
+                                            <td align="center"
+                                                colspan="2"
+                                                style="color:black;">
+
+                                                ${item.rain}
+                                                mm
+                                            </td>
+
+                                        </tr>
+
+                                    </table>
+
+                                </td>
+                            </tr>
+
+                        </table>
+                    </div>
+                `;
+
+                // =========================
+                // ADD MARKER
+                // =========================
+                L.marker([lat, lng], {
+                    icon: icon
+                })
+                .bindPopup(html)
+                .addTo(map);
+
+            });
+
+            // =========================
+            // ALWAYS FOCUS ON MUMBAI
+            // =========================
+            map.setView([19.0760, 72.8777], 10);
+
+        }
+
+    });
+
+}
+</script>
+
+   
+		 <link href="assets/css/bootstrap.min.css" rel="stylesheet">
+        
+        <link href="https://code.ionicframework.com/ionicons/2.0.1/css/ionicons.min.css" rel="stylesheet">
+        <link href="assets/css/owl.carousel.css" rel="stylesheet">
+        <link href="assets/css/owl.carousel.theme.min.css" rel="stylesheet">
+        <link href="assets/css/main.css" rel="stylesheet">
+		
+        
+        <script src="assets/js/bootstrap.min.js"></script>
+        
+        <script src="assets/js/owl.carousel.min.js"></script>
+        <script src="assets/js/script.js"></script>
+
+<script type="text/javascript">
+document.getElementById("para1").innerHTML = formatAMPM();
+
+
+function formatAMPM() {
+var d = new Date(),
+    sec = d.getSeconds().toString().length == 1 ? '0'+d.getSeconds() : d.getSeconds(),
+    minutes = d.getMinutes().toString().length == 1 ? '0'+d.getMinutes() : d.getMinutes(),
+    hours = d.getHours().toString().length == 1 ? '0'+d.getHours() : d.getHours(),
+    ampm = d.getHours() >= 12 ? 'pm' : 'am',
+    months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    days = ["Sunday","Monday","Tuesday","Wednesday ","Thursday","Friday","Saturday"];
+	
+return days[d.getDay()]+' , '+d.getDate()+' '+months[d.getMonth()]+' '+d.getFullYear();
+}
+</script>
+<script>
+function bar_garph()
+{
+	var new_url = "json/bar_graph_file/read_bar_graph_file.php";
+	
+	$.ajax ({
+            url:new_url, type: "post", data:'', cache: false,
+           success: function(htmls)
+		{
+			//alert(htmls);
+			$("#total_rain_graph").html(htmls);
+		}
+	});
+}
+</script>
+<script>
+function last_hour_bar_garph()
+{
+	var new_urls = "json/past_hour_bar_graph/read_past_hour_graph.php";
+	
+	$.ajax ({
+            url:new_urls, type: "post", data:'', cache: false,
+           success: function(htmls)
+		{
+			//alert(htmls);
+			$("#past_hour_graph").html(htmls);
+		}
+	});
+}
+</script>
+<script>
+function GetClock(){
+var m_names = new Array("Jan", "Feb", "Mar", 
+"Apr", "May", "Jun", "Jul", "Aug", "Sep", 
+"Oct", "Nov", "Dec"); 
+var d=new Date();
+//alert(d);
+var nday=d.getDay();
+var nmonth=d.getMonth(),ndate=d.getDate(),nyear=d.getYear(),nhour=d.getHours(),nmin=d.getMinutes(),nsec=d.getSeconds(),ap;
+
+     if(nhour==0){ap=" AM";nhour=12;}
+else if(nhour<12){ap=" AM";}
+else if(nhour==12){ap=" PM";}
+else if(nhour>12){ap=" PM";nhour-=12;}
+
+if(nyear<1000) nyear+=1900;
+if(nmin<=9) nmin="0"+nmin;
+if(nsec<=9) nsec="0"+nsec;
+
+document.getElementById('clockbox').innerHTML=" &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; "+nhour+":"+nmin+":"+nsec+ap+"";
+
+}
+
+
+window.onload=function(){
+GetClock();
+setInterval(GetClock,1000);
+}
+
+var coll = document.getElementsByClassName("collapsible");
+var i;
+
+for (i = 0; i < coll.length; i++) {
+  coll[i].addEventListener("click", function() {
+    this.classList.toggle("active");
+    var content = this.nextElementSibling;
+    if (content.style.display === "block") {
+      content.style.display = "none";
+    } else {
+      content.style.display = "block";
+    }
+  });
+}
+
+document.getElementById("para1").innerHTML = formatAMPM();
+
+
+function formatAMPM() {
+var d = new Date(),
+    sec = d.getSeconds().toString().length == 1 ? '0'+d.getSeconds() : d.getSeconds(),
+    minutes = d.getMinutes().toString().length == 1 ? '0'+d.getMinutes() : d.getMinutes(),
+    hours = d.getHours().toString().length == 1 ? '0'+d.getHours() : d.getHours(),
+    ampm = d.getHours() >= 12 ? 'pm' : 'am',
+	    months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    days = ["Sunday","Monday","Tuesday","Wednesday ","Thursday","Friday","Saturday"];
+		
+return days[d.getDay()]+' , '+d.getDate()+' '+months[d.getMonth()]+' '+d.getFullYear();
+}
+</script>
+
+<script>
+	$(function() {    
+    $('.tabbuttons').on('click', function() {
+        $('.tabbuttons').removeClass('activeTab');
+        $(this).addClass('activeTab');
+        /* var i = $(this).attr('href');
+        $('.items p').hide();
+        $(i).show(); */
+    });
+});
+</script>
+	<script>
+	show_map(15);
+	bar_garph();
+	last_hour_bar_garph();
+	display_data(154);
+	display_graph(154);
+	display_record(154);
+
+	</script>
+   
+    </body>
+</html>

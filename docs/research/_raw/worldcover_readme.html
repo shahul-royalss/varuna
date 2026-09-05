@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://assets.opendata.aws/css/bootstrap.min.css" integrity="sha384-QgMEqHzUTK+LoHUhEPkPPb5doQ7O2/sBRiq03GWdbo3k3eNPu/LMiRtrWI+SdVzu" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://assets.opendata.aws/css/awsod.css" integrity="sha384-xJI5lYTAHi5szIar83e2pooIt8BOLN3vGa4dRrLi07y45XFAbgzl9F0mMNyw5SzN" crossorigin="anonymous">
+  <title>ESA WorldCover</title>
+</head>
+<body>
+  <div class="container">
+    <div class="col-md-8 col-md-offset-2">
+      <h1>ESA WorldCover</h1>
+
+<p>ESA WorldCover is a derived product. More information about the data can  be found <a href="https://esa-worldcover.s3.amazonaws.com/v100/2020/docs/WorldCover_PUM_V1.0.pdf">here</a>.
+<BR><BR>
+Basic facts about the data:
+<ul>
+<li>Time period: 2020</li>
+<li>Resolution: 10m</li>
+<li>CRS: EPSG:4326</li>
+<li>Format: COG</li>
+<li>Technical manual: <a href="https://esa-worldcover.s3.amazonaws.com/v100/2020/docs/WorldCover_PUM_V1.0.pdf">Document</a></li>
+</ul>
+
+
+<h2>Data structure</h2>
+The ESA WorldCover 10 m 2020 V100 product is delivered in 3x3 degree tiles as Cloud Optimized GeoTIFFs (COGs) in EPSG:4326 projection (geographic latitude/longitude CRS). There are 2651 tiles  
+<BR><BR>
+Each tile contains 2 data layers:
+<ul>
+<li>Map: Land cover map with 11 classes, a total of approximately 117 GB</li>
+<li>InputQuality: Three band GeoTIFF providing three per pixel quality indicators of the Sentinel-1 and Sentinel-2 input data </li>
+</ul> 
+
+
+<h2 id="accessing-the-esa-worldcover-dataset">Accessing the ESA WorldCover collection</h2>
+<p>If you use the AWS Command Line Interface, you can list data in the bucket with the &ldquo;ls&rdquo; command:
+</p>
+
+<p>
+ <code>aws s3 ls s3://esa-worldcover/</code> and <code>aws s3 ls s3://esa-worldcover/</code>
+</p>
+
+
+
+<h2 id="license">License</h2>
+If you are using the data as a layer in a published map, please include the following attribution text:
+<br><br>
+© ESA WorldCover project 2020 / Contains modified Copernicus Sentinel data (2020) processed by ESA WorldCover consortium’
+<br><br>
+To cite these maps as data source in your publication, please add: 
+<br><br>
+Zanaga, D., Van De Kerchove, R., De Keersmaecker, W., Souverijns, N., Brockmann, C., Quast, R., Wevers, J., Grosu, A., Paccini, A., Vergnaud, S., Cartus, O., Santoro, M., Fritz, S., Georgieva, I., Lesiv, M., Carter, S., Herold, M., Li, Linlin, Tsendbazar, N.E., Ramoino, F., Arino, O., 2021. ESA WorldCover 10 m 2020 v100. https://doi.org/10.5281/zenodo.5571936 
+
+      <footer>
+        <hr>
+        <a href="http://aws.amazon.com/public-datasets">AWS Public Datasets</a>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

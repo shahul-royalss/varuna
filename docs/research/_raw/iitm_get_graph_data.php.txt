@@ -1,0 +1,103 @@
+<br />
+<b>Warning</b>:  Undefined array key "station_id" in <b>/var/www/html/get_graph_data.php</b> on line <b>7</b><br />
+<br />
+<b>Warning</b>:  Trying to access array offset on value of type null in <b>/var/www/html/get_graph_data.php</b> on line <b>16</b><br />
+<br />
+<b>Warning</b>:  Trying to access array offset on value of type null in <b>/var/www/html/get_graph_data.php</b> on line <b>20</b><br />
+<br />
+<b>Warning</b>:  Trying to access array offset on value of type null in <b>/var/www/html/get_graph_data.php</b> on line <b>24</b><br />
+<br />
+<b>Warning</b>:  Trying to access array offset on value of type null in <b>/var/www/html/get_graph_data.php</b> on line <b>28</b><br />
+<br />
+<b>Warning</b>:  Trying to access array offset on value of type null in <b>/var/www/html/get_graph_data.php</b> on line <b>32</b><br />
+<script>
+Highcharts.chart('rain_graph', {
+    chart: {
+        zoomType: 'xy'
+    },
+    title: {
+        text: 'Past 24 Hour Rainfall Of <br />
+<b>Warning</b>:  Trying to access array offset on value of type null in <b>/var/www/html/get_graph_data.php</b> on line <b>67</b><br />
+',
+		style: {
+                color: Highcharts.getOptions().colors[1]
+            }
+    },
+    subtitle: {
+        text: 'Source : SAFAR'
+    },
+    xAxis: [{
+        categories: [
+				],
+        crosshair: true
+    }],
+    yAxis: [{ // Primary yAxis
+	
+	    //type: 'logarithmic',
+        //minorTickInterval: 0.1,
+       
+		   title: {
+            text: 'Total Rain',
+            style: {
+                color: Highcharts.getOptions().colors[1]
+            }
+        },
+        labels: {
+            format: '{value} mm',
+            style: {
+                color: Highcharts.getOptions().colors[1]
+            }
+        }
+    }, { // Secondary yAxis
+	
+	    //type: 'logarithmic',
+        //minorTickInterval: 0.1,
+		 labels: {
+            format: '{value} mm',
+            style: {
+                color: Highcharts.getOptions().colors[0]
+            }
+        },
+        title: {
+            text: 'Rainfall',
+            style: {
+                color: Highcharts.getOptions().colors[0]
+            }
+        },
+        opposite: true
+    }],
+    tooltip: {
+        shared: true
+    },
+    legend: {
+        layout: 'vertical',
+        align: 'left',
+        x: 120,
+        verticalAlign: 'top',
+        y: 100,
+        floating: true,
+        backgroundColor:
+            Highcharts.defaultOptions.legend.backgroundColor || // theme
+            'rgba(255,255,255,0.25)'
+    },
+    series: [{
+        name: 'Rainfall',
+        type: 'column',
+        yAxis: 1,
+        data: [
+				],
+        tooltip: {
+            valueSuffix: ' mm'
+        }
+
+    }, {
+        name: 'Total Rain',
+        type: 'spline',
+        data: [
+				],
+        tooltip: {
+            valueSuffix: ' mm'
+        }
+    }]
+});
+</script>

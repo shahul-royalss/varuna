@@ -1,0 +1,1848 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-09-05T08:42:51Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 619211066,
+  "lat": 19.0745420,
+  "lon": 72.8468051,
+  "tags": {
+    "junction": "yes",
+    "name": "Vakola Flyover"
+  }
+},
+{
+  "type": "node",
+  "id": 1640611527,
+  "lat": 18.9776392,
+  "lon": 72.8090351,
+  "tags": {
+    "name": "Haji Ali",
+    "place": "neighbourhood"
+  }
+},
+{
+  "type": "node",
+  "id": 2187315849,
+  "lat": 19.0396241,
+  "lon": 72.8538869,
+  "tags": {
+    "amenity": "fire_station",
+    "name": "Testing Fire Station"
+  }
+},
+{
+  "type": "node",
+  "id": 3979081599,
+  "lat": 19.1140839,
+  "lon": 72.8417197,
+  "tags": {
+    "addr:district": "Mumbai",
+    "addr:full": "2-A,Manubharti Chs,Azad Lane,S V Road,Andheri",
+    "addr:postcode": "400059",
+    "addr:state": "Maharashtra",
+    "amenity": "hospital",
+    "name": "Nutan Mammography and Sonography Centre",
+    "source": "OpenGovernmentData"
+  }
+},
+{
+  "type": "node",
+  "id": 5220954744,
+  "lat": 19.1284481,
+  "lon": 72.8554647,
+  "tags": {
+    "name": "Mogra",
+    "name:mr": "मोगरा",
+    "name:ru": "Могра",
+    "public_transport": "stop_position",
+    "railway": "stop",
+    "subway": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 5471970525,
+  "lat": 19.0851403,
+  "lon": 72.8873620,
+  "tags": {
+    "bench": "yes",
+    "bin": "no",
+    "bus": "yes",
+    "covered": "yes",
+    "highway": "bus_stop",
+    "name": "Kamani",
+    "name:en": "Kamani",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 5907269917,
+  "lat": 18.9837132,
+  "lon": 72.8104734,
+  "tags": {
+    "name": "Haji Ali Bay",
+    "natural": "bay"
+  }
+},
+{
+  "type": "node",
+  "id": 5911311146,
+  "lat": 19.0799440,
+  "lon": 72.8563178,
+  "tags": {
+    "name": "Vakola Village",
+    "place": "neighbourhood"
+  }
+},
+{
+  "type": "node",
+  "id": 6126211462,
+  "lat": 19.0813635,
+  "lon": 72.8538930,
+  "tags": {
+    "name": "Vakola",
+    "name:en": "Vakola",
+    "name:hi": "वकोला",
+    "name:mr": "वकोला",
+    "place": "neighbourhood"
+  }
+},
+{
+  "type": "node",
+  "id": 7063805576,
+  "lat": 19.1066859,
+  "lon": 72.8403447,
+  "tags": {
+    "addr:district": "Mumbai",
+    "addr:floor": "1",
+    "addr:full": "189, Majithia Appt. Icici Bank S.V. Road, Irla,Vile Parle (W)",
+    "addr:postcode": "400056",
+    "addr:state": "Maharashtra",
+    "amenity": "clinic",
+    "check_date": "2026-07-22",
+    "healthcare": "clinic",
+    "level": "1",
+    "name": "Irla Nursing Home & Polyclinic",
+    "name:en": "Irla Nursing Home & Polyclinic",
+    "name:mr": "इर्ला नर्सिंग होम आणि पॉलीक्लिनीक",
+    "source": "OpenGovernmentData"
+  }
+},
+{
+  "type": "node",
+  "id": 7086409776,
+  "lat": 19.0834763,
+  "lon": 72.8572390,
+  "tags": {
+    "addr:district": "Mumbai",
+    "addr:full": "PandT Colony, Vakola",
+    "addr:postcode": "400055",
+    "addr:state": "Maharashtra",
+    "amenity": "clinic",
+    "health_facility:type": "dispensary",
+    "healthcare": "centre",
+    "name": "CGHS Dispensary No.14, Vakola",
+    "operator:type": "government",
+    "source": "OpenGovernmentData",
+    "website": "http://nb.bsf.gov.in/CGHS%20DIspenseries.pdf"
+  }
+},
+{
+  "type": "node",
+  "id": 9024751917,
+  "lat": 19.0331179,
+  "lon": 72.8412091,
+  "tags": {
+    "amenity": "fire_station",
+    "name:en": "Shivaji ParkFire Station"
+  }
+},
+{
+  "type": "node",
+  "id": 9739425791,
+  "lat": 19.0091379,
+  "lon": 72.8419304,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Hindmata Cinema",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 9739425792,
+  "lat": 19.0100990,
+  "lon": 72.8421396,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Hindmata Cinema",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 9739425796,
+  "lat": 18.9951440,
+  "lon": 72.8367752,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Bharatmata Cinema",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 9739425797,
+  "lat": 18.9958135,
+  "lon": 72.8365955,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Bharatmata Cinema",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 9741160311,
+  "lat": 19.0903543,
+  "lon": 72.8440601,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Milan Subway",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 9741160312,
+  "lat": 19.0908283,
+  "lon": 72.8439689,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Milan Subway",
+    "public_transport": "platform"
+  }
+},
+{
+  "type": "node",
+  "id": 9741160315,
+  "lat": 19.0798578,
+  "lon": 72.8471366,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Vakola Police Station",
+    "public_transport": "platform",
+    "shelter": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 9741160316,
+  "lat": 19.0808844,
+  "lon": 72.8465384,
+  "tags": {
+    "bus": "yes",
+    "highway": "bus_stop",
+    "name": "Vakola Police Station",
+    "public_transport": "platform",
+    "shelter": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 10136008620,
+  "lat": 18.9801029,
+  "lon": 72.8362774,
+  "tags": {
+    "name": "Chalmogra",
+    "name:mr": "कडू-कवठ",
+    "natural": "tree",
+    "species": "Hydnocarpus pentandrus"
+  }
+},
+{
+  "type": "node",
+  "id": 10162098286,
+  "lat": 18.9790399,
+  "lon": 72.8388460,
+  "tags": {
+    "name": "Chalmogra",
+    "name:mr": "कडू-कवठ",
+    "natural": "tree",
+    "species": "Hydnocarpus pentandrus"
+  }
+},
+{
+  "type": "node",
+  "id": 10220942701,
+  "lat": 18.9691612,
+  "lon": 72.8167078,
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:housenumber": "335, Akhil Bharatiya Bhavan",
+    "addr:postcode": "400034",
+    "addr:street": "J Boman Behram Marg",
+    "amenity": "restaurant",
+    "cuisine": "indian;chinese;sandwich",
+    "diet:vegetarian": "yes",
+    "name": "Hotel Hindmata",
+    "opening_hours": "Mo-Su 11:00-00:00",
+    "phone": "+91 22 2380 9955;+91 22 2381 1483;+91 22 2380 6501"
+  }
+},
+{
+  "type": "node",
+  "id": 10265662169,
+  "lat": 19.0803926,
+  "lon": 72.8469300,
+  "tags": {
+    "junction": "yes",
+    "name": "Vakola Junction"
+  }
+},
+{
+  "type": "node",
+  "id": 10266102485,
+  "lat": 19.0884102,
+  "lon": 72.8891587,
+  "tags": {
+    "name": "Kamani",
+    "place": "neighbourhood"
+  }
+},
+{
+  "type": "node",
+  "id": 10274112122,
+  "lat": 19.1080937,
+  "lon": 72.8436845,
+  "tags": {
+    "name": "Irla Gaon",
+    "name:en": "Irla Village",
+    "place": "neighbourhood"
+  }
+},
+{
+  "type": "node",
+  "id": 10576622712,
+  "lat": 19.1284364,
+  "lon": 72.8554558,
+  "tags": {
+    "name": "Mogra",
+    "name:mr": "मोगरा",
+    "public_transport": "station",
+    "railway": "station",
+    "station": "subway",
+    "subway": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 10576622733,
+  "lat": 19.1284504,
+  "lon": 72.8554211,
+  "tags": {
+    "name": "Mogra",
+    "name:mr": "मोगरा",
+    "name:ru": "Могра",
+    "public_transport": "stop_position",
+    "railway": "stop",
+    "subway": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 11071531770,
+  "lat": 19.0851644,
+  "lon": 72.8871162,
+  "tags": {
+    "bench": "yes",
+    "bin": "no",
+    "bus": "yes",
+    "covered": "yes",
+    "highway": "bus_stop",
+    "name": "Kamani",
+    "name:en": "Kamani",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 11071531771,
+  "lat": 19.0851555,
+  "lon": 72.8872249,
+  "tags": {
+    "bench": "yes",
+    "bin": "no",
+    "bus": "yes",
+    "covered": "yes",
+    "highway": "bus_stop",
+    "name": "Kamani",
+    "name:en": "Kamani",
+    "public_transport": "platform",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 11071531772,
+  "lat": 19.0850593,
+  "lon": 72.8873264,
+  "tags": {
+    "bus": "yes",
+    "name": "Kamani",
+    "name:en": "Kamani",
+    "public_transport": "stop_position"
+  }
+},
+{
+  "type": "node",
+  "id": 11298645303,
+  "lat": 19.0656484,
+  "lon": 72.8310595,
+  "tags": {
+    "amenity": "ice_cream",
+    "name": "Haji Ali Juice Centre",
+    "name:en": "Haji Ali Juice Centre"
+  }
+},
+{
+  "type": "node",
+  "id": 14038912006,
+  "lat": 19.1069543,
+  "lon": 72.8400088,
+  "tags": {
+    "bench": "yes",
+    "highway": "bus_stop",
+    "name": "Irla",
+    "name:en": "Irla",
+    "name:hi": "इर्ला",
+    "name:mr": "इर्ला",
+    "name:ur": "ارلا",
+    "shelter": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 14125092877,
+  "lat": 19.0166913,
+  "lon": 72.8179307,
+  "tags": {
+    "addr:postcode": "400030",
+    "addr:street": "Golpha Devi Mandir Marg",
+    "man_made": "pumping_station",
+    "name": "BMC Cleaveland Sewage Water Pumping Station",
+    "name:mr": "बृहन्मुंबई महानगरपालिका क्लीव्हलँड उदंचन केंद्र",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "way",
+  "id": 22859324,
+  "center": {
+    "lat": 19.0758390,
+    "lon": 72.8467814
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "bridge": "yes",
+    "highway": "motorway",
+    "layer": "1",
+    "maxspeed": "120",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8"
+  }
+},
+{
+  "type": "way",
+  "id": 39532540,
+  "center": {
+    "lat": 19.0904503,
+    "lon": 72.8428330
+  },
+  "tags": {
+    "highway": "tertiary",
+    "layer": "-1",
+    "name": "Milan Subway",
+    "tunnel": "yes"
+  }
+},
+{
+  "type": "way",
+  "id": 39749207,
+  "center": {
+    "lat": 19.0737711,
+    "lon": 72.8499381
+  },
+  "tags": {
+    "name": "Vakola Nala",
+    "natural": "water",
+    "source": "Yahoo",
+    "water": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 42448306,
+  "center": {
+    "lat": 18.9799701,
+    "lon": 72.8149262
+  },
+  "tags": {
+    "highway": "residential",
+    "name": "Haji Ali Govt Colony Road",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 46166155,
+  "center": {
+    "lat": 19.0758298,
+    "lon": 72.8469013
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "bridge": "yes",
+    "highway": "motorway",
+    "layer": "1",
+    "maxspeed": "50",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 48741850,
+  "center": {
+    "lat": 18.9828138,
+    "lon": 72.8089875
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:country": "IN",
+    "addr:state": "Maharashtra",
+    "amenity": "place_of_worship",
+    "building": "mosque",
+    "name": "Haji Ali",
+    "opening_hours": "Mo-Su 08:00-22:00",
+    "religion": "muslim"
+  }
+},
+{
+  "type": "way",
+  "id": 49055888,
+  "center": {
+    "lat": 19.0827343,
+    "lon": 72.8485805
+  },
+  "tags": {
+    "name": "Vakola Nala",
+    "natural": "water",
+    "source": "Yahoo",
+    "water": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 53355635,
+  "center": {
+    "lat": 18.9827493,
+    "lon": 72.8088762
+  },
+  "tags": {
+    "amenity": "place_of_worship",
+    "name": "Haji Ali",
+    "religion": "muslim"
+  }
+},
+{
+  "type": "way",
+  "id": 72545847,
+  "center": {
+    "lat": 18.9614826,
+    "lon": 72.8333205
+  },
+  "tags": {
+    "building": "yes",
+    "name": "Brihanmumbai Mahanagarpalika B Ward Office",
+    "office": "yes",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 72881199,
+  "center": {
+    "lat": 19.1071964,
+    "lon": 72.8423897
+  },
+  "tags": {
+    "highway": "residential",
+    "name": "Irla Road",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 73040842,
+  "center": {
+    "lat": 19.1048640,
+    "lon": 72.8265138
+  },
+  "tags": {
+    "highway": "residential",
+    "name": "Birla Lane",
+    "oneway": "yes",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 73043478,
+  "center": {
+    "lat": 19.1145986,
+    "lon": 72.8344747
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 100841069,
+  "center": {
+    "lat": 19.0055105,
+    "lon": 72.8398270
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "bridge": "yes",
+    "highway": "trunk",
+    "lanes": "2",
+    "layer": "1",
+    "maxweight:signed": "no",
+    "name": "Hindmata Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 100841079,
+  "center": {
+    "lat": 19.0054837,
+    "lon": 72.8399127
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "bridge": "yes",
+    "highway": "trunk",
+    "lanes": "2",
+    "layer": "1",
+    "maxweight:signed": "no",
+    "name": "Hindmata Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 102170846,
+  "center": {
+    "lat": 19.0072489,
+    "lon": 72.8409389
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Hindmata Flyover",
+    "name:etymology:wikidata": "Q231690",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 102170847,
+  "center": {
+    "lat": 19.0092478,
+    "lon": 72.8419593
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "bridge": "yes",
+    "foot": "no",
+    "highway": "trunk",
+    "lanes": "2",
+    "layer": "1",
+    "maxspeed": "40",
+    "maxweight:signed": "no",
+    "name": "Hindmata Flyover",
+    "oneway": "yes",
+    "sidewalk:both": "no",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 102171414,
+  "center": {
+    "lat": 19.0092031,
+    "lon": 72.8420340
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "bridge": "yes",
+    "foot": "no",
+    "highway": "trunk",
+    "lanes": "2",
+    "layer": "1",
+    "maxspeed": "40",
+    "maxweight:signed": "no",
+    "name": "Hindmata Flyover",
+    "oneway": "yes",
+    "sidewalk:both": "no",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 102172129,
+  "center": {
+    "lat": 19.0109361,
+    "lon": 72.8429344
+  },
+  "tags": {
+    "highway": "trunk",
+    "lanes": "2",
+    "maxspeed": "40",
+    "maxspeed:type": "sign",
+    "name": "Hindmata Flyover",
+    "oneway": "yes",
+    "sidewalk:both": "no",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 102172132,
+  "center": {
+    "lat": 19.0072140,
+    "lon": 72.8410196
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Hindmata Flyover",
+    "name:etymology:wikidata": "Q231690",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 113566065,
+  "center": {
+    "lat": 19.0065272,
+    "lon": 72.8423877
+  },
+  "tags": {
+    "leisure": "pitch",
+    "name": "Saint Xavier's Football Ground",
+    "sport": "soccer"
+  }
+},
+{
+  "type": "way",
+  "id": 115628091,
+  "center": {
+    "lat": 19.0265628,
+    "lon": 72.8542714
+  },
+  "tags": {
+    "building": "yes",
+    "name": "F/N BMC Ward Office"
+  }
+},
+{
+  "type": "way",
+  "id": 151379340,
+  "center": {
+    "lat": 19.0760389,
+    "lon": 72.8282052
+  },
+  "tags": {
+    "amenity": "school",
+    "building": "yes",
+    "name": "Manekji Gajdhar School",
+    "name:en": "Manekji Gajdhar School",
+    "operator": "Maharashta State Board",
+    "operator:type": "public"
+  }
+},
+{
+  "type": "way",
+  "id": 202564781,
+  "center": {
+    "lat": 19.1158052,
+    "lon": 72.8273631
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "natural": "water",
+    "water": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 202564782,
+  "center": {
+    "lat": 19.1111934,
+    "lon": 72.8331558
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "natural": "water",
+    "water": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 202565724,
+  "center": {
+    "lat": 19.1105152,
+    "lon": 72.8399731
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "natural": "water",
+    "water": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 206832495,
+  "center": {
+    "lat": 19.1433868,
+    "lon": 72.8214744
+  },
+  "tags": {
+    "leisure": "park",
+    "name": "Pramod Mahajan Krirangan"
+  }
+},
+{
+  "type": "way",
+  "id": 216492416,
+  "center": {
+    "lat": 19.0039898,
+    "lon": 72.8389527
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Hindmata Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 216492417,
+  "center": {
+    "lat": 19.0110272,
+    "lon": 72.8428903
+  },
+  "tags": {
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Hindmata Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 216492418,
+  "center": {
+    "lat": 19.0040016,
+    "lon": 72.8388302
+  },
+  "tags": {
+    "alt_name": "Eastern Express Highway",
+    "highway": "trunk",
+    "lanes": "2",
+    "name": "Hindmata Flyover",
+    "oneway": "yes",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 236596240,
+  "center": {
+    "lat": 19.0299554,
+    "lon": 72.8542680
+  },
+  "tags": {
+    "check_date": "2026-03-20",
+    "landuse": "commercial",
+    "name": "BMC Ward Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 257073217,
+  "center": {
+    "lat": 19.1030147,
+    "lon": 72.8267156
+  },
+  "tags": {
+    "building": "apartments",
+    "name": "Gazdar",
+    "name:en": "Gazdar"
+  }
+},
+{
+  "type": "way",
+  "id": 280340477,
+  "center": {
+    "lat": 19.0840288,
+    "lon": 72.8461258
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "bridge": "yes",
+    "highway": "motorway",
+    "layer": "1",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8"
+  }
+},
+{
+  "type": "way",
+  "id": 353193036,
+  "center": {
+    "lat": 18.9802512,
+    "lon": 72.8153748
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:housenumber": "Building No. 3",
+    "addr:postcode": "400034",
+    "addr:street": "Haji Ali Govt Colony Road",
+    "building": "apartments",
+    "building:levels": "8",
+    "name": "Haji Ali Municipal Officers' Co-op. Hsg. Society"
+  }
+},
+{
+  "type": "way",
+  "id": 353193038,
+  "center": {
+    "lat": 18.9808066,
+    "lon": 72.8152384
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:housenumber": "Municipal Quarters Bldg. No. 5",
+    "addr:postcode": "400034",
+    "addr:street": "Haji Ali Govt Colony Road",
+    "building": "apartments",
+    "building:levels": "8",
+    "name": "Haji Ali Post Office"
+  }
+},
+{
+  "type": "way",
+  "id": 353193052,
+  "center": {
+    "lat": 18.9805252,
+    "lon": 72.8153040
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:housenumber": "Bldg. No. 4",
+    "addr:postcode": "400034",
+    "addr:street": "Haji Ali Govt Colony Road",
+    "building": "apartments",
+    "building:levels": "8",
+    "name": "Haji Ali Municipal Officers' Co-op. Hsg. Society"
+  }
+},
+{
+  "type": "way",
+  "id": 353203501,
+  "center": {
+    "lat": 18.9722938,
+    "lon": 72.8312422
+  },
+  "tags": {
+    "building": "yes",
+    "building:levels": "6",
+    "name": "Mumbai Corporation, E Ward offices",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 353366215,
+  "center": {
+    "lat": 18.9950677,
+    "lon": 72.8185734
+  },
+  "tags": {
+    "building": "yes",
+    "name": "Municipal Garage, Worli",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 353424820,
+  "center": {
+    "lat": 19.0705444,
+    "lon": 72.8788995
+  },
+  "tags": {
+    "building": "apartments",
+    "name": "BMC L Ward Office"
+  }
+},
+{
+  "type": "way",
+  "id": 353757968,
+  "center": {
+    "lat": 19.0083095,
+    "lon": 72.8304651
+  },
+  "tags": {
+    "admin_level": "4",
+    "building": "yes",
+    "government": "administrative",
+    "name": "BMC G South Ward Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 356450738,
+  "center": {
+    "lat": 19.0563696,
+    "lon": 72.8355608
+  },
+  "tags": {
+    "building": "yes",
+    "government": "administrative",
+    "name": "H W Ward Office",
+    "name:en": "H W Ward Office",
+    "name:mr": "एच पश्चिम विभाग कार्यालय",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 357058129,
+  "center": {
+    "lat": 19.1289220,
+    "lon": 72.8606711
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:postcode": "400093",
+    "addr:street": "Vijay Raut Road",
+    "building": "apartments",
+    "name": "Mogra Vikas Nagar CHS"
+  }
+},
+{
+  "type": "way",
+  "id": 376629701,
+  "center": {
+    "lat": 18.9927395,
+    "lon": 72.8144712
+  },
+  "tags": {
+    "bridge": "yes",
+    "highway": "primary",
+    "layer": "1",
+    "name": "Dr Annie Besant Road (Love Grove Road)",
+    "name:etymology:wikidata": "Q464318",
+    "old_name": "Love Grove Road",
+    "oneway": "yes",
+    "postal_code": "400018"
+  }
+},
+{
+  "type": "way",
+  "id": 376930282,
+  "center": {
+    "lat": 19.1020313,
+    "lon": 72.8380463
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "tunnel": "yes",
+    "waterway": "stream"
+  }
+},
+{
+  "type": "way",
+  "id": 376930283,
+  "center": {
+    "lat": 19.1015018,
+    "lon": 72.8380461
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "waterway": "stream"
+  }
+},
+{
+  "type": "way",
+  "id": 380518452,
+  "center": {
+    "lat": 19.0613457,
+    "lon": 72.8282352
+  },
+  "tags": {
+    "addr:housenumber": "148F/G",
+    "building": "house",
+    "name": "Fairlawns",
+    "name:en": "Fairlawns"
+  }
+},
+{
+  "type": "way",
+  "id": 384553865,
+  "center": {
+    "lat": 18.9829869,
+    "lon": 72.8089964
+  },
+  "tags": {
+    "amenity": "place_of_worship",
+    "building": "mosque",
+    "name": "Haji Ali",
+    "religion": "muslim"
+  }
+},
+{
+  "type": "way",
+  "id": 424021745,
+  "center": {
+    "lat": 19.1062230,
+    "lon": 72.8442125
+  },
+  "tags": {
+    "highway": "residential",
+    "name": "Irla Road",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 554967608,
+  "center": {
+    "lat": 19.1062844,
+    "lon": 72.8380729
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 626376015,
+  "center": {
+    "lat": 19.0655314,
+    "lon": 72.8952433
+  },
+  "tags": {
+    "amenity": "school",
+    "name": "Lokamaniya Tilak High School",
+    "name:etymology:wikidata": "Q312555"
+  }
+},
+{
+  "type": "way",
+  "id": 712610051,
+  "center": {
+    "lat": 19.1210222,
+    "lon": 72.8214058
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 712610052,
+  "center": {
+    "lat": 19.1207867,
+    "lon": 72.8224140
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 712610053,
+  "center": {
+    "lat": 19.1207197,
+    "lon": 72.8211659
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 756526548,
+  "center": {
+    "lat": 18.9744739,
+    "lon": 72.8065340
+  },
+  "tags": {
+    "building": "apartments",
+    "building:levels": "3",
+    "name": "Gazdar House"
+  }
+},
+{
+  "type": "way",
+  "id": 788752296,
+  "center": {
+    "lat": 19.1104860,
+    "lon": 72.8443799
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "tunnel": "yes",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 923901202,
+  "center": {
+    "lat": 19.0071615,
+    "lon": 72.8248544
+  },
+  "tags": {
+    "landuse": "commercial",
+    "name": "Birla Centurion"
+  }
+},
+{
+  "type": "way",
+  "id": 970357483,
+  "center": {
+    "lat": 18.9827493,
+    "lon": 72.8088762
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:housenumber": "23",
+    "addr:postcode": "400027",
+    "addr:street": "Haji Ali Causeway",
+    "amenity": "place_of_worship",
+    "building": "yes",
+    "check_date": "2024-09-25",
+    "denomination": "sufi",
+    "layer": "1",
+    "name": "haji ali",
+    "religion": "muslim",
+    "service_times": "5:00 to 17::00"
+  }
+},
+{
+  "type": "way",
+  "id": 1060046624,
+  "center": {
+    "lat": 19.0727405,
+    "lon": 72.8396565
+  },
+  "tags": {
+    "building": "yes",
+    "government": "administrative",
+    "name": "MCGM H West Ward Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 1063794433,
+  "center": {
+    "lat": 19.1080378,
+    "lon": 72.8404708
+  },
+  "tags": {
+    "highway": "residential",
+    "name": "Irla Road",
+    "oneway": "yes",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 1127314714,
+  "center": {
+    "lat": 19.0611050,
+    "lon": 72.8991057
+  },
+  "tags": {
+    "addr:city": "Chembur, Mumbai",
+    "addr:housename": "Brihanmumbai Mahanagar Palika M Ward Office",
+    "addr:street": "Road No 1",
+    "landuse": "commercial",
+    "name": "BMC M Ward Office",
+    "office": "government"
+  }
+},
+{
+  "type": "way",
+  "id": 1142034986,
+  "center": {
+    "lat": 19.1048458,
+    "lon": 72.8256942
+  },
+  "tags": {
+    "highway": "residential",
+    "lit": "yes",
+    "name": "Birla Lane",
+    "name:en": "Birla Lane",
+    "name:mr": "बिरला लेन",
+    "oneway": "no",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 1142049709,
+  "center": {
+    "lat": 19.1080851,
+    "lon": 72.8403782
+  },
+  "tags": {
+    "highway": "tertiary",
+    "name": "Irla Road",
+    "oneway": "yes",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 1170351953,
+  "center": {
+    "lat": 19.1047693,
+    "lon": 72.8246406
+  },
+  "tags": {
+    "highway": "footway",
+    "name": "Birla Lane",
+    "source": "Yahoo"
+  }
+},
+{
+  "type": "way",
+  "id": 1170351969,
+  "center": {
+    "lat": 19.1102395,
+    "lon": 72.8371386
+  },
+  "tags": {
+    "covered": "yes",
+    "name": "Irla Nala",
+    "natural": "water",
+    "water": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1170351970,
+  "center": {
+    "lat": 19.1103127,
+    "lon": 72.8377288
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "natural": "water",
+    "water": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1173959284,
+  "center": {
+    "lat": 18.9812450,
+    "lon": 72.8093021
+  },
+  "tags": {
+    "bicycle": "designated",
+    "foot": "designated",
+    "highway": "cycleway",
+    "horse": "no",
+    "motor_vehicle": "no",
+    "name": "Haji Ali Causeway"
+  }
+},
+{
+  "type": "way",
+  "id": 1173959285,
+  "center": {
+    "lat": 18.9785080,
+    "lon": 72.8106013
+  },
+  "tags": {
+    "bicycle": "designated",
+    "foot": "designated",
+    "highway": "cycleway",
+    "horse": "no",
+    "motor_vehicle": "no",
+    "name": "Haji Ali Causeway"
+  }
+},
+{
+  "type": "way",
+  "id": 1187354637,
+  "center": {
+    "lat": 18.9956372,
+    "lon": 72.8362588
+  },
+  "tags": {
+    "amenity": "cinema",
+    "check_date": "2026-03-20",
+    "historic": "cinema",
+    "name": "Bharat Mata Cinema"
+  }
+},
+{
+  "type": "way",
+  "id": 1201625672,
+  "center": {
+    "lat": 19.0820009,
+    "lon": 72.8465214
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "bridge": "yes",
+    "highway": "motorway",
+    "layer": "1",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8"
+  }
+},
+{
+  "type": "way",
+  "id": 1201625673,
+  "center": {
+    "lat": 19.0800633,
+    "lon": 72.8468897
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "bridge": "yes",
+    "highway": "motorway",
+    "layer": "2",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8"
+  }
+},
+{
+  "type": "way",
+  "id": 1201625674,
+  "center": {
+    "lat": 19.0814869,
+    "lon": 72.8467481
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "bridge": "yes",
+    "highway": "motorway",
+    "layer": "1",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 1201625675,
+  "center": {
+    "lat": 19.0800556,
+    "lon": 72.8469954
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "bridge": "yes",
+    "highway": "motorway",
+    "layer": "2",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8"
+  }
+},
+{
+  "type": "way",
+  "id": 1201625676,
+  "center": {
+    "lat": 19.0835466,
+    "lon": 72.8463487
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "bridge": "yes",
+    "highway": "motorway",
+    "lanes": "3",
+    "layer": "1",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 1201625677,
+  "center": {
+    "lat": 19.0715082,
+    "lon": 72.8466705
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "highway": "motorway",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 1201625678,
+  "center": {
+    "lat": 19.0715059,
+    "lon": 72.8468030
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "highway": "motorway",
+    "lanes": "4",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 1243105383,
+  "center": {
+    "lat": 19.0853691,
+    "lon": 72.8312728
+  },
+  "tags": {
+    "amenity": "fire_station",
+    "name": "Mini Fire Station"
+  }
+},
+{
+  "type": "way",
+  "id": 1262140535,
+  "center": {
+    "lat": 18.9789670,
+    "lon": 72.8100310
+  },
+  "tags": {
+    "bicycle": "designated",
+    "foot": "designated",
+    "highway": "cycleway",
+    "horse": "no",
+    "motor_vehicle": "no",
+    "name": "Haji Ali Causeway"
+  }
+},
+{
+  "type": "way",
+  "id": 1289073487,
+  "center": {
+    "lat": 18.9786563,
+    "lon": 72.8122843
+  },
+  "tags": {
+    "man_made": "water_works",
+    "name": "Storm Water Pumping Station - Haji Ali",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "way",
+  "id": 1289081182,
+  "center": {
+    "lat": 18.9924341,
+    "lon": 72.8159113
+  },
+  "tags": {
+    "addr:city": "Worli, Mumbai",
+    "addr:postcode": "400018",
+    "addr:street": "Dr Annie Besant Road (Love Grove Road)",
+    "man_made": "wastewater_plant",
+    "name": "Love Grove Sewage Pumping Station",
+    "note": "Run by the Municipal Solid Waste Department, Muncipal Corporation of Greater Mumbai",
+    "phone": "+91-22-24962125"
+  }
+},
+{
+  "type": "way",
+  "id": 1310032182,
+  "center": {
+    "lat": 19.0843155,
+    "lon": 72.8461774
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "highway": "motorway",
+    "lanes": "3",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8",
+    "source": "GPS"
+  }
+},
+{
+  "type": "way",
+  "id": 1310032183,
+  "center": {
+    "lat": 19.0842732,
+    "lon": 72.8460798
+  },
+  "tags": {
+    "alt_name": "Western Express Highway",
+    "highway": "motorway",
+    "name": "Kalina-Vakola Flyover",
+    "oneway": "yes",
+    "ref": "NH48",
+    "ref:old": "NH8"
+  }
+},
+{
+  "type": "way",
+  "id": 1356107260,
+  "center": {
+    "lat": 18.9749250,
+    "lon": 72.8495926
+  },
+  "tags": {
+    "addr:city": "Mumbai",
+    "addr:housenumber": "310",
+    "addr:postcode": "400010",
+    "addr:street": "Coal Bundar Road",
+    "man_made": "wastewater_plant",
+    "name": "Britannia Sewage Water Treatment Plant",
+    "name:mr": "ब्रिटानिया सांडपाणी प्रक्रिया प्रकल्प",
+    "operator": "MCGM"
+  }
+},
+{
+  "type": "way",
+  "id": 1387274681,
+  "center": {
+    "lat": 19.1051403,
+    "lon": 72.8252371
+  },
+  "tags": {
+    "landuse": "residential",
+    "name": "Birla House",
+    "name:en": "Birla House"
+  }
+},
+{
+  "type": "way",
+  "id": 1387274682,
+  "center": {
+    "lat": 19.1049813,
+    "lon": 72.8246936
+  },
+  "tags": {
+    "leisure": "park",
+    "name": "Birla Garden",
+    "name:en": "Birla Garden"
+  }
+},
+{
+  "type": "way",
+  "id": 1472415855,
+  "center": {
+    "lat": 19.0160355,
+    "lon": 72.8170260
+  },
+  "tags": {
+    "industrial": "port",
+    "landuse": "industrial",
+    "name": "Cleveland Bunder"
+  }
+},
+{
+  "type": "way",
+  "id": 1487577968,
+  "center": {
+    "lat": 19.1129230,
+    "lon": 72.8497598
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1487577969,
+  "center": {
+    "lat": 19.1105043,
+    "lon": 72.8448262
+  },
+  "tags": {
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1487577970,
+  "center": {
+    "lat": 19.1104739,
+    "lon": 72.8455602
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Irla Nala",
+    "source": "Yahoo",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "relation",
+  "id": 15351570,
+  "center": {
+    "lat": 19.1284434,
+    "lon": 72.8554429
+  },
+  "tags": {
+    "colour": "red",
+    "name": "Mogra",
+    "name:mr": "मोगरा",
+    "public_transport": "stop_area",
+    "type": "public_transport"
+  }
+},
+{
+  "type": "relation",
+  "id": 16134120,
+  "center": {
+    "lat": 19.0851118,
+    "lon": 72.8872391
+  },
+  "tags": {
+    "name": "Kamani",
+    "name:en": "Kamani",
+    "public_transport": "stop_area",
+    "type": "public_transport"
+  }
+},
+{
+  "type": "relation",
+  "id": 17929531,
+  "center": {
+    "lat": 19.0833549,
+    "lon": 72.8916720
+  },
+  "tags": {
+    "from": "Sunder Baug Kamani",
+    "name": "Bus 613: Sunder Baug Kamani => Vidyavihar Bus Station",
+    "network": "BEST",
+    "operator": "The Brihanmumbai Electric Supply & Transport Undertaking",
+    "public_transport:version": "2",
+    "ref": "613",
+    "route": "bus",
+    "to": "Vidyavihar Bus Station",
+    "type": "route"
+  }
+},
+{
+  "type": "relation",
+  "id": 17929532,
+  "center": {
+    "lat": 19.0833549,
+    "lon": 72.8913740
+  },
+  "tags": {
+    "from": "Vidyavihar Bus Station",
+    "name": "Bus 613: Vidyavihar Bus Station => Sunder Baug Kamani",
+    "network": "BEST",
+    "operator": "The Brihanmumbai Electric Supply & Transport Undertaking",
+    "public_transport:version": "2",
+    "ref": "613",
+    "route": "bus",
+    "to": "Sunder Baug Kamani",
+    "type": "route"
+  }
+}
+
+  ]
+}

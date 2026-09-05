@@ -1,0 +1,15 @@
+<br />
+<b>Warning</b>:  Undefined array key "station_id" in <b>/var/www/html/get_data.php</b> on line <b>7</b><br />
+NA##NA##0##<br />
+<b>Warning</b>:  Trying to access array offset on value of type null in <b>/var/www/html/get_data.php</b> on line <b>60</b><br />
+<br />
+<b>Warning</b>:  Trying to access array offset on value of type null in <b>/var/www/html/get_data.php</b> on line <b>66</b><br />
+<br />
+<b>Warning</b>:  Undefined variable $new_temp in <b>/var/www/html/get_data.php</b> on line <b>71</b><br />
+##<br />
+<b>Warning</b>:  Undefined variable $new_humidity in <b>/var/www/html/get_data.php</b> on line <b>72</b><br />
+##<br />
+<b>Warning</b>:  Undefined variable $new_spd in <b>/var/www/html/get_data.php</b> on line <b>73</b><br />
+##<br />
+<b>Warning</b>:  Undefined variable $new_dir in <b>/var/www/html/get_data.php</b> on line <b>74</b><br />
+##

@@ -37,6 +37,20 @@ class VarunaModel(BaseModel):
         ser_json_inf_nan="null",
     )
 
+    @model_validator(mode="before")
+    @classmethod
+    def _strip_computed_fields(cls, value: Any) -> Any:
+        """Let serialised output round-trip.
+
+        ``computed_field`` values are written on dump (``total_ms`` in ``run.json``) but are
+        derived, not inputs. They are dropped here so ``extra="forbid"`` still rejects
+        genuinely unknown keys while artifacts and API responses re-validate cleanly.
+        """
+        computed = cls.model_computed_fields
+        if computed and isinstance(value, dict) and any(key in value for key in computed):
+            return {key: item for key, item in value.items() if key not in computed}
+        return value
+
 
 # ----------------------------------------------------------------------------- timestamps
 def to_ist(value: datetime) -> datetime:
@@ -79,6 +93,18 @@ LonLat = tuple[Longitude, Latitude]
 
 Position = tuple[float, float] | tuple[float, float, float]
 """A GeoJSON position: ``[lon, lat]`` or ``[lon, lat, z]``."""
+
+
+# ----------------------------------------------------------------------------- urls
+def _check_http_url(value: str) -> str:
+    if not value.lower().startswith(("http://", "https://")):
+        msg = "must be an http(s) URL"
+        raise ValueError(msg)
+    return value
+
+
+HttpUrlStr = Annotated[str, Field(min_length=8), AfterValidator(_check_http_url)]
+"""A public ``http(s)://`` source URL (mandatory on every ground-truth pin, CLAUDE.md 0.7)."""
 
 
 # ----------------------------------------------------------------------------- bbox
@@ -179,6 +205,7 @@ __all__ = [
     "Feature",
     "FeatureCollection",
     "Geometry",
+    "HttpUrlStr",
     "IdStr",
     "Kappa",
     "Latitude",

@@ -1,0 +1,31 @@
+Vijayanagar Bus Stand, Velachery, Chennai | NO RESULT
+Velachery Main Road, Chennai | 12.9842045 | 80.2227619 | way/27480309 | highway=secondary | Velachery Main Road, JagannathaPuram, Ward 178, Zone 13 Adyar, Chennai Corporation, Chenna
+Velachery Bypass Road, Chennai | 12.9828040 | 80.2179443 | way/721922454 | highway=primary | Velachery Bypass Road, Gangai Nagar, Ward 177, Zone 13 Adyar, Chennai Corporation, Chennai
+Taramani Link Road, Velachery, Chennai | 12.9817821 | 80.2309161 | way/422927582 | highway=primary | Taramani Link Road, Baby Nagar, Ward 179, Zone 13 Adyar, Chennai Corporation, Chennai, Tam
+Velachery Railway Station, Chennai | 12.9712086 | 80.2192719 | node/9402008106 | highway=bus_stop | Velachery Railway Station, Major Mukund Varadharajan Salai, VGP Selva Nagar, Ward 179, Zon
+Kathipara Junction, Guindy, Chennai | NO RESULT
+Guindy Railway Station, Chennai | 13.0080474 | 80.2131366 | node/9920341495 | highway=bus_stop | Guindy Railway Station, Racecourse Road, Ward 174, Zone 13 Adyar, Chennai Corporation, Che
+Saidapet, Chennai | 13.0208170 | 80.2239536 | node/247689106 | place=suburb | Saidapet, Zone 10 Kodambakkam, Chennai Corporation, Chennai, Tamil Nadu, 600015, India
+Saidapet Bridge, Anna Salai, Chennai | 13.0192595 | 80.2242262 | node/306551393 | highway=bus_stop | சைதாப்பேட்டை பாலம், Anna Salai (Mount Road), Jothiammal Nagar, Ward 142, Zone 10 Kodambakk
+Jafferkhanpet, Chennai | 13.0299401 | 80.2056195 | node/290741806 | place=suburb | Jafferkhanpet, Zone 10 Kodambakkam, Chennai Corporation, Chennai, Tamil Nadu, 600083, Indi
+Ekkatuthangal, Chennai | NO RESULT
+West Mambalam, Chennai | 13.0435900 | 80.2208090 | node/2241055790 | place=suburb | West Mambalam, Zone 10 Kodambakkam, Chennai Corporation, Chennai, Tamil Nadu, 600033, Indi
+Ashok Nagar, Chennai | 13.0359275 | 80.2145697 | node/247689098 | place=suburb | Ashok Nagar, Zone 10 Kodambakkam, Chennai Corporation, Chennai, Tamil Nadu, 600083, India
+Pondy Bazaar, T. Nagar, Chennai | NO RESULT
+North Usman Road, T. Nagar, Chennai | 13.0460744 | 80.2328040 | way/843860857 | highway=secondary | North Usman Road, Ward 136, Zone 10 Kodambakkam, Chennai Corporation, Chennai, Tamil Nadu,
+Nandanam, Chennai | 13.0317092 | 80.2411957 | node/6285857243 | railway=station | நந்தனம், Anna Salai (Mount Road), Lotus Colony, Ward 122, Zone 9 Teynampet, Chennai Corpor
+Kotturpuram, Chennai | 13.0193703 | 80.2435512 | node/249497870 | place=suburb | Kotturpuram, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, 600085, India
+Kasturba Nagar, Adyar, Chennai | 13.0038682 | 80.2485192 | node/1387068423 | building=yes | Buildmech Consultants, New No 43, 5th Main Road, Entry Through Canal bank road, Kasturba N
+Sastri Nagar, Adyar, Chennai | 12.9778151 | 80.2276789 | way/27370267 | highway=residential | Sastri Road, Baby Nagar, Ward 179, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu
+Lattice Bridge Road, Adyar, Chennai | 13.0041690 | 80.2569733 | way/28278656 | highway=secondary | Dr Muthulakshmi Salai, Bakthavatchalam Nagar, Ward 175, Zone 13 Adyar, Chennai Corporation
+Thiruvanmiyur, Chennai | 12.9858948 | 80.2644215 | node/249497808 | place=suburb | Thiruvanmiyur, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, 600041, India
+Besant Nagar, Chennai | 12.9996907 | 80.2682259 | node/249497705 | place=suburb | Besant Nagar, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, 600090, India
+Taramani, Chennai | 12.9849067 | 80.2404069 | node/325198962 | place=suburb | Taramani, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, 600036, India
+Perungudi, Chennai | 12.9710239 | 80.2418051 | relation/7879836 | boundary=administrative | Zone 14 Perungudi, Chennai Corporation, Sholinganallur, Chennai, Tamil Nadu, India
+Madipakkam, Chennai | 12.9611348 | 80.2001292 | node/278544356 | place=suburb | Madipakkam, Zone 14 Perungudi, Chennai Corporation, Sholinganallur, Chennai, Tamil Nadu, 6
+Ram Nagar, Madipakkam, Chennai | 12.9652457 | 80.2069875 | node/442506948 | highway=bus_stop | Ram Nagar, Bazaar Road, Ramalinga Nagar, Ward 169, Zone 14 Perungudi, Chennai Corporation,
+Alandur, Chennai | 13.0028216 | 80.1719186 | relation/10326120 | boundary=administrative | Alandur, Chennai, Tamil Nadu, India
+Adambakkam, Chennai | 12.9822215 | 80.2091210 | node/256202991 | place=suburb | Adambakkam, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu, 600088, India
+Velachery Lake, Chennai | 12.9882955 | 80.2104711 | way/25504265 | water=lake | Velachery Lake, Zone 13 Adyar, Zone 12 Alandur, Chennai Corporation, Alandur, Chennai, Tam
+Adyar River mouth, Chennai | NO RESULT
+Buckingham Canal, Chennai | 12.9854189 | 80.2522939 | way/1130591112 | leisure=park | Buckingham Canal Green, Ward 180, Zone 13 Adyar, Chennai Corporation, Chennai, Tamil Nadu,

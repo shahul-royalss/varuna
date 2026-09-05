@@ -1,0 +1,1435 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-09-05T08:45:51Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "way",
+  "id": 23161547,
+  "center": {
+    "lat": 13.0349040,
+    "lon": 80.2383266
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Mambalam Canal",
+    "name:ml": "മാമ്പലം കനാൽ",
+    "name:ta": "மாம்பலம் கால்வாய்",
+    "waterway": "canal",
+    "width": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 25460072,
+  "center": {
+    "lat": 13.0264958,
+    "lon": 80.2262260
+  },
+  "tags": {
+    "intermittent": "no",
+    "name": "Reddikuppam Canal",
+    "waterway": "canal",
+    "width": "7"
+  }
+},
+{
+  "type": "way",
+  "id": 25460321,
+  "center": {
+    "lat": 13.0344646,
+    "lon": 80.2009212
+  },
+  "tags": {
+    "name": "Maruthur Gopalan Ramachandran Nagar Canal",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 27709103,
+  "center": {
+    "lat": 13.0604335,
+    "lon": 80.2266592
+  },
+  "tags": {
+    "name": "Trustpuram Canal",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 27709396,
+  "center": {
+    "lat": 13.0269626,
+    "lon": 80.2128730
+  },
+  "tags": {
+    "boat": "no",
+    "layer": "-1",
+    "name": "Jafferkhanpet Canal",
+    "tunnel": "culvert",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 27709553,
+  "center": {
+    "lat": 12.9953175,
+    "lon": 80.2173859
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Raj Bhavan Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 30037017,
+  "center": {
+    "lat": 12.9916058,
+    "lon": 80.2364028
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 32685679,
+  "center": {
+    "lat": 13.0277251,
+    "lon": 80.2023776
+  },
+  "tags": {
+    "boat": "no",
+    "created_by": "Potlatch 0.10f",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 32742657,
+  "center": {
+    "lat": 13.0137221,
+    "lon": 80.2090587
+  },
+  "tags": {
+    "boat": "no",
+    "waterway": "stream"
+  }
+},
+{
+  "type": "way",
+  "id": 82874921,
+  "center": {
+    "lat": 12.9472625,
+    "lon": 80.1819239
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 84099104,
+  "center": {
+    "lat": 12.9584263,
+    "lon": 80.1879699
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 85857111,
+  "center": {
+    "lat": 13.0295839,
+    "lon": 80.2412157
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102550210,
+  "center": {
+    "lat": 12.9879671,
+    "lon": 80.2142479
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102550213,
+  "center": {
+    "lat": 12.9870249,
+    "lon": 80.2182522
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "yes",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102550226,
+  "center": {
+    "lat": 13.0600935,
+    "lon": 80.1986049
+  },
+  "tags": {
+    "name": "Virugambakkam Canal",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 102550242,
+  "center": {
+    "lat": 12.9859340,
+    "lon": 80.2204829
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102559091,
+  "center": {
+    "lat": 12.9510691,
+    "lon": 80.1962367
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102559098,
+  "center": {
+    "lat": 12.9491519,
+    "lon": 80.1848741
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "yes",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102580554,
+  "center": {
+    "lat": 12.9920317,
+    "lon": 80.2154190
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Raj Bhavan Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102580558,
+  "center": {
+    "lat": 12.9889220,
+    "lon": 80.2150403
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Raj Bhavan Canal",
+    "tunnel": "yes",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102580561,
+  "center": {
+    "lat": 12.9950963,
+    "lon": 80.2170153
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Raj Bhavan Canal",
+    "tunnel": "yes",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 102580579,
+  "center": {
+    "lat": 12.9884071,
+    "lon": 80.2149793
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Raj Bhavan Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 103716685,
+  "center": {
+    "lat": 12.9882695,
+    "lon": 80.1975450
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 103716694,
+  "center": {
+    "lat": 12.9839885,
+    "lon": 80.2179301
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "drain path",
+    "tunnel": "culvert",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 103719115,
+  "center": {
+    "lat": 12.9892406,
+    "lon": 80.2036922
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 111749073,
+  "center": {
+    "lat": 13.0187265,
+    "lon": 80.2695111
+  },
+  "tags": {
+    "name": "Adyar Creek",
+    "waterway": "stream"
+  }
+},
+{
+  "type": "way",
+  "id": 122063612,
+  "center": {
+    "lat": 13.0252274,
+    "lon": 80.1764641
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 178105900,
+  "center": {
+    "lat": 13.0151690,
+    "lon": 80.2208242
+  },
+  "tags": {
+    "boat": "no",
+    "name": "Adyar River",
+    "name:ml": "അടയാർ നദി",
+    "name:ta": "அடையாறு நதி",
+    "waterway": "river",
+    "wikidata": "Q2825422",
+    "wikipedia": "en:Adyar River"
+  }
+},
+{
+  "type": "way",
+  "id": 209551269,
+  "center": {
+    "lat": 12.9456384,
+    "lon": 80.2215319
+  },
+  "tags": {
+    "waterway": "river"
+  }
+},
+{
+  "type": "way",
+  "id": 214148762,
+  "center": {
+    "lat": 13.0341910,
+    "lon": 80.2434908
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 214162275,
+  "center": {
+    "lat": 13.0304742,
+    "lon": 80.2307461
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Mambalam Drain",
+    "tunnel": "yes",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 214162276,
+  "center": {
+    "lat": 13.0257670,
+    "lon": 80.2321428
+  },
+  "tags": {
+    "intermittent": "no",
+    "name": "Mambalam Canal",
+    "waterway": "canal",
+    "width": "10"
+  }
+},
+{
+  "type": "way",
+  "id": 217802635,
+  "center": {
+    "lat": 13.0579032,
+    "lon": 80.1881829
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 328358961,
+  "center": {
+    "lat": 12.9783278,
+    "lon": 80.1964776
+  },
+  "tags": {
+    "intermittent": "yes",
+    "layer": "-1",
+    "name": "Veerangal Canal",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 384187222,
+  "center": {
+    "lat": 12.9710709,
+    "lon": 80.2219491
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Stormwater Drain",
+    "tunnel": "no",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 384187223,
+  "center": {
+    "lat": 12.9749348,
+    "lon": 80.2226642
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 620727612,
+  "center": {
+    "lat": 12.9488773,
+    "lon": 80.2071470
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 650602413,
+  "center": {
+    "lat": 12.9344163,
+    "lon": 80.2439383
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 650602415,
+  "center": {
+    "lat": 12.9358626,
+    "lon": 80.2449731
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 650607195,
+  "center": {
+    "lat": 13.0245577,
+    "lon": 80.2443932
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 731551448,
+  "center": {
+    "lat": 12.6084043,
+    "lon": 80.0977448
+  },
+  "tags": {
+    "boat": "no",
+    "name": "Buckingham Kaalvaai",
+    "name:en": "Buckingham Canal",
+    "name:ml": "ബക്കിംഗ്ഹാം കൈത്തോട്",
+    "name:ta": "பக்கிங்ஹாம் கால்வாய்",
+    "name:te": "బకింగ్‌హాం కాలువ",
+    "waterway": "canal",
+    "width": "15",
+    "wikidata": "Q3536830",
+    "wikipedia": "en:Buckingham Canal"
+  }
+},
+{
+  "type": "way",
+  "id": 835785681,
+  "center": {
+    "lat": 12.9708569,
+    "lon": 80.2225320
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Stormwater Drain",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 835785682,
+  "center": {
+    "lat": 12.9708714,
+    "lon": 80.2227922
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Stormwater Drain",
+    "tunnel": "no",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 837049427,
+  "center": {
+    "lat": 12.9494546,
+    "lon": 80.2024752
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880730,
+  "center": {
+    "lat": 12.9953455,
+    "lon": 80.1968184
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880731,
+  "center": {
+    "lat": 12.9936251,
+    "lon": 80.1960449
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880732,
+  "center": {
+    "lat": 12.9929263,
+    "lon": 80.1962435
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880733,
+  "center": {
+    "lat": 12.9923475,
+    "lon": 80.1964692
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880734,
+  "center": {
+    "lat": 12.9923769,
+    "lon": 80.1966805
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880735,
+  "center": {
+    "lat": 12.9924064,
+    "lon": 80.1968921
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880736,
+  "center": {
+    "lat": 12.9923697,
+    "lon": 80.1976191
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880737,
+  "center": {
+    "lat": 12.9923119,
+    "lon": 80.1983462
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880738,
+  "center": {
+    "lat": 12.9922635,
+    "lon": 80.1986324
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880739,
+  "center": {
+    "lat": 12.9922984,
+    "lon": 80.1984604
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880740,
+  "center": {
+    "lat": 12.9943346,
+    "lon": 80.1962905
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880741,
+  "center": {
+    "lat": 12.9948207,
+    "lon": 80.1962822
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880742,
+  "center": {
+    "lat": 12.9937758,
+    "lon": 80.1961653
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 881880743,
+  "center": {
+    "lat": 12.9938689,
+    "lon": 80.1963137
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 927624558,
+  "center": {
+    "lat": 12.9583559,
+    "lon": 80.1884031
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1040499034,
+  "center": {
+    "lat": 13.0220846,
+    "lon": 80.1821530
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1080320415,
+  "center": {
+    "lat": 12.9792144,
+    "lon": 80.2018249
+  },
+  "tags": {
+    "intermittent": "yes",
+    "layer": "-1",
+    "name": "Veerangal Canal",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1080320416,
+  "center": {
+    "lat": 12.9790425,
+    "lon": 80.2030466
+  },
+  "tags": {
+    "intermittent": "yes",
+    "name": "Veerangal Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1080320417,
+  "center": {
+    "lat": 12.9714412,
+    "lon": 80.2109252
+  },
+  "tags": {
+    "intermittent": "yes",
+    "name": "Veerangal Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1080320418,
+  "center": {
+    "lat": 12.9787523,
+    "lon": 80.2042063
+  },
+  "tags": {
+    "intermittent": "yes",
+    "layer": "-1",
+    "level": "-1",
+    "name": "Veerangal Canal",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1080322573,
+  "center": {
+    "lat": 12.9825888,
+    "lon": 80.1954836
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1080322574,
+  "center": {
+    "lat": 12.9841395,
+    "lon": 80.1960780
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1105956376,
+  "center": {
+    "lat": 12.9699231,
+    "lon": 80.2182687
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "drain path",
+    "tunnel": "culvert",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 1118561504,
+  "center": {
+    "lat": 12.9501112,
+    "lon": 80.1876189
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1123838335,
+  "center": {
+    "lat": 13.0225960,
+    "lon": 80.1824885
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1123838347,
+  "center": {
+    "lat": 13.0224780,
+    "lon": 80.1878955
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1123838348,
+  "center": {
+    "lat": 13.0229700,
+    "lon": 80.1860143
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1123838349,
+  "center": {
+    "lat": 13.0228740,
+    "lon": 80.1863310
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1123838350,
+  "center": {
+    "lat": 13.0227824,
+    "lon": 80.1866523
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1225579228,
+  "center": {
+    "lat": 13.0249132,
+    "lon": 80.2116457
+  },
+  "tags": {
+    "boat": "no",
+    "layer": "-1",
+    "name": "Jafferkhanpet Canal",
+    "tunnel": "culvert",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 1225579229,
+  "center": {
+    "lat": 13.0252060,
+    "lon": 80.2123088
+  },
+  "tags": {
+    "boat": "no",
+    "layer": "-1",
+    "name": "Jafferkhanpet Canal",
+    "tunnel": "culvert",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 1229272623,
+  "center": {
+    "lat": 13.0274282,
+    "lon": 80.2406869
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1229272624,
+  "center": {
+    "lat": 13.0288062,
+    "lon": 80.2410088
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1229272625,
+  "center": {
+    "lat": 13.0310165,
+    "lon": 80.2416269
+  },
+  "tags": {
+    "layer": "-1",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1229272626,
+  "center": {
+    "lat": 13.0303752,
+    "lon": 80.2414289
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1232632860,
+  "center": {
+    "lat": 12.9751711,
+    "lon": 80.1911741
+  },
+  "tags": {
+    "intermittent": "yes",
+    "name": "Veerangal Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1232632861,
+  "center": {
+    "lat": 12.9753668,
+    "lon": 80.1912486
+  },
+  "tags": {
+    "intermittent": "yes",
+    "layer": "-1",
+    "name": "Veerangal Canal",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1267739072,
+  "center": {
+    "lat": 13.0514594,
+    "lon": 80.2457086
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Mambalam Canal",
+    "name:ml": "മാമ്പലം കനാൽ",
+    "name:ta": "மாம்பலம் கால்வாய்",
+    "tunnel": "culvert",
+    "waterway": "canal",
+    "width": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 1267739073,
+  "center": {
+    "lat": 13.0519403,
+    "lon": 80.2444316
+  },
+  "tags": {
+    "name": "Mambalam Canal",
+    "name:ml": "മാമ്പലം കനാൽ",
+    "name:ta": "மாம்பலம் கால்வாய்",
+    "waterway": "canal",
+    "width": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 1272450537,
+  "center": {
+    "lat": 13.0412402,
+    "lon": 80.2463169
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Mambalam Canal",
+    "name:ml": "മാമ്പലം കനാൽ",
+    "name:ta": "மாம்பலம் கால்வாய்",
+    "waterway": "canal",
+    "width": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 1272450538,
+  "center": {
+    "lat": 13.0430036,
+    "lon": 80.2467750
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Mambalam Canal",
+    "name:ml": "മാമ്പലം കനാൽ",
+    "name:ta": "மாம்பலம் கால்வாய்",
+    "tunnel": "culvert",
+    "waterway": "canal",
+    "width": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 1272450539,
+  "center": {
+    "lat": 13.0394214,
+    "lon": 80.2458337
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Mambalam Canal",
+    "name:ml": "മാമ്പലം കനാൽ",
+    "name:ta": "மாம்பலம் கால்வாய்",
+    "tunnel": "culvert",
+    "waterway": "canal",
+    "width": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 1272450540,
+  "center": {
+    "lat": 13.0472510,
+    "lon": 80.2464827
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Mambalam Canal",
+    "name:ml": "മാമ്പലം കനാൽ",
+    "name:ta": "மாம்பலம் கால்வாய்",
+    "waterway": "canal",
+    "width": "6"
+  }
+},
+{
+  "type": "way",
+  "id": 1298345127,
+  "center": {
+    "lat": 13.0543665,
+    "lon": 80.1866242
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1298345128,
+  "center": {
+    "lat": 13.0547452,
+    "lon": 80.1866987
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1298345129,
+  "center": {
+    "lat": 13.0553549,
+    "lon": 80.1867656
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1298345130,
+  "center": {
+    "lat": 13.0560180,
+    "lon": 80.1868553
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1298345131,
+  "center": {
+    "lat": 13.0563851,
+    "lon": 80.1871149
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1298345132,
+  "center": {
+    "lat": 13.0568659,
+    "lon": 80.1874015
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1298345133,
+  "center": {
+    "lat": 13.0567803,
+    "lon": 80.1873736
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1298345134,
+  "center": {
+    "lat": 13.0566939,
+    "lon": 80.1873514
+  },
+  "tags": {
+    "layer": "-1",
+    "name": "Virugambakkam Canal",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1419957521,
+  "center": {
+    "lat": 12.9489291,
+    "lon": 80.2035120
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1419957522,
+  "center": {
+    "lat": 12.9488662,
+    "lon": 80.2041746
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1458961208,
+  "center": {
+    "lat": 12.9890240,
+    "lon": 80.2355449
+  },
+  "tags": {
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1458961209,
+  "center": {
+    "lat": 12.9896773,
+    "lon": 80.2355706
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "drain"
+  }
+},
+{
+  "type": "way",
+  "id": 1459226722,
+  "center": {
+    "lat": 13.0032887,
+    "lon": 80.2425401
+  },
+  "tags": {
+    "intermittent": "yes",
+    "waterway": "stream"
+  }
+},
+{
+  "type": "way",
+  "id": 1459226728,
+  "center": {
+    "lat": 12.9898699,
+    "lon": 80.2434061
+  },
+  "tags": {
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 1459226731,
+  "center": {
+    "lat": 12.9898134,
+    "lon": 80.2409341
+  },
+  "tags": {
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 1459226732,
+  "center": {
+    "lat": 12.9897049,
+    "lon": 80.2415992
+  },
+  "tags": {
+    "layer": "-1",
+    "tunnel": "culvert",
+    "waterway": "canal"
+  }
+},
+{
+  "type": "way",
+  "id": 1492152598,
+  "center": {
+    "lat": 13.0367048,
+    "lon": 80.2652061
+  },
+  "tags": {
+    "boat": "no",
+    "name": "Buckingham Kaalvaai",
+    "name:en": "Buckingham Canal",
+    "name:ml": "ബക്കിംഗ്ഹാം കൈത്തോട്",
+    "name:ta": "பக்கிங்ஹாம் கால்வாய்",
+    "name:te": "బకింగ్‌హాం కాలువ",
+    "waterway": "canal",
+    "width": "15",
+    "wikidata": "Q3536830",
+    "wikipedia": "en:Buckingham Canal"
+  }
+},
+{
+  "type": "way",
+  "id": 1492152599,
+  "center": {
+    "lat": 13.0061771,
+    "lon": 80.2479905
+  },
+  "tags": {
+    "boat": "no",
+    "layer": "-1",
+    "name": "Buckingham Kaalvaai",
+    "name:en": "Buckingham Canal",
+    "name:ml": "ബക്കിംഗ്ഹാം കൈത്തോട്",
+    "name:ta": "பக்கிங்ஹாம் கால்வாய்",
+    "name:te": "బకింగ్‌హాం కాలువ",
+    "tunnel": "culvert",
+    "waterway": "canal",
+    "width": "15",
+    "wikidata": "Q3536830",
+    "wikipedia": "en:Buckingham Canal"
+  }
+},
+{
+  "type": "relation",
+  "id": 1270434,
+  "center": {
+    "lat": 14.8583768,
+    "lon": 81.0322957
+  },
+  "tags": {
+    "name": "Kommamuru Canal",
+    "name:te": "కొమ్మమూరు కాలువ",
+    "network": "IN:NW",
+    "ref": "NW4",
+    "type": "waterway",
+    "waterway": "canal",
+    "wikidata": "Q72523405",
+    "wikipedia": "te:కొమ్మమూరు కాలువ"
+  }
+},
+{
+  "type": "relation",
+  "id": 8336182,
+  "center": {
+    "lat": 12.9359304,
+    "lon": 80.1298242
+  },
+  "tags": {
+    "name": "Adyar River",
+    "type": "waterway",
+    "waterway": "river",
+    "wikidata": "Q2825422",
+    "wikipedia": "en:Adyar River"
+  }
+},
+{
+  "type": "relation",
+  "id": 11268133,
+  "center": {
+    "lat": 13.9377719,
+    "lon": 80.1382862
+  },
+  "tags": {
+    "name": "Buckingham Canal",
+    "type": "waterway",
+    "waterway": "canal",
+    "wikidata": "Q3536830",
+    "wikipedia": "en:Buckingham Canal"
+  }
+}
+
+  ]
+}
