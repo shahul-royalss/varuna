@@ -69,9 +69,21 @@ function trimSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+/**
+ * NEXT_PUBLIC_API_URL when it carries a usable value. Node coerces `process.env.X = undefined`
+ * to the string "undefined" (and Next inlines unset vars the same way), so those read as unset.
+ */
+function configuredApiUrl(): string | undefined {
+  const raw = process.env.NEXT_PUBLIC_API_URL;
+  if (typeof raw !== "string") return undefined;
+  const value = raw.trim();
+  if (!value || value === "undefined" || value === "null") return undefined;
+  return value;
+}
+
 /** Base URL of the API without a trailing slash, or a full URL when `path` is given. */
 export function apiUrl(path = ""): string {
-  const base = trimSlash(process.env.NEXT_PUBLIC_API_URL?.trim() || DEFAULT_API_URL);
+  const base = trimSlash(configuredApiUrl() ?? DEFAULT_API_URL);
   if (!path) return base;
   return `${base}${path.startsWith("/") ? path : `/${path}`}`;
 }

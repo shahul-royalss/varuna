@@ -116,7 +116,7 @@ def build_app(target: typer.Typer | None = None) -> typer.Typer:
         else:
             probed[engine] = sub_app
     tasks.register(target, skip=set(probed))
-    for engine, sub_app in probed.items():
+    for engine in probed:
         register_optional(target, module=f"varuna_{engine}.cli", name=engine)
     return target
 
