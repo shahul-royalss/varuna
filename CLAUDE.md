@@ -315,7 +315,7 @@ Rules: never use the depth ramp for anything that is not water depth; never use 
 - **Mono: Geist Mono** — only run IDs, CAP XML, API explorer, log streams. Not for labels, not for small data.
 - **Indic (P1)**: Noto Sans Devanagari and Noto Sans Tamil loaded only when the locale switches.
 - Scale (px / line-height): 12/1.3 micro · 13/1.4 small · 15/1.5 body · 18/1.35 h3 · 24/1.2 h2 · 32/1.15 h1 · 48/1.05 display · 72/1.0 hero. Body line length ≤ 72 characters.
-- Numbers always carry units and context: "45 cm", "+40 min", "82 %", "18:20 (+40 min)". Times are IST 24-hour.
+- Numbers always carry units and context: "45 cm", "+40 min", "82 %", "08:20 (+40 min)". Times are IST 24-hour.
 
 ### 6.4 Shape, surface, elevation
 
@@ -331,19 +331,19 @@ Console shell (1440 × 900 reference; must also work at 1366 × 768 and on a 4K 
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│ ◈ VARUNA  Mumbai ▾   ● REPLAY 30× · 2 Jul 2019 17:40 IST    run MUM-…-baked │ 52 px top bar
+│ ◈ VARUNA  Mumbai ▾   ● REPLAY 30× · 2 Jul 2019 06:40 IST    run MUM-…-baked │ 52 px top bar
 ├──┬───────────────────────────────────────────────────────────┬───────────────┤
 │  │                                                           │ Hotspots      │
 │ ▤│                        MAP CANVAS                         │ Alerts  Pumps │
 │ ⌇│              (depth on streets, surcharge,                │ Reach         │
 │ ⇄│               drains, routes, isochrones)                 │───────────────│
 │ ! │                                                           │ 1 Hindmata    │
-│ ⚙│  ┌ Layers ┐                          ┌ Legend ┐           │   55 cm 18:20 │
+│ ⚙│  ┌ Layers ┐                          ┌ Legend ┐           │   55 cm 08:20 │
 │ ~│  │        │                          │        │           │ 2 King's Cir. │
 │ ▶│  └────────┘                          └────────┘           │ 3 Sion Circle │
 │ ✓│                                                           │ …             │
 ├──┴───────────────────────────────────────────────────────────┴───────────────┤
-│ ◀ ▶  −60 ───────●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ +180   18:20 ▸ │ 96 px time bar
+│ ◀ ▶  −60 ───────●━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ +180   08:20 ▸ │ 96 px time bar
 └──────────────────────────────────────────────────────────────────────────────┘
    56 px icon rail                                               360 px right rail
 ```
@@ -371,7 +371,7 @@ Every component ships with: typed props, loading state, empty state, error state
 - Sentence case everywhere. No ALL-CAPS labels, no tracked-out eyebrows, no "A · B · C" meta strings, no arrows appended to buttons.
 - Buttons name the action and the result keeps the name: "Dispatch pumps" → toast "Pumps dispatched"; "Acknowledge" → "Acknowledged"; "Run what-if" → "What-if ready"; "Compute live" → "Live run published".
 - Consistent vocabulary: **scrub** (time slider), **hotspot**, **segment**, **surcharge**, **blockage** (β), **clogging** (κ), **safe until**, **passable**, **reachability**, **dispatch**, **what-if**, **replay**, **baked/live**, **inferred** (drain graph), **reconstructed** (replay).
-- Depth is "cm"; time is "18:20 (+40 min)"; probability is "82 %"; lead time "3 h".
+- Depth is "cm"; time is "08:20 (+40 min)"; probability is "82 %"; lead time "3 h".
 - Empty states tell the user what to do: "No runs yet — press Play on the replay, or Compute live." Errors say what happened and the fix: "Traffic feed offline. Pulse is using reports only." Never "Something went wrong".
 - Honesty labels are UI copy, not fine print: "Reconstructed replay", "Inferred drain graph", "Reduced-order emulator", "Synthetic pump inventory".
 - No lorem ipsum, ever. Every sample string is about Mumbai, Chennai, monsoon, drains.
@@ -407,7 +407,7 @@ Each screen lists: purpose · layout · components · data · interactions · st
 
 **Layout (top to bottom, left-aligned text column, full-bleed hero):**
 
-1. **Hero** — a full-viewport, read-only embed of the console map (`CityMap` in `mode="hero"`) auto-scrubbing −60 → +180 min in an 8-second loop over Hindmata/King's Circle/Sion, with a small live readout "17:40 · +0 min … 20:40 · +180 min" and the depth legend. Over it, in the left third: the wordmark, headline **"Every street. Three hours early."**, one sentence ("VARUNA turns Doppler radar into street-by-street flood depth for the next three hours, learns the city's hidden drains from every flood, and routes emergency services around what is coming."), two buttons: "Open the console" (primary) and "Watch the 2 July 2019 replay" (secondary, opens `/console?bundle=MUM-2019-07-02&autoplay=1`). A small line under the buttons: "SIH 2026 · PS SIH26085 · Ministry of Earth Sciences". No stats in the hero.
+1. **Hero** — a full-viewport, read-only embed of the console map (`CityMap` in `mode="hero"`) auto-scrubbing −60 → +180 min in an 8-second loop over Hindmata/King's Circle/Sion, with a small live readout "06:40 · +0 min … 09:40 · +180 min" and the depth legend. Over it, in the left third: the wordmark, headline **"Every street. Three hours early."**, one sentence ("VARUNA turns Doppler radar into street-by-street flood depth for the next three hours, learns the city's hidden drains from every flood, and routes emergency services around what is coming."), two buttons: "Open the console" (primary) and "Watch the 2 July 2019 replay" (secondary, opens `/console?bundle=MUM-2019-07-02&autoplay=1`). A small line under the buttons: "SIH 2026 · PS SIH26085 · Ministry of Earth Sciences". No stats in the hero.
 2. **The gap** — "Forecasts stop at 12 km. Streets flood at 30 m." A two-panel diagram (SVG): an NWP grid cell over Mumbai on the left; a 30 m street with a 40 cm dip under a rail bridge on the right. Three sentences from blueprint §2.1.
 3. **Four ways a street floods** — pluvial, fluvial, tidal lock, invisible drainage. A two-column list (diagram left, text right), each with one Indian example; deliberately not four identical cards.
 4. **The five-minute cycle** — the pipeline diagram (ingest → Sky → Twin ∥ Flash → Pulse → products → Command/Route/Public) drawn with Magic UI `AnimatedBeam` between nodes and the live stage timings of the latest run under each node (fetched from `/v1/cycle/status`; static fallback). This section is a real sequence, so numbering is allowed.
@@ -434,25 +434,25 @@ Each screen lists: purpose · layout · components · data · interactions · st
 
 **Purpose.** The operator's screen and 70 % of the demo. Layout is §6.5.
 
-**Top bar.** Wordmark; city switcher (Mumbai, Chennai once onboarded); `ModeBanner` ("Replay 30× · 2 Jul 2019 · 17:40 IST" / "Live" / "Degraded: radar offline, using gauges + satellite"); `RunStamp` ("run MUM-20190702T1740-sky1.0-twin1.0-flash0.3 · baked · 3.9 s") with a click-to-copy; `VerificationChip` ("CSI 0.71 on this event"); command palette button (⌘K); shortcuts (?).
+**Top bar.** Wordmark; city switcher (Mumbai, Chennai once onboarded); `ModeBanner` ("Replay 30× · 2 Jul 2019 · 06:40 IST" / "Live" / "Degraded: radar offline, using gauges + satellite"); `RunStamp` ("run MUM-20190702T0640-sky1.0-twin1.0-flash0.3 · baked · 3.9 s") with a click-to-copy; `VerificationChip` ("CSI 0.71 on this event"); command palette button (⌘K); shortcuts (?).
 
 **Icon rail (left).** Console, Drains, Route, Alerts, Pumps, What-if, Replay, Verify, Onboard. Labels appear on hover/focus.
 
 **Map canvas.** Per §6.7. Floating `LayerPanel` (top-left, collapsible): Streets (depth) · Probability mode + threshold (15/30/45/60 cm) · Depth raster · Drains (health) · Surcharge & backflow · Isochrones (facility picker) · Routes · Ground truth · Buildings · 3D (P1). Floating `Legend` (bottom-right of map). Scale bar. Attribution.
 
-**Time bar (bottom).** Play/pause (Space); speed (1×/10×/30×/60×); scrub handle across −60 → +180 min in 15-min ticks (5-min fine steps with Shift); the observed half is tinted `--text-3`, the forecast half `--tide-soft`; the ensemble spread band (p10–p90 of AOI-mean depth) is drawn under the track; the current sim time and lead ("18:20 · +40 min") sit at the right; "Compute live" button re-runs the current cycle with real computation and shows the `CycleBudgetBar` (decode / Sky / Twin ∥ Flash / Pulse / products) filling stage by stage with milliseconds.
+**Time bar (bottom).** Play/pause (Space); speed (1×/10×/30×/60×); scrub handle across −60 → +180 min in 15-min ticks (5-min fine steps with Shift); the observed half is tinted `--text-3`, the forecast half `--tide-soft`; the ensemble spread band (p10–p90 of AOI-mean depth) is drawn under the track; the current sim time and lead ("08:20 · +40 min") sit at the right; "Compute live" button re-runs the current cycle with real computation and shows the `CycleBudgetBar` (decode / Sky / Twin ∥ Flash / Pulse / products) filling stage by stage with milliseconds.
 
 **Right rail tabs.**
-- **Hotspots** — ranked `HotspotRow`s: rank, name, `DepthChip` (p50 at the selected time), time-to-peak ("18:20"), a 3-hour `Sparkline` (p50 with band), exposure icon set (hospital, station, transit). Click → map fly-to + ring + `HotspotDrawer`.
+- **Hotspots** — ranked `HotspotRow`s: rank, name, `DepthChip` (p50 at the selected time), time-to-peak ("08:20"), a 3-hour `Sparkline` (p50 with band), exposure icon set (hospital, station, transit). Click → map fly-to + ring + `HotspotDrawer`.
 - **Alerts** — the live queue (`AlertCard`: level chip, headline, area, trigger time, acknowledge/escalate) — mirrors `/alerts`.
 - **Pumps** — compact dispatch board mirror with "Optimise" and the current plan's expected benefit.
 - **Reachability** — facility list (hospitals, fire stations) with `ReachabilityClock`: a 15-minute catchment area as a ring gauge that shrinks over the scrub; "collapse" state when below 40 % of dry baseline.
 
-**HotspotDrawer (slides in over the rail).** Big depth number in display type (e.g., "55 cm" with "p50 at 18:20"), `FanChart` (p10/p50/p90 over −60 → +180 with the observed part solid), safe-until table per vehicle (two-wheeler, car, bus, ambulance, pedestrian), exposure (traffic volume proxy, nearest hospital, station), **"Why this junction floods"**: ranked responsible pipes with their β and the depth they explain ("cleaning these 14 pipes: 55 → 20 cm"), buttons "Clean in what-if", "Dispatch pumps here", "Show drains".
+**HotspotDrawer (slides in over the rail).** Big depth number in display type (e.g., "55 cm" with "p50 at 08:20"), `FanChart` (p10/p50/p90 over −60 → +180 with the observed part solid), safe-until table per vehicle (two-wheeler, car, bus, ambulance, pedestrian), exposure (traffic volume proxy, nearest hospital, station), **"Why this junction floods"**: ranked responsible pipes with their β and the depth they explain ("cleaning these 14 pipes: 55 → 20 cm"), buttons "Clean in what-if", "Dispatch pumps here", "Show drains".
 
 **Replay panel (opens from the rail or `/replay`).** Bundle selector, clock, play/pause/seek/speed, baked/live toggle, cycle log table (time, stages, ms, mass-balance error), storm summary.
 
-**Ground-truth pins.** As the replay clock passes a pin's timestamp, it drops onto the map with a ripple and appears in a small "As it happened" ticker at the bottom of the hotspot rail ("18:52 · Hindmata · BMC log: waterlogging, traffic diverted · source"). This is the 2:40 moment of the demo — the pins land where VARUNA was already red.
+**Ground-truth pins.** As the replay clock passes a pin's timestamp, it drops onto the map with a ripple and appears in a small "As it happened" ticker at the bottom of the hotspot rail ("08:47 · Gandhi Market · BMC log: waterlogging, traffic diverted · source"). This is the 2:40 moment of the demo — the pins land where VARUNA was already red.
 
 **Keyboard.** Space play/pause · ←/→ scrub · P probability · D drains · S surcharge · R routes · I isochrones · G ground truth · 3 3D · W what-if · ⌘K palette · ? overlay.
 
@@ -475,7 +475,7 @@ Each screen lists: purpose · layout · components · data · interactions · st
 
 **Purpose.** Show the invisible drain becoming visible: the learned blockage map, the observations that taught it, and the desilting priority list.
 
-**Layout.** Map (left 62 %) with drains coloured by posterior β (magenta ramp), width by diameter, dashed where confidence = inferred (all of them, in the prototype — say so), inlets as small squares coloured by κ, surcharge nodes as red rings; hovering a pipe shows β mean ± sd, capacity, last update. Right panel (38 %): `DrainHealthTable` (top 25 pipes by β: id, street, β ± sd, capacity reduction %, hotspots it explains, observations count, "last updated 17:35"), an **assimilation timeline** (a vertical list of `ObservationCard`s — traffic anomaly / citizen report / sensor — each with time, place, inferred depth, and the β change it caused), a **before/after toggle** that cross-fades the prior map and the posterior map, and "Export desilting priority (CSV)".
+**Layout.** Map (left 62 %) with drains coloured by posterior β (magenta ramp), width by diameter, dashed where confidence = inferred (all of them, in the prototype — say so), inlets as small squares coloured by κ, surcharge nodes as red rings; hovering a pipe shows β mean ± sd, capacity, last update. Right panel (38 %): `DrainHealthTable` (top 25 pipes by β: id, street, β ± sd, capacity reduction %, hotspots it explains, observations count, "last updated 06:35"), an **assimilation timeline** (a vertical list of `ObservationCard`s — traffic anomaly / citizen report / sensor — each with time, place, inferred depth, and the β change it caused), a **before/after toggle** that cross-fades the prior map and the posterior map, and "Export desilting priority (CSV)".
 
 **Signature motion.** Toggling before/after cross-fades the pipe colours (300 ms) while the depth number on the affected hotspot rolls with `NumberFlow` ("55 → 48 cm").
 
@@ -502,7 +502,7 @@ Each screen lists: purpose · layout · components · data · interactions · st
 
 ### 7.5 Alerts centre — `/alerts`
 
-**Layout.** Left: queue grouped by level (Severe / Moderate / Watch) with `AlertCard`s (headline "Hindmata junction: depth likely above 45 cm from 18:20 to 20:00", area, trigger P, hysteresis state "raised 17:45 · persists 2 cycles", channels sent, acknowledge/escalate). Centre: `CapViewer` (CAP 1.2 XML, syntax-highlighted in Geist Mono, "Copy CAP", "Download .xml"). Right: `PhoneMock` — a phone frame showing the WhatsApp message card exactly as the ward officer would receive it (map snapshot PNG, text, "Pumps P-12, P-15 dispatched"), plus a delivery log (dashboard / WhatsApp mock / SMS mock; real WhatsApp when configured — P2). Escalation matrix table at the bottom (ward officer → control room → police/traffic → transit → public).
+**Layout.** Left: queue grouped by level (Severe / Moderate / Watch) with `AlertCard`s (headline "Hindmata junction: depth likely above 45 cm from 08:20 to 10:00", area, trigger P, hysteresis state "raised 06:45 · persists 2 cycles", channels sent, acknowledge/escalate). Centre: `CapViewer` (CAP 1.2 XML, syntax-highlighted in Geist Mono, "Copy CAP", "Download .xml"). Right: `PhoneMock` — a phone frame showing the WhatsApp message card exactly as the ward officer would receive it (map snapshot PNG, text, "Pumps P-12, P-15 dispatched"), plus a delivery log (dashboard / WhatsApp mock / SMS mock; real WhatsApp when configured — P2). Escalation matrix table at the bottom (ward officer → control room → police/traffic → transit → public).
 
 **Signature motion.** A new alert slides into the queue and the phone mock pops the card with a short shake (300 ms) and a soft sound (muted by default; toggle in settings — on for the demo).
 
@@ -529,7 +529,7 @@ Each screen lists: purpose · layout · components · data · interactions · st
 **AC**
 - [ ] What-if p95 < 1 s; physics check < 10 s; disagreement is displayed, never hidden
 - [ ] Diff layer and delta table agree
-- [ ] "Clean top 14" reproduces the demo moment (Hindmata p50 drops substantially at 18:20; exact numbers from the run)
+- [ ] "Clean top 14" reproduces the demo moment (Hindmata p50 drops substantially at 08:20; exact numbers from the run)
 
 ### 7.8 Replay and storm designer — `/replay`
 
@@ -564,7 +564,7 @@ Each screen lists: purpose · layout · components · data · interactions · st
 
 ### 7.11 Public map — `/map` and citizen report — `/report`
 
-**Public map (mobile-first).** Three-colour street map (passable / caution / impassable for the selected vehicle), a bottom sheet listing nearby streets with "passable until 18:25", vehicle selector, saved-location alerts (local storage), language toggle EN/HI/MR (P1), a floating "Report water" button, and the honesty line "Forecast from the last VARUNA run at 17:40; updates every 5 minutes".
+**Public map (mobile-first).** Three-colour street map (passable / caution / impassable for the selected vehicle), a bottom sheet listing nearby streets with "passable until 09:25", vehicle selector, saved-location alerts (local storage), language toggle EN/HI/MR (P1), a floating "Report water" button, and the honesty line "Forecast from the last VARUNA run at 06:40; updates every 5 minutes".
 
 **Report flow.** Step 1 location (auto + adjust) → Step 2 photo (optional, camera) → Step 3 depth chips: ankle (≈ 10 cm), knee (≈ 45 cm), waist (≈ 90 cm) → Submit → confirmation "Thanks — your report improved the forecast for 3 streets" (the count comes from Pulse's feedback field). Reports go to `POST /v1/reports` and appear on the console as observations.
 
@@ -1171,7 +1171,7 @@ make bake BUNDLE=MUM-2019-07-02   # all cycles → data/runs
 make demo                         # http://localhost:3000/console
 make test && make e2e
 make pack && make demo-video
-uv run varuna cycle --bundle MUM-2019-07-02 --t 2019-07-02T17:40+05:30 --live
+uv run varuna cycle --bundle MUM-2019-07-02 --t 2019-07-02T06:40+05:30 --live
 uv run varuna verify --event MUM-2019-07-02
 ```
 
