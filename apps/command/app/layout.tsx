@@ -16,6 +16,9 @@ const bricolage = Bricolage_Grotesque({
 });
 
 export const metadata: Metadata = {
+  // Resolves the Open Graph and Twitter image URLs; the demo runs on the laptop, so localhost
+  // is the honest default and a deployment overrides it with NEXT_PUBLIC_SITE_URL.
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"),
   title: {
     default: "VARUNA",
     template: "%s - VARUNA",
