@@ -131,7 +131,7 @@ VARUNA is a self-correcting digital twin of a city's water — sky, surface and 
 - Radar/Sky domain: 60 km × 60 km centred on the AOI at 500 m (120 × 120 px), so pySTEPS has enough pixels for its scale cascade; rain is resampled to the 30 m AOI grid.
 - Chronic hotspots to register (coordinates are approximate — **verify each with Nominatim/OSM before use** and store the verified point + `source_url`): Hindmata junction (Dadar East, ≈19.012, 72.841), Dadar TT (≈19.019, 72.845), Parel/Bharatmata (≈19.007, 72.838), King's Circle / Maheshwari Udyan (≈19.027, 72.857), Gandhi Market (≈19.032, 72.858), Sion Circle (≈19.039, 72.862), Kurla LBS Marg (≈19.066, 72.879), Khar subway (≈19.070, 72.838), Milan subway (≈19.079, 72.840), Andheri subway (≈19.119, 72.844).
 - Assets: KEM Hospital, Parel (≈19.003, 72.841); LTMG Sion Hospital (≈19.041, 72.862); fire stations and railway stations from OSM; pumping stations and the Hindmata holding tanks from public BMC material (verify, source). Mobile pumps: a **synthetic** inventory of 12 pumps at plausible depots, labelled synthetic.
-- Ambulance demo trip: KEM Hospital → Sion Hospital at 17:40 IST on the replay day; the naive route runs through Hindmata/Dr Ambedkar Road.
+- Ambulance demo trip: KEM Hospital → Sion Hospital at 08:40 IST on the replay day; the naive route runs through Hindmata/Dr Ambedkar Road.
 
 **Second city — Chennai onboarding AOI (`CHN-SOUTH`)**: Velachery–Adyar–T. Nagar, lon 80.20 → 80.28, lat 12.96 → 13.05, EPSG:32644. Pre-cache all open data so the wizard runs offline in minutes.
 
@@ -495,7 +495,7 @@ Each screen lists: purpose · layout · components · data · interactions · st
 **Signature motion.** The naive route draws first in dashed grey, then the VARUNA route draws itself over 1.2 s in `--tide` around the red segments; avoided segments flash once.
 
 **AC**
-- [ ] KEM → Sion at 17:40 avoids Hindmata/Sion underpass when they are predicted impassable for the profile; the naive route crosses them
+- [ ] KEM → Sion at 08:40 avoids Hindmata/Sion underpass when they are predicted impassable for the profile; the naive route crosses them
 - [ ] Route API p95 < 300 ms; response includes `run_id`, `avoided`, `alternates`, `safe_until`
 - [ ] Changing departure time or profile re-routes; a pedestrian profile uses the h·v hazard rule
 - [ ] Reachability tab isochrones (5/10/15 min) for a chosen facility update when scrubbing; a "collapse" flag appears when the 15-min catchment < 40 % of dry baseline
@@ -914,7 +914,7 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 - [ ] P2.1 Bundle manifest schema, loader, validator (`varuna bundle validate`)
 - [ ] P2.2 Storm designer (cells, wind, lifecycle, stratiform background, Marshall–Palmer inverse, noise, coverage, quantisation); seeded
-- [ ] P2.3 `MUM-2019-07-02` calibration to documented public gauge totals for 15:00–21:00 IST; sources in the manifest
+- [ ] P2.3 `MUM-2019-07-02` calibration to documented public gauge totals for the 05:40–09:40 IST window (ADR-0007); sources in the manifest
 - [ ] P2.4 Synthetic gauges at real station locations; tide series (public tide table if obtainable, else "illustrative" label) with the demo's high tide in the window
 - [ ] P2.5 Synthetic traffic baseline + anomalies + confounders, labelled
 - [ ] P2.6 Curated **real** ground-truth pins (≥ 10, `source_url`, time uncertainty) + synthetic reports stream
@@ -1085,11 +1085,16 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ## 15. Demo script → what must work (mirrors blueprint §13)
 
+> **Replay window (ADR-0007).** The demo replays 2 July 2019 from 05:40 to 09:40 IST, opening at 06:40. The
+> curated ground truth puts the civic reports between 08:07 and 14:28 IST that morning, so thirteen sourced
+> pins land 87 to 150 minutes after VARUNA flags the street. The original 15:40 opening sat after the flood
+> had receded, where no pin would land.
+
 | Time | Jury sees | Route / action | Must-work items |
 |---|---|---|---|
-| 0:00 | Console, Mumbai, banner "Replay 2 Jul 2019 · 15:40 · 30×" | `/console?bundle=MUM-2019-07-02` auto-play | R1, ModeBanner, RunStamp |
-| 0:40 | Radar animation → 20-member fan chart at Hindmata diverging after 90 min | Hotspot rail → Hindmata → drawer | Sky cube, FanChart, spread band |
-| 1:40 | Scrub to +2 h: Hindmata, King's Circle, Sion turn red; manholes surcharge; tide-locked outfall shows reversed flow | TimeBar scrub, layers S on | Twin/drain coupling, M8, M9 |
+| 0:00 | Console, Mumbai, banner "Replay 2 Jul 2019 · 06:40 · 30×" | `/console?bundle=MUM-2019-07-02` auto-play | R1, ModeBanner, RunStamp |
+| 0:40 | Radar animation → 20-member fan chart at King's Circle diverging after 90 min | Hotspot rail → Hindmata → drawer | Sky cube, FanChart, spread band |
+| 1:40 | Scrub to +2 h: King's Circle, Sion, Gandhi Market and Milan subway turn red; manholes surcharge; tide-locked outfall shows reversed flow | TimeBar scrub, layers S on | Twin/drain coupling, M8, M9 |
 | 2:40 | Ground-truth pins drop where VARUNA was already red, ticker shows sources | replay clock passes pin times | P2.6, M18 |
 | 3:30 | Drain X-ray: 14 pipes glow; attribution; EnKF update after a traffic anomaly is assimilated | `D` layer / `/drains`, before/after | Pulse, drain health, M12 |
 | 4:30 | What-if: rain +30 % under a second; clean 14 pipes → Hindmata drops; physics check agrees | What-if drawer | Flash-lite, diff wipe M13 |
@@ -1100,7 +1105,7 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 **Rehearsal checklist**
 
 - [ ] Every step reachable by clicks or the command palette; no terminal
-- [ ] The replay is pre-seeked to 15:40 and paused on load; Play is the first click
+- [ ] The replay is pre-seeked to 06:40 and paused on load; Play is the first click
 - [ ] Sound on for the phone mock; phone mock visible on the second screen if available
 - [ ] A physical phone receives the alert only if a real sender is configured; otherwise the on-screen mock is the story
 - [ ] Fallback video ready on both laptops; offline package verified the morning of the finale

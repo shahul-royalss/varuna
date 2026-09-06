@@ -23,6 +23,27 @@ from rich.markup import escape
 
 IS_WINDOWS = sys.platform.startswith("win")
 
+
+def _tolerate_unencodable_output() -> None:
+    """Never let a child's banner character kill our output.
+
+    Windows consoles and redirected streams default to cp1252, so relaying a line such as
+    Next.js's "* Next.js 16.3.4" (U+25B2) raised UnicodeEncodeError inside rich and killed the
+    log-pump thread: the service kept running but went silent for the operator. Replacing the
+    character keeps the stream readable and the thread alive.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(errors="replace")
+        except (ValueError, OSError):  # detached or already-closed stream
+            pass
+
+
+_tolerate_unencodable_output()
+
 console = Console(highlight=False)
 
 

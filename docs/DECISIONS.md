@@ -49,3 +49,11 @@ Five lines each: context, decision, alternatives, consequence, date. Newest at t
 - Alternatives: export the Norton root into a PEM bundle and set `CURL_CA_BUNDLE` (machine-specific, fragile); disable certificate checks (unsafe); ask the user to disable Norton scanning (out of our hands on stage).
 - Consequence: the pipeline works on this laptop and on a clean Linux CI runner unchanged; first-run downloads are explicit, cached and inspectable; the offline package ships the cache.
 - Date: 2026-09-04
+
+## ADR-0007 The demo replays 2 July 2019 at 06:40 IST, not 15:40
+
+- Context: the curated ground truth (29 sourced pins inside the area of interest, `docs/research/ground_truth_MUM-2019-07-02.md`) shows the Mumbai cloudburst peaked overnight on 1-2 July and the civic reports cluster between 08:07 and 14:28 IST on 2 July; by 17:22 IST the municipal corporation said waterlogging had receded. The spec's demo script opened at 15:40 IST, after the event, where no pin would land.
+- Decision: the replay window becomes 05:40 to 09:40 IST on 2 July 2019 with the cycle opening at 06:40 IST. Thirteen sourced pins then land inside the forecast window at lead times of 87 to 150 minutes, so every pin arrives between one and a half and two and a half hours after VARUNA flags the street.
+- Alternatives: open at 08:00 (fourteen pins, but some land only 7 minutes ahead, which demonstrates nowcasting the present rather than forecasting); keep 15:40 and accept that no pin lands (breaks rule 7 and the 2:40 beat of the demo); switch to another Mumbai event (unnecessary, this one yields 29 pins against a minimum of 10).
+- Consequence: the demo script times in section 15 shift by nine hours; the storm designer calibrates to the 05:40-09:40 window, which sits inside the one primary-sourced total (Santacruz 375.2 mm for the 24 hours ending 08:30 IST on 2 July, IMD); the "three hours early" claim is now evidenced rather than asserted. Depth MAE cannot be scored for this event because no cached source states a depth in centimetres, so `/verify` reports occurrence, place and timing only, and says why.
+- Date: 2026-09-06

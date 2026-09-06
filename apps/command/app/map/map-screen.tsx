@@ -103,7 +103,13 @@ export function MapScreen() {
       </header>
 
       <div ref={stageRef} className="relative min-h-0 flex-1">
-        <MapSlot />
+        <MapSlot
+          audience="public"
+          emptyState={{
+            title: "No forecast yet",
+            description: "Streets are coloured after the next VARUNA run.",
+          }}
+        />
 
         <Button
           size="lg"

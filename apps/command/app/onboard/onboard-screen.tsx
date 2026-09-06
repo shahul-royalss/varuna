@@ -34,7 +34,7 @@ export function OnboardScreen() {
                   <MapPinned aria-hidden="true" />
                   Start onboarding Chennai
                 </Button>
-                <p className="max-w-[36ch] text-right type-micro text-text-3">
+                <p className="max-w-[52ch] text-right type-micro text-text-3">
                   The wizard runs from city/cache/chennai in Phase 9.
                 </p>
               </div>
@@ -90,7 +90,12 @@ export function OnboardScreen() {
                 className="min-h-[32rem] overflow-hidden"
               >
                 <div className="h-full min-h-[26rem] overflow-hidden rounded-control border border-line">
-                  <MapSlot />
+                  <MapSlot
+                    emptyState={{
+                      title: "No Chennai layers yet",
+                      description: "Press Start onboarding Chennai.",
+                    }}
+                  />
                 </div>
               </Panel>
             </PanelErrorBoundary>

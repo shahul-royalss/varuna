@@ -33,10 +33,13 @@ export function LogStream({
   className,
   emptyDescription = "Logs stream here when the wizard runs.",
 }: LogStreamProps) {
-  const endRef = useRef<HTMLDivElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
 
+  // Scroll the log box itself. `scrollIntoView` would also scroll every ancestor scrollport, which
+  // drags the whole page down to the log on mount (/design and the onboarding wizard both embed it).
   useEffect(() => {
-    endRef.current?.scrollIntoView?.({ block: "end" });
+    const box = boxRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
   }, [lines.length]);
 
   if (lines.length === 0) {
@@ -54,6 +57,7 @@ export function LogStream({
 
   return (
     <div
+      ref={boxRef}
       role="log"
       aria-live="polite"
       aria-label="Pipeline log"
@@ -76,7 +80,6 @@ export function LogStream({
           <span className="min-w-0 break-words">{line.text}</span>
         </div>
       ))}
-      <div ref={endRef} />
     </div>
   );
 }
