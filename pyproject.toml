@@ -67,7 +67,7 @@ build-backend = "hatchling.build"
 packages = ["tools/varuna_cli"]
 
 [tool.pytest.ini_options]
-testpaths = ["packages", "services", "tests"]
+testpaths = ["packages", "services", "tests", "tools"]
 addopts = "-q -p no:cacheprovider --import-mode=importlib"
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
