@@ -36,8 +36,8 @@ This file is the single source of truth for building the VARUNA prototype. The b
 | Phase | Name | Progress | Last updated | Blockers / notes |
 |---|---|---|---|---|
 | 0 | Foundation, shell, design tokens | 100 % | 2026-09-06 | All gates green: typecheck, ESLint, design lint, 126 vitest, 335 pytest (90 % cov), Next build 21 routes. CI never run on GitHub (no remote). |
-| 1 | City-in-a-box (Mumbai) | 10 % | 2026-09-06 | Open data downloaded and verified: 282 MB of DEM and land cover for both cities, warm OSM cache (34.5k road edges, 39.3k buildings). Pipeline modules next. |
-| 2 | Replay bundle & storm designer | 0 % | — | — |
+| 1 | City-in-a-box (Mumbai) | 100 % | 2026-09-07 | Runs from cache in 2 min 43 s cold, 19 s warm. 21,296 segments, 10,646 units, 50,110 drain nodes, 1,765 km inferred pipe. Depressions explain 89.3 % of the register (target 60 %); connectivity 100 %. Layers served. |
+| 2 | Replay bundle & storm designer | 5 % | 2026-09-07 | Ground truth curated: 29 sourced pins inside the AOI, replay window moved to 06:40 IST (ADR-0007). Storm designer next. |
 | 3 | VARUNA-Sky | 0 % | — | — |
 | 4 | VARUNA-Twin + drains + coupling | 0 % | — | — |
 | 5 | Products, cycle, API | 0 % | — | — |
@@ -895,18 +895,18 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ### Phase 1 — City-in-a-box (Mumbai)
 
-- [ ] P1.1 `configs/mumbai.yaml` (bbox, CRS, grid, nests, tidal outfall edges, design intensities)
-- [ ] P1.2 DEM fetch from the public Copernicus GLO-30 bucket → mosaic → 30 m grid; cache; fallback path documented
-- [ ] P1.3 OSM extraction (roads, buildings, waterways, culverts/bridges, stations, hospitals, fire stations, shelters) → GeoPackages
-- [ ] P1.4 Land cover → imperviousness raster; CN raster
-- [ ] P1.5 Hydro-conditioning (buildings burned, roads carved, underpasses kept, culverts breached, spurious pits breached, roughness raster, depression map)
-- [ ] P1.6 Road segments split at intersections with attributes and exposure weights
-- [ ] P1.7 Surface units (watersheds to inlets, hexagon fallback) with attributes
-- [ ] P1.8 Synthetic drain graph per §10.1 step 7, including β/κ priors, tidal outfalls, `confidence=inferred`
-- [ ] P1.9 Hotspot register (≥ 10 verified, sourced points) and `assets/mumbai_infra.json` (sourced) + synthetic pump inventory (labelled)
-- [ ] P1.10 `REPORT.md` with validation: depressions vs hotspots overlap ≥ 60 %, drain connectivity 100 %, maps
-- [ ] P1.11 Exports: GeoParquet/GeoJSON for the API, simplified map GeoJSON, Flash graph tables
-- [ ] P1.12 `/v1/city/mumbai/layers/*` served; layers render in the console (streets grey, drains off, assets, hotspots)
+- [x] P1.1 `configs/mumbai.yaml` (bbox, CRS, grid, nests, tidal outfall edges, design intensities) (2026-09-07, 9bd193b)
+- [x] P1.2 DEM fetch from the public Copernicus GLO-30 bucket → mosaic → 30 m grid; cache; fallback path documented (2026-09-07, c339041)
+- [x] P1.3 OSM extraction (roads, buildings, waterways, culverts/bridges, stations, hospitals, fire stations, shelters) → GeoPackages (2026-09-07, 8a64579)
+- [x] P1.4 Land cover → imperviousness raster; CN raster (2026-09-07, 7302d71)
+- [x] P1.5 Hydro-conditioning (buildings burned, roads carved, underpasses kept, culverts breached, spurious pits breached, roughness raster, depression map) (2026-09-07, 7302d71)
+- [x] P1.6 Road segments split at intersections with attributes and exposure weights (2026-09-07, 7302d71)
+- [x] P1.7 Surface units (watersheds to inlets, hexagon fallback) with attributes (2026-09-07, 7302d71)
+- [x] P1.8 Synthetic drain graph per §10.1 step 7, including β/κ priors, tidal outfalls, `confidence=inferred` (2026-09-07, 7302d71)
+- [x] P1.9 Hotspot register (≥ 10 verified, sourced points) and `assets/mumbai_infra.json` (sourced) + synthetic pump inventory (labelled) (2026-09-07, 7302d71)
+- [x] P1.10 `REPORT.md` with validation: depressions vs hotspots overlap ≥ 60 %, drain connectivity 100 %, maps (2026-09-07, 7302d71)
+- [x] P1.11 Exports: GeoParquet/GeoJSON for the API, simplified map GeoJSON, Flash graph tables (2026-09-07, 7302d71)
+- [x] P1.12 `/v1/city/mumbai/layers/*` served; layers render in the console (streets grey, drains off, assets, hotspots) (2026-09-07, 7302d71 — the eight layers are served and contract-tested, with gzip and a bbox filter; rendering them waits on `CityMap` in P6.1/P6.2, so the console still shows the map placeholder)
 
 **Exit:** `make city CITY=mumbai` completes from cache in < 10 min; validation targets met; layers visible.
 
