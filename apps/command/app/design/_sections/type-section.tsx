@@ -144,7 +144,7 @@ export function TypeSection() {
     <DesignSection
       id="type"
       title="Type scale"
-      description="The eight steps and three families of CLAUDE.md section 6.3, as the type-* presets components use. Sizes are never written inline."
+      description="The eight steps and three families of the build spec, section 6.3, as the type-* presets components use. Sizes are never written inline."
     >
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-2">

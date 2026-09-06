@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -23,14 +23,14 @@ describe("VerifyScreen", () => {
   it("renders every headline score as not scored yet, with its unit", () => {
     renderVerify();
     const grid = screen.getByRole("list", { name: "Verification scores" });
-    const tiles = screen.getAllByRole("listitem").filter((li) => grid.contains(li));
-    expect(tiles).toHaveLength(HEADLINE_SCORE_TILES.length);
+    const scores = within(grid);
+    expect(scores.getAllByRole("listitem")).toHaveLength(HEADLINE_SCORE_TILES.length);
 
     for (const tile of HEADLINE_SCORE_TILES) {
-      expect(screen.getByText(tile.label)).toBeInTheDocument();
-      expect(screen.getAllByText(tile.unit).length).toBeGreaterThan(0);
+      expect(scores.getByText(tile.label)).toBeInTheDocument();
+      expect(scores.getAllByText(tile.unit).length).toBeGreaterThan(0);
     }
-    expect(screen.getAllByText("Not scored yet")).toHaveLength(HEADLINE_SCORE_TILES.length);
+    expect(scores.getAllByText("Not scored yet")).toHaveLength(HEADLINE_SCORE_TILES.length);
     expect(
       screen.getByText(/Ground-truth pins: none scored yet/),
     ).toBeInTheDocument();

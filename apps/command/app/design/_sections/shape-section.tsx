@@ -68,7 +68,7 @@ export function ShapeSection() {
     <DesignSection
       id="shape"
       title="Shape and spacing"
-      description="Radius, the 4-pt grid, row heights and the fixed shell sizes of CLAUDE.md sections 6.4 and 6.5. There are no drop shadows in the dark UI: depth is deep on ink with a 1 px line border."
+      description="Radius, the 4-pt grid, row heights and the fixed shell sizes of the build spec, sections 6.4 and 6.5. There are no drop shadows in the dark UI: depth is deep on ink with a 1 px line border."
     >
       <div className="flex flex-col gap-8">
         <div className="flex flex-col gap-2">
