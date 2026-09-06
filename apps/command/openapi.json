@@ -5421,6 +5421,7 @@
     },
     "/v1/city/{city}/layers/{name}": {
       "get": {
+        "description": "One static city layer as GeoJSON, straight from ``city/<city>/map/``.",
         "operationId": "city_layer_v1_city__city__layers__name__get",
         "parameters": [
           {
@@ -5440,17 +5441,19 @@
               "enum": [
                 "segments",
                 "drains",
+                "drain_nodes",
                 "assets",
                 "hotspots",
                 "buildings",
-                "ground_truth"
+                "units",
+                "depressions"
               ],
               "title": "Name",
               "type": "string"
             }
           },
           {
-            "description": "minlon,minlat,maxlon,maxlat (WGS84)",
+            "description": "minlon,minlat,maxlon,maxlat (WGS84); omit for the AOI",
             "in": "query",
             "name": "bbox",
             "required": false,
@@ -5463,7 +5466,7 @@
                   "type": "null"
                 }
               ],
-              "description": "minlon,minlat,maxlon,maxlat (WGS84)",
+              "description": "minlon,minlat,maxlon,maxlat (WGS84); omit for the AOI",
               "title": "Bbox"
             }
           }
@@ -5477,7 +5480,17 @@
                 }
               }
             },
-            "description": "Successful Response"
+            "description": "GeoJSON FeatureCollection in WGS84, simplified with a 2 m tolerance"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "City or layer not built yet"
           },
           "422": {
             "content": {
@@ -5488,16 +5501,6 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Engine not built yet (phase named)"
           }
         },
         "summary": "Static layer simplified for the map (segments, drains, assets, hotspots, buildings)",

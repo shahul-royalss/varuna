@@ -384,19 +384,8 @@ def verification(
     raise not_implemented("Verification scores", 9, "P9.7")
 
 
-# ---- city layers (Phase 1) ------------------------------------------------------------------
-@router.get(
-    "/city/{city}/layers/{name}",
-    tags=["city"],
-    response_model=FeatureCollection,
-    summary="Static layer simplified for the map (segments, drains, assets, hotspots, buildings)",
-)
-def city_layer(
-    city: str,
-    name: Literal["segments", "drains", "assets", "hotspots", "buildings", "ground_truth"],
-    bbox: BboxQ = None,
-) -> FeatureCollection:
-    raise not_implemented("Static city layers", 1, "P1.12")
+# City layers are no longer a stub: Phase 1 landed, and ``varuna_api.routers.city`` serves
+# them from city/<city>/map/ (task P1.12).
 
 
 __all__ = [

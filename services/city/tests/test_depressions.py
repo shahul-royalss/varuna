@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from rasterio.transform import Affine
-
 from varuna_city.depressions import fill_depressions, find_depressions, label_pits
 
 CRS = "EPSG:32643"

@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 from rasterio.transform import Affine
 from shapely.geometry import Point, Polygon
-
 from varuna_city.segments import (
+    _as_int,
     build_segments,
     classify_highway,
     edges_to_frame,
@@ -169,3 +169,20 @@ def test_empty_graph_returns_empty_table(empty: gpd.GeoDataFrame) -> None:
     segments = build_segments(empty, crs=CRS)
     assert segments.empty
     assert "segment_id" in segments.columns
+
+
+def test_lane_count_does_not_depend_on_set_iteration_order() -> None:
+    """CLAUDE.md rule 8: two runs of the pipeline must agree.
+
+    OSMnx returns a collection of tag values when it simplifies several ways into one edge, and
+    that collection is sometimes a set, whose iteration order changes with Python's per-process
+    string hash seed. Taking the first item made `lanes` differ between runs on real Mumbai data.
+    """
+    assert _as_int({"2", "3", "4"}) == 4
+    assert _as_int({"4", "3", "2"}) == 4
+    assert _as_int(["2", "3"]) == _as_int(["3", "2"]) == 3
+    # Non-numeric tag values are ignored, not crashed on, and an empty result stays None.
+    assert _as_int({"2", "unknown"}) == 2
+    assert _as_int({"unknown"}) is None
+    assert _as_int(None) is None
+    assert _as_int("2") == 2

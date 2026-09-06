@@ -25,6 +25,7 @@ Public API:
 
 from __future__ import annotations
 
+import itertools
 import time
 from pathlib import Path
 from typing import Any, Final
@@ -199,7 +200,7 @@ class _NodeStore:
         self.rows: list[dict[str, Any]] = []
 
     def add(self, x: float, y: float, **fields: Any) -> int:
-        key = (int(round(x / self.snap)), int(round(y / self.snap)))
+        key = (round(x / self.snap), round(y / self.snap))
         existing = self.keys.get(key)
         if existing is not None:
             row = self.rows[existing]
@@ -271,7 +272,7 @@ def _place_nodes(
                 store.rows[idx]["kind"] = "trunk"
                 if not chain or chain[-1] != idx:
                     chain.append(idx)
-            for a, b in zip(chain, chain[1:], strict=False):
+            for a, b in itertools.pairwise(chain):
                 dx = store.rows[b]["x"] - store.rows[a]["x"]
                 dy = store.rows[b]["y"] - store.rows[a]["y"]
                 links.append((a, b, float(np.hypot(dx, dy))))
@@ -790,9 +791,9 @@ def check_connectivity(nodes: gpd.GeoDataFrame, edges: gpd.GeoDataFrame) -> dict
         msg = f"{len(bad)} drain nodes do not reach an outfall (first: {bad[0]})"
         raise AssertionError(msg)
     return {
-        "nodes": int(len(nodes)),
-        "edges": int(len(edges)),
-        "outfalls": int(len(outfalls)),
+        "nodes": len(nodes),
+        "edges": len(edges),
+        "outfalls": len(outfalls),
         "connectivity": 1.0,
         "max_hops_to_outfall": int(max_hops),
         "pipe_length_km": round(float(edges["length_m"].sum()) / 1000.0, 3),

@@ -84,10 +84,25 @@ def infra_features(city: str = "mumbai", *, path: Path | None = None) -> list[di
     return features
 
 
+OSM_KIND: dict[str, str] = {
+    "hospitals": "hospital",
+    "fire_stations": "fire_station",
+    "stations": "station",
+    "shelters": "shelter",
+}
+"""``OsmLayers.assets()`` layer name -> the ``kind`` written on the feature."""
+
+
 def _osm_features(osm_assets: Any) -> list[dict[str, Any]]:
-    """Accept a GeoDataFrame, a GeoJSON mapping or a list of features from :mod:`osm`."""
+    """Accept a GeoDataFrame, a GeoJSON mapping or a list of features from :mod:`osm`.
+
+    A GeoDataFrame arrives in the city's metric CRS; GeoJSON is WGS84 by definition, so it
+    is reprojected before anything reads a coordinate.
+    """
     if osm_assets is None:
         return []
+    if hasattr(osm_assets, "to_crs") and getattr(osm_assets, "crs", None) is not None:
+        osm_assets = osm_assets.to_crs("EPSG:4326")
     if hasattr(osm_assets, "__geo_interface__"):
         osm_assets = osm_assets.__geo_interface__
     if isinstance(osm_assets, dict):
@@ -98,7 +113,10 @@ def _osm_features(osm_assets: Any) -> list[dict[str, Any]]:
         if not geometry:
             continue
         props = dict(feature.get("properties") or {})
-        kind = props.get("kind") or props.get("amenity") or props.get("asset_kind") or "osm_asset"
+        raw_kind = (
+            props.get("kind") or props.get("asset_kind") or props.get("amenity") or "osm_asset"
+        )
+        kind = OSM_KIND.get(str(raw_kind), str(raw_kind))
         osm_id = props.get("osm_id") or props.get("id") or i
         point = geometry
         if geometry.get("type") != "Point":
@@ -130,8 +148,15 @@ def build_assets(
     osm_assets: Any = None,
     out_dir: Path | None = None,
     path: Path | None = None,
+    bbox: tuple[float, float, float, float] | None = None,
 ) -> Path:
-    """Merge curated infrastructure with OSM assets into ``city/<city>/assets.geojson``."""
+    """Merge curated infrastructure with OSM assets into ``city/<city>/assets.geojson``.
+
+    ``bbox`` (WGS84 ``minlon, minlat, maxlon, maxlat``) does not filter: it flags every
+    feature with ``in_aoi``. Three of the BMC pumping stations sit just outside the
+    MUM-CENTRAL box and still matter to an operator, so they are kept and labelled rather
+    than silently dropped. OSM assets already come from the AOI query.
+    """
     features = infra_features(city, path=path)
     seen = {(round(f["geometry"]["coordinates"][0], 5), f["properties"]["kind"]) for f in features}
     for feature in _osm_features(osm_assets):
@@ -140,6 +165,14 @@ def build_assets(
             continue
         seen.add(key)
         features.append(feature)
+    for feature in features:
+        lon, lat = feature["geometry"]["coordinates"][:2]
+        feature["properties"]["in_aoi"] = (
+            True
+            if bbox is None
+            else bool(bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3])
+        )
+    features.sort(key=lambda f: (f["properties"]["kind"], f["properties"]["asset_id"]))
     synthetic = sum(1 for f in features if f["properties"]["synthetic"])
     collection = {
         "type": "FeatureCollection",
@@ -149,6 +182,13 @@ def build_assets(
             "task": "P1.9",
             "count": len(features),
             "synthetic": synthetic,
+            "curated": sum(1 for f in features if f["properties"]["source"] == "curated"),
+            "from_osm": sum(1 for f in features if f["properties"]["source"] == "osm"),
+            "with_source_url": sum(1 for f in features if f["properties"]["source_url"]),
+            "kinds": {
+                kind: sum(1 for f in features if f["properties"]["kind"] == kind)
+                for kind in sorted({f["properties"]["kind"] for f in features})
+            },
             "honesty": "Mobile pumps are a synthetic inventory; every one carries synthetic=true.",
         },
         "features": features,
@@ -160,4 +200,4 @@ def build_assets(
     return target
 
 
-__all__ = ["INFRA_KINDS", "build_assets", "infra_features", "infra_path", "load_infra"]
+__all__ = ["INFRA_KINDS", "OSM_KIND", "build_assets", "infra_features", "infra_path", "load_infra"]

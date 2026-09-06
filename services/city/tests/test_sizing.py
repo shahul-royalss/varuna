@@ -63,7 +63,15 @@ def test_snap_diameter_rounds_up_to_a_standard_size() -> None:
 
 
 def test_a_larger_contributing_area_needs_a_larger_conduit() -> None:
-    """The jury's first question about sizing: does more catchment mean a bigger pipe?"""
+    """The jury's first question about sizing: does more catchment mean a bigger pipe?
+
+    The honest property is monotonicity, not strict growth. The ladder of standard sizes
+    has a floor at 450 mm (CLAUDE.md 10.1 step 7), and a 450 mm pipe on this slope carries
+    about 0.18 m3/s, so every catchment whose design flow fits under that lands on the same
+    rung. What must hold is that the design flow is strictly ordered, that the snapped
+    diameter never goes *down* as the catchment grows, and that a catchment big enough to
+    exceed a rung's capacity does move up a rung.
+    """
     common = {"imperviousness": 0.9, "intensity_mm_h": 25.0, "slope": 0.004, "is_trunk": False}
     small = size_conduit(area_m2=2_000.0, **common)
     medium = size_conduit(area_m2=30_000.0, **common)
@@ -71,11 +79,18 @@ def test_a_larger_contributing_area_needs_a_larger_conduit() -> None:
 
     assert small.q_design_m3s < medium.q_design_m3s < large.q_design_m3s
     assert small.diameter_m is not None and medium.diameter_m is not None
-    assert small.diameter_m < medium.diameter_m
+    # 2,000 m2 and 30,000 m2 both fit inside the smallest standard pipe, so they share it.
+    assert small.diameter_m == medium.diameter_m == STANDARD_DIAMETERS_M[0]
+    assert small.q_full_m3s >= medium.q_design_m3s
+    # 200,000 m2 does not fit: it must climb the ladder.
+    assert large.diameter_m is not None
+    assert large.diameter_m > STANDARD_DIAMETERS_M[0]
     assert large.area_m2 > medium.area_m2
-    # and monotone across a whole sweep, once snapping is taken into account
-    sizes = [size_conduit(area_m2=a, **common).area_m2 for a in (1e3, 1e4, 1e5, 1e6, 5e6)]
-    assert sizes == sorted(sizes)
+    # and monotone non-decreasing across a whole sweep, once snapping is taken into account
+    sweep = [size_conduit(area_m2=a, **common) for a in (1e3, 1e4, 1e5, 1e6, 5e6)]
+    assert [s.area_m2 for s in sweep] == sorted(s.area_m2 for s in sweep)
+    diameters = [s.diameter_m for s in sweep if s.diameter_m is not None]
+    assert diameters == sorted(diameters)
 
 
 def test_every_sized_pipe_actually_carries_its_design_flow() -> None:
@@ -83,6 +98,25 @@ def test_every_sized_pipe_actually_carries_its_design_flow() -> None:
     for area in (5e3, 5e4, 5e5, 5e6):
         size = size_conduit(area_m2=area, **common)
         assert size.q_full_m3s >= size.q_design_m3s - 1e-9
+
+
+def test_every_rung_of_the_ladder_carries_its_design_flow() -> None:
+    """The property that actually matters hydraulically, checked on every standard size.
+
+    A dense sweep of catchments exercises all five rungs plus the box-drain overflow; on
+    each one the conduit we chose must carry at least the flow the rational method asked
+    for, otherwise the inferred network is undersized by construction.
+    """
+    common = {"imperviousness": 0.85, "intensity_mm_h": 50.0, "slope": 0.004, "is_trunk": False}
+    seen: set[float | None] = set()
+    for area in (1e3 * 1.5**k for k in range(30)):
+        size = size_conduit(area_m2=area, **common)
+        assert size.q_full_m3s >= size.q_design_m3s - 1e-9, area
+        assert size.area_m2 > 0.0
+        seen.add(size.diameter_m)
+    # every standard diameter was reached, and beyond 1500 mm the conduit becomes a box
+    assert set(STANDARD_DIAMETERS_M) <= seen
+    assert None in seen
 
 
 def test_trunks_are_box_drains_and_carry_their_flow() -> None:

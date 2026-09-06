@@ -129,12 +129,18 @@ def _is_int(value: Any) -> bool:
 
 
 def _as_int(value: Any) -> int | None:
-    """First integer in an OSM ``lanes`` value (``"2"``, ``["2", "3"]``, ``None``)."""
+    """Lane count from an OSM ``lanes`` value (``"2"``, ``["2", "3"]``, a set, ``None``).
+
+    OSMnx hands back a collection whenever it simplifies several ways into one edge, and that
+    collection is sometimes a ``set``, whose iteration order changes with Python's per-process
+    string hashing. Taking the first item therefore made ``make city`` non-reproducible
+    (CLAUDE.md rule 8). We take the maximum instead: it is order-independent, and where a
+    simplified edge spans a widening the widest cross-section is what carries the traffic the
+    exposure weight is meant to represent.
+    """
     values = value if isinstance(value, (list, tuple, set)) else [value]
-    for item in values:
-        if _is_int(item):
-            return int(item)
-    return None
+    found = [int(item) for item in values if _is_int(item)]
+    return max(found) if found else None
 
 
 def _as_bool(value: Any) -> bool:

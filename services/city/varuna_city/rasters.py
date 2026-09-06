@@ -67,18 +67,25 @@ def expected_grid_shape(config: CityConfig) -> tuple[int, int]:
     mid_lat = (min_lat + max_lat) / 2.0
     m_per_deg_lat = 110_574.0
     m_per_deg_lon = 111_320.0 * float(np.cos(np.deg2rad(mid_lat)))
-    width = int(round((max_lon - min_lon) * m_per_deg_lon / config.grid_m))
-    height = int(round((max_lat - min_lat) * m_per_deg_lat / config.grid_m))
+    width = round((max_lon - min_lon) * m_per_deg_lon / config.grid_m)
+    height = round((max_lat - min_lat) * m_per_deg_lat / config.grid_m)
     return (height, width)
 
 
-def check_grid_shape(config: CityConfig, grid: CityGrid, *, tol_cells: int = 2) -> None:
+def check_grid_shape(config: CityConfig, grid: CityGrid, *, tol_cells: int | None = None) -> None:
     """Log the grid against :func:`expected_grid_shape` and raise if it is off by more than ``tol``.
 
-    Snapping the reprojected bbox outward to whole cells can add one cell per side, so the
-    default tolerance is two cells.
+    :func:`expected_grid_shape` measures the bbox on a flat earth, but the grid is the
+    *bounding rectangle* of the bbox projected into a UTM zone, snapped outward to whole
+    cells. Mumbai sits about 2.1 degrees west of the 43N central meridian, so the graticule
+    is rotated by roughly that convergence angle and the bounding rectangle grows by about
+    2 % on each side (Mumbai: 323 x 522 cells against a flat-earth 316 x 516). The default
+    tolerance is therefore 3 % of the larger dimension, floor four cells - still an order of
+    magnitude tighter than the error a wrong CRS or a wrong ``grid_m`` would produce.
     """
     exp_h, exp_w = expected_grid_shape(config)
+    if tol_cells is None:
+        tol_cells = max(4, round(0.03 * max(exp_h, exp_w)))
     d_h, d_w = abs(grid.height - exp_h), abs(grid.width - exp_w)
     log.info(
         "city.grid_shape_check",

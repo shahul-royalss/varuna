@@ -96,7 +96,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Static layer simplified for the map (segments, drains, assets, hotspots, buildings) */
+        /**
+         * Static layer simplified for the map (segments, drains, assets, hotspots, buildings)
+         * @description One static city layer as GeoJSON, straight from ``city/<city>/map/``.
+         */
         get: operations["city_layer_v1_city__city__layers__name__get"];
         put?: never;
         post?: never;
@@ -3191,25 +3194,34 @@ export interface operations {
     city_layer_v1_city__city__layers__name__get: {
         parameters: {
             query?: {
-                /** @description minlon,minlat,maxlon,maxlat (WGS84) */
+                /** @description minlon,minlat,maxlon,maxlat (WGS84); omit for the AOI */
                 bbox?: string | null;
             };
             header?: never;
             path: {
                 city: string;
-                name: "segments" | "drains" | "assets" | "hotspots" | "buildings" | "ground_truth";
+                name: "segments" | "drains" | "drain_nodes" | "assets" | "hotspots" | "buildings" | "units" | "depressions";
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description GeoJSON FeatureCollection in WGS84, simplified with a 2 m tolerance */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["FeatureCollection"];
+                };
+            };
+            /** @description City or layer not built yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
             /** @description Validation Error */
@@ -3219,15 +3231,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

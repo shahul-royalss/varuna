@@ -113,8 +113,8 @@ def city_grid(config: CityConfig) -> CityGrid:
     bottom = math.floor(min(ys) / res) * res
     top = math.ceil(max(ys) / res) * res
 
-    width = int(round((right - left) / res))
-    height = int(round((top - bottom) / res))
+    width = round((right - left) / res)
+    height = round((top - bottom) / res)
     grid = CityGrid(
         crs=config.crs_string,
         res=res,
