@@ -91,6 +91,30 @@ this machine and the library versions in use, so that code is written against re
 - `pnpm lint:design` (`tools/lint-design.mjs`) fails on raw hex, non-token `font-family`, `transition-all`
   or emoji inside `apps/command/{app,components/varuna,components/v0,components/map,lib}`.
 
+## Open-data cache (Phase 1 and 2 read this, they do not download)
+
+`tools/prefetch_city_cache.py` has already downloaded the raster tiles both areas of interest need, so the
+city pipeline must look in the cache before it reaches for the network:
+
+```
+city/cache/dem/Copernicus_DSM_COG_10_N18_00_E072_00_DEM.tif     # Mumbai, 1-degree tiles
+city/cache/dem/Copernicus_DSM_COG_10_N19_00_E072_00_DEM.tif
+city/cache/dem/Copernicus_DSM_COG_10_N12_00_E080_00_DEM.tif     # Chennai
+city/cache/dem/Copernicus_DSM_COG_10_N13_00_E080_00_DEM.tif
+city/cache/worldcover/ESA_WorldCover_10m_2021_v200_N18E072_Map.tif   # 3-degree tiles
+city/cache/worldcover/ESA_WorldCover_10m_2021_v200_N12E078_Map.tif
+city/cache/MANIFEST.json    # url, bytes, sha256 and fetch time per file
+```
+
+Rules: read the tile from the cache and never through GDAL's `vsicurl` (ADR-0006 explains why remote reads
+fail on this machine). Any new download goes through `truststore.inject_into_ssl()` or the helper in
+`tools/prefetch_city_cache.py`, writes into `city/cache/`, and records itself in `MANIFEST.json`. OSMnx also
+needs truststore injected before its first Overpass call. `city/` is gitignored, so the cache never lands in
+a commit; `make pack` copies it into the offline package.
+
+Cached research evidence lives in `docs/research/_raw/` (about 140 files: Nominatim geocodes, Overpass
+responses, IMD and BMC pages, 25 dated news articles about 1-2 July 2019). Read it before fetching anything.
+
 ## Ports, env and services
 
 - UI :3000, API :8000 (`/docs`, `WS /v1/live`). `.env.example` lists every variable; copy to `.env`.
