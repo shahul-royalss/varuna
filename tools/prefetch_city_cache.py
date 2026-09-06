@@ -103,14 +103,23 @@ def download(url: str, target: Path, context: ssl.SSLContext) -> tuple[bool, int
     target.parent.mkdir(parents=True, exist_ok=True)
     partial = target.with_suffix(target.suffix + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+    # Carriage-return progress is for a terminal; a redirected log gets one line per 25 %.
+    interactive = sys.stdout.isatty()
     with urllib.request.urlopen(request, timeout=300, context=context) as response, partial.open("wb") as out:
         done = 0
+        next_mark = 0.25
         while chunk := response.read(1 << 20):
             out.write(chunk)
             done += len(chunk)
-            if remote_bytes:
+            if not remote_bytes:
+                continue
+            if interactive:
                 print(f"\r  {target.name}: {done / 1e6:6.1f} / {remote_bytes / 1e6:.1f} MB", end="")
-    print()
+            elif done / remote_bytes >= next_mark:
+                print(f"  {target.name}: {done / remote_bytes:.0%} of {remote_bytes / 1e6:.0f} MB")
+                next_mark += 0.25
+    if interactive:
+        print()
     partial.replace(target)
     return True, target.stat().st_size
 
