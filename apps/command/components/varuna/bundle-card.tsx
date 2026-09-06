@@ -11,7 +11,7 @@ export interface BundleSummary {
   id: string;
   kind: BundleKind;
   city: string;
-  /** The bundle window as copy, e.g. "2 July 2019, 15:00 to 21:00 IST". */
+  /** The bundle window as copy, e.g. "2 July 2019, 05:40 to 09:40 IST". */
   window: string;
   /** Source note shown on the card; it must be honest about what is synthetic. */
   note: string;

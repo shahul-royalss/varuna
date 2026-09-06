@@ -34,7 +34,7 @@ describe("TimeBar", () => {
 
   it("renders the valid time and lead at the default scrub position", () => {
     renderTimeBar();
-    expect(screen.getByText("15:40 (+0 min)")).toBeInTheDocument();
+    expect(screen.getByText("06:40 (+0 min)")).toBeInTheDocument();
     expect(screen.getByText("Ensemble spread appears with the first run")).toBeInTheDocument();
   });
 
@@ -44,7 +44,7 @@ describe("TimeBar", () => {
       useReplayStore.getState().setLeadMin(45);
     });
     expect(sliderValue()).toBe("45");
-    expect(screen.getByText("16:25 (+45 min)")).toBeInTheDocument();
+    expect(screen.getByText("07:25 (+45 min)")).toBeInTheDocument();
   });
 
   it("toggles playing from the play button even without a run", () => {

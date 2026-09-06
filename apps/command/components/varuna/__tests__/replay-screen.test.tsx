@@ -34,7 +34,7 @@ describe("ReplayScreen", () => {
 
     const state = useReplayStore.getState();
     expect(state.bundleId).toBe("CHN-IDF-25yr");
-    expect(state.simTime).toBe("2026-11-05T15:40:00+05:30");
+    expect(state.simTime).toBe("2026-11-05T05:40:00+05:30");
     expect(chennai).toHaveAttribute("aria-pressed", "true");
   });
 

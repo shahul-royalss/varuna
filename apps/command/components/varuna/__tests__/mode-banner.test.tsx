@@ -8,7 +8,7 @@ import { useRunStore, type RunMeta } from "@/lib/stores/run";
 const baseRun: RunMeta = {
   run_id: "MUM-20190702T1210Z-sky1.0-twin1.0-flash0.3-baked",
   city: "mumbai",
-  cycle_ts: "2019-07-02T17:40:00+05:30",
+  cycle_ts: "2019-07-02T06:40:00+05:30",
   mode: "replay",
   replay_mode: "baked",
   stage_ms: { sky: 2100, twin: 1800 },
@@ -28,14 +28,14 @@ describe("ModeBanner", () => {
 
   it("builds the replay copy from the replay store and shows the baked chip", () => {
     useRunStore.getState().setRun(baseRun);
-    useReplayStore.getState().setSimTime("2019-07-02T17:40:00+05:30");
+    useReplayStore.getState().setSimTime("2019-07-02T06:40:00+05:30");
     useReplayStore.getState().setSpeed(30);
     render(<ModeBanner />);
     const status = screen.getByRole("status");
     expect(status).toHaveAttribute("data-mode", "replay");
     expect(status).toHaveTextContent("Replay 30×");
     expect(status).toHaveTextContent("2 Jul 2019");
-    expect(status).toHaveTextContent("17:40 IST");
+    expect(status).toHaveTextContent("06:40 IST");
     expect(screen.getByText("baked")).toBeInTheDocument();
   });
 

@@ -19,9 +19,9 @@ export const LEAD_FINE = 5;
 export const LEAD_COARSE = 60;
 
 export const DEFAULT_BUNDLE_ID = "MUM-2019-07-02";
-export const DEFAULT_SIM_TIME = "2019-07-02T15:40:00+05:30";
-export const DEFAULT_T0 = "2019-07-02T15:00:00+05:30";
-export const DEFAULT_T1 = "2019-07-02T21:00:00+05:30";
+export const DEFAULT_SIM_TIME = "2019-07-02T06:40:00+05:30";
+export const DEFAULT_T0 = "2019-07-02T05:40:00+05:30";
+export const DEFAULT_T1 = "2019-07-02T09:40:00+05:30";
 export const DEFAULT_SPEED: ReplaySpeed = 30;
 
 /** Clamps a lead to the scrub window and snaps it to whole minutes. */

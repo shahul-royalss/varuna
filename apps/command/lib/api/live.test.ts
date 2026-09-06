@@ -5,7 +5,7 @@ import { LiveBus, parseLiveEvent } from "./live";
 describe("parseLiveEvent", () => {
   it("accepts a typed frame and keeps extra fields", () => {
     const event = parseLiveEvent(
-      JSON.stringify({ type: "replay.clock", ts: "2019-07-02T17:40:00+05:30", payload: { sim_time: "x" } }),
+      JSON.stringify({ type: "replay.clock", ts: "2019-07-02T06:40:00+05:30", payload: { sim_time: "x" } }),
     );
     expect(event?.type).toBe("replay.clock");
     expect(event?.payload).toEqual({ sim_time: "x" });

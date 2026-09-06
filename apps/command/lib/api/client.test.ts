@@ -98,7 +98,7 @@ describe("apiFetch", () => {
           error: {
             code: "not_implemented",
             message: "Citizen reports arrive in Phase 7. Until then, reports are queued.",
-            run_id: "MUM-20190702T1740-sky1.0-twin1.0-flash0.3-baked",
+            run_id: "MUM-20190702T0640-sky1.0-twin1.0-flash0.3-baked",
           },
         },
         { status: 501, statusText: "Not Implemented" },
@@ -111,7 +111,7 @@ describe("apiFetch", () => {
     expect(apiError.status).toBe(501);
     expect(apiError.isNotImplemented).toBe(true);
     expect(apiError.isClientFault).toBe(false);
-    expect(apiError.runId).toBe("MUM-20190702T1740-sky1.0-twin1.0-flash0.3-baked");
+    expect(apiError.runId).toBe("MUM-20190702T0640-sky1.0-twin1.0-flash0.3-baked");
     expect(apiError.message).toBe("Citizen reports arrive in Phase 7. Until then, reports are queued.");
     expect(errorMessage(error)).toBe(apiError.message);
   });

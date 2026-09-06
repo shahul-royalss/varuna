@@ -22,7 +22,7 @@ export interface DispatchOrderMove {
 
 /** The plan the optimiser produced, in the order it is read out to the control room. */
 export interface DispatchOrderPlan {
-  /** Run the plan was computed from, e.g. "MUM-20190702T1740-...-baked". */
+  /** Run the plan was computed from, e.g. "MUM-20190702T0640-...-baked". */
   runId?: string;
   moves: DispatchOrderMove[];
 }

@@ -64,7 +64,7 @@ export function ReplayPanel() {
               Reconstructed replay
             </span>
           </div>
-          <p className="mt-1 type-small text-text-2">2 July 2019, 15:00 to 21:00 IST</p>
+          <p className="mt-1 type-small text-text-2">2 July 2019, 05:40 to 09:40 IST</p>
         </section>
 
         {/* Clock and transport */}

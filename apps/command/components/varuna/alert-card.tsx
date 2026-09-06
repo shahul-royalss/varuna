@@ -11,7 +11,7 @@ import { cn } from "@/lib/utils";
 export interface AlertSummary {
   id: string;
   level: AlertLevel;
-  /** "Hindmata junction: depth likely above 45 cm from 18:20 to 20:00". */
+  /** "Hindmata junction: depth likely above 45 cm from 08:20 to 10:00". */
   headline: string;
   /** Ward or locality the alert covers. */
   area: string;

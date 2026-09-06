@@ -30,7 +30,7 @@ export const TYPE_ROWS: readonly TypeRow[] = [
     metrics: "13 / 1.4",
     family: "Geist Sans",
     use: "rail rows, panel descriptions, form labels",
-    sample: "King's Circle: 38 cm at 18:20 (+40 min)",
+    sample: "King's Circle: 38 cm at 08:20 (+40 min)",
   },
   {
     preset: "type-body",
@@ -108,7 +108,7 @@ const FAMILIES: readonly FamilyRow[] = [
     preset: "font-sans",
     samplePreset: "type-h3",
     use: "Everything else. Every element that shows a number also carries the num class for tabular figures.",
-    sample: "Hindmata junction · 55 cm · 82 % · 18:20 (+40 min)",
+    sample: "Hindmata junction · 55 cm · 82 % · 08:20 (+40 min)",
   },
   {
     name: "Mono — Geist Mono",

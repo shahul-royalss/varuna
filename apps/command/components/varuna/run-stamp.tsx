@@ -13,7 +13,7 @@ export interface RunStampProps {
 }
 
 /**
- * "run MUM-20190702T1740-sky1.0-twin1.0-flash0.3 · baked · 3.9 s" with click-to-copy
+ * "run MUM-20190702T0640-sky1.0-twin1.0-flash0.3 · baked · 3.9 s" with click-to-copy
  * (CLAUDE.md section 7.2). Empty state: "No run".
  */
 export function RunStamp({ className }: RunStampProps) {
