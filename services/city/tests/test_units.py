@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import geopandas as gpd
 import numpy as np
+import pytest
 from rasterio.transform import Affine
 from shapely.geometry import Point
 from shapely.ops import unary_union
-
 from varuna_city.units import (
     MAX_UNIT_AREA_M2,
     MIN_UNIT_AREA_M2,
+    UNIT_COLUMNS,
     build_surface_units,
     d8_receivers,
     hex_units,
@@ -60,7 +61,9 @@ def test_units_tile_the_aoi_without_overlaps() -> None:
     areas = units.geometry.area.to_numpy()
     covered = unary_union(list(units.geometry))
     # A partition: the parts sum to the union (no overlaps) and cover the whole grid.
-    assert covered.area == float(np.sum(areas))
+    # Union and sum walk the same vertices in a different order, so compare with a
+    # relative tolerance rather than bit-for-bit.
+    assert covered.area == pytest.approx(float(np.sum(areas)), rel=1e-9)
     assert abs(covered.area - AOI_AREA_M2) < 1e-6
     assert units["unit_id"].is_unique
 
@@ -94,7 +97,11 @@ def test_units_carry_raster_attributes_and_cells() -> None:
     assert np.allclose(units["imperviousness"].to_numpy(), 0.7)
     assert np.allclose(units["cn"].to_numpy(), 94.0)
     assert np.allclose(units["manning_n"].to_numpy(), 0.016)
+    # Depression depth reduces with max: the unit holding the 0.45 m pit keeps it, and a
+    # unit with no pit at all is flat (0.0), never nan.
     assert float(units["depression_depth_m"].max()) == 0.45
+    assert units["depression_depth_m"].notna().all()
+    assert float(units["depression_depth_m"].min()) == 0.0
     cells = np.concatenate([np.asarray(c) for c in units["cells"]])
     assert cells.size == SHAPE[0] * SHAPE[1]
     assert np.array_equal(np.unique(cells), np.arange(SHAPE[0] * SHAPE[1]))
@@ -133,15 +140,61 @@ def test_hex_fallback_triggers_without_inlets() -> None:
     assert areas.min() >= MIN_UNIT_AREA_M2
     assert areas.max() <= MAX_UNIT_AREA_M2 + 1e-6
     covered = unary_union(list(units.geometry))
-    assert covered.area == float(np.sum(areas))  # hexagons do not overlap
+    # hexagons do not overlap (again, a relative tolerance: this is floating-point area)
+    assert covered.area == pytest.approx(float(np.sum(areas)), rel=1e-9)
     assert covered.area > 0.8 * AOI_AREA_M2
 
 
 def test_hex_fallback_triggers_on_a_missing_dem() -> None:
     units = build_surface_units(None, TRANSFORM, _inlets(), crs=CRS)
     assert set(units["method"]) == {"hex_fallback"}
+    assert not units.empty
+    assert list(units.columns) == list(UNIT_COLUMNS)
+    assert units.geometry.name == "geometry"
+    assert units.geometry.is_valid.all()
+
+
+def test_hex_fallback_treats_no_inlets_the_same_however_they_are_spelled() -> None:
+    """``None``, an empty list and an empty GeoDataFrame all mean 'no inlets'."""
+    empty_frame = gpd.GeoDataFrame({"node_id": []}, geometry=[], crs=CRS)
+    for inlets in (None, [], empty_frame):
+        units = build_surface_units(_dem(), TRANSFORM, inlets, crs=CRS)
+        assert set(units["method"]) == {"hex_fallback"}
+
+
+def test_hex_fallback_still_carries_the_city_rasters() -> None:
+    """A fallback city must still feed Flash real CN and roughness, not a column of nans."""
+    depth = np.zeros(SHAPE)
+    depth[30, 30] = 0.6
+    units = build_surface_units(
+        _dem(),
+        TRANSFORM,
+        [],
+        crs=CRS,
+        imperviousness=np.full(SHAPE, 0.65),
+        cn=np.full(SHAPE, 92.0),
+        manning_n=np.full(SHAPE, 0.02),
+        depression_depth=depth,
+    )
+    assert set(units["method"]) == {"hex_fallback"}
+    assert np.allclose(units["imperviousness"].to_numpy(), 0.65)
+    assert np.allclose(units["cn"].to_numpy(), 92.0)
+    assert np.allclose(units["manning_n"].to_numpy(), 0.02)
+    assert float(units["depression_depth_m"].max()) == 0.6
+    assert int(units["n_cells"].sum()) > 0
+    cells = np.concatenate([np.asarray(c) for c in units["cells"]])
+    assert np.unique(cells).size == cells.size  # a cell belongs to at most one hexagon
 
 
 def test_hex_units_shrink_to_respect_the_cap() -> None:
     units = hex_units(TRANSFORM, SHAPE, crs=CRS, max_area_m2=10_000.0)
     assert units.geometry.area.max() <= 10_000.0 + 1e-6
+
+
+def test_hex_units_return_an_empty_frame_not_a_broken_one() -> None:
+    """A grid too small to hold one hexagon still returns a usable, empty units frame."""
+    units = hex_units(TRANSFORM, (1, 1), crs=CRS)
+    assert units.empty
+    assert list(units.columns) == list(UNIT_COLUMNS)
+    assert units.geometry.name == "geometry"
+    assert str(units.crs) == CRS

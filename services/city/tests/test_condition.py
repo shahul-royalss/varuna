@@ -10,7 +10,6 @@ import numpy as np
 import pytest
 from rasterio.transform import Affine
 from shapely.geometry import LineString, Point, Polygon
-
 from varuna_city.condition import (
     BUILDING_BURN_M,
     ROAD_CARVE_M,
@@ -109,7 +108,7 @@ def _dem_with_two_pits() -> tuple[np.ndarray, Affine]:
 
 def test_small_pit_is_breached_and_large_pit_is_kept() -> None:
     dem, transform = _dem_with_two_pits()
-    labels, depth = label_pits(dem, use_pyflwdir=False)
+    labels, _depth = label_pits(dem, use_pyflwdir=False)
     assert labels.max() == 2, "fixture should start with exactly two pits"
 
     result = condition_dem(dem, transform, CRS, min_pit_area_m2=900.0, use_whitebox=False)
@@ -144,11 +143,24 @@ def test_a_sink_point_protects_its_small_pit() -> None:
 
 
 def test_conditioning_is_deterministic_for_a_seed() -> None:
+    """Determinism (CLAUDE.md rule 8) is about the products, not about the wall clock.
+
+    ``changes["stage_ms"]`` is how long the run took, so it differs between two runs of the
+    same input (the first pays for Numba/pyflwdir warm-up). Everything else must match
+    exactly, and the timing is only required to be a sane non-negative number.
+    """
     dem, transform = _dem_with_two_pits()
     first = condition_dem(dem, transform, CRS, seed=2019, use_whitebox=False)
     second = condition_dem(dem, transform, CRS, seed=2019, use_whitebox=False)
     assert np.array_equal(first.dem, second.dem)
-    assert first.changes == second.changes
+
+    def products(changes: dict[str, object]) -> dict[str, object]:
+        return {k: v for k, v in changes.items() if k != "stage_ms"}
+
+    assert products(first.changes) == products(second.changes)
+    for result in (first, second):
+        assert isinstance(result.changes["stage_ms"], float)
+        assert result.changes["stage_ms"] >= 0.0
 
 
 def test_full_step_order_burn_then_carve_then_breach() -> None:

@@ -20,3 +20,6 @@ Where a user can see the effect, the UI carries the matching honesty label.
 | Alerts | CAP into Sachet, real WhatsApp | CAP 1.2 XML (status Exercise on replay) plus an on-screen phone mock | "Exercise" status, phone mock | Twilio or WhatsApp Cloud keys |
 | Storage | PostGIS, Timescale, MinIO, Redis | Files under `data/runs/` plus an in-process asyncio bus | none visible | `sinks/postgis.py` (P1) |
 | DEM | LiDAR in the pilot | Copernicus GLO-30 | limitations text | drone LiDAR |
+| Spurious-pit breaching | Priority-flood breaching of pits below 900 m2 | The rule is applied as written, but one 30 m cell is exactly 900 m2, so no pit qualifies and none is breached (buildings, roads and culverts still are) | `city/<city>/REPORT.md` states the arithmetic | 5 m nests (P1), where a cell is 25 m2 |
+| City map layers | Vector tiles | Simplified WGS84 GeoJSON per layer (2 m tolerance, trimmed properties, gzip on the wire: 18 MB of drains becomes 1.3 MB) | none visible | PMTiles basemap and tiled layers (P1) |
+| Chronic register coordinates | Every point surveyed | 27 of 28 points geocoded against OSM or Nominatim; the one that could not be pinned (Khar subway) is kept because it is sourced, and carries `coord_verified: false` | `coord_verified` on the feature | field survey |

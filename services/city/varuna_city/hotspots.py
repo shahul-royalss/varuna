@@ -87,7 +87,12 @@ def load_register(
 ) -> list[dict[str, Any]]:
     """Read the research draft and return normalised GeoJSON features, sourced ones first.
 
-    ``bbox`` is ``(minlon, minlat, maxlon, maxlat)`` in WGS84; points outside it are dropped.
+    A feature is dropped when the draft marks it ``in_aoi: false`` or its coordinate falls
+    outside ``bbox`` (``(minlon, minlat, maxlon, maxlat)`` in WGS84). With
+    ``require_verified_coord`` a point whose coordinate the research agent could not verify
+    is dropped **unless it carries a public source**: Khar subway is a chronic spot the news
+    names but Nominatim could not pin, so it stays in the register with
+    ``coord_verified = false`` and the UI can say so.
     """
     path = source or register_source_path(city)
     if not path.is_file():
@@ -104,9 +109,13 @@ def load_register(
             continue
         item = _normalise(feature, code, i)
         props = item["properties"]
-        if not _in_bbox(props["lon"], props["lat"], bbox):
+        if (feature.get("properties") or {}).get("in_aoi") is False:
+            log.info("hotspots.skip_outside_aoi", name=props["name"])
             continue
-        if require_verified_coord and not props["coord_verified"]:
+        if not _in_bbox(props["lon"], props["lat"], bbox):
+            log.info("hotspots.skip_outside_bbox", name=props["name"])
+            continue
+        if require_verified_coord and not props["coord_verified"] and not props["sourced"]:
             log.info("hotspots.skip_unverified_coord", name=props["name"])
             continue
         features.append(item)
@@ -153,6 +162,8 @@ def build_hotspots(
         },
         "features": features,
     }
+    verified = sum(1 for f in features if f["properties"]["coord_verified"])
+    collection["metadata"]["coord_verified"] = verified
     target = (out_dir or city_dir(city)) / "hotspots.geojson"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(collection, indent=1) + "\n", encoding="utf-8", newline="\n")
@@ -160,11 +171,33 @@ def build_hotspots(
     return target
 
 
+def read_hotspots(path: Path | None = None, *, crs: str | None = None) -> Any:
+    """Read a written register back as a GeoDataFrame (the pipeline's cached path).
+
+    Args:
+        path: ``city/<city>/hotspots.geojson``.
+        crs: reproject to this CRS (the city grid) when given.
+    """
+    import geopandas as gpd
+
+    source = Path(path) if path is not None else city_dir("mumbai") / "hotspots.geojson"
+    gdf = gpd.read_file(source)
+    for column, default in (("sourced", False), ("is_sink", False), ("coord_verified", False)):
+        if column in gdf.columns:
+            gdf[column] = gdf[column].fillna(False).astype(bool)
+        else:
+            gdf[column] = default
+    if crs is not None and len(gdf):
+        gdf = gdf.to_crs(crs)
+    return gdf
+
+
 __all__ = [
     "MIN_SOURCED_POINTS",
     "RegisterNotFoundError",
     "build_hotspots",
     "load_register",
+    "read_hotspots",
     "register_source_path",
     "sourced_count",
 ]

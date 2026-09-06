@@ -273,6 +273,14 @@
       "title": "Crs",
       "type": "integer"
     },
+    "dem_tiles": {
+      "description": "Copernicus GLO-30 tile file names under city/cache/dem/ that cover the AOI (CLAUDE.md 10.1 step 1). Names only, never URLs: the pipeline reads the cache.",
+      "items": {
+        "type": "string"
+      },
+      "title": "Dem Tiles",
+      "type": "array"
+    },
     "depression_min_area_m2": {
       "default": 900.0,
       "description": "Pits smaller than this are breached as spurious.",
@@ -321,6 +329,14 @@
       "exclusiveMinimum": 0,
       "title": "Inlet Spacing M",
       "type": "number"
+    },
+    "landcover_tiles": {
+      "description": "ESA WorldCover 10 m tile file names under city/cache/worldcover/ covering the AOI (CLAUDE.md 10.1 step 3).",
+      "items": {
+        "type": "string"
+      },
+      "title": "Landcover Tiles",
+      "type": "array"
     },
     "manning_n": {
       "additionalProperties": {

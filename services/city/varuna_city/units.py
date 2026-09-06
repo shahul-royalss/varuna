@@ -53,6 +53,9 @@ HEX_ACROSS_FLATS_M = 150.0
 MERGE_PASSES = 6
 """How many merge sweeps to run before accepting whatever units remain."""
 
+MAX_FALLBACK_CELLS_PER_AXIS = 20_000
+"""Guard on a grid inferred from an extent (600 km at 30 m): no city AOI is bigger."""
+
 UNIT_COLUMNS = (
     "unit_id",
     "inlet_node_id",
@@ -125,12 +128,17 @@ def _terminals(receiver: NDArray[np.int64]) -> NDArray[np.int64]:
     return current
 
 
-def _inlet_cells(
-    inlet_points: Any, transform: Affine, shape_hw: tuple[int, int]
-) -> tuple[NDArray[np.int64], list[Any]]:
-    """Flat cell index per inlet plus the inlet ids, dropping inlets outside the grid."""
-    height, width = shape_hw
+def _inlet_xy_ids(inlet_points: Any) -> tuple[list[float], list[float], list[Any]]:
+    """``(xs, ys, ids)`` from inlets given as a GeoDataFrame, shapely points or pairs.
+
+    ``None``, an empty list and an empty GeoDataFrame all mean "no inlets" and return three
+    empty lists, so callers can test emptiness once instead of guessing at the container.
+    """
+    if inlet_points is None:
+        return [], [], []
     if isinstance(inlet_points, gpd.GeoDataFrame):
+        if inlet_points.empty:
+            return [], [], []
         geoms = list(inlet_points.geometry)
         id_column = next(
             (c for c in ("node_id", "inlet_id", "id") if c in inlet_points.columns), None
@@ -141,13 +149,15 @@ def _inlet_cells(
             else [f"IN-{i:06d}" for i in range(len(geoms))]
         )
     else:
-        items = list(inlet_points)
-        geoms = items
-        ids = [f"IN-{i:06d}" for i in range(len(items))]
+        geoms = list(inlet_points)
+        ids = [f"IN-{i:06d}" for i in range(len(geoms))]
 
     xs: list[float] = []
     ys: list[float] = []
-    for geom in geoms:
+    kept_ids: list[Any] = []
+    for geom, node_id in zip(geoms, ids, strict=True):
+        if geom is None or (hasattr(geom, "is_empty") and geom.is_empty):
+            continue
         if hasattr(geom, "x") and hasattr(geom, "y"):
             xs.append(float(geom.x))
             ys.append(float(geom.y))
@@ -155,6 +165,18 @@ def _inlet_cells(
             x, y = geom
             xs.append(float(x))
             ys.append(float(y))
+        kept_ids.append(node_id)
+    return xs, ys, kept_ids
+
+
+def _inlet_cells(
+    inlet_points: Any, transform: Affine, shape_hw: tuple[int, int]
+) -> tuple[NDArray[np.int64], list[Any]]:
+    """Flat cell index per inlet plus the inlet ids, dropping inlets outside the grid."""
+    height, width = shape_hw
+    xs, ys, ids = _inlet_xy_ids(inlet_points)
+    if not xs:
+        return np.empty(0, dtype=np.int64), []
 
     inverse = ~transform
     cols = np.floor(np.array([inverse.a * x + inverse.b * y + inverse.c for x, y in zip(xs, ys, strict=True)])).astype(np.int64)
@@ -255,9 +277,9 @@ def _split_large(labels: NDArray[np.int64], max_cells: int) -> NDArray[np.int64]
     sorted_labels = out[order]
     starts = np.searchsorted(sorted_labels, big, side="left")
     ends = np.searchsorted(sorted_labels, big, side="right")
-    for label, start, end in zip(big.tolist(), starts.tolist(), ends.tolist(), strict=True):
+    for start, end in zip(starts.tolist(), ends.tolist(), strict=True):
         cells = order[start:end]
-        parts = int(math.ceil(cells.size / max_cells))
+        parts = math.ceil(cells.size / max_cells)
         if parts <= 1:
             continue
         for offset, chunk in enumerate(np.array_split(cells, parts)):
@@ -315,19 +337,50 @@ def _cell_stat(
     if raster is None:
         return np.full(n_labels, np.nan, dtype=np.float64)
     values = np.asarray(raster, dtype=np.float64).reshape(-1)
+    if values.size != labels_flat.size:
+        raise ValueError(
+            f"raster has {values.size} cells but the unit labels have {labels_flat.size}"
+        )
     valid = (labels_flat >= 0) & np.isfinite(values)
     out = np.full(n_labels, np.nan, dtype=np.float64)
     if not valid.any():
         return out
     idx = labels_flat[valid]
     if how == "max":
-        np.maximum.at(out, idx, values[valid])
-        return out
+        # A unit's ponding capacity is set by its deepest pit, not by its average dip, so
+        # depression depth reduces with max. The accumulator starts at -inf rather than at
+        # nan (nan poisons np.maximum.at, which is what made every depth come back nan);
+        # a unit whose cells are all flat therefore keeps 0.0, and only a unit with no
+        # valid cell at all stays nan.
+        peak = np.full(n_labels, -np.inf, dtype=np.float64)
+        np.maximum.at(peak, idx, values[valid])
+        return np.where(np.isfinite(peak), peak, np.nan)
     totals = np.bincount(idx, weights=values[valid], minlength=n_labels)
     counts = np.bincount(idx, minlength=n_labels)
     with np.errstate(invalid="ignore", divide="ignore"):
         out = np.where(counts > 0, totals / np.maximum(counts, 1), np.nan)
     return out
+
+
+_EMPTY_UNIT_DTYPES: dict[str, str] = {
+    "area_m2": "float64",
+    "n_cells": "int64",
+    "imperviousness": "float64",
+    "cn": "float64",
+    "manning_n": "float64",
+    "depression_depth_m": "float64",
+}
+
+
+def _empty_units(crs: str | None) -> gpd.GeoDataFrame:
+    """A well-formed, empty units frame: right columns, right geometry column, right CRS."""
+    data: dict[str, Any] = {
+        name: pd.Series(dtype=_EMPTY_UNIT_DTYPES.get(name, "object"))
+        for name in UNIT_COLUMNS
+        if name != "geometry"
+    }
+    data["geometry"] = gpd.GeoSeries([], dtype="geometry", crs=crs)
+    return gpd.GeoDataFrame(data, geometry="geometry", crs=crs)[list(UNIT_COLUMNS)]
 
 
 def hex_units(
@@ -339,6 +392,10 @@ def hex_units(
     min_area_m2: float = MIN_UNIT_AREA_M2,
     max_area_m2: float = MAX_UNIT_AREA_M2,
     aoi: Any | None = None,
+    imperviousness: NDArray[np.floating] | None = None,
+    cn: NDArray[np.floating] | None = None,
+    manning_n: NDArray[np.floating] | None = None,
+    depression_depth: NDArray[np.floating] | None = None,
 ) -> gpd.GeoDataFrame:
     """The documented fallback: a hexagon grid over the AOI (CLAUDE.md 10.1 step 6).
 
@@ -346,6 +403,11 @@ def hex_units(
     cells) so the tiling stays square with the computation grid and is byte-reproducible.
     ``across_flats_m`` is shrunk if a 150 m hexagon would exceed ``max_area_m2``. Edge
     hexagons clipped below ``min_area_m2`` are dropped, so every unit respects the cap.
+
+    The frame carries the same columns as the D8 path, always with a geometry column even
+    when no hexagon survives. City rasters, when given, are aggregated onto the hexagons
+    exactly as they are onto watersheds, so a fallback city still feeds Flash real CN,
+    imperviousness, roughness and ponding depth instead of a column of nans.
     """
     height, width = shape_hw
     left, bottom, right, top = array_bounds(height, width, transform)
@@ -358,8 +420,8 @@ def hex_units(
 
     aoi_geom = aoi if aoi is not None else box(left, bottom, right, top)
     rows: list[dict[str, Any]] = []
-    n_rows = int(math.ceil((top - bottom) / step_y)) + 1
-    n_cols = int(math.ceil((right - left) / step_x)) + 1
+    n_rows = math.ceil((top - bottom) / step_y) + 1
+    n_cols = math.ceil((right - left) / step_x) + 1
     for row in range(n_rows):
         cy = bottom + row * step_y
         offset = 0.0 if row % 2 == 0 else step_x / 2.0
@@ -378,25 +440,127 @@ def hex_units(
             if clipped.is_empty or clipped.area < min_area_m2:
                 continue
             rows.append({"row": row, "col": col, "geometry": clipped})
+    if not rows:
+        log.warning("units.hex_fallback.empty", across_flats_m=round(span, 1))
+        return _empty_units(crs)
+
     frame = gpd.GeoDataFrame(rows, geometry="geometry", crs=crs)
-    if frame.empty:
-        return gpd.GeoDataFrame(
-            {name: pd.Series(dtype="object") for name in UNIT_COLUMNS},
-            geometry="geometry",
-            crs=crs,
-        )
     frame = frame.sort_values(["row", "col"], kind="stable").reset_index(drop=True)
     frame["unit_id"] = [f"U-HEX-{i:06d}" for i in range(len(frame))]
     frame["area_m2"] = frame.geometry.area.astype(float)
-    frame["n_cells"] = 0
     frame["inlet_node_id"] = None
     frame["segment_id"] = None
-    for column in ("imperviousness", "cn", "manning_n", "depression_depth_m"):
-        frame[column] = np.nan
     frame["method"] = "hex_fallback"
-    frame["cells"] = [np.empty(0, dtype=np.int64) for _ in range(len(frame))]
+
+    rasters = {
+        "imperviousness": imperviousness,
+        "cn": cn,
+        "manning_n": manning_n,
+        "depression_depth_m": depression_depth,
+    }
+    if any(raster is not None for raster in rasters.values()):
+        labels_flat = _rasterise_units(frame.geometry, transform, (height, width))
+        n_labels = len(frame)
+        order = np.argsort(labels_flat, kind="stable")
+        sorted_labels = labels_flat[order]
+        wanted = np.arange(n_labels, dtype=np.int64)
+        starts = np.searchsorted(sorted_labels, wanted, side="left")
+        ends = np.searchsorted(sorted_labels, wanted, side="right")
+        frame["cells"] = [order[start:end] for start, end in zip(starts, ends, strict=True)]
+        frame["n_cells"] = (ends - starts).astype(int)
+        for name, raster in rasters.items():
+            frame[name] = _cell_stat(
+                labels_flat,
+                n_labels,
+                raster,
+                how="max" if name == "depression_depth_m" else "mean",
+            )
+    else:
+        frame["n_cells"] = 0
+        frame["cells"] = [np.empty(0, dtype=np.int64) for _ in range(len(frame))]
+        for column in ("imperviousness", "cn", "manning_n", "depression_depth_m"):
+            frame[column] = np.nan
+
     log.info("units.hex_fallback", units=len(frame), across_flats_m=round(span, 1))
     return gpd.GeoDataFrame(frame[list(UNIT_COLUMNS)], geometry="geometry", crs=crs)
+
+
+def _rasterise_units(
+    geometries: Any, transform: Affine, shape_hw: tuple[int, int]
+) -> NDArray[np.int64]:
+    """Flat per-cell unit label for a set of unit polygons (``-1`` where none covers it)."""
+    from rasterio.features import rasterize
+
+    shapes = [(geom, index) for index, geom in enumerate(geometries)]
+    labels = rasterize(
+        shapes,
+        out_shape=shape_hw,
+        transform=transform,
+        fill=-1,
+        dtype="int32",
+        all_touched=False,
+    )
+    return labels.reshape(-1).astype(np.int64)
+
+
+def _grid_shape(candidate: Any) -> tuple[int, int] | None:
+    """``(height, width)`` of a 2-D raster, or ``None`` when it is missing or degenerate."""
+    if candidate is None:
+        return None
+    array = np.asarray(candidate)
+    if array.ndim != 2 or array.size == 0:
+        return None
+    return (int(array.shape[0]), int(array.shape[1]))
+
+
+def _shape_covering(
+    bounds: tuple[float, float, float, float], transform: Affine
+) -> tuple[int, int] | None:
+    """Smallest grid anchored at the transform origin that still covers ``bounds``."""
+    minx, miny, maxx, maxy = bounds
+    inverse = ~transform
+    cols = []
+    rows = []
+    for x, y in ((minx, miny), (minx, maxy), (maxx, miny), (maxx, maxy)):
+        cols.append(inverse.a * x + inverse.b * y + inverse.c)
+        rows.append(inverse.d * x + inverse.e * y + inverse.f)
+    width = math.ceil(max(cols))
+    height = math.ceil(max(rows))
+    if width < 1 or height < 1:
+        return None
+    limit = MAX_FALLBACK_CELLS_PER_AXIS
+    return (min(height, limit), min(width, limit))
+
+
+def _fallback_shape(
+    conditioned_dem: NDArray[np.floating] | None,
+    transform: Affine,
+    inlet_points: Any,
+    rasters: tuple[NDArray[np.floating] | None, ...],
+    aoi: Any | None,
+) -> tuple[int, int] | None:
+    """The grid the hexagon fallback tiles, when the D8 path could not run.
+
+    The DEM is the natural source, but the fallback exists precisely for the case where
+    there is no DEM, so fall back in turn to any other city raster, then to the AOI
+    polygon, then to the extent of the inlets. ``None`` means nothing said how big the
+    city is, and the caller returns an empty units frame rather than an arbitrary one.
+    """
+    shape = _grid_shape(conditioned_dem)
+    if shape is not None:
+        return shape
+    for raster in rasters:
+        shape = _grid_shape(raster)
+        if shape is not None:
+            return shape
+    if aoi is not None and getattr(aoi, "bounds", None):
+        shape = _shape_covering(tuple(aoi.bounds), transform)
+        if shape is not None:
+            return shape
+    xs, ys, _ = _inlet_xy_ids(inlet_points)
+    if xs:
+        return _shape_covering((min(xs), min(ys), max(xs), max(ys)), transform)
+    return None
 
 
 def build_surface_units(
@@ -445,8 +609,8 @@ def build_surface_units(
     if crs is None and segments is not None:
         crs = str(segments.crs) if segments.crs is not None else None
     res = abs(float(transform.a))
-    min_cells = max(1, int(round(min_area_m2 / (res * res))))
-    max_cells = max(min_cells + 1, int(round(max_area_m2 / (res * res))))
+    min_cells = max(1, round(float(min_area_m2) / (res * res)))
+    max_cells = max(min_cells + 1, round(float(max_area_m2) / (res * res)))
 
     try:
         units = _watershed_units(
@@ -463,17 +627,29 @@ def build_surface_units(
         )
     except DegenerateUnitsError as exc:
         log.warning("units.fallback", reason=str(exc))
-        shape_hw = (
-            np.asarray(conditioned_dem).shape if conditioned_dem is not None else (1, 1)
-        )
-        units = hex_units(
+        shape_hw = _fallback_shape(
+            conditioned_dem,
             transform,
-            (int(shape_hw[0]), int(shape_hw[1])),
-            crs=crs,
-            min_area_m2=min_area_m2,
-            max_area_m2=max_area_m2,
-            aoi=aoi,
+            inlet_points,
+            (imperviousness, cn, manning_n, depression_depth),
+            aoi,
         )
+        if shape_hw is None:
+            log.warning("units.fallback.no_extent", reason=str(exc))
+            units = _empty_units(crs)
+        else:
+            units = hex_units(
+                transform,
+                shape_hw,
+                crs=crs,
+                min_area_m2=min_area_m2,
+                max_area_m2=max_area_m2,
+                aoi=aoi,
+                imperviousness=imperviousness,
+                cn=cn,
+                manning_n=manning_n,
+                depression_depth=depression_depth,
+            )
 
     if segments is not None and not segments.empty and not units.empty:
         from varuna_city.segments import segments_near
@@ -504,6 +680,10 @@ def _watershed_units(
     depression_depth: NDArray[np.floating] | None,
 ) -> gpd.GeoDataFrame:
     """The D8 path of :func:`build_surface_units`; raises :class:`DegenerateUnitsError`."""
+    xs, _, _ = _inlet_xy_ids(inlet_points)
+    if not xs:
+        # No inlets at all: ``None``, an empty list and an empty GeoDataFrame alike.
+        raise DegenerateUnitsError("no inlets given")
     if conditioned_dem is None:
         raise DegenerateUnitsError("no conditioned DEM")
     dem = np.asarray(conditioned_dem, dtype=np.float64)

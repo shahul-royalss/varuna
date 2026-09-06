@@ -57,3 +57,35 @@ Five lines each: context, decision, alternatives, consequence, date. Newest at t
 - Alternatives: open at 08:00 (fourteen pins, but some land only 7 minutes ahead, which demonstrates nowcasting the present rather than forecasting); keep 15:40 and accept that no pin lands (breaks rule 7 and the 2:40 beat of the demo); switch to another Mumbai event (unnecessary, this one yields 29 pins against a minimum of 10).
 - Consequence: the demo script times in section 15 shift by nine hours; the storm designer calibrates to the 05:40-09:40 window, which sits inside the one primary-sourced total (Santacruz 375.2 mm for the 24 hours ending 08:30 IST on 2 July, IMD); the "three hours early" claim is now evidenced rather than asserted. Depth MAE cannot be scored for this event because no cached source states a depth in centimetres, so `/verify` reports occurrence, place and timing only, and says why.
 - Date: 2026-09-06
+
+## ADR-0008 The city build is a chain of cache-and-reload steps, in dependency order
+
+- Context: `make city` runs eleven steps of CLAUDE.md 10.1 over 168,606 cells and 34,539 road edges; a full build is minutes, and Phase 2 onwards will re-run it constantly while iterating on one step.
+- Decision: every step in `varuna_city.pipeline` declares the files it writes and the files it reads, and carries both a `build` and a `load`; when its outputs are newer than its inputs it *reloads* its products from `city/<city>/` instead of recomputing them. Steps run in dependency order, not the spec's numbering: hotspots before conditioning (chronic underpasses must survive as sinks), drains before units (a unit is the watershed draining to an inlet), and the units are joined back onto the drain nodes so `inlet_links.parquet` names real units.
+- Alternatives: recompute everything every time (a 5-minute inner loop); a build system such as doit or snakemake (another dependency and another language on stage); hand-rolled `if path.exists()` checks inside each module (the staleness rule then lives in twelve places).
+- Consequence: a cold build of Mumbai from the open-data cache is 2 minutes 43 seconds and a warm re-run is 15 seconds; `--only <step>` rebuilds one step and lets the rest load; every step's numbers land in `pipeline.json` and in `REPORT.md` whether it ran or reloaded.
+- Date: 2026-09-07
+
+## ADR-0009 At 30 m the spurious-pit rule cannot fire, and that is reported rather than tuned
+
+- Context: CLAUDE.md 10.1 step 4 breaches depressions smaller than 900 m2 as DEM artefacts. One cell of the 30 m city grid is exactly 900 m2, so no pit on this grid is ever smaller than the threshold: the Mumbai build finds 4,004 pits and breaches none of them as spurious.
+- Decision: leave the rule and the threshold as the spec states them, and print the arithmetic in `city/<city>/REPORT.md` next to the number. Buildings are still burned, roads carved and 1,041 culverts and bridges breached; every remaining pit is kept and reported, noise included.
+- Alternatives: raise the threshold to a few cells (invents a filter the spec did not ask for and silently deletes real chronic dips); drop the rule (loses it for the 5 m nests); tune until the number looks busy (a fabricated result).
+- Consequence: the depression map at 30 m is the pit set of the conditioned DEM as it stands; the rule starts selecting on the 5 m nests (25 m2 cells) of CLAUDE.md 3.3, and the report says so where a judge will read it. Depressions whose bottom cell is permanent water are dropped instead (58 of 4,004): they are the bay and the creek, not a street.
+- Date: 2026-09-07
+
+## ADR-0008 Lane counts take the maximum of an OpenStreetMap tag collection
+
+- Context: `make city` was not reproducible. Two cold builds of Mumbai agreed on every geometry and identifier but disagreed on `lanes` for 4 of 21,296 road segments. OSMnx returns a collection of tag values whenever it simplifies several ways into one edge, and that collection is sometimes a `set`, whose iteration order changes with Python's per-process string hash seed; the helper took the first item it saw.
+- Decision: collect every integer in the value and take the maximum. The result is order-independent, and where a simplified edge spans a widening the widest cross-section is the one that carries the traffic the exposure weight represents.
+- Alternatives: take the minimum (defensible as a bottleneck, but exposure weighting is about how much traffic the street carries); sort and take the first (arbitrary); set `PYTHONHASHSEED` (hides the bug rather than fixing it, and only inside our own processes).
+- Consequence: the segment table is now identical across runs. A regression test in `services/city/tests/test_segments.py` pins the behaviour for lists, sets and scalars. One source of non-reproducibility remains, float noise in `pyflwdir.fill_depressions`, recorded in `city/mumbai/REPORT.md`.
+- Date: 2026-09-07
+
+## ADR-0009 Ruff exclusions are anchored to the repository root
+
+- Context: `uv run ruff check .` reported "All checks passed" while `uv run ruff check services/city` found 30 errors. The root configuration excluded `"city"`, and an unanchored pattern matches a directory of that name anywhere in the tree, so the entire city service was silently unlinted from the day it was written.
+- Decision: anchor the data-directory exclusions as `/city`, `/data` and `/bundles` so they match only the gitignored folders at the repository root.
+- Alternatives: rename the service (churn, and the spec names it `services/city`); list the service explicitly in `include` (fights the exclusion rather than fixing it).
+- Consequence: the city service is linted; the 30 findings it had were fixed. Any future service under a name that collides with a data directory is covered automatically.
+- Date: 2026-09-07

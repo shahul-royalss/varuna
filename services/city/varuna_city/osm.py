@@ -33,7 +33,7 @@ import structlog
 from shapely.geometry import box
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    import networkx as nx
+    pass
 
 log = structlog.get_logger(__name__)
 
@@ -64,7 +64,11 @@ PROXY_LAYERS: dict[str, str] = {
     "shelters": "Shelter proxy: OSM schools and community centres (CLAUDE.md 10.1)",
 }
 
-_OSM_CACHE = Path("city") / "cache" / "osmnx"
+def _osm_cache_folder() -> Path:
+    """``city/cache/osmnx`` as an absolute path, so the CLI works from any directory."""
+    from varuna_city.cache import cached_osmnx_folder
+
+    return cached_osmnx_folder()
 
 
 @runtime_checkable
@@ -133,7 +137,7 @@ def _import_osmnx() -> Any:
     import osmnx as ox
 
     ox.settings.use_cache = True
-    ox.settings.cache_folder = str(_OSM_CACHE)
+    ox.settings.cache_folder = str(_osm_cache_folder())
     ox.settings.log_console = False
     return ox
 
@@ -202,7 +206,7 @@ def fetch_osm(
         graph = ox.projection.project_graph(graph, to_crs=crs)
         layers.graph = graph
         layers.roads = ox.graph_to_gdfs(graph, nodes=False).reset_index()
-    except Exception as exc:  # noqa: BLE001 - a missing graph must not stop the pipeline
+    except Exception as exc:
         log.warning("osm.graph_failed", city=city, error=str(exc))
         layers.roads = _empty_gdf(("u", "v", "key", "osmid", "highway"), crs)
     layers.stage_ms["graph"] = round((time.perf_counter() - t0) * 1000, 1)
@@ -215,7 +219,7 @@ def fetch_osm(
             layer = (
                 _sanitize(found, keep, crs) if len(found) else _empty_gdf(("osmid", *keep), crs)
             )
-        except Exception as exc:  # noqa: BLE001 - an empty tag set is a warning, not a crash
+        except Exception as exc:
             log.warning("osm.layer_empty", city=city, layer=name, error=str(exc))
             layer = _empty_gdf(("osmid", *keep), crs)
         if name in PROXY_LAYERS:

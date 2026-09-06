@@ -77,7 +77,6 @@ STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None
     ("POST", "/v1/onboard", {"city": "chennai"}, None),
     ("GET", "/v1/onboard/job-1", None, None),
     ("GET", "/v1/verification", None, {"event": "MUM-2019-07-02"}),
-    ("GET", "/v1/city/mumbai/layers/segments", None, None),
 ]
 
 

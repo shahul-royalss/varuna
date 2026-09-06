@@ -17,6 +17,7 @@ import structlog
 from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from varuna_cycle.bus import Bus
@@ -25,7 +26,7 @@ from varuna_schemas.models import ErrorEnvelope
 from varuna_schemas.settings import Settings
 
 from varuna_api import __version__
-from varuna_api.routers import cycle, health, live, runs, stubs
+from varuna_api.routers import city, cycle, health, live, runs, stubs
 from varuna_api.state import AppState
 
 _LOGGING_CONFIGURED = False
@@ -181,8 +182,11 @@ def create_app(
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["X-Run-Id", "X-Response-Ms"],
+        expose_headers=["X-Run-Id", "X-Response-Ms", "X-Layer", "ETag"],
     )
+    # The static city layers are megabytes of GeoJSON (50k inferred drain edges); they
+    # compress about five to one, and the console loads them once per city.
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
 
     request_log = structlog.get_logger("varuna.api.request")
 
@@ -213,6 +217,7 @@ def create_app(
     app.include_router(runs.router)
     app.include_router(cycle.router)
     app.include_router(live.router)
+    app.include_router(city.router)
     app.include_router(stubs.router)
     return app
 

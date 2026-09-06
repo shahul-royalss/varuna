@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
 from varuna_city.roughness import (
     N_ASPHALT,
     N_BUILDING,
