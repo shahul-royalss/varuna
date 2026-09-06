@@ -106,6 +106,17 @@ city/cache/worldcover/ESA_WorldCover_10m_2021_v200_N12E078_Map.tif
 city/cache/MANIFEST.json    # url, bytes, sha256 and fetch time per file
 ```
 
+The OSMnx cache (`city/cache/osmnx/`, 36 MB) is warm for the whole Mumbai area of interest. Measured on this
+laptop, so use these as sanity checks:
+
+| OSM layer | Features | First fetch |
+|---|---|---|
+| `drive_service` graph | 15,546 nodes / 34,539 edges | 23 s |
+| buildings | 39,259 | 20 s |
+| waterways (drain, canal, stream, river) | 219 | 112 s |
+| assets (hospital, fire station, school, community centre, station) | 706 | 5 s |
+| culverts and bridges | 1,045 | 62 s |
+
 Rules: read the tile from the cache and never through GDAL's `vsicurl` (ADR-0006 explains why remote reads
 fail on this machine). Any new download goes through `truststore.inject_into_ssl()` or the helper in
 `tools/prefetch_city_cache.py`, writes into `city/cache/`, and records itself in `MANIFEST.json`. OSMnx also
