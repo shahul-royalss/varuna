@@ -18,8 +18,10 @@ export function ConsoleScreen() {
     <AppShell rightRail={<RightRail />} bottomBar={<TimeBar />}>
       <div className="relative h-full min-h-0 w-full">
         <MapSlot />
+        {/* The replay panel is capped to the map canvas so it never slides under the time bar
+            at 1366 x 768; long cycle logs scroll inside it. */}
         {replayPanelOpen ? (
-          <div className="absolute top-4 right-4 z-20 w-[360px] max-w-[calc(100%-2rem)]">
+          <div className="absolute top-4 right-4 z-20 max-h-[calc(100%-2rem)] w-[360px] max-w-[calc(100%-2rem)] overflow-y-auto">
             <ReplayPanel />
           </div>
         ) : null}
