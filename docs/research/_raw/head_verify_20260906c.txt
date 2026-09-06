@@ -1,0 +1,82 @@
+### https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N18_00_E072_00_DEM/Copernicus_DSM_COG_10_N18_00_E072_00_DEM.tif
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 14:07:11 GMT
+ETag: "f0558bb78b8a969502767c6a1340c4a0"
+Content-Type: image/tiff
+Content-Length: 4027713
+### https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N19_00_E072_00_DEM/Copernicus_DSM_COG_10_N19_00_E072_00_DEM.tif
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 14:07:42 GMT
+ETag: "853d8d53d59a6a618f3b8cc4157c319e"
+Content-Type: image/tiff
+Content-Length: 13336459
+### https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N12_00_E080_00_DEM/Copernicus_DSM_COG_10_N12_00_E080_00_DEM.tif
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 14:04:30 GMT
+ETag: "e004f64cca33d8fe5444831bdd79a039"
+Content-Type: image/tiff
+Content-Length: 7135610
+### https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_N13_00_E080_00_DEM/Copernicus_DSM_COG_10_N13_00_E080_00_DEM.tif
+HTTP/1.1 200 OK
+Last-Modified: Mon, 09 May 2022 14:04:55 GMT
+ETag: "952247d695de2d82c33cd0210b8ed9d4"
+Content-Type: image/tiff
+Content-Length: 12362785
+### https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N18E072_Map.tif
+HTTP/1.1 200 OK
+Last-Modified: Wed, 26 Oct 2022 12:51:44 GMT
+ETag: "154e6529d4bdd4b8e26e58328ddeacfe-15"
+Content-Type: binary/octet-stream
+Content-Length: 125766199
+### https://esa-worldcover.s3.eu-central-1.amazonaws.com/v200/2021/map/ESA_WorldCover_10m_2021_v200_N12E078_Map.tif
+HTTP/1.1 200 OK
+Last-Modified: Wed, 26 Oct 2022 12:44:22 GMT
+ETag: "b874359163b5cde26540c7bb6aa18e9a-15"
+Content-Type: binary/octet-stream
+Content-Length: 119065806
+### https://mausam.imd.gov.in/Radar/caz_VRV.gif
+HTTP/1.1 404 Not Found
+Content-Type: text/html; charset=iso-8859-1
+### https://mausam.imd.gov.in/Radar/caz_CHN.gif
+HTTP/1.1 404 Not Found
+Content-Type: text/html; charset=iso-8859-1
+### https://mausam.imd.gov.in/responsive/radar_animation.php?id=VRV
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=UTF-8
+### https://www.mosdac.gov.in/
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=UTF-8
+### https://overpass-api.de/api/status
+HTTP/1.1 200 OK
+Content-Type: text/plain; charset=utf-8
+### https://nominatim.openstreetmap.org/status
+HTTP/1.1 200 OK
+Content-Length: 2
+content-type: text/plain; charset=utf-8
+### https://portal.opentopography.org/API/globaldem?demtype=NASADEM&south=18.99&north=19.14&west=72.81&east=72.91&outputFormat=GTiff
+HTTP/1.1 401 401
+Content-Type: text/html;charset=utf-8
+### https://mausam.imd.gov.in/Radar/caz_vrv.gif
+HTTP/1.1 200 OK
+Date: Sun, 06 Sep 2026 09:42:44 GMT
+Last-Modified: Sun, 06 Sep 2026 09:40:01 GMT
+Content-Length: 1260008
+Content-Type: image/gif
+### https://mausam.imd.gov.in/Radar/sri_vrv.gif
+HTTP/1.1 200 OK
+Date: Sun, 06 Sep 2026 09:42:48 GMT
+Last-Modified: Sun, 06 Sep 2026 09:40:03 GMT
+Content-Length: 1555704
+Content-Type: image/gif
+### https://mausam.imd.gov.in/Radar/caz_chn.gif
+HTTP/1.1 404 Not Found
+Date: Sun, 06 Sep 2026 09:42:49 GMT
+Content-Type: text/html; charset=iso-8859-1
+### https://mausam.imd.gov.in/Radar/animation/Converted/VRV_MAXZ.gif
+HTTP/1.1 200 OK
+Date: Sun, 06 Sep 2026 09:42:50 GMT
+Last-Modified: Sun, 06 Sep 2026 09:25:32 GMT
+Content-Length: 24974946
+Content-Type: image/gif
+https://cpheeo.gov.in/ -> https://cpheeo.gov.in/cms/manual-on-storm-water-drainage-systems---2019.php -> https://incois.gov.in/portal/datainfo/drf.jsp -> HTTP/1.1 404 Not Found
+https://www.chennaicorporation.gov.in/gcc/ -> HTTP/1.1 200 OK

@@ -12,6 +12,10 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     globals: false,
+    // 19 jsdom environments on a loaded machine (dev server compiling, Playwright running) can
+    // outrun vitest's 5 s default; the suite itself is synchronous, so this only buys headroom.
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
     setupFiles: ["./vitest.setup.ts"],
     include: ["**/__tests__/**/*.test.{ts,tsx}", "**/*.test.{ts,tsx}"],
     exclude: ["node_modules/**", ".next/**", "e2e/**", "tests/**"],

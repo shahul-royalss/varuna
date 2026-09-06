@@ -150,7 +150,7 @@ export function ReportWizard({ className }: ReportWizardProps) {
         <Panel title="Where is the water?" description="Adjust the point if the map is off.">
           <div className="flex flex-col gap-4 p-4">
             <div className="h-56 overflow-hidden rounded-panel border border-line">
-              <MapSlot />
+              <MapSlot audience="public" emptyState={null} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" onClick={useMyLocation} disabled={locating}>

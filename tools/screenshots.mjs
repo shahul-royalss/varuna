@@ -75,6 +75,8 @@ async function capture(browser, screen) {
   // Let the first Turbopack compile, fonts and any lazy panel settle before the shutter.
   await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => {});
   await page.waitForTimeout(1_200);
+  // The dev-server route indicator is not part of the design; keep it out of the baseline.
+  await page.addStyleTag({ content: "nextjs-portal { display: none !important; }" }).catch(() => {});
 
   const file = path.join(outDir, screen.file);
   await page.screenshot({ path: file, fullPage: true, animations: "disabled" });
