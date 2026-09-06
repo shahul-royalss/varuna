@@ -186,7 +186,7 @@ export function formatScore(value: number | null | undefined): string {
   return twoDecimalFormatter.format(value);
 }
 
-/** "MUM-20190702T1740-sky1.0-twin1.0-flash0.3-baked" shortened for chips: keeps head and tail. */
+/** "MUM-20190702T0640-sky1.0-twin1.0-flash0.3-baked" shortened for chips: keeps head and tail. */
 export function shortenRunId(runId: string | null | undefined, max = 28): string {
   if (!runId) return MISSING;
   if (runId.length <= max) return runId;
@@ -210,7 +210,7 @@ export function addMinutesIso(input: DateInput, minutes: number): string | null 
   return toIstIso(new Date(date.getTime() + minutes * 60_000));
 }
 
-/** ISO 8601 with the +05:30 offset, e.g. "2019-07-02T17:40:00+05:30" (CLAUDE.md section 12). */
+/** ISO 8601 with the +05:30 offset, e.g. "2019-07-02T06:40:00+05:30" (CLAUDE.md section 12). */
 export function toIstIso(input: DateInput): string | null {
   const date = toDate(input);
   if (!date) return null;

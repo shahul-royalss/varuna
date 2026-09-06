@@ -41,7 +41,7 @@ import { Demo, DesignSection } from "./section";
 const SAMPLE_RUN: RunMeta = {
   run_id: "MUM-20190702T1210Z-sky1.0-twin1.0-flash0.3-baked",
   city: "mumbai",
-  cycle_ts: "2019-07-02T17:40:00+05:30",
+  cycle_ts: "2019-07-02T06:40:00+05:30",
   mode: "replay",
   replay_mode: "baked",
   ensemble_n: 50,
@@ -52,7 +52,7 @@ const SAMPLE_RUN: RunMeta = {
 };
 
 const SAMPLE_HOTSPOTS: HotspotSummary[] = [
-  { id: "hindmata", name: "Hindmata junction", depthCm: 55, timeToPeak: "18:20" },
+  { id: "hindmata", name: "Hindmata junction", depthCm: 55, timeToPeak: "08:20" },
   { id: "kings-circle", name: "King's Circle", depthCm: 38, timeToPeak: "18:35" },
   { id: "sion-circle", name: "Sion Circle", depthCm: 27, timeToPeak: "18:50" },
 ];
@@ -60,7 +60,7 @@ const SAMPLE_HOTSPOTS: HotspotSummary[] = [
 const SAMPLE_ALERT: AlertSummary = {
   id: "MUM-2019-07-02-hindmata-severe",
   level: "severe",
-  headline: "Hindmata junction: depth likely above 45 cm from 18:20 to 20:00",
+  headline: "Hindmata junction: depth likely above 45 cm from 08:20 to 10:00",
   area: "Ward F/South · Dr Ambedkar Road",
   triggerProbability: 0.82,
   raisedAt: "2019-07-02T17:45:00+05:30",
@@ -72,7 +72,7 @@ const SAMPLE_PHONE_MESSAGES: PhoneMessage[] = [
   {
     id: "hindmata-severe",
     time: "17:45",
-    text: "Hindmata junction: depth likely above 45 cm from 18:20 to 20:00. Divert traffic at Tilak Bridge. Pumps P-12 and P-15 dispatched.",
+    text: "Hindmata junction: depth likely above 45 cm from 08:20 to 10:00. Divert traffic at Tilak Bridge. Pumps P-12 and P-15 dispatched.",
   },
 ];
 
@@ -257,10 +257,10 @@ export function ComponentsSection() {
         <Panel title="Mode banner" description="One banner per mode; degraded names the missing feed.">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Demo label="Replay" bare>
-              <ModeBanner mode="replay" label="Replay 30× · 2 Jul 2019 · 17:40 IST" />
+              <ModeBanner mode="replay" label="Replay 30× · 2 Jul 2019 · 06:40 IST" />
             </Demo>
             <Demo label="Live" bare>
-              <ModeBanner mode="live" label="Live · 17:40 IST" />
+              <ModeBanner mode="live" label="Live · 06:40 IST" />
             </Demo>
             <Demo label="Degraded" bare>
               <ModeBanner mode="degraded" label="Degraded: radar offline, using gauges and satellite" />
@@ -283,7 +283,7 @@ export function ComponentsSection() {
                 <CitySwitcher />
               </div>
             </Demo>
-            <Demo label="With the 17:40 baked run" bare>
+            <Demo label="With the 06:40 baked run" bare>
               <WithSampleRun>
                 <div className="flex flex-wrap items-center gap-3">
                   <RunStamp />

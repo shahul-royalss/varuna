@@ -15,7 +15,7 @@ import { DEFAULT_RISK_TOLERANCE } from "@/lib/stores/ui";
 /** The page owns the request; this harness plays that part so the form stays controlled. */
 function Harness() {
   const [request, setRequest] = useState<RouteRequest>(() =>
-    defaultRouteRequest("2019-07-02T17:40:00+05:30"),
+    defaultRouteRequest("2019-07-02T06:40:00+05:30"),
   );
   return <RouteForm value={request} onChange={setRequest} disabled />;
 }
@@ -57,7 +57,7 @@ describe("RouteForm", () => {
 
 describe("withProfile", () => {
   it("carries the profile default tolerance, not the one set for another vehicle", () => {
-    const base = defaultRouteRequest("2019-07-02T17:40:00+05:30");
+    const base = defaultRouteRequest("2019-07-02T06:40:00+05:30");
     const car = withProfile({ ...base, riskTolerance: 0.85 }, "car");
     expect(car.riskTolerance).toBe(DEFAULT_RISK_TOLERANCE.car);
     expect(withProfile(car, "ambulance").riskTolerance).toBe(DEFAULT_RISK_TOLERANCE.ambulance);
@@ -66,14 +66,14 @@ describe("withProfile", () => {
 
 describe("withDepartureTime", () => {
   it("replaces the clock and keeps the date and the +05:30 offset", () => {
-    expect(withDepartureTime("2019-07-02T17:40:00+05:30", "18:20")).toBe(
-      "2019-07-02T18:20:00+05:30",
+    expect(withDepartureTime("2019-07-02T06:40:00+05:30", "08:20")).toBe(
+      "2019-07-02T08:20:00+05:30",
     );
   });
 
   it("ignores an incomplete time so the request never holds an invalid instant", () => {
-    expect(withDepartureTime("2019-07-02T17:40:00+05:30", "18:")).toBe(
-      "2019-07-02T17:40:00+05:30",
+    expect(withDepartureTime("2019-07-02T06:40:00+05:30", "18:")).toBe(
+      "2019-07-02T06:40:00+05:30",
     );
   });
 });

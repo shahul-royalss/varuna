@@ -9,7 +9,7 @@ import { Panel } from "@/components/varuna/panel";
 import { useCopyToClipboard } from "@/lib/hooks";
 import { apiUrl, useHealth } from "@/lib/api";
 
-const DEMO_RUN_ID = "MUM-20190702T1740-sky1.0-twin1.0-flash0.3-baked";
+const DEMO_RUN_ID = "MUM-20190702T0640-sky1.0-twin1.0-flash0.3-baked";
 
 interface Preset {
   id: string;
@@ -25,17 +25,17 @@ function presets(base: string): Preset[] {
       id: "segments",
       title: "Segments in a bounding box",
       description:
-        "Street quantiles, exceedance probabilities and safe-until for the Mumbai central area at 18:20 IST.",
-      curl: `curl "${base}/v1/nowcast/segments?run_id=${DEMO_RUN_ID}&bbox=72.815,18.995,72.905,19.135&t=2019-07-02T18:20:00%2B05:30&profile=car"`,
+        "Street quantiles, exceedance probabilities and safe-until for the Mumbai central area at 08:20 IST.",
+      curl: `curl "${base}/v1/nowcast/segments?run_id=${DEMO_RUN_ID}&bbox=72.815,18.995,72.905,19.135&t=2019-07-02T08:20:00%2B05:30&profile=car"`,
     },
     {
       id: "route",
       title: "Ambulance route, KEM Hospital to Sion Hospital",
       description:
-        "Departure 17:40 IST on the replay day, ambulance profile, risk tolerance 0.2.",
+        "Departure 08:40 IST on the replay day, ambulance profile, risk tolerance 0.2.",
       curl: `curl -X POST "${base}/v1/route" \\
   -H "content-type: application/json" \\
-  -d '{"origin":[72.8412,19.0032],"destination":[72.8621,19.0412],"depart_at":"2019-07-02T17:40:00+05:30","profile":"ambulance","risk_tolerance":0.2}'`,
+  -d '{"origin":[72.8412,19.0032],"destination":[72.8621,19.0412],"depart_at":"2019-07-02T06:40:00+05:30","profile":"ambulance","risk_tolerance":0.2}'`,
     },
     {
       id: "whatif",

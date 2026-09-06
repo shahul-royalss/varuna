@@ -26,22 +26,22 @@ import {
   toIstIso,
 } from "./format";
 
-// 2 July 2019, 17:40 IST is 12:10 UTC on the replay day.
-const REPLAY_UTC = "2019-07-02T12:10:00Z";
-const REPLAY_IST = "2019-07-02T17:40:00+05:30";
+// 2 July 2019, 06:40 IST is 01:10 UTC on the replay day (ADR-0007).
+const REPLAY_UTC = "2019-07-02T01:10:00Z";
+const REPLAY_IST = "2019-07-02T06:40:00+05:30";
 
 describe("formatIst", () => {
   it("renders IST 24-hour time from a UTC instant", () => {
-    expect(formatIst(REPLAY_UTC)).toBe("17:40");
+    expect(formatIst(REPLAY_UTC)).toBe("06:40");
   });
   it("renders the same instant from an offset ISO string", () => {
-    expect(formatIst(REPLAY_IST)).toBe("17:40");
+    expect(formatIst(REPLAY_IST)).toBe("06:40");
   });
   it("keeps 24-hour after midnight (00:05, never 24:05 or 12:05 am)", () => {
     expect(formatIst("2019-07-02T18:35:00Z")).toBe("00:05");
   });
   it("adds seconds on request", () => {
-    expect(formatIst("2019-07-02T12:10:05Z", { seconds: true })).toBe("17:40:05");
+    expect(formatIst("2019-07-02T01:10:05Z", { seconds: true })).toBe("06:40:05");
   });
   it("returns the missing marker for invalid input", () => {
     expect(formatIst("not a date")).toBe(MISSING);
@@ -58,7 +58,7 @@ describe("formatDate and formatDateTime", () => {
     expect(formatDate("2019-07-02T19:00:00Z")).toBe("3 Jul 2019");
   });
   it("renders date, time and the IST suffix", () => {
-    expect(formatDateTime(REPLAY_UTC)).toBe("2 Jul 2019 17:40 IST");
+    expect(formatDateTime(REPLAY_UTC)).toBe("2 Jul 2019 06:40 IST");
   });
 });
 
@@ -76,7 +76,7 @@ describe("formatLead and formatTimeWithLead", () => {
     expect(formatLead(39.6)).toBe("+40 min");
   });
   it("combines time and lead", () => {
-    expect(formatTimeWithLead("2019-07-02T12:50:00Z", 40)).toBe("18:20 (+40 min)");
+    expect(formatTimeWithLead("2019-07-02T01:50:00Z", 40)).toBe("07:20 (+40 min)");
   });
   it("does not append a lead to a missing time", () => {
     expect(formatTimeWithLead(null, 40)).toBe(MISSING);
@@ -155,7 +155,7 @@ describe("scores and ids", () => {
     expect(formatScore(0.712)).toBe("0.71");
   });
   it("shortens long run ids from the middle", () => {
-    const id = "MUM-20190702T1740-sky1.0-twin1.0-flash0.3-baked";
+    const id = "MUM-20190702T0640-sky1.0-twin1.0-flash0.3-baked";
     const short = shortenRunId(id, 20);
     expect(short.length).toBe(20);
     expect(short.startsWith("MUM-2019")).toBe(true);
@@ -167,17 +167,17 @@ describe("scores and ids", () => {
 
 describe("instants", () => {
   it("parses and rejects", () => {
-    expect(toDate(REPLAY_UTC)?.toISOString()).toBe("2019-07-02T12:10:00.000Z");
+    expect(toDate(REPLAY_UTC)?.toISOString()).toBe("2019-07-02T01:10:00.000Z");
     expect(toDate("garbage")).toBeNull();
     expect(toDate("")).toBeNull();
   });
   it("measures minutes between instants", () => {
-    expect(minutesBetween(REPLAY_UTC, "2019-07-02T12:50:00Z")).toBe(40);
+    expect(minutesBetween(REPLAY_UTC, "2019-07-02T01:50:00Z")).toBe(40);
     expect(minutesBetween(REPLAY_UTC, "bad")).toBeNull();
   });
   it("writes ISO with the +05:30 offset", () => {
-    expect(toIstIso(REPLAY_UTC)).toBe("2019-07-02T17:40:00+05:30");
-    expect(addMinutesIso(REPLAY_UTC, 40)).toBe("2019-07-02T18:20:00+05:30");
+    expect(toIstIso(REPLAY_UTC)).toBe("2019-07-02T06:40:00+05:30");
+    expect(addMinutesIso(REPLAY_UTC, 40)).toBe("2019-07-02T07:20:00+05:30");
     expect(addMinutesIso("bad", 40)).toBeNull();
   });
 });

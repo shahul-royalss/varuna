@@ -88,7 +88,7 @@ function ModeDemo() {
   const mode = MODE_CYCLE[index] ?? "replay";
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <ModeBanner mode={mode} label="Replay 30× · 2 Jul 2019 · 17:40 IST" />
+      <ModeBanner mode={mode} label="Replay 30× · 2 Jul 2019 · 06:40 IST" />
       <Button
         size="sm"
         variant="outline"
@@ -149,7 +149,7 @@ function SkeletonDemo() {
       ) : (
         <div className="flex flex-col gap-1">
           <span className="type-small font-medium text-text">Hindmata junction</span>
-          <span className="type-small num text-text-2">55 cm at 18:20 (+40 min)</span>
+          <span className="type-small num text-text-2">55 cm at 08:20 (+40 min)</span>
         </div>
       )}
       <Button size="sm" variant="outline" onClick={() => setLoading((v) => !v)}>
@@ -175,10 +175,10 @@ function SheetDemo({ reduced }: { reduced: boolean }) {
             aria-hidden="true"
             className="mx-auto mb-3 block h-1 w-10 rounded-chip bg-line-strong"
           />
-          <p className="type-small text-text">Dr Ambedkar Road: passable until 18:25</p>
+          <p className="type-small text-text">Dr Ambedkar Road: passable until 09:25</p>
           {expanded ? (
             <p className="type-small mt-2 text-text-2">
-              Hindmata junction: impassable for cars from 18:20. Tilak Bridge stays open.
+              Hindmata junction: impassable for cars from 08:20. Tilak Bridge stays open.
             </p>
           ) : null}
         </motion.div>

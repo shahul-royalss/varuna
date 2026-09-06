@@ -17,7 +17,7 @@ Element.prototype.scrollIntoView = vi.fn();
 const RUN: RunMeta = {
   run_id: "MUM-20190702T1210Z-sky1.0-twin1.0-flash0.3-baked",
   city: "mumbai",
-  cycle_ts: "2019-07-02T17:40:00+05:30",
+  cycle_ts: "2019-07-02T06:40:00+05:30",
   mode: "replay",
   replay_mode: "baked",
 };

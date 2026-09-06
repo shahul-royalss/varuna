@@ -99,6 +99,20 @@ class CityConfig(VarunaModel):
         default=None, description="Hand-curated infrastructure JSON (pumping stations, tanks)."
     )
     radar_domain: RadarDomain
+    dem_tiles: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Copernicus GLO-30 tile file names under city/cache/dem/ that cover the AOI "
+            "(CLAUDE.md 10.1 step 1). Names only, never URLs: the pipeline reads the cache."
+        ),
+    )
+    landcover_tiles: list[str] = Field(
+        default_factory=list,
+        description=(
+            "ESA WorldCover 10 m tile file names under city/cache/worldcover/ covering the AOI "
+            "(CLAUDE.md 10.1 step 3)."
+        ),
+    )
     manning_n: dict[str, float] = Field(
         default_factory=lambda: dict(DEFAULT_MANNING_N),
         description="Manning n by land-cover class.",
