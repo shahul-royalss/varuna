@@ -54,6 +54,34 @@ export function sortDrainRows(
   return [...rows].sort((a, b) => (sortValue(a, key) - sortValue(b, key)) * factor);
 }
 
+function SortButton({
+  column,
+  sortKey,
+  direction,
+  onToggle,
+}: {
+  column: DrainSortKey;
+  sortKey: DrainSortKey;
+  direction: SortDirection;
+  onToggle: (key: DrainSortKey) => void;
+}) {
+  const active = column === sortKey;
+  const Icon = direction === "asc" ? ArrowUp : ArrowDown;
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(column)}
+      className={cn(
+        "inline-flex items-center gap-1 rounded-control px-1 py-0.5 text-left transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tide",
+        active ? "text-text" : "text-text-2",
+      )}
+    >
+      {SORT_LABELS[column]}
+      {active ? <Icon size={12} strokeWidth={1.75} aria-hidden="true" /> : null}
+    </button>
+  );
+}
+
 export interface DrainHealthTableProps {
   rows: readonly DrainHealthRow[];
   className?: string;
@@ -93,24 +121,6 @@ export function DrainHealthTable({ rows, className }: DrainHealthTableProps) {
   const ariaSort = (key: DrainSortKey): "ascending" | "descending" | "none" =>
     key === sortKey ? (direction === "asc" ? "ascending" : "descending") : "none";
 
-  const SortButton = ({ column }: { column: DrainSortKey }) => {
-    const active = column === sortKey;
-    const Icon = direction === "asc" ? ArrowUp : ArrowDown;
-    return (
-      <button
-        type="button"
-        onClick={() => toggle(column)}
-        className={cn(
-          "inline-flex items-center gap-1 rounded-control px-1 py-0.5 text-left transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tide",
-          active ? "text-text" : "text-text-2",
-        )}
-      >
-        {SORT_LABELS[column]}
-        {active ? <Icon size={12} strokeWidth={1.75} aria-hidden="true" /> : null}
-      </button>
-    );
-  };
-
   return (
     <div className={cn("overflow-x-auto", className)}>
       <table className="w-full border-collapse text-left">
@@ -127,13 +137,13 @@ export function DrainHealthTable({ rows, className }: DrainHealthTableProps) {
               Street
             </th>
             <th scope="col" aria-sort={ariaSort("beta")} className="py-2 pr-3 font-medium">
-              <SortButton column="beta" />
+              <SortButton column="beta" sortKey={sortKey} direction={direction} onToggle={toggle} />
             </th>
             <th scope="col" aria-sort={ariaSort("sd")} className="py-2 pr-3 font-medium">
-              <SortButton column="sd" />
+              <SortButton column="sd" sortKey={sortKey} direction={direction} onToggle={toggle} />
             </th>
             <th scope="col" aria-sort={ariaSort("capacity")} className="py-2 pr-3 font-medium">
-              <SortButton column="capacity" />
+              <SortButton column="capacity" sortKey={sortKey} direction={direction} onToggle={toggle} />
             </th>
             <th scope="col" className="py-2 pr-3 font-medium">
               Explains
