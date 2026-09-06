@@ -35,8 +35,8 @@ This file is the single source of truth for building the VARUNA prototype. The b
 
 | Phase | Name | Progress | Last updated | Blockers / notes |
 |---|---|---|---|---|
-| 0 | Foundation, shell, design tokens | 0 % | — | — |
-| 1 | City-in-a-box (Mumbai) | 0 % | — | — |
+| 0 | Foundation, shell, design tokens | 100 % | 2026-09-06 | All gates green: typecheck, ESLint, design lint, 126 vitest, 335 pytest (90 % cov), Next build 21 routes. CI never run on GitHub (no remote). |
+| 1 | City-in-a-box (Mumbai) | 10 % | 2026-09-06 | Open data downloaded and verified: 282 MB of DEM and land cover for both cities, warm OSM cache (34.5k road edges, 39.3k buildings). Pipeline modules next. |
 | 2 | Replay bundle & storm designer | 0 % | — | — |
 | 3 | VARUNA-Sky | 0 % | — | — |
 | 4 | VARUNA-Twin + drains + coupling | 0 % | — | — |
@@ -878,18 +878,18 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ### Phase 0 — Foundation, shell, design tokens
 
-- [ ] P0.1 Initialise the monorepo: pnpm workspace + Turborepo, uv workspace, `.editorconfig`, Prettier, ESLint (strict), Ruff, mypy (basic), pre-commit hooks
-- [ ] P0.2 `packages/tokens`: `tokens.json` (§6.2–6.4) → `globals.css` variables, Tailwind theme, `ramps.py`; a build script and a unit test that the three outputs agree
-- [ ] P0.3 `apps/command`: Next.js App Router, TypeScript strict, Tailwind v4, shadcn init, fonts (Bricolage Grotesque via `next/font/google`, Geist Sans/Mono via `geist`), `.num` tabular utility, dark-only theme
-- [ ] P0.4 `services/api`: FastAPI skeleton with `/healthz`, `/v1/runs`, `WS /v1/live`, CORS, structured logging, OpenAPI at `/docs`; `openapi-typescript` generation wired into `pnpm typegen`
-- [ ] P0.5 `packages/schemas`: Pydantic models for run, segment_forecast, node_forecast, observation, alert, pump, bundle manifest; JSON schema export; tests
-- [ ] P0.6 `Makefile` with every target in §4.3 (stubs allowed for now), `.env.example`, `docker-compose.yml` (optional services), `VARUNA_OFFLINE` guard that blocks outbound network in tests
-- [ ] P0.7 App shell: `AppShell`, `TopBar`, `IconRail`, `ModeBanner`, `RunStamp`, `VerificationChip`, `CommandPalette`, `ShortcutsOverlay`, `sonner` toasts, error boundaries per panel, 404
-- [ ] P0.8 `/design` page rendering every token, type size, and each component with loading/empty/error states as they are built
-- [ ] P0.9 `pnpm lint:design`: script that fails on raw hex, non-token fonts, `transition-all`, or emoji in `apps/command`
-- [ ] P0.10 CI (GitHub Actions): lint, typecheck, unit tests, Python tests, Playwright smoke, Lighthouse CI on `/`
-- [ ] P0.11 `docs/`: blueprint PDF copied; `DECISIONS.md`, `SIMPLIFICATIONS.md`, `CHANGELOG.md`, `QA.md` created with headers
-- [ ] P0.12 Empty console renders with the mode banner "No runs yet" and the replay panel open
+- [x] P0.1 Initialise the monorepo: pnpm workspace + Turborepo, uv workspace, `.editorconfig`, Prettier, ESLint (strict), Ruff, mypy (basic), pre-commit hooks (2026-09-06, c0613bb)
+- [x] P0.2 `packages/tokens`: `tokens.json` (§6.2–6.4) → `globals.css` variables, Tailwind theme, `ramps.py`; a build script and a unit test that the three outputs agree (2026-09-06, 9ca5229)
+- [x] P0.3 `apps/command`: Next.js App Router, TypeScript strict, Tailwind v4, shadcn init, fonts (Bricolage Grotesque via `next/font/google`, Geist Sans/Mono via `geist`), `.num` tabular utility, dark-only theme (2026-09-06, 9863066)
+- [x] P0.4 `services/api`: FastAPI skeleton with `/healthz`, `/v1/runs`, `WS /v1/live`, CORS, structured logging, OpenAPI at `/docs`; `openapi-typescript` generation wired into `pnpm typegen` (2026-09-06, 07c1f07)
+- [x] P0.5 `packages/schemas`: Pydantic models for run, segment_forecast, node_forecast, observation, alert, pump, bundle manifest; JSON schema export; tests (2026-09-06, 07c1f07)
+- [x] P0.6 `Makefile` with every target in §4.3 (stubs allowed for now), `.env.example`, `docker-compose.yml` (optional services), `VARUNA_OFFLINE` guard that blocks outbound network in tests (2026-09-06, e21ea13)
+- [x] P0.7 App shell: `AppShell`, `TopBar`, `IconRail`, `ModeBanner`, `RunStamp`, `VerificationChip`, `CommandPalette`, `ShortcutsOverlay`, `sonner` toasts, error boundaries per panel, 404 (2026-09-06, 07c1f07)
+- [x] P0.8 `/design` page rendering every token, type size, and each component with loading/empty/error states as they are built (2026-09-06, d7c7f44)
+- [x] P0.9 `pnpm lint:design`: script that fails on raw hex, non-token fonts, `transition-all`, or emoji in `apps/command` (2026-09-06, 518a8ab)
+- [x] P0.10 CI (GitHub Actions): lint, typecheck, unit tests, Python tests, Playwright smoke, Lighthouse CI on `/` (2026-09-06, 07c1f07 — workflow written and every job's command verified locally; it has not yet run on GitHub because the repository has no remote)
+- [x] P0.11 `docs/`: blueprint PDF copied; `DECISIONS.md`, `SIMPLIFICATIONS.md`, `CHANGELOG.md`, `QA.md` created with headers (2026-09-06, 66993c5)
+- [x] P0.12 Empty console renders with the mode banner "No runs yet" and the replay panel open (2026-09-06, 07c1f07)
 
 **Exit:** `make dev` shows the shell; CI green; `/design` shows tokens; `make demo` prints a clear "no bundle baked yet" message instead of crashing.
 
