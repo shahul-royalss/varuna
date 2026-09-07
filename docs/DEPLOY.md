@@ -81,11 +81,17 @@ everything after it runs from the repository root.
 ```bash
 railway login
 railway init --name varuna-api            # once: creates the project and links this directory
-railway volume add --mount-path /data     # once: the persistent disk for city/, bundles/, runs/
-railway variables --set VARUNA_BUILD_ON_BOOT=1 --set VARUNA_CORS_ORIGINS=https://varuna-dhrishta.vercel.app
-railway up --detach                       # builds the Dockerfile and deploys it
+railway up --detach                       # creates the service and the first deployment from the Dockerfile
+railway volume add --mount-path /data     # once: the persistent disk for city/, bundles/, runs/; Railway redeploys
+railway variable set VARUNA_BUILD_ON_BOOT=1 VARUNA_CORS_ORIGINS=https://varuna-dhrishta.vercel.app
 railway domain                            # prints the public URL
 ```
+
+(Flags checked against Railway CLI 5.49.3; `railway variables --set` still works but is marked
+legacy.) The service has to exist before a volume can attach to it, so the very first deployment
+runs without `/data`: its background city build lands on the container's own disk and is thrown
+away when the volume attaches and the service redeploys. The build after that writes into
+`/data` once and is kept.
 
 Then put that URL into `NEXT_PUBLIC_API_URL` on Vercel (`vercel env add NEXT_PUBLIC_API_URL
 production` from `apps/command`) and redeploy the console.
