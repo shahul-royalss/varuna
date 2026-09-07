@@ -74,7 +74,7 @@ Five lines each: context, decision, alternatives, consequence, date. Newest at t
 - Consequence: the depression map at 30 m is the pit set of the conditioned DEM as it stands; the rule starts selecting on the 5 m nests (25 m2 cells) of CLAUDE.md 3.3, and the report says so where a judge will read it. Depressions whose bottom cell is permanent water are dropped instead (58 of 4,004): they are the bay and the creek, not a street.
 - Date: 2026-09-07
 
-## ADR-0008 Lane counts take the maximum of an OpenStreetMap tag collection
+## ADR-0010 Lane counts take the maximum of an OpenStreetMap tag collection
 
 - Context: `make city` was not reproducible. Two cold builds of Mumbai agreed on every geometry and identifier but disagreed on `lanes` for 4 of 21,296 road segments. OSMnx returns a collection of tag values whenever it simplifies several ways into one edge, and that collection is sometimes a `set`, whose iteration order changes with Python's per-process string hash seed; the helper took the first item it saw.
 - Decision: collect every integer in the value and take the maximum. The result is order-independent, and where a simplified edge spans a widening the widest cross-section is the one that carries the traffic the exposure weight represents.
@@ -82,7 +82,7 @@ Five lines each: context, decision, alternatives, consequence, date. Newest at t
 - Consequence: the segment table is now identical across runs. A regression test in `services/city/tests/test_segments.py` pins the behaviour for lists, sets and scalars. One source of non-reproducibility remains, float noise in `pyflwdir.fill_depressions`, recorded in `city/mumbai/REPORT.md`.
 - Date: 2026-09-07
 
-## ADR-0009 Ruff exclusions are anchored to the repository root
+## ADR-0011 Ruff exclusions are anchored to the repository root
 
 - Context: `uv run ruff check .` reported "All checks passed" while `uv run ruff check services/city` found 30 errors. The root configuration excluded `"city"`, and an unanchored pattern matches a directory of that name anywhere in the tree, so the entire city service was silently unlinted from the day it was written.
 - Decision: anchor the data-directory exclusions as `/city`, `/data` and `/bundles` so they match only the gitignored folders at the repository root.

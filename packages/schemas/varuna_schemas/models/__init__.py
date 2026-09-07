@@ -29,8 +29,11 @@ from varuna_schemas.models.bundle import (
     BundleLabel,
     BundleManifest,
     BundleSource,
+    DesignStorm,
     GroundTruthKind,
     GroundTruthPin,
+    StormCellSpec,
+    StormDesign,
     TideSourceKind,
 )
 from varuna_schemas.models.city import (
@@ -230,6 +233,9 @@ _MODELS: tuple[type[VarunaModel], ...] = (
     CityConfig,
     # bundle
     BundleSource,
+    StormCellSpec,
+    StormDesign,
+    DesignStorm,
     BundleManifest,
     GroundTruthPin,
     # replay
@@ -307,6 +313,7 @@ __all__ = [
     "CycleStatus",
     "DeltaClass",
     "DesignIntensity",
+    "DesignStorm",
     "DrainConfidence",
     "DrainEdge",
     "DrainEdgeHealth",
@@ -397,6 +404,8 @@ __all__ = [
     "SeriesPoint",
     "SkillByLead",
     "StageStatus",
+    "StormCellSpec",
+    "StormDesign",
     "SurfaceUnit",
     "TidalOutfall",
     "TideSourceKind",
