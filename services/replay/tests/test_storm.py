@@ -238,9 +238,7 @@ def test_calibrate_reports_the_accumulation_the_written_cube_holds(
         step_min=5.0,
         units="mm/h",
     )
-    from_disk = aoi_mean_accumulation(
-        members.read_cube(path, members.TRUTH_VARIABLE), mask, 5.0
-    )
+    from_disk = aoi_mean_accumulation(members.read_cube(path, members.TRUTH_VARIABLE), mask, 5.0)
     assert from_disk == pytest.approx(result.achieved_mm, rel=1e-6)
 
 

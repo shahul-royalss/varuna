@@ -127,9 +127,7 @@ async def replay_speed(
         return await clock.set_speed(body.speed)
     except ValueError as exc:
         offered = ", ".join(f"{speed:g}" for speed in REPLAY_SPEEDS)
-        raise api_error(
-            422, "invalid_speed", f"{exc} The time bar offers {offered}."
-        ) from exc
+        raise api_error(422, "invalid_speed", f"{exc} The time bar offers {offered}.") from exc
 
 
 @router.post(

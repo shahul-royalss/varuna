@@ -97,7 +97,9 @@ def load_city(city: str) -> CityConfig:
     """
     path = city_config_path(city)
     if not path.is_file():
-        available = sorted(p.stem for p in path.parent.glob("*.yaml")) if path.parent.is_dir() else []
+        available = (
+            sorted(p.stem for p in path.parent.glob("*.yaml")) if path.parent.is_dir() else []
+        )
         msg = f"No city config at {path}. Configured cities: {', '.join(available) or 'none'}."
         raise FileNotFoundError(msg)
     return CityConfig.from_yaml(path)
@@ -484,9 +486,7 @@ def build_reconstruction_bundle(
     accumulation = accumulation_mm(truth, TRUTH_CADENCE_MIN)
     pin_ratio = _pin_accumulation_ratio(accumulation, domain, inputs.pins, mask)
 
-    gauges = streams.gauge_rows(
-        inputs.gauge_sites, truth, truth_times, domain, start, seed=seed
-    )
+    gauges = streams.gauge_rows(inputs.gauge_sites, truth, truth_times, domain, start, seed=seed)
     tide = streams.tide_rows(
         start,
         float(window_min),
@@ -551,7 +551,11 @@ def build_reconstruction_bundle(
                 t0=start,
                 step_min=RADAR_CADENCE_MIN,
                 units="dBZ",
-                attrs={"bundle": bundle_id, "label": "Reconstructed replay", "basis": evidence.RADAR_BASIS},
+                attrs={
+                    "bundle": bundle_id,
+                    "label": "Reconstructed replay",
+                    "basis": evidence.RADAR_BASIS,
+                },
             )
         )
     )
@@ -677,7 +681,9 @@ def _calibration_numbers(
     }
 
 
-def build_bundle(bundle_id: str, *, bundles_root: Path | None = None, **options: Any) -> BuildResult:
+def build_bundle(
+    bundle_id: str, *, bundles_root: Path | None = None, **options: Any
+) -> BuildResult:
     """Build any bundle by id: the reconstruction, or a city's design storm.
 
     This is what ``varuna bundle build <id>`` calls, so the CLI never has to know which kind of

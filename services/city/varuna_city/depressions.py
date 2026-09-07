@@ -80,7 +80,9 @@ def _fill_priority_flood(dem: NDArray[np.float64]) -> NDArray[np.float64]:
     return filled
 
 
-def fill_depressions(dem: NDArray[np.floating[Any]], *, use_pyflwdir: bool = True) -> NDArray[np.float64]:
+def fill_depressions(
+    dem: NDArray[np.floating[Any]], *, use_pyflwdir: bool = True
+) -> NDArray[np.float64]:
     """Return the depression-filled DEM (same shape, no-data preserved as NaN)."""
     arr = np.asarray(dem, dtype=np.float64)
     if use_pyflwdir:
@@ -139,7 +141,9 @@ def find_depressions(
         counts = ndimage.sum_labels(np.ones_like(depth), labels, index=index)
         depth_sum = ndimage.sum_labels(depth, labels, index=index)
         depth_max = ndimage.maximum(depth, labels, index=index)
-        bottom_flat = ndimage.minimum_position(np.where(labels > 0, arr, np.inf), labels, index=index)
+        bottom_flat = ndimage.minimum_position(
+            np.where(labels > 0, arr, np.inf), labels, index=index
+        )
         for k, lab in enumerate(index):
             area = float(counts[k]) * cell_area
             if area < min_area_m2:

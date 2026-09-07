@@ -121,9 +121,7 @@ def _write_full_bundle(
     )
     members.write_cube(
         layout.radar,
-        radar_dbz(
-            rain_field(design, domain, radar_times), domain, RadarRender.from_design(design)
-        ),
+        radar_dbz(rain_field(design, domain, radar_times), domain, RadarRender.from_design(design)),
         variable=members.RADAR_VARIABLE,
         times_min=radar_times,
         domain=domain,

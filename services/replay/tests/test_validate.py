@@ -159,9 +159,7 @@ def test_an_unparseable_timestamp_is_reported(full_bundle: Path) -> None:
 
 
 # --------------------------------------------------------------------------- B5
-def test_cubes_on_different_grids_fail_b5(
-    full_bundle: Path, domain: StormDomain, t0
-) -> None:
+def test_cubes_on_different_grids_fail_b5(full_bundle: Path, domain: StormDomain, t0) -> None:
     from varuna_replay.domain import step_times_min
     from varuna_replay.storm import RadarRender, radar_dbz, rain_field, random_storm
 
@@ -218,7 +216,9 @@ def test_an_undeclared_property_is_a_warning_not_an_error(
     tmp_path: Path, domain: StormDomain, make_bundle: Callable[..., Any], pin
 ) -> None:
     root = tmp_path / "MUM-TEST-2019"
-    make_bundle(root, domain, ground_truth=[pin(cached_path="docs/research/_raw/x.txt", mood="wet")])
+    make_bundle(
+        root, domain, ground_truth=[pin(cached_path="docs/research/_raw/x.txt", mood="wet")]
+    )
     report = validate_bundle(root)
     assert report.ok, report.render()
     warnings = [finding.message for finding in report.for_rule("B6")]

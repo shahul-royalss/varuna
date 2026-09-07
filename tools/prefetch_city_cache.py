@@ -79,7 +79,9 @@ def ssl_context() -> ssl.SSLContext:
 
         return truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     except ImportError:  # pragma: no cover - truststore is a dependency of the workspace
-        print("truststore is not installed; falling back to the default trust store", file=sys.stderr)
+        print(
+            "truststore is not installed; falling back to the default trust store", file=sys.stderr
+        )
         return ssl.create_default_context()
 
 
@@ -105,7 +107,10 @@ def download(url: str, target: Path, context: ssl.SSLContext) -> tuple[bool, int
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     # Carriage-return progress is for a terminal; a redirected log gets one line per 25 %.
     interactive = sys.stdout.isatty()
-    with urllib.request.urlopen(request, timeout=300, context=context) as response, partial.open("wb") as out:
+    with (
+        urllib.request.urlopen(request, timeout=300, context=context) as response,
+        partial.open("wb") as out,
+    ):
         done = 0
         next_mark = 0.25
         while chunk := response.read(1 << 20):
@@ -125,7 +130,9 @@ def download(url: str, target: Path, context: ssl.SSLContext) -> tuple[bool, int
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--city", choices=[*CITIES, "all"], default="all")
     args = parser.parse_args()
 
@@ -173,7 +180,9 @@ def main() -> int:
             }
 
     CACHE.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     total = sum(int(entry["bytes"]) for entry in manifest.values())
     print(f"\n{len(manifest)} files, {total / 1e6:.0f} MB in {CACHE}")
     print(f"manifest: {manifest_path}")

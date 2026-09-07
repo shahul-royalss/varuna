@@ -121,9 +121,7 @@ def test_units_attach_to_the_nearest_segment() -> None:
     segments = gpd.GeoDataFrame(
         {"segment_id": ["S1-000"]},
         geometry=[
-            LineString(
-                [(ORIGIN_X, ORIGIN_Y - 300.0), (ORIGIN_X + 1800.0, ORIGIN_Y - 300.0)]
-            )
+            LineString([(ORIGIN_X, ORIGIN_Y - 300.0), (ORIGIN_X + 1800.0, ORIGIN_Y - 300.0)])
         ],
         crs=CRS,
     )

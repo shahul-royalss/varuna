@@ -39,7 +39,9 @@ def load_city_config(city: str | Path) -> CityConfig:
     if path is None:
         path = city_config_path(str(city))
     if not path.is_file():
-        available = sorted(p.stem for p in path.parent.glob("*.yaml")) if path.parent.is_dir() else []
+        available = (
+            sorted(p.stem for p in path.parent.glob("*.yaml")) if path.parent.is_dir() else []
+        )
         msg = f"No city config at {path}. Configured cities: {available or 'none'}."
         raise UnknownCityError(msg)
     config = CityConfig.from_yaml(path)

@@ -224,7 +224,9 @@ def build_landcover(
     cn = curve_number(imperviousness, classes_i16, cn_range=tuple(config.cn_range))
 
     paths = {
-        "landcover": write_grid_raster(classes_i16, grid, target / "landcover.tif", dtype="int16", nodata=0),
+        "landcover": write_grid_raster(
+            classes_i16, grid, target / "landcover.tif", dtype="int16", nodata=0
+        ),
         "imperviousness": write_grid_raster(
             imperviousness, grid, target / "imperviousness.tif", dtype="float32", nodata=NODATA
         ),

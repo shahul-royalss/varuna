@@ -89,9 +89,7 @@ def make_pins() -> list[dict[str, Any]]:
 
 def make_segments(config: CityConfig, pins: list[dict[str, Any]]) -> streams.SegmentTable:
     """Four segments around each pin, so every in-window pin has something to snap to."""
-    x, y = streams.project(
-        [pin["lon"] for pin in pins], [pin["lat"] for pin in pins], config.crs
-    )
+    x, y = streams.project([pin["lon"] for pin in pins], [pin["lat"] for pin in pins], config.crs)
     ids: list[str] = []
     xs: list[float] = []
     ys: list[float] = []
@@ -278,17 +276,15 @@ def test_the_manifest_separates_what_was_measured_from_what_was_inferred(
 
     assert manifest.sources, "a reconstruction must cite its sources"
     assert all(source.used_for for source in manifest.sources)
-    assert any(
-        source.url == evidence.IMD_SANTACRUZ_CHART_URL for source in manifest.sources
-    ), "the one IMD-primary source has to be named"
+    assert any(source.url == evidence.IMD_SANTACRUZ_CHART_URL for source in manifest.sources), (
+        "the one IMD-primary source has to be named"
+    )
     joined = " ".join(manifest.synthetic_notes)
     for word in ("Radar frames", "Tide", "Traffic", "Citizen reports", "Ground truth"):
         assert word in joined
 
 
-def test_the_window_is_the_one_adr_0007_chose(
-    tmp_path: Path, inputs: ReconstructionInputs
-) -> None:
+def test_the_window_is_the_one_adr_0007_chose(tmp_path: Path, inputs: ReconstructionInputs) -> None:
     manifest = build_reconstruction_bundle(inputs, bundles_root=tmp_path).manifest
     assert manifest.t0 == datetime(2019, 7, 2, 5, 40, tzinfo=IST)
     assert manifest.t1 == datetime(2019, 7, 2, 9, 40, tzinfo=IST)
@@ -321,7 +317,9 @@ def test_the_streams_are_flagged_and_the_pins_are_not(
     assert sourced, "the pins inside the window must reach the report stream"
     assert all(row["depth_hint"] is None for row in sourced)
     assert all(row["source_url"] for row in sourced)
-    assert all(row["depth_hint"] in {"ankle", "knee", "waist"} for row in reports if row["synthetic"])
+    assert all(
+        row["depth_hint"] in {"ankle", "knee", "waist"} for row in reports if row["synthetic"]
+    )
 
     payload = json.loads(layout.ground_truth.read_text(encoding="utf-8"))
     assert len(payload["features"]) == len(inputs.pins)
@@ -354,10 +352,7 @@ def test_the_traffic_feed_collapses_where_a_pin_says_the_water_was(
     stamps = {str(value)[11:16] for value in collapsed["ts"]}
     for pin in in_window:
         moment = datetime.fromisoformat(pin["ts"])
-        near = {
-            (moment + timedelta(minutes=offset)).strftime("%H:%M")
-            for offset in range(-10, 11)
-        }
+        near = {(moment + timedelta(minutes=offset)).strftime("%H:%M") for offset in range(-10, 11)}
         assert stamps & near, f"{pin['id']} left no anomaly in the feed"
 
 
@@ -369,7 +364,13 @@ def test_two_builds_with_the_same_seed_are_byte_identical(
     first, second = tmp_path / "first", tmp_path / "second"
     build_reconstruction_bundle(inputs, bundles_root=first)
     build_reconstruction_bundle(inputs, bundles_root=second)
-    for member in ("gauges.csv", "tide.csv", "reports.jsonl", "ground_truth.geojson", "manifest.json"):
+    for member in (
+        "gauges.csv",
+        "tide.csv",
+        "reports.jsonl",
+        "ground_truth.geojson",
+        "manifest.json",
+    ):
         assert digest(first, member) == digest(second, member), member
 
 

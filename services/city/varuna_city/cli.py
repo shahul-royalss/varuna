@@ -34,7 +34,9 @@ def _echo_table(text: str) -> None:
 @app.callback(invoke_without_command=True)
 def main(
     ctx: typer.Context,
-    city: Annotated[str, typer.Option("--city", help="City slug: mumbai or chennai.")] = DEFAULT_CITY,
+    city: Annotated[
+        str, typer.Option("--city", help="City slug: mumbai or chennai.")
+    ] = DEFAULT_CITY,
     cache_only: Annotated[
         bool, typer.Option("--cache-only", help="Only verify the open-data cache and stop.")
     ] = False,

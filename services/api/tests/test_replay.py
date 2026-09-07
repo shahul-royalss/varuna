@@ -30,8 +30,15 @@ T0 = datetime(2019, 7, 2, 5, 40, tzinfo=IST)
 T1 = datetime(2019, 7, 2, 9, 40, tzinfo=IST)
 AOI = BBox(min_lon=72.815, min_lat=18.995, max_lon=72.905, max_lat=19.135)
 RADAR = RadarDomain(center_lon=72.86, center_lat=19.065, size_km=60.0, res_m=500.0)
-CADENCES = {"radar": 10, "truth": 5, "gauges": 15, "tide": 15, "traffic": 5, "reports": 5,
-            "cycle": 5}
+CADENCES = {
+    "radar": 10,
+    "truth": 5,
+    "gauges": 15,
+    "tide": 15,
+    "traffic": 5,
+    "reports": 5,
+    "cycle": 5,
+}
 
 MEMBERS = (
     "radar/frames.zarr",

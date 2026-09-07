@@ -295,7 +295,9 @@ def _wait_for_first_failure(procs: Sequence[tuple[Service, subprocess.Popen[str]
                 continue
             pending.remove(item)
             if code != 0:
-                console.print(f"[red]{service.name} exited with code {code}; stopping the rest.[/red]")
+                console.print(
+                    f"[red]{service.name} exited with code {code}; stopping the rest.[/red]"
+                )
                 return code
             console.print(f"{service.name} finished.", style="dim")
         time.sleep(0.25)

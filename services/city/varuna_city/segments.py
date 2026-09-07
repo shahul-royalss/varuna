@@ -170,9 +170,7 @@ def edges_to_frame(graph: Any, *, crs: str | None = None) -> gpd.GeoDataFrame:
     for u, v, key, data in graph.edges(keys=True, data=True):
         geom = data.get("geometry")
         if geom is None:
-            geom = LineString(
-                [(nodes[u]["x"], nodes[u]["y"]), (nodes[v]["x"], nodes[v]["y"])]
-            )
+            geom = LineString([(nodes[u]["x"], nodes[u]["y"]), (nodes[v]["x"], nodes[v]["y"])])
         records.append(
             {
                 "u": u,
@@ -233,9 +231,7 @@ def sample_raster(
     col_index = np.floor(cols).astype(np.int64)
     row_index = np.floor(rows).astype(np.int64)
     height, width = raster.shape
-    inside = (
-        (row_index >= 0) & (row_index < height) & (col_index >= 0) & (col_index < width)
-    )
+    inside = (row_index >= 0) & (row_index < height) & (col_index >= 0) & (col_index < width)
     out = np.full(xs.shape, np.nan, dtype=np.float64)
     if inside.any():
         picked = raster[row_index[inside], col_index[inside]].astype(np.float64)
@@ -345,8 +341,12 @@ def build_segments(
             "u": edges["u"].to_numpy(),
             "v": edges["v"].to_numpy(),
             "key": edges["key"].to_numpy() if "key" in edges.columns else 0,
-            "osm_way_id": [_first_way_id(v) for v in edges.get("osmid", pd.Series([0] * len(edges)))],
-            "class": [classify_highway(v) for v in edges.get("highway", pd.Series([None] * len(edges)))],
+            "osm_way_id": [
+                _first_way_id(v) for v in edges.get("osmid", pd.Series([0] * len(edges)))
+            ],
+            "class": [
+                classify_highway(v) for v in edges.get("highway", pd.Series([None] * len(edges)))
+            ],
             "lanes": [_as_int(v) for v in edges.get("lanes", pd.Series([None] * len(edges)))],
             "oneway": [_as_bool(v) for v in edges.get("oneway", pd.Series([False] * len(edges)))],
         }
@@ -358,9 +358,7 @@ def build_segments(
     node_b = np.maximum(frame["u"].to_numpy(), frame["v"].to_numpy())
     frame["_pair_a"] = node_a
     frame["_pair_b"] = node_b
-    frame = frame.sort_values(
-        ["osm_way_id", "_pair_a", "_pair_b", "key", "u", "v"], kind="stable"
-    )
+    frame = frame.sort_values(["osm_way_id", "_pair_a", "_pair_b", "key", "u", "v"], kind="stable")
     frame = frame.drop_duplicates(subset=["osm_way_id", "_pair_a", "_pair_b", "key"], keep="first")
 
     ordinal = frame.groupby("osm_way_id", sort=False).cumcount()
@@ -372,9 +370,7 @@ def build_segments(
         frame.drop(columns=["_pair_a", "_pair_b"]), geometry="geometry", crs=edges.crs
     ).reset_index(drop=True)
     segments["length_m"] = segments.geometry.length.astype(float)
-    segments["speed_kmh"] = [
-        CLASS_SPEED_KMH.get(name, 15.0) for name in segments["class"]
-    ]
+    segments["speed_kmh"] = [CLASS_SPEED_KMH.get(name, 15.0) for name in segments["class"]]
 
     z_values = [sample_dem_along(geom, dem, transform) for geom in segments.geometry]
     segments["z_min"] = [z[0] for z in z_values]

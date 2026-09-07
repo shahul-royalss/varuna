@@ -61,7 +61,9 @@ class StormCellSpec(VarunaModel):
     start_y_m: float = Field(description="Cell centre at birth, northing in the design CRS.")
     u_ms: float = Field(description="Eastward velocity component in m/s.")
     v_ms: float = Field(description="Northward velocity component in m/s.")
-    sigma_m: float = Field(gt=0, description="Gaussian radius in metres (2-6 km in the demo storm).")
+    sigma_m: float = Field(
+        gt=0, description="Gaussian radius in metres (2-6 km in the demo storm)."
+    )
     peak_mm_h: float = Field(
         ge=0, description="Peak rain rate at the cell centre before intensity_scale is applied."
     )

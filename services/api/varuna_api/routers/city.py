@@ -187,9 +187,7 @@ def city_layer(
     headers = {"ETag": etag, "Cache-Control": CACHE_CONTROL, "X-Layer": name}
     if window is None:
         log.info("city.layer_served", city=city, layer=name, bytes=stat.st_size)
-        return Response(
-            content=path.read_bytes(), media_type=GEOJSON_MEDIA_TYPE, headers=headers
-        )
+        return Response(content=path.read_bytes(), media_type=GEOJSON_MEDIA_TYPE, headers=headers)
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     filtered = filter_collection(payload, window)

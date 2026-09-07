@@ -192,7 +192,9 @@ def show(
 
 @bundle_app.command("design")
 def design(
-    city: Annotated[str, typer.Option("--city", help="City slug: mumbai or chennai.")] = DEFAULT_CITY,
+    city: Annotated[
+        str, typer.Option("--city", help="City slug: mumbai or chennai.")
+    ] = DEFAULT_CITY,
     intensity: Annotated[
         str, typer.Option("--intensity", help="Design intensity to use: upgraded or legacy.")
     ] = "upgraded",

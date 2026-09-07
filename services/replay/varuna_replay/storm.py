@@ -363,9 +363,7 @@ def calibrate(
     """
     times = np.arange(0, round((t1_min - t0_min) / step_min) + 1) * step_min + t0_min
     background_mm = design.background_mm_h * (t1_min - t0_min) / 60.0
-    cells_only = rain_field(
-        design, domain, times, include_background=False, intensity_scale=1.0
-    )
+    cells_only = rain_field(design, domain, times, include_background=False, intensity_scale=1.0)
     cells_mm = aoi_mean_accumulation(cells_only, mask, step_min)
     if cells_mm <= 0.0:
         msg = (

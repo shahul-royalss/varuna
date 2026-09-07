@@ -212,9 +212,7 @@ def breach_culverts(
             if not ends:
                 continue
             target = min(ends)
-            line_mask = rasterize_mask(
-                [part], transform, out.shape, crs=None, all_touched=False
-            )
+            line_mask = rasterize_mask([part], transform, out.shape, crs=None, all_touched=False)
             if not line_mask.any():
                 continue
             affected = line_mask & np.isfinite(out) & (out > target)

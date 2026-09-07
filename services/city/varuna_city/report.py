@@ -371,7 +371,7 @@ def write_report(
         "",
         "Every number below is measured from the artifacts in this folder. Terrain is "
         "Copernicus GLO-30 and the vectors are OpenStreetMap; **the drain network is "
-        "inferred**, not surveyed - every pipe carries `confidence = \"inferred\"` and a "
+        'inferred**, not surveyed - every pipe carries `confidence = "inferred"` and a '
         "blockage prior that VARUNA-Pulse learns from observed floods.",
         "",
         "## Targets",
@@ -458,7 +458,11 @@ def write_report(
 
     cell_area = grid.res * grid.res
     threshold = float(condition.get("min_pit_area_m2") or 0.0)
-    if condition and int(condition.get("pits_spurious", 0) or 0) == 0 and cell_area >= threshold > 0:
+    if (
+        condition
+        and int(condition.get("pits_spurious", 0) or 0) == 0
+        and cell_area >= threshold > 0
+    ):
         lines += [
             "",
             f"No pit was breached as spurious, and that is arithmetic rather than luck: one "
@@ -567,7 +571,10 @@ def write_report(
             ("Edges", _fmt(drains.get("edges"))),
             ("Total pipe length", f"{_fmt(drains.get('pipe_length_km'))} km"),
             ("Trunk edges", _fmt(drains.get("trunk_edges"))),
-            ("Outfalls", f"{_fmt(drains.get('outfalls'))} ({_fmt(drains.get('tidal_outfalls'))} tidal)"),
+            (
+                "Outfalls",
+                f"{_fmt(drains.get('outfalls'))} ({_fmt(drains.get('tidal_outfalls'))} tidal)",
+            ),
             (
                 "Sizes",
                 ", ".join(f"{k}: {v}" for k, v in histogram.items()) or "not measured",
@@ -605,7 +612,7 @@ def write_report(
     lines += [
         "",
         "The twelve mobile pumps are a **synthetic** inventory at plausible depots and carry "
-        "`synthetic: true`; the UI labels them \"Synthetic pump inventory\". Every other asset "
+        '`synthetic: true`; the UI labels them "Synthetic pump inventory". Every other asset '
         "and every sourced register point carries the public URL it came from.",
     ]
 

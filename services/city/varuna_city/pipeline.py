@@ -388,9 +388,7 @@ def _load_landcover(ctx: Ctx) -> dict[str, Any]:
 def _step_hotspots(ctx: Ctx) -> dict[str, Any]:
     from varuna_city.hotspots import build_hotspots, read_hotspots
 
-    path = build_hotspots(
-        ctx.config.id, bbox=ctx.config.bbox.as_tuple(), out_dir=ctx.out_dir
-    )
+    path = build_hotspots(ctx.config.id, bbox=ctx.config.bbox.as_tuple(), out_dir=ctx.out_dir)
     return _load_hotspots(ctx, path=path, read=read_hotspots)
 
 
@@ -449,7 +447,9 @@ def _sink_points(ctx: Ctx) -> Any:
     if roads is not None and len(roads) and "tunnel" in roads.columns:
         tunnels = roads[roads["tunnel"].notna() & (roads["tunnel"].astype(str) != "no")]
         if len(tunnels):
-            frames.append(gpd.GeoDataFrame(geometry=tunnels.geometry.representative_point(), crs=roads.crs))
+            frames.append(
+                gpd.GeoDataFrame(geometry=tunnels.geometry.representative_point(), crs=roads.crs)
+            )
     hotspots = ctx.get("hotspots")
     if hotspots is not None and len(hotspots) and "is_sink" in hotspots.columns:
         sinks = hotspots[hotspots["is_sink"].astype(bool)]
@@ -500,7 +500,9 @@ def _step_condition(ctx: Ctx) -> dict[str, Any]:
     ctx.put("conditioned", result.dem)
     ctx.put("buildings_mask", result.buildings_mask)
     ctx.put("roads_mask", result.roads_mask)
-    changes = {k: (float(v) if isinstance(v, np.floating) else v) for k, v in result.changes.items()}
+    changes = {
+        k: (float(v) if isinstance(v, np.floating) else v) for k, v in result.changes.items()
+    }
     _json_dump(changes, ctx.path("condition.json"))
     return changes
 
@@ -745,7 +747,9 @@ def _drain_stats(nodes: Any, edges: Any, connectivity: dict[str, Any]) -> dict[s
         "tidal_outfalls": tidal,
         "trunk_edges": int(edges["is_trunk"].sum()) if "is_trunk" in edges.columns else 0,
         "box_drains": int((edges["shape"] == "box").sum()) if "shape" in edges.columns else 0,
-        "pipe_length_km": round(float(np.asarray(edges["length_m"], dtype=float).sum()) / 1000.0, 2),
+        "pipe_length_km": round(
+            float(np.asarray(edges["length_m"], dtype=float).sum()) / 1000.0, 2
+        ),
         "diameter_histogram": histogram,
         "connectivity": float(connectivity.get("connectivity", 0.0)),
         "max_hops_to_outfall": int(connectivity.get("max_hops_to_outfall", 0)),
@@ -1173,9 +1177,7 @@ def _write_summary(result: CityResult, path: Path, *, partial: bool) -> Path:
     return _json_dump(payload, path)
 
 
-def _run_step(
-    step: Step, ctx: Ctx, *, config_mtime: float, wanted: set[str] | None
-) -> StepResult:
+def _run_step(step: Step, ctx: Ctx, *, config_mtime: float, wanted: set[str] | None) -> StepResult:
     forced_step = wanted is not None and step.name in wanted
     if wanted is not None and not forced_step and step.load is None:
         return StepResult(step.name, step.title, "skipped", 0.0, "not in --only")

@@ -142,7 +142,11 @@ def _print_summary(title: str, results: list[StepResult]) -> None:
     table.add_column("Result")
     table.add_column("Time", justify="right")
     for result in results:
-        status = "[green]passed[/green]" if result.ok else f"[red]failed (exit {result.returncode})[/red]"
+        status = (
+            "[green]passed[/green]"
+            if result.ok
+            else f"[red]failed (exit {result.returncode})[/red]"
+        )
         table.add_row(result.name, status, f"{result.duration_s:.1f} s")
     console.print(table)
 
@@ -330,18 +334,24 @@ def doctor(
         table.add_row(name, f"[green]{version}[/green]" if version else "[red]missing[/red]")
     table.add_row(
         ".env",
-        "[green]present[/green]" if report["env_file"] else "[yellow]missing (make setup copies .env.example)[/yellow]",
+        "[green]present[/green]"
+        if report["env_file"]
+        else "[yellow]missing (make setup copies .env.example)[/yellow]",
     )
     available = [name for name, (pkg, _cli) in engines.items() if pkg]
     with_cli = [name for name, (_pkg, cli) in engines.items() if cli]
     table.add_row("engines importable", ", ".join(available) or "[red]none[/red]")
     table.add_row(
         "engine sub-commands",
-        ", ".join(with_cli) if with_cli else "[yellow]none yet (varuna_<engine>.cli arrives per phase)[/yellow]",
+        ", ".join(with_cli)
+        if with_cli
+        else "[yellow]none yet (varuna_<engine>.cli arrives per phase)[/yellow]",
     )
     table.add_row(
         f"city/{config.city}",
-        f"[green]{city_files} files[/green]" if city_files else "[yellow]not built (make city)[/yellow]",
+        f"[green]{city_files} files[/green]"
+        if city_files
+        else "[yellow]not built (make city)[/yellow]",
     )
     table.add_row(
         "bundles",
@@ -391,7 +401,9 @@ def _version(argv: list[str]) -> str | None:
 
 
 def city(
-    city: Annotated[str, typer.Option("--city", help="City slug: mumbai or chennai.")] = DEFAULT_CITY,
+    city: Annotated[
+        str, typer.Option("--city", help="City slug: mumbai or chennai.")
+    ] = DEFAULT_CITY,
     cache_only: Annotated[
         bool, typer.Option("--cache-only", help="Only download the open data into city/cache/.")
     ] = False,
@@ -458,7 +470,9 @@ def _services(
         ui_env = {
             **env,
             "NEXT_PUBLIC_API_URL": env.get("NEXT_PUBLIC_API_URL", f"http://localhost:{api_port}"),
-            "NEXT_PUBLIC_WS_URL": env.get("NEXT_PUBLIC_WS_URL", f"ws://localhost:{api_port}/v1/live"),
+            "NEXT_PUBLIC_WS_URL": env.get(
+                "NEXT_PUBLIC_WS_URL", f"ws://localhost:{api_port}/v1/live"
+            ),
         }
         services.append(
             Service(
@@ -473,11 +487,17 @@ def _services(
 
 
 def dev(
-    api_port: Annotated[int | None, typer.Option("--api-port", help="API port (default from .env).")] = None,
-    ui_port: Annotated[int | None, typer.Option("--ui-port", help="UI port (default from .env).")] = None,
+    api_port: Annotated[
+        int | None, typer.Option("--api-port", help="API port (default from .env).")
+    ] = None,
+    ui_port: Annotated[
+        int | None, typer.Option("--ui-port", help="UI port (default from .env).")
+    ] = None,
     no_api: Annotated[bool, typer.Option("--no-api", help="Only start the UI.")] = False,
     no_ui: Annotated[bool, typer.Option("--no-ui", help="Only start the API.")] = False,
-    no_reload: Annotated[bool, typer.Option("--no-reload", help="Disable uvicorn auto-reload.")] = False,
+    no_reload: Annotated[
+        bool, typer.Option("--no-reload", help="Disable uvicorn auto-reload.")
+    ] = False,
 ) -> None:
     """Start the API (:8000) and the console (:3000) side by side with the replay paused."""
     config = load_config()
@@ -506,7 +526,9 @@ def dev(
 
 
 def demo(
-    bundle: Annotated[str | None, typer.Option("--bundle", help="Replay bundle (default from .env).")] = None,
+    bundle: Annotated[
+        str | None, typer.Option("--bundle", help="Replay bundle (default from .env).")
+    ] = None,
     speed: Annotated[float | None, typer.Option("--speed", help="Replay speed factor.")] = None,
     api_port: Annotated[int | None, typer.Option("--api-port")] = None,
     ui_port: Annotated[int | None, typer.Option("--ui-port")] = None,
@@ -554,7 +576,9 @@ def demo(
 
 
 def test(
-    python_only: Annotated[bool, typer.Option("--python-only", help="Skip the web checks.")] = False,
+    python_only: Annotated[
+        bool, typer.Option("--python-only", help="Skip the web checks.")
+    ] = False,
     web_only: Annotated[bool, typer.Option("--web-only", help="Skip pytest.")] = False,
     no_cov: Annotated[bool, typer.Option("--no-cov", help="Run pytest without coverage.")] = False,
     fail_under: Annotated[
@@ -736,7 +760,9 @@ def _find_pycache(root: Path) -> list[Path]:
         if not folder.is_dir():
             continue
         for path in folder.rglob("__pycache__"):
-            if path.is_dir() and not any(part in NEVER_CLEAN for part in path.relative_to(root).parts):
+            if path.is_dir() and not any(
+                part in NEVER_CLEAN for part in path.relative_to(root).parts
+            ):
                 found.append(path)
     return found
 
@@ -750,7 +776,9 @@ def help_targets() -> None:
     if not makefile.is_file():
         console.print("[red]Makefile not found at the repository root.[/red]")
         raise typer.Exit(code=1)
-    table = Table(title="VARUNA make targets (each is also 'uv run varuna <target>')", title_justify="left")
+    table = Table(
+        title="VARUNA make targets (each is also 'uv run varuna <target>')", title_justify="left"
+    )
     table.add_column("Target", style="bold")
     table.add_column("Does")
     count = 0
@@ -761,7 +789,7 @@ def help_targets() -> None:
             count += 1
     console.print(table)
     console.print(
-        "Variables: CITY=mumbai  BUNDLE=MUM-2019-07-02  ARGS=\"--flag\"  "
+        'Variables: CITY=mumbai  BUNDLE=MUM-2019-07-02  ARGS="--flag"  '
         "(example: make city CITY=chennai ARGS=--cache-only)",
         style="dim",
     )
@@ -829,4 +857,3 @@ __all__ = [
     "not_implemented",
     "register",
 ]
-
