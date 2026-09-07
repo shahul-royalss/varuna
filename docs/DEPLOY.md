@@ -36,13 +36,27 @@ and the pitch can show the schema. Until then it would be an empty dependency.
 
 ## Vercel (console)
 
-Root directory `apps/command`. The repository is a pnpm workspace, so the install must run from
-the repository root; `vercel.json` sets that up. Environment:
+Project `varuna` on the `dhrishta` team, built from GitHub on every push to `main`. Production:
+<https://varuna-dhrishta.vercel.app>.
+
+| Setting | Value |
+|---|---|
+| Root directory | `apps/command` |
+| Build command | `pnpm --filter @varuna/tokens build && pnpm --filter @varuna/command build` — the tokens package is built before the app that imports it |
+| Install | pnpm, detected from the workspace lockfile at the repository root |
+
+Environment:
 
 | Variable | Value | Notes |
 |---|---|---|
 | `NEXT_PUBLIC_API_URL` | the Railway URL | Without it the client falls back to `http://localhost:8000`, and every screen shows its honest "The VARUNA API is unreachable" state rather than breaking. |
-| `NEXT_PUBLIC_SITE_URL` | the Vercel URL | Resolves the Open Graph image. |
+| `NEXT_PUBLIC_SITE_URL` | `https://varuna-dhrishta.vercel.app` | Resolves the Open Graph image. Set. |
+
+**Deployment protection.** A new Vercel project protects every deployment with Vercel
+Authentication, so the production URL redirects to a Vercel sign-in until a team member changes
+it: project *Settings → Deployment Protection → Vercel Authentication → Only Preview
+Deployments* (or *Disabled*), then *Save*. The Vercel CLI has no command for this, so it is a
+dashboard click.
 
 ## Railway (API)
 
@@ -57,7 +71,24 @@ Deploy from the `Dockerfile` at the repository root. Attach a volume mounted at 
 | `VARUNA_CITY` | `mumbai` |
 | `VARUNA_MODE` | `replay` |
 | `VARUNA_BUILD_ON_BOOT` | `1` on the first deploy, then `0` |
-| `CORS_ORIGINS` | the Vercel URL |
+| `VARUNA_CORS_ORIGINS` | `https://varuna-dhrishta.vercel.app` (`CORS_ORIGINS` is accepted too) |
+
+### Deploying with the CLI
+
+Railway CLI 5.x. `railway login` opens a browser and is the only step that needs a person;
+everything after it runs from the repository root.
+
+```bash
+railway login
+railway init --name varuna-api            # once: creates the project and links this directory
+railway volume add --mount-path /data     # once: the persistent disk for city/, bundles/, runs/
+railway variables --set VARUNA_BUILD_ON_BOOT=1 --set VARUNA_CORS_ORIGINS=https://varuna-dhrishta.vercel.app
+railway up --detach                       # builds the Dockerfile and deploys it
+railway domain                            # prints the public URL
+```
+
+Then put that URL into `NEXT_PUBLIC_API_URL` on Vercel (`vercel env add NEXT_PUBLIC_API_URL
+production` from `apps/command`) and redeploy the console.
 
 ### The data question
 
@@ -65,9 +96,18 @@ Deploy from the `Dockerfile` at the repository root. Attach a volume mounted at 
 boot the entrypoint downloads the public terrain and land-cover tiles and runs the city pipeline
 into the volume, which takes a few minutes and about 400 MB. After that it is skipped.
 
-If the build fails the API still starts and every layer endpoint answers 404 with the command that
-fixes it. That is deliberate: a visitor seeing an honest "not built yet" is better served than one
-seeing a container that will not boot.
+The build runs in the background: the API starts at once, so Railway's health check on
+`/healthz` passes within seconds rather than waiting on the pipeline (the timeout in
+`railway.json` is 600 s in case the platform is slow, but it is not needed for a healthy boot).
+Until the files land, every layer endpoint answers 404 with the command that fixes it, and the
+router looks the files up per request, so the layers appear without a restart. If the build fails
+the API stays up and the 404s stay honest — a visitor seeing "not built yet" is better served
+than one seeing a container that will not boot. Both steps are resumable from the volume.
+
+The pipeline's peak memory has not been measured on Railway. It runs numba and geopandas over
+about 116 MB of Mumbai layers, so if the service is sized small and the build is killed mid-way,
+raise the memory in the service settings and redeploy: both steps resume from what the volume
+already holds.
 
 ### What the deployed API can serve today
 

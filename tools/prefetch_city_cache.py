@@ -11,7 +11,7 @@ here goes through ``truststore``, which uses the operating-system trust store, w
 ``city/cache/`` and is resumable, so ``make city`` and the Chennai pre-cache never depend on
 the network at demo time.
 
-Cache layout (the convention the pipeline reads):
+Cache layout (the convention the pipeline reads; ``city/`` is ``$VARUNA_CITY_DIR`` when set):
 
     city/cache/dem/<Copernicus tile name>.tif
     city/cache/worldcover/<ESA WorldCover tile name>.tif
@@ -31,7 +31,24 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-CACHE = REPO_ROOT / "city" / "cache"
+
+
+def cache_root() -> Path:
+    """The directory the city pipeline reads its cache from.
+
+    ``varuna_city.cache`` resolves it as ``city_root() / "cache"``, where ``city_root`` honours
+    ``VARUNA_CITY_DIR`` (in the Railway image that is the ``/data`` volume, not the checkout).
+    Using the same resolver keeps the two in step; the fallback covers a bare ``python`` run
+    outside the workspace environment.
+    """
+    try:
+        from varuna_schemas.paths import city_root
+    except ImportError:
+        return REPO_ROOT / "city" / "cache"
+    return city_root() / "cache"
+
+
+CACHE = cache_root()
 USER_AGENT = "VARUNA-SIH2026/0.1 (city-in-a-box prefetch)"
 
 COPERNICUS = "https://copernicus-dem-30m.s3.amazonaws.com/{name}/{name}.tif"
