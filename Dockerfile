@@ -1,4 +1,4 @@
-# VARUNA API image (Railway). See docs/DEPLOY.md and ADR-0012.
+# VARUNA API image (Railway). See docs/DEPLOY.md and ADR-0014.
 #
 # The console is a separate Vercel deployment; this image is only the FastAPI service
 # and the engines it calls. It carries the scientific stack (numba, GDAL through rasterio,
