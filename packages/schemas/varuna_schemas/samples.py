@@ -33,6 +33,7 @@ from varuna_schemas.models import (
     CycleStageEvent,
     CycleStatus,
     DesignIntensity,
+    DesignStorm,
     DrainEdge,
     DrainEdgeHealth,
     DrainHealthProduct,
@@ -93,6 +94,8 @@ from varuna_schemas.models import (
     SegmentSeries,
     SeriesPoint,
     SkillByLead,
+    StormCellSpec,
+    StormDesign,
     SurfaceUnit,
     TidalOutfall,
     VarunaModel,
@@ -572,6 +575,51 @@ def _bundle_source() -> BundleSource:
     )
 
 
+def _storm_cell_spec() -> StormCellSpec:
+    return StormCellSpec(
+        id="cell-03",
+        birth_min=25.0,
+        lifetime_min=55.0,
+        start_x_m=274_500.0,
+        start_y_m=2_098_400.0,
+        u_ms=5.657,
+        v_ms=5.657,
+        sigma_m=3400.0,
+        peak_mm_h=96.0,
+    )
+
+
+def _storm_design() -> StormDesign:
+    return StormDesign(
+        crs=32643,
+        seed=2019,
+        background_mm_h=3.4,
+        wind_from_deg=225.0,
+        wind_speed_ms=8.0,
+        intensity_scale=1.18,
+        cells=[_storm_cell_spec()],
+        notes=["Cell lifetimes are a designer choice; no gauge trace resolves them."],
+    )
+
+
+def _design_storm() -> DesignStorm:
+    return DesignStorm(
+        intensity_mm_h=50.0,
+        intensity_source="services/city/configs/mumbai.yaml design_intensity_mm_h.upgraded",
+        duration_min=180,
+        step_min=5,
+        peak_position_r=0.4,
+        shape_b_min=10.0,
+        shape_c=0.8,
+        total_depth_mm=150.0,
+        hyetograph_mm_h=[8.0, 12.0, 240.0, 30.0],
+        basis=(
+            "Built from the drainage-norm design intensity, not from a fitted "
+            "intensity-duration-frequency curve: no published curve for this city was found."
+        ),
+    )
+
+
 def _bundle_manifest() -> BundleManifest:
     return BundleManifest(
         id=BUNDLE_ID,
@@ -600,6 +648,11 @@ def _bundle_manifest() -> BundleManifest:
         tide_source="illustrative",
         ground_truth_n=12,
         calibration={"aoi_3h_accumulation_mm": 150.0},
+        calibration_basis=(
+            "Inferred, not measured: scaled from the 24-hour Santacruz total so that the "
+            "window accumulation is consistent with it. No gauge trace covers this window."
+        ),
+        storm=_storm_design(),
     )
 
 
@@ -1033,6 +1086,9 @@ _BUILDERS: dict[str, Callable[[], VarunaModel]] = {
     "TidalOutfall": _tidal_outfall,
     "CityConfig": _city_config,
     "BundleSource": _bundle_source,
+    "StormCellSpec": _storm_cell_spec,
+    "StormDesign": _storm_design,
+    "DesignStorm": _design_storm,
     "BundleManifest": _bundle_manifest,
     "GroundTruthPin": _ground_truth_pin,
     "ReplayClock": _replay_clock,

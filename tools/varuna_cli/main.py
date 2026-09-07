@@ -10,7 +10,8 @@ Two kinds of commands hang off the root app:
   is simply absent from ``varuna --help``. ``varuna doctor`` lists which ones are available.
 
 When an engine sub-app shares a name with a placeholder task (``city``), the engine wins:
-the placeholder only exists to print the phase gate until the engine arrives.
+the placeholder only exists to print the phase gate until the engine arrives. A task that
+becomes a whole command *group* (``bundle``) is listed in :data:`GROUP_SUB_APPS`.
 """
 
 from __future__ import annotations
@@ -100,11 +101,27 @@ def register_optional(
     return True
 
 
+GROUP_SUB_APPS: tuple[tuple[str, str, str, str], ...] = (
+    (
+        "bundle",
+        "varuna_replay.cli",
+        "bundle_app",
+        "Replay bundles: generate, validate, list, and build the design storms.",
+    ),
+)
+"""Task names an engine turns into a command *group* rather than a single command.
+
+``varuna bundle`` is the placeholder task until the replay service ships ``bundle_app``, and
+then it becomes the group holding ``validate``, ``list``, ``show`` and ``design`` (CLAUDE.md
+P2.1). The group's own callback keeps the phase gate for the parts not built yet.
+"""
+
+
 def build_app(target: typer.Typer | None = None) -> typer.Typer:
     """Register the tasks and every importable engine sub-app on ``target`` (default :data:`app`).
 
-    Engines are probed first so that a placeholder task with the same name (``city``) is
-    skipped in favour of the real engine group.
+    Engines and group sub-apps are probed first so that a placeholder task with the same name
+    (``city``, ``bundle``) is skipped in favour of the real group.
     """
     target = target if target is not None else app
     probed: dict[str, typer.Typer] = {}
@@ -115,9 +132,18 @@ def build_app(target: typer.Typer | None = None) -> typer.Typer:
             registry.engines[engine] = OptionalRegistration(engine, module, "app", False, reason)
         else:
             probed[engine] = sub_app
-    tasks.register(target, skip=set(probed))
+    groups: dict[str, tuple[str, str, str]] = {}
+    for name, module, attr, help_text in GROUP_SUB_APPS:
+        sub_app, reason = load_sub_app(module, attr)
+        if sub_app is None:
+            registry.engines[name] = OptionalRegistration(name, module, attr, False, reason)
+        else:
+            groups[name] = (module, attr, help_text)
+    tasks.register(target, skip=set(probed) | set(groups))
     for engine in probed:
         register_optional(target, module=f"varuna_{engine}.cli", name=engine)
+    for name, (module, attr, help_text) in groups.items():
+        register_optional(target, module=module, attr=attr, name=name, help_text=help_text)
     return target
 
 
