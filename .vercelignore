@@ -1,0 +1,21 @@
+# Vercel builds only the Next.js console. Everything Python lives on Railway (ADR-0014),
+# and leaving it in the upload makes Vercel detect a second, ambiguous service at the root.
+pyproject.toml
+uv.lock
+.python-version
+services/
+tools/
+tests/
+docker/
+Dockerfile
+railway.json
+
+# Generated data and evidence: large, gitignored or irrelevant to the console build.
+city/
+data/
+bundles/
+docs/research/
+docs/screens/
+docs/*.pdf
+*.tif
+*.zarr

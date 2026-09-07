@@ -58,3 +58,4 @@ docs/disclosure_email_BMC.txt
 # Republishing whole articles would redistribute copyrighted work; every claim in
 # docs/research/*.md carries the live source_url and a short quoted excerpt instead.
 docs/research/_raw/pages/
+.vercel/
