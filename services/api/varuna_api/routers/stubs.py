@@ -2,7 +2,7 @@
 
 Every route declares its request and response models so ``openapi.json`` and the generated
 TypeScript types carry the full P0 contract now; the handler bodies are replaced phase by
-phase (nowcast/replay in Phase 5, drains/what-if in Phase 7, route/alerts/pumps in Phase 8,
+phase (nowcast in Phase 5, drains/what-if in Phase 7, route/alerts/pumps in Phase 8,
 onboard/verification in Phase 9). The 501 body names the phase so a dead control never says
 "Something went wrong".
 """
@@ -27,10 +27,6 @@ from varuna_schemas.models import (
     PumpAssignment,
     PumpPlan,
     ReachabilityResponse,
-    ReplayBundleSummary,
-    ReplayClock,
-    ReplaySeekRequest,
-    ReplaySpeedRequest,
     ReportAck,
     ReportIn,
     RouteRequest,
@@ -319,40 +315,8 @@ def physics_check(body: PhysicsCheckRequest) -> PhysicsCheckResponse:
     raise not_implemented("The physics check", 7, "P7.8")
 
 
-# ---- replay (Phase 5, clock from Phase 2) --------------------------------------------------
-@router.get(
-    "/replay/bundles",
-    tags=["replay"],
-    response_model=list[ReplayBundleSummary],
-    summary="Replay bundles with bake status",
-)
-def replay_bundles() -> list[ReplayBundleSummary]:
-    raise not_implemented("Bundle listing", 5, "P5.7")
-
-
-@router.get("/replay/clock", tags=["replay"], response_model=ReplayClock, summary="Replay clock")
-def replay_clock() -> ReplayClock:
-    raise not_implemented("The replay clock", 5, "P5.7")
-
-
-@router.post("/replay/play", tags=["replay"], response_model=ReplayClock, summary="Play")
-def replay_play() -> ReplayClock:
-    raise not_implemented("Replay control", 5, "P5.7")
-
-
-@router.post("/replay/pause", tags=["replay"], response_model=ReplayClock, summary="Pause")
-def replay_pause() -> ReplayClock:
-    raise not_implemented("Replay control", 5, "P5.7")
-
-
-@router.post("/replay/seek", tags=["replay"], response_model=ReplayClock, summary="Seek")
-def replay_seek(body: ReplaySeekRequest) -> ReplayClock:
-    raise not_implemented("Replay control", 5, "P5.7")
-
-
-@router.post("/replay/speed", tags=["replay"], response_model=ReplayClock, summary="Set speed")
-def replay_speed(body: ReplaySpeedRequest) -> ReplayClock:
-    raise not_implemented("Replay control", 5, "P5.7")
+# Replay bundles and the clock are no longer stubs: the clock landed with Phase 2 and lives in
+# ``varuna_api.routers.replay`` (task P2.7).
 
 
 # ---- onboarding and verification (Phase 9) -------------------------------------------------

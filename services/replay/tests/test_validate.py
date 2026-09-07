@@ -15,6 +15,7 @@ from typing import Any
 
 import pytest
 from varuna_replay import bundle as members
+from varuna_replay.bundle import LF
 from varuna_replay.domain import StormDomain
 from varuna_replay.validate import RULES, validate_bundle
 
@@ -133,6 +134,30 @@ def test_a_report_outside_the_window_fails_b4(full_bundle: Path) -> None:
     assert any("outside the replay window" in message for message in _findings(report, "B4"))
 
 
+def test_a_timestamp_without_an_offset_is_reported_not_raised(full_bundle: Path) -> None:
+    """The validator never raises on bad data, and replay times carry +05:30 (CLAUDE.md 12).
+
+    A naive timestamp cannot be compared with the manifest window at all, so parsing one and
+    carrying on would crash the run instead of naming the file and the rule.
+    """
+    gauges = full_bundle / "gauges.csv"
+    naive = gauges.read_text(encoding="utf-8").replace("+05:30", "")
+    gauges.write_text(naive, encoding="utf-8", newline=LF)
+    report = validate_bundle(full_bundle)
+    assert "gauges.csv" in _files(report, "B4")
+    assert any("no UTC offset" in message for message in _findings(report, "B4"))
+
+
+def test_an_unparseable_timestamp_is_reported(full_bundle: Path) -> None:
+    reports = full_bundle / "reports.jsonl"
+    rows = [json.loads(line) for line in reports.read_text(encoding="utf-8").splitlines() if line]
+    rows[0]["ts"] = "2 July 2019, about eight"
+    text = "".join(json.dumps(row, sort_keys=True) + LF for row in rows)
+    reports.write_text(text, encoding="utf-8", newline=LF)
+    report = validate_bundle(full_bundle)
+    assert any("is not ISO 8601" in message for message in _findings(report, "B4"))
+
+
 # --------------------------------------------------------------------------- B5
 def test_cubes_on_different_grids_fail_b5(
     full_bundle: Path, domain: StormDomain, t0
@@ -204,7 +229,7 @@ def test_an_undeclared_property_is_a_warning_not_an_error(
 def test_a_design_storm_may_not_carry_ground_truth(tmp_path: Path) -> None:
     from varuna_replay.build import build_design_bundle, load_city
 
-    result = build_design_bundle(load_city("mumbai"), out_dir=tmp_path / "MUM-IDF-25yr")
+    result = build_design_bundle(load_city("mumbai"), bundles_root=tmp_path)
     payload = json.loads((result.root / "ground_truth.geojson").read_text(encoding="utf-8"))
     payload["features"] = [{"type": "Feature", "geometry": None, "properties": {}}]
     (result.root / "ground_truth.geojson").write_text(json.dumps(payload), encoding="utf-8")
@@ -225,6 +250,34 @@ def test_a_stream_without_a_synthetic_flag_fails_b7(
     report = validate_bundle(root)
     assert "gauges.csv" in _files(report, "B7")
     assert any("must say so" in message for message in _findings(report, "B7"))
+
+
+def test_a_blank_synthetic_value_fails_b7(full_bundle: Path) -> None:
+    """A blank flag says nothing, and must not read as 'synthetic'.
+
+    ``NaN`` is truthy in Python, so a column of blanks would otherwise sail through the rule
+    that exists to keep an unlabelled stream off the console (CLAUDE.md 0.7).
+    """
+    import pandas as pd
+
+    frame = pd.read_csv(full_bundle / "gauges.csv")
+    frame["synthetic"] = ""
+    frame.to_csv(full_bundle / "gauges.csv", index=False, lineterminator=LF)
+    report = validate_bundle(full_bundle)
+    assert "gauges.csv" in _files(report, "B7")
+    assert any("blank or unreadable" in message for message in _findings(report, "B7"))
+
+
+def test_a_row_marked_not_synthetic_is_a_note_not_an_error(full_bundle: Path) -> None:
+    import pandas as pd
+
+    frame = pd.read_csv(full_bundle / "gauges.csv")
+    frame["synthetic"] = [i > 0 for i in range(len(frame))]
+    frame.to_csv(full_bundle / "gauges.csv", index=False, lineterminator=LF)
+    report = validate_bundle(full_bundle)
+    assert report.ok, report.render()
+    notes = [f.message for f in report.for_rule("B7") if f.level == "note"]
+    assert any("1 row(s) are marked not synthetic" in message for message in notes)
 
 
 def test_a_tide_row_without_a_source_fails_b7(full_bundle: Path) -> None:

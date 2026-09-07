@@ -2,6 +2,7 @@
 
 import { ChevronDown, Pause, Play } from "lucide-react";
 import { motion } from "motion/react";
+import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useReplayControls } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { SPRING, useMotionPref } from "@/lib/motion";
 import {
@@ -26,6 +28,7 @@ import {
   selectValidTimeLabel,
   useReplayStore,
 } from "@/lib/stores/replay";
+import { registerPlayToggle } from "@/lib/shortcuts";
 import { useRunStore } from "@/lib/stores/run";
 
 /** Stages of the five-minute cycle, in order (CLAUDE.md section 11.11). */
@@ -52,13 +55,16 @@ export function TimeBar() {
   const playing = useReplayStore((s) => s.playing);
   const speed = useReplayStore((s) => s.speed);
   const leadMin = useReplayStore((s) => s.leadMin);
-  const togglePlaying = useReplayStore((s) => s.togglePlaying);
-  const setSpeed = useReplayStore((s) => s.setSpeed);
   const setLeadMin = useReplayStore((s) => s.setLeadMin);
   const validLabel = useReplayStore(selectValidTimeLabel);
   const leadLabel = useReplayStore(selectLeadLabel);
   const hasRun = useRunStore((s) => s.currentRun !== null);
+  const controls = useReplayControls();
   const { reduced } = useMotionPref();
+
+  // Space is a global shortcut; while the time bar is on screen it drives the API's clock.
+  const toggle = controls.toggle;
+  useEffect(() => registerPlayToggle(toggle), [toggle]);
 
   const handleTransition = reduced ? { duration: 0 } : SPRING;
 
@@ -80,7 +86,7 @@ export function TimeBar() {
                 aria-disabled={!hasRun}
                 aria-pressed={playing}
                 className={cn(!hasRun && "opacity-60")}
-                onClick={() => togglePlaying()}
+                onClick={() => controls.toggle()}
               />
             }
           >
@@ -109,7 +115,7 @@ export function TimeBar() {
               value={String(speed)}
               onValueChange={(value) => {
                 const next = Number(value);
-                if (isReplaySpeed(next)) setSpeed(next);
+                if (isReplaySpeed(next)) controls.setSpeed(next);
               }}
             >
               {REPLAY_SPEEDS.map((s) => (

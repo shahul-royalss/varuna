@@ -237,15 +237,27 @@ export class LiveConnection {
   }
 }
 
-/** Parses a socket frame; ignores anything that is not a `{ type }` object. */
+/**
+ * Parses a socket frame; ignores anything that is not a `{ type }` or `{ topic }` object.
+ *
+ * The API sends the bus envelope, whose discriminator is `topic` (CLAUDE.md section 11.11);
+ * the console has always read `type`, and the handshake and ping frames use `type`. Both are
+ * accepted and normalised to `type`, so a subscriber only ever matches on one field.
+ */
 export function parseLiveEvent(raw: unknown): LiveEvent | null {
   if (typeof raw !== "string") return null;
+  let frame: unknown;
   try {
-    const parsed = LiveEvent.safeParse(JSON.parse(raw));
-    return parsed.success ? parsed.data : null;
+    frame = JSON.parse(raw);
   } catch {
     return null;
   }
+  if (frame && typeof frame === "object" && !("type" in frame) && "topic" in frame) {
+    const { topic, ...rest } = frame as { topic: unknown };
+    if (typeof topic === "string") frame = { ...rest, type: topic, topic };
+  }
+  const parsed = LiveEvent.safeParse(frame);
+  return parsed.success ? parsed.data : null;
 }
 
 const connections = new Map<string, LiveConnection>();

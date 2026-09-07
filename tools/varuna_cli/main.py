@@ -106,14 +106,15 @@ GROUP_SUB_APPS: tuple[tuple[str, str, str, str], ...] = (
         "bundle",
         "varuna_replay.cli",
         "bundle_app",
-        "Replay bundles: generate, validate, list, and build the design storms.",
+        "Replay bundles: build, validate, list and inspect.",
     ),
 )
 """Task names an engine turns into a command *group* rather than a single command.
 
 ``varuna bundle`` is the placeholder task until the replay service ships ``bundle_app``, and
-then it becomes the group holding ``validate``, ``list``, ``show`` and ``design`` (CLAUDE.md
-P2.1). The group's own callback keeps the phase gate for the parts not built yet.
+then it becomes the group holding ``build``, ``validate``, ``list``, ``show`` and ``design``
+(CLAUDE.md P2.1-P2.8). The group's own callback accepts ``--bundle <id>``, which is how
+``make bundle BUNDLE=<id>`` reaches the build.
 """
 
 

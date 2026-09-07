@@ -36,6 +36,9 @@ export {
   useSubmitReport,
 } from "./queries";
 
+export { useReplayBundles, useReplayClock, useReplayControls } from "./replay";
+export type { ReplayControls, UseReplayClockOptions } from "./replay";
+
 export { ApiProvider, getSharedQueryClient, makeQueryClient } from "./provider";
 export type { ApiProviderProps } from "./provider";
 

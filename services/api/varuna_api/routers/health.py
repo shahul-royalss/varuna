@@ -27,6 +27,7 @@ class HealthResponse(HealthStatus):
 def healthz(state: Annotated[AppState, Depends(get_state)]) -> HealthResponse:
     settings = state.settings
     last = state.latest_run()
+    clock = state.replay.clock
     return HealthResponse(
         status="ok" if last is not None else "starting",
         version=state.version,
@@ -38,6 +39,7 @@ def healthz(state: Annotated[AppState, Depends(get_state)]) -> HealthResponse:
         last_run_mode=last.mode if last else None,
         replay_mode=last.replay_mode if last else None,
         degraded_feeds=list(last.degraded_feeds) if last else [],
+        replay=clock.snapshot() if clock is not None else None,
         uptime_s=state.uptime_s,
         offline=settings.varuna_offline,
         ts=datetime.now(IST),

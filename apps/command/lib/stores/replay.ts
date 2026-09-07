@@ -40,6 +40,21 @@ export function isReplaySpeed(value: number): value is ReplaySpeed {
   return (REPLAY_SPEEDS as readonly number[]).includes(value);
 }
 
+/** The slice of `GET /v1/replay/clock` the store follows (CLAUDE.md section 12). */
+export interface ReplayClockSnapshot {
+  bundle_id: string;
+  sim_time: string;
+  playing: boolean;
+  speed: number;
+  t0: string;
+  t1: string;
+  cycle_index: number;
+  n_cycles?: number | null;
+  mode?: string | null;
+  last_run_id?: string | null;
+  note?: string | null;
+}
+
 export interface ReplayState {
   bundleId: string;
   /** Replay clock: the cycle time the console is showing, ISO 8601 with +05:30. */
@@ -53,6 +68,14 @@ export interface ReplayState {
   t1: string;
   cycleIndex: number;
   mode: ReplayMode;
+  /** Cycles in the bundle, from the clock; null until the API has answered. */
+  nCycles: number | null;
+  /** The run the clock last published, or null while nothing is baked. */
+  lastRunId: string | null;
+  /** What the clock says about itself, already written as UI copy; null when all is well. */
+  note: string | null;
+  /** True once the API's clock has answered: the controls then drive the real replay. */
+  fromApi: boolean;
 
   setBundle: (bundleId: string, window?: { t0: string; t1: string; simTime?: string }) => void;
   setSimTime: (iso: string) => void;
@@ -68,6 +91,8 @@ export interface ReplayState {
   seek: (iso: string) => void;
   setCycleIndex: (index: number) => void;
   setMode: (mode: ReplayMode) => void;
+  /** Adopts the clock the API (or a `replay.clock` event) reports. */
+  applyClock: (clock: ReplayClockSnapshot) => void;
   reset: () => void;
 }
 
@@ -81,6 +106,10 @@ const initialState = {
   t1: DEFAULT_T1,
   cycleIndex: 0,
   mode: "baked" as ReplayMode,
+  nCycles: null,
+  lastRunId: null,
+  note: null,
+  fromApi: false,
 };
 
 function clampToWindow(iso: string, t0: string, t1: string): string {
@@ -120,6 +149,21 @@ export const useReplayStore = create<ReplayState>()((set, get) => ({
   },
   setCycleIndex: (index) => set({ cycleIndex: Math.max(0, Math.floor(index)) }),
   setMode: (mode) => set({ mode }),
+  applyClock: (clock) =>
+    set((s) => ({
+      bundleId: clock.bundle_id,
+      t0: clock.t0,
+      t1: clock.t1,
+      simTime: clampToWindow(clock.sim_time, clock.t0, clock.t1),
+      playing: clock.playing,
+      speed: isReplaySpeed(clock.speed) ? clock.speed : s.speed,
+      cycleIndex: Math.max(0, Math.floor(clock.cycle_index)),
+      mode: clock.mode === "live" ? "live" : "baked",
+      nCycles: clock.n_cycles ?? null,
+      lastRunId: clock.last_run_id ?? null,
+      note: clock.note ?? null,
+      fromApi: true,
+    })),
   reset: () => set({ ...initialState }),
 }));
 

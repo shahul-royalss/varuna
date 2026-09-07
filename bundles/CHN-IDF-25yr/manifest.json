@@ -27,10 +27,11 @@
     "Design storm: a synthetic scenario, not a recorded event.",
     "Rain depth comes from the drainage-norm design intensity (50 mm/h), not from a published intensity-duration-frequency curve.",
     "Radar frames are rendered from the rain field, not decoded from an archive.",
-    "The clock is nominal: a design storm has no date."
+    "The clock is nominal: a design storm has no date.",
+    "The 449 mm/h peak block follows from the stated shape (b = 10 min, c = 0.80); another Chicago shape holding the same depth would peak differently."
   ],
   "event_date": null,
-  "description": "Chicago hyetograph, 180 minutes, peak at 40 % of the duration, 150 mm total over Chennai.",
+  "description": "Chicago hyetograph, 180 minutes, peak at 40 % of the duration, 150 mm total over Chennai, peaking at 449 mm/h for 5 minutes.",
   "tide_source": null,
   "ground_truth_n": 0,
   "calibration": {},

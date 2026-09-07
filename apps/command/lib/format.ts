@@ -32,6 +32,13 @@ const dateFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: IST_TIME_ZONE,
 });
 
+const longDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: IST_TIME_ZONE,
+});
+
 const integerFormatter = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 const oneDecimalFormatter = new Intl.NumberFormat("en-IN", {
   minimumFractionDigits: 1,
@@ -53,6 +60,17 @@ export function toDate(input: DateInput): Date | null {
 
 function isFinite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+/**
+ * A bundle window as the replay cards and the panel say it: "2 July 2019, 05:40 to 09:40 IST".
+ * A design storm has a nominal day, so the date is still shown - it is what the clock walks.
+ */
+export function bundleWindowLabel(t0: DateInput, t1: DateInput): string {
+  const from = toDate(t0);
+  const to = toDate(t1);
+  if (!from || !to) return MISSING;
+  return `${longDateFormatter.format(from)}, ${timeFormatter.format(from)} to ${timeFormatter.format(to)} IST`;
 }
 
 /** "18:20" in IST. `seconds` adds ":05" for log streams. */

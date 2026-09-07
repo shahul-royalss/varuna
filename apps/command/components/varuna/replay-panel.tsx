@@ -8,6 +8,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CycleLog, type CycleLogRow } from "@/components/varuna/cycle-log";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Panel } from "@/components/varuna/panel";
+import { useReplayBundles, useReplayControls } from "@/lib/api";
+import { bundleWindowLabel } from "@/lib/format";
 import {
   REPLAY_SPEEDS,
   isReplaySpeed,
@@ -24,7 +26,8 @@ const NO_CYCLES: CycleLogRow[] = [];
 
 /**
  * Replay control (CLAUDE.md section 7.2): bundle card, clock, transport controls, baked/live mode,
- * the cycle log and the storm summary. Drives the same replay store as the time bar.
+ * the cycle log and the storm summary. Play, pause, seek and speed drive the API's clock, and the
+ * store follows the `replay.clock` events it publishes, so every panel shows the same instant.
  */
 export function ReplayPanel() {
   const bundleId = useReplayStore((s) => s.bundleId);
@@ -32,11 +35,14 @@ export function ReplayPanel() {
   const playing = useReplayStore((s) => s.playing);
   const speed = useReplayStore((s) => s.speed);
   const mode = useReplayStore((s) => s.mode);
-  const togglePlaying = useReplayStore((s) => s.togglePlaying);
-  const seek = useReplayStore((s) => s.seek);
-  const setSpeed = useReplayStore((s) => s.setSpeed);
-  const setMode = useReplayStore((s) => s.setMode);
+  const note = useReplayStore((s) => s.note);
+  const t0 = useReplayStore((s) => s.t0);
+  const t1 = useReplayStore((s) => s.t1);
   const setReplayPanelOpen = useUiStore((s) => s.setReplayPanelOpen);
+
+  const controls = useReplayControls();
+  const bundles = useReplayBundles();
+  const bundle = bundles.data?.find((row) => row.id === bundleId);
 
   return (
     <Panel
@@ -61,10 +67,19 @@ export function ReplayPanel() {
           <div className="flex items-center justify-between gap-2">
             <span className="num type-small font-medium text-text">{bundleId}</span>
             <span className="inline-flex h-6 items-center rounded-full border border-line bg-deep px-2.5 type-micro text-text-2">
-              Reconstructed replay
+              {bundle?.label ?? "Reconstructed replay"}
             </span>
           </div>
-          <p className="mt-1 type-small text-text-2">2 July 2019, 05:40 to 09:40 IST</p>
+          <p className="mt-1 type-small text-text-2">
+            {bundleWindowLabel(bundle?.t0 ?? t0, bundle?.t1 ?? t1)}
+          </p>
+          {controls.apiReady ? null : (
+            <p className="mt-2 type-micro text-text-2">
+              {controls.error
+                ? controls.error.message
+                : "The clock is local until the API answers. Start it with make dev."}
+            </p>
+          )}
         </section>
 
         {/* Clock and transport */}
@@ -78,7 +93,7 @@ export function ReplayPanel() {
               variant="outline"
               size="icon-sm"
               aria-label="Seek back 5 minutes"
-              onClick={() => seek(addMinutesIso(simTime, -SEEK_STEP_MIN))}
+              onClick={() => controls.seek(addMinutesIso(simTime, -SEEK_STEP_MIN))}
             >
               <SkipBack aria-hidden="true" />
             </Button>
@@ -87,7 +102,7 @@ export function ReplayPanel() {
               size="icon-sm"
               aria-label={playing ? "Pause the replay" : "Play the replay"}
               aria-pressed={playing}
-              onClick={() => togglePlaying()}
+              onClick={() => controls.toggle()}
             >
               {playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
             </Button>
@@ -95,7 +110,7 @@ export function ReplayPanel() {
               variant="outline"
               size="icon-sm"
               aria-label="Seek forward 5 minutes"
-              onClick={() => seek(addMinutesIso(simTime, SEEK_STEP_MIN))}
+              onClick={() => controls.seek(addMinutesIso(simTime, SEEK_STEP_MIN))}
             >
               <SkipForward aria-hidden="true" />
             </Button>
@@ -107,7 +122,7 @@ export function ReplayPanel() {
               value={[String(speed)]}
               onValueChange={(value) => {
                 const next = Number((value as string[])[0]);
-                if (isReplaySpeed(next)) setSpeed(next);
+                if (isReplaySpeed(next)) controls.setSpeed(next);
               }}
               className="ml-auto"
             >
@@ -118,6 +133,11 @@ export function ReplayPanel() {
               ))}
             </ToggleGroup>
           </div>
+          {note ? (
+            <p role="status" className="type-micro text-text-2">
+              {note}
+            </p>
+          ) : null}
         </section>
 
         {/* Baked or live */}
@@ -131,7 +151,7 @@ export function ReplayPanel() {
             value={[mode]}
             onValueChange={(value) => {
               const next = (value as string[])[0];
-              if (next === "baked" || next === "live") setMode(next as ReplayMode);
+              if (next === "baked" || next === "live") controls.setMode(next as ReplayMode);
             }}
           >
             <ToggleGroupItem value="baked">Baked</ToggleGroupItem>
@@ -155,10 +175,23 @@ export function ReplayPanel() {
         {/* Storm summary */}
         <section aria-label="Storm summary" className="space-y-2">
           <h3 className="type-small font-medium text-text">Storm summary</h3>
-          <EmptyState
-            title="No storm cells yet"
-            description="Storm cells appear when the bundle is generated."
-          />
+          {bundle ? (
+            <ul className="space-y-1">
+              {bundle.synthetic_notes.slice(0, 3).map((line) => (
+                <li key={line} className="type-micro text-text-2">
+                  {line}
+                </li>
+              ))}
+              <li className="num type-micro text-text-3">
+                Seed {bundle.seed}. {bundle.baked_cycles} of {bundle.total_cycles} cycles baked.
+              </li>
+            </ul>
+          ) : (
+            <EmptyState
+              title="No storm cells yet"
+              description="Storm cells appear when the bundle is generated."
+            />
+          )}
         </section>
       </div>
     </Panel>
