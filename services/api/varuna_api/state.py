@@ -18,6 +18,7 @@ from varuna_schemas.models import RunMeta
 from varuna_schemas.settings import Settings, get_settings
 
 from varuna_api import __version__
+from varuna_api.replay import ReplayController
 
 WS_HEARTBEAT_S: float = 15.0
 """Heartbeat interval on ``WS /v1/live`` (CLAUDE.md P0.4)."""
@@ -28,6 +29,7 @@ class AppState:
     settings: Settings = field(default_factory=get_settings)
     bus: Bus = field(default_factory=get_bus)
     registry: RunRegistry = field(default_factory=RunRegistry)
+    replay: ReplayController = field(default_factory=ReplayController)
     version: str = __version__
     started_at: datetime = field(default_factory=lambda: datetime.now(IST))
     started_monotonic: float = field(default_factory=time.monotonic)

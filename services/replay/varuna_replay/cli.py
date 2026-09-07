@@ -1,11 +1,13 @@
-"""``varuna bundle`` and ``varuna replay`` - the replay service's command line (P2.1, P2.8).
+"""``varuna bundle`` and ``varuna replay`` - the replay service's command line (P2.1-P2.8).
 
-``varuna bundle validate <id>`` is the one CLAUDE.md P2.1 asks for: it checks a folder against
-the bundle contract and prints a line per rule, naming the file and the rule behind every
-complaint. ``varuna bundle design --city mumbai`` writes the design-storm bundle of P2.8.
+``varuna bundle build <id>`` is the one command that writes a whole bundle and then checks it:
+``MUM-2019-07-02`` is the reconstruction of tasks P2.3-P2.6, ``MUM-IDF-25yr`` and
+``CHN-IDF-25yr`` the design storms of P2.8. ``varuna bundle validate <id>`` is what CLAUDE.md
+P2.1 asks for: it checks a folder against the bundle contract and prints a line per rule,
+naming the file and the rule behind every complaint.
 
-Bundle *generation* for the reconstruction (``MUM-2019-07-02``) is tasks P2.3-P2.6, so
-``varuna bundle`` with no sub-command still prints the phase gate and exits 2.
+``varuna bundle`` with neither a sub-command nor ``--bundle`` prints what the commands are and
+exits 2, because a build has to be told what to build.
 
 Imports are deferred into the commands, as in ``varuna_city.cli``: the root task runner must
 stay fast, and importing numpy, zarr and pandas to print ``--help`` would not be.
@@ -19,18 +21,20 @@ from typing import Annotated
 import typer
 
 DEFAULT_CITY = "mumbai"
+DEFAULT_BUNDLE = "MUM-2019-07-02"
 
-PHASE_GATE = (
-    "Bundle generation is not built yet (Phase 2, tasks P2.3-P2.6: the storm calibration, "
-    "the synthetic streams and the curated ground truth).\n"
-    "What works today: 'varuna bundle validate <id>' checks a bundle against the contract, "
-    "'varuna bundle design --city <city>' writes a design-storm bundle, and "
-    "'varuna bundle list' shows what is on disk."
+USAGE = (
+    "Name the bundle to build: 'varuna bundle build MUM-2019-07-02' writes the reconstructed "
+    "replay of 2 July 2019, and 'varuna bundle build MUM-IDF-25yr' (or CHN-IDF-25yr) writes a "
+    "design storm.\n"
+    "Also here: 'varuna bundle validate <id>' checks a bundle against the contract, "
+    "'varuna bundle list' shows what is on disk, 'varuna bundle show <id>' prints what a "
+    "bundle claims about itself, and 'varuna bundle storm <id>' prints its cell table."
 )
 
 bundle_app = typer.Typer(
     name="bundle",
-    help="Replay bundles: validate, list, and build the design storms.",
+    help="Replay bundles: build, validate, list and inspect.",
     no_args_is_help=False,
     add_completion=False,
 )
@@ -54,12 +58,56 @@ def bundle_main(
     bundle: Annotated[
         str | None, typer.Option("--bundle", help="Replay bundle id to generate.")
     ] = None,
+    out_dir: Annotated[
+        Path | None,
+        typer.Option("--out-dir", help="Directory to create the bundle folder in."),
+    ] = None,
 ) -> None:
-    """Generate a replay bundle (storm designer, synthetic streams, curated ground truth)."""
+    """Generate a replay bundle (storm designer, synthetic streams, curated ground truth).
+
+    ``make bundle BUNDLE=<id>`` arrives here as ``--bundle <id>``, which is the same build
+    ``varuna bundle build <id>`` runs.
+    """
     if ctx.invoked_subcommand is not None:
         return
-    _echo(PHASE_GATE)
-    raise typer.Exit(code=2)
+    if bundle is None:
+        _echo(USAGE)
+        raise typer.Exit(code=2)
+    _build(bundle, out_dir)
+
+
+def _build(bundle: str, out_dir: Path | None) -> None:
+    """Build one bundle by id and validate what was written, exiting non-zero if it is invalid."""
+    from varuna_replay.build import build_bundle
+    from varuna_replay.validate import validate_bundle
+
+    result = build_bundle(bundle, bundles_root=out_dir)
+    _echo(result.summary())
+    typer.echo("")
+    report = validate_bundle(result.root)
+    _echo(report.render())
+    if not report.ok:
+        raise typer.Exit(code=1)
+
+
+@bundle_app.command("build")
+def build(
+    bundle: Annotated[
+        str, typer.Argument(help="Bundle id: MUM-2019-07-02, MUM-IDF-25yr or CHN-IDF-25yr.")
+    ] = DEFAULT_BUNDLE,
+    out_dir: Annotated[
+        Path | None,
+        typer.Option("--out-dir", help="Directory to create the bundle folder in."),
+    ] = None,
+) -> None:
+    """Write a bundle end to end, then validate it against the contract.
+
+    ``MUM-2019-07-02`` is the reconstruction: the storm is fitted to the sourced ground-truth
+    pins and calibrated to a stated share of IMD's 24-hour Santacruz total, and the gauges,
+    tide, traffic and reports are generated from that same field. The design storms need only
+    a city config. Nothing downloads.
+    """
+    _build(bundle, out_dir)
 
 
 @bundle_app.command("validate")
@@ -152,7 +200,11 @@ def design(
         int, typer.Option("--duration-min", help="Storm duration in minutes.")
     ] = 180,
     out_dir: Annotated[
-        Path | None, typer.Option("--out-dir", help="Write here instead of bundles/<id>/.")
+        Path | None,
+        typer.Option(
+            "--out-dir",
+            help="Directory to create the bundle folder in, instead of bundles/.",
+        ),
     ] = None,
 ) -> None:
     """Write the design-storm bundle for a city (MUM-IDF-25yr, CHN-IDF-25yr) and validate it."""
@@ -163,7 +215,7 @@ def design(
         load_city(city),
         intensity_key=intensity,
         duration_min=duration_min,
-        out_dir=out_dir,
+        bundles_root=out_dir,
     )
     _echo(result.summary())
     typer.echo("")

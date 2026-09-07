@@ -33,6 +33,7 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 import structlog
 from pydantic import ValidationError
 from varuna_schemas.models.bundle import BundleManifest, GroundTruthPin
@@ -236,15 +237,66 @@ def _cube_problems(info: CubeInfo, manifest: BundleManifest, cadence_key: str) -
 
 
 def _stamps(values: Sequence[Any]) -> tuple[list[datetime], list[str]]:
-    """Parse ISO timestamps, collecting the ones that will not parse."""
+    """Parse ISO timestamps, collecting a complaint for every one that will not do.
+
+    A timestamp without a UTC offset is rejected rather than parsed: CLAUDE.md 12 requires
+    ISO 8601 with an offset, and letting a naive one through would make it incomparable with
+    the manifest window (whose instants are IST) - the comparison would raise rather than
+    report, and this validator never raises on bad data.
+
+    Returns:
+        The timestamps that parsed, and a ready-to-print complaint per timestamp that did not.
+    """
     parsed: list[datetime] = []
-    bad: list[str] = []
+    problems: list[str] = []
     for value in values:
+        text = str(value)
         try:
-            parsed.append(datetime.fromisoformat(str(value)))
+            stamp = datetime.fromisoformat(text)
         except ValueError:
-            bad.append(str(value))
-    return parsed, bad
+            problems.append(f"timestamp {text!r} is not ISO 8601")
+            continue
+        if stamp.tzinfo is None:
+            problems.append(
+                f"timestamp {text!r} carries no UTC offset; replay times are ISO 8601 with "
+                "an offset, e.g. 2019-07-02T05:40:00+05:30 (CLAUDE.md 12)"
+            )
+            continue
+        parsed.append(stamp)
+    return parsed, problems
+
+
+_TRUE_TOKENS: frozenset[str] = frozenset({"true", "t", "yes", "y", "1"})
+_FALSE_TOKENS: frozenset[str] = frozenset({"false", "f", "no", "n", "0"})
+
+
+def _synthetic_flags(values: Sequence[Any]) -> tuple[int, int, list[str]]:
+    """Read a stream's ``synthetic`` column strictly.
+
+    A blank cell must not read as "synthetic": ``NaN`` is truthy in Python, so a column of
+    blanks would otherwise pass rule B7 while saying nothing at all about the stream.
+
+    Returns:
+        How many rows say true, how many say false, and the values that say neither.
+    """
+    true_rows = false_rows = 0
+    unreadable: list[str] = []
+    for value in values:
+        if isinstance(value, bool | np.bool_):
+            true_rows += bool(value)
+            false_rows += not bool(value)
+            continue
+        if value is None or (isinstance(value, float) and math.isnan(value)):
+            unreadable.append("")
+            continue
+        token = str(value).strip().lower()
+        if token in _TRUE_TOKENS:
+            true_rows += 1
+        elif token in _FALSE_TOKENS:
+            false_rows += 1
+        else:
+            unreadable.append(str(value))
+    return true_rows, false_rows, unreadable
 
 
 # ============================================================================ the rules
@@ -373,20 +425,31 @@ def _check_table(
             member,
             f"has no '{flag_column}' column; a synthetic stream must say so (CLAUDE.md 0.7)",
         )
-    elif not frame[flag_column].astype(bool).all():
-        report.add(
-            "B7",
-            "note",
-            member,
-            f"{int((~frame[flag_column].astype(bool)).sum())} row(s) are marked not synthetic; "
-            "the manifest must cite where they came from",
-        )
+    else:
+        _, not_synthetic, unreadable = _synthetic_flags(frame[flag_column].tolist())
+        if unreadable:
+            report.add(
+                "B7",
+                "error",
+                member,
+                f"{len(unreadable)} row(s) have a blank or unreadable '{flag_column}' value "
+                f"(first {unreadable[0]!r}); a stream must say what it is, true or false "
+                "(CLAUDE.md 0.7)",
+            )
+        if not_synthetic:
+            report.add(
+                "B7",
+                "note",
+                member,
+                f"{not_synthetic} row(s) are marked not synthetic; the manifest must cite "
+                "where they came from",
+            )
     if "ts" not in frame.columns:
         report.add("B4", "error", member, "has no 'ts' column")
         return
     stamps, bad = _stamps(sorted(set(frame["ts"].astype(str))))
-    for value in bad[:3]:
-        report.add("B4", "error", member, f"timestamp {value!r} is not ISO 8601")
+    for problem in bad[:3]:
+        report.add("B4", "error", member, problem)
     cadence = manifest.cadences.get(cadence_key)
     if cadence is None:
         report.add("B4", "error", MANIFEST_NAME, f"cadences has no '{cadence_key}' entry")
@@ -416,8 +479,8 @@ def _check_tide(report: ValidationReport, layout: BundleLayout, manifest: Bundle
         report.add("B4", "error", TIDE_CSV, "has no 'ts' column")
         return
     stamps, bad = _stamps(sorted(set(frame["ts"].astype(str))))
-    for value in bad[:3]:
-        report.add("B4", "error", TIDE_CSV, f"timestamp {value!r} is not ISO 8601")
+    for problem in bad[:3]:
+        report.add("B4", "error", TIDE_CSV, problem)
     cadence = manifest.cadences.get("tide")
     if cadence is None:
         report.add("B4", "error", MANIFEST_NAME, "cadences has no 'tide' entry")
@@ -448,8 +511,8 @@ def _check_reports(
             )
             break
     stamps, bad = _stamps([row.get("ts", "") for row in rows])
-    for value in bad[:3]:
-        report.add("B4", "error", REPORTS_JSONL, f"timestamp {value!r} is not ISO 8601")
+    for problem in bad[:3]:
+        report.add("B4", "error", REPORTS_JSONL, problem)
     outside = [stamp for stamp in stamps if stamp < manifest.t0 or stamp > manifest.t1]
     if outside:
         report.add(

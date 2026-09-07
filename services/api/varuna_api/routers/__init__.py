@@ -3,4 +3,4 @@ endpoints that answer 501 until their engine's phase lands."""
 
 from __future__ import annotations
 
-__all__ = ["city", "cycle", "health", "live", "runs", "stubs"]
+__all__ = ["city", "cycle", "health", "live", "replay", "runs", "stubs"]

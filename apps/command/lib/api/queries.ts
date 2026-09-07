@@ -25,6 +25,7 @@ export const queryKeys = {
   cycleStatus: ["cycle", "status"] as const,
   verification: (event: string) => ["verification", event] as const,
   bundles: ["replay", "bundles"] as const,
+  replayClock: ["replay", "clock"] as const,
 };
 
 /** Do not hammer an API that answers 4xx (wrong request) or 501 (phase not landed). */

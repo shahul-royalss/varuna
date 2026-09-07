@@ -141,7 +141,11 @@ def test_a_design_bundle_is_written_and_validates(city: str, tmp_path: Path) -> 
     """P2.8 end to end: the writer and the validator agree on a complete bundle."""
     config = load_city(city)
     bundle_id = design_bundle_id(config)
-    result = build_design_bundle(config, out_dir=tmp_path / bundle_id)
+    result = build_design_bundle(config, bundles_root=tmp_path)
+
+    assert result.root == (tmp_path / bundle_id).resolve(), (
+        "the folder must be named for the bundle id, or rule B2 fails on the id it declares"
+    )
 
     assert result.bundle_id == bundle_id
     assert result.manifest.label == "Design storm"
@@ -164,8 +168,25 @@ def test_a_design_bundle_is_written_and_validates(city: str, tmp_path: Path) -> 
     assert absent == {"gauges.csv", "tide.csv", "traffic/speeds.parquet", "reports.jsonl"}
 
 
+def test_the_bundle_says_how_hard_the_storm_peaks(tmp_path: Path) -> None:
+    """A stated shape has a consequence, and the bundle card must show it.
+
+    Holding 150 mm over three hours, this Chicago shape spikes to roughly nine times the
+    mean intensity in one five-minute block. Nobody reading "150 mm total" would guess that,
+    so the peak goes in the description and in the synthetic notes, where the /replay card
+    and the mode banner read from (CLAUDE.md 0.6).
+    """
+    result = build_design_bundle(load_city("mumbai"), bundles_root=tmp_path)
+    storm = result.manifest.design_storm
+    assert storm is not None
+    peak = max(storm.hyetograph_mm_h)
+    assert peak == pytest.approx(448.83, abs=0.1)
+    assert f"{peak:.0f} mm/h" in (result.manifest.description or "")
+    assert any(f"{peak:.0f} mm/h peak block" in note for note in result.manifest.synthetic_notes)
+
+
 def test_two_builds_of_the_same_design_bundle_are_byte_identical(tmp_path: Path, digest) -> None:
     config = load_city("mumbai")
     for name in ("a", "b"):
-        build_design_bundle(config, out_dir=tmp_path / name)
+        build_design_bundle(config, bundles_root=tmp_path / name)
     assert digest(tmp_path / "a") == digest(tmp_path / "b")

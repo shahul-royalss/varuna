@@ -26,7 +26,7 @@ from varuna_schemas.models import ErrorEnvelope
 from varuna_schemas.settings import Settings
 
 from varuna_api import __version__
-from varuna_api.routers import city, cycle, health, live, runs, stubs
+from varuna_api.routers import city, cycle, health, live, replay, runs, stubs
 from varuna_api.state import AppState
 
 _LOGGING_CONFIGURED = False
@@ -162,6 +162,7 @@ def create_app(
             offline=state.settings.varuna_offline,
         )
         yield
+        await state.replay.aclose()
         structlog.get_logger("varuna.api").info("api.stopped")
 
     app = FastAPI(
@@ -218,6 +219,7 @@ def create_app(
     app.include_router(cycle.router)
     app.include_router(live.router)
     app.include_router(city.router)
+    app.include_router(replay.router)
     app.include_router(stubs.router)
     return app
 

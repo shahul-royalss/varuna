@@ -12,10 +12,12 @@ CLAUDE.md 10.2 fixes the layout, and this module is the only place that knows it
       reports.jsonl           one JSON object per line
       ground_truth.geojson    real, sourced pins; properties follow GroundTruthPin
 
-Two extensions to the table in CLAUDE.md 10.2, both required by rule 7: ``gauges.csv`` and
+Three extensions to the table in CLAUDE.md 10.2: ``gauges.csv`` and
 ``traffic/speeds.parquet`` carry an explicit ``synthetic`` column, so a stream cannot reach
-the console without saying what it is; and ``ground_truth.geojson`` may carry the provenance
-keys in :data:`GROUND_TRUTH_EXTRA_KEYS` beside the contract properties.
+the console without saying what it is (rule 7); ``gauges.csv`` also carries the station
+``name`` beside its id, because the site is the sourced part of that stream; and
+``ground_truth.geojson`` may carry the provenance keys in :data:`GROUND_TRUTH_EXTRA_KEYS`
+beside the contract properties.
 
 Writers here take rows and write files; they never invent data. Everything they write is
 deterministic: the same inputs produce byte-identical files (rule 8).
@@ -56,7 +58,18 @@ GROUND_TRUTH_GEOJSON = "ground_truth.geojson"
 RADAR_VARIABLE = "dbz"
 TRUTH_VARIABLE = "rain"
 
-GAUGES_COLUMNS: tuple[str, ...] = ("ts", "station_id", "lat", "lon", "mm_5min", "synthetic")
+GAUGES_COLUMNS: tuple[str, ...] = (
+    "ts",
+    "station_id",
+    "name",
+    "lat",
+    "lon",
+    "mm_5min",
+    "synthetic",
+)
+"""``name`` is a third extension to CLAUDE.md 10.2's table, for the same reason as
+``synthetic``: a gauge site is the one part of the stream that is real and sourced, and a bare
+station id would send the reader back to the research file to find out whose gauge it is."""
 TIDE_COLUMNS: tuple[str, ...] = ("ts", "stage_m", "source")
 TRAFFIC_COLUMNS: tuple[str, ...] = ("ts", "segment_id", "kmh", "baseline_kmh", "synthetic")
 REPORT_REQUIRED_KEYS: tuple[str, ...] = ("ts", "lat", "lon", "depth_hint", "synthetic")
@@ -336,11 +349,19 @@ def write_tide(path: Path, rows: Iterable[Mapping[str, Any]]) -> Path:
     return _write_csv(path, TIDE_COLUMNS, rows)
 
 
-def write_traffic(path: Path, rows: Iterable[Mapping[str, Any]]) -> Path:
-    """``traffic/speeds.parquet``: ``ts, segment_id, kmh, baseline_kmh, synthetic``."""
+def write_traffic(path: Path, rows: Iterable[Mapping[str, Any]] | pd.DataFrame) -> Path:
+    """``traffic/speeds.parquet``: ``ts, segment_id, kmh, baseline_kmh, synthetic``.
+
+    A ready-made ``pandas.DataFrame`` is accepted as well as rows. The traffic feed is the one
+    stream with hundreds of thousands of rows - every covered segment at every snapshot - and
+    building that frame from dictionaries costs more than the rest of a bundle build together.
+    """
     import pandas as pd
 
-    frame = pd.DataFrame(list(rows), columns=list(TRAFFIC_COLUMNS))
+    if isinstance(rows, pd.DataFrame):
+        frame = rows.loc[:, list(TRAFFIC_COLUMNS)].reset_index(drop=True)
+    else:
+        frame = pd.DataFrame(list(rows), columns=list(TRAFFIC_COLUMNS))
     if "ts" in frame.columns:
         frame["ts"] = [_iso(value) for value in frame["ts"]]
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -69,6 +69,21 @@ export function hasLayerShortcut(key: LayerKey): boolean {
   return layerHandlers.has(key);
 }
 
+type PlayToggle = () => void;
+let playToggle: PlayToggle | null = null;
+
+/**
+ * Lets the mounted time bar own Space, so the shortcut drives the API's replay clock instead of
+ * only the local store. Without a registration (the landing page, `/design`) Space still toggles
+ * the store, and nothing reaches the network.
+ */
+export function registerPlayToggle(handler: PlayToggle): () => void {
+  playToggle = handler;
+  return () => {
+    if (playToggle === handler) playToggle = null;
+  };
+}
+
 /** True when the key event started in a field that owns its own keys. */
 export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -147,7 +162,8 @@ export function useGlobalShortcuts(): void {
       if (key === " " && !mod && !e.altKey) {
         if (isActivatableTarget(e.target)) return;
         e.preventDefault();
-        replay.togglePlaying();
+        if (playToggle) playToggle();
+        else replay.togglePlaying();
         return;
       }
 
