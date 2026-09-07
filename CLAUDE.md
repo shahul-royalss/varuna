@@ -36,7 +36,7 @@ This file is the single source of truth for building the VARUNA prototype. The b
 | Phase | Name | Progress | Last updated | Blockers / notes |
 |---|---|---|---|---|
 | 0 | Foundation, shell, design tokens | 100 % | 2026-09-06 | All gates green: typecheck, ESLint, design lint, 126 vitest, 335 pytest (90 % cov), Next build 21 routes. CI never run on GitHub (no remote). |
-| 1 | City-in-a-box (Mumbai) | 100 % | 2026-09-07 | Runs from cache in 2 min 43 s cold, 19 s warm. 21,296 segments, 10,646 units, 50,110 drain nodes, 1,765 km inferred pipe. Depressions explain 89.3 % of the register (target 60 %); connectivity 100 %. Layers served. |
+| 1 | City-in-a-box (Mumbai) | 100 % | 2026-09-07 | Runs from cache in 2 min 43 s cold, 19 s warm. 21,296 segments, 10,646 units, 50,110 drain nodes, 1,757 km inferred pipe. Depressions explain 89.3 % of the register (target 60 %); connectivity 100 %. Layers served. |
 | 2 | Replay bundle & storm designer | 5 % | 2026-09-07 | Ground truth curated: 29 sourced pins inside the AOI, replay window moved to 06:40 IST (ADR-0007). Storm designer next. |
 | 3 | VARUNA-Sky | 0 % | — | — |
 | 4 | VARUNA-Twin + drains + coupling | 0 % | — | — |
