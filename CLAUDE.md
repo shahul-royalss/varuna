@@ -35,7 +35,7 @@ This file is the single source of truth for building the VARUNA prototype. The b
 
 | Phase | Name | Progress | Last updated | Blockers / notes |
 |---|---|---|---|---|
-| 0 | Foundation, shell, design tokens | 100 % | 2026-09-06 | All gates green: typecheck, ESLint, design lint, 126 vitest, 335 pytest (90 % cov), Next build 21 routes. CI never run on GitHub (no remote). |
+| 0 | Foundation, shell, design tokens | 100 % | 2026-09-07 | All gates green: typecheck, ESLint, design lint, 126 vitest, 335 pytest (90 % cov), Next build 21 routes. CI green on GitHub (`shahul-royalss/varuna`). Console on Vercel at `varuna-dhrishta.vercel.app` (production still behind Vercel Authentication until the team switches it off). API packaged for Railway (ADR-0014); the deploy itself waits on `railway login`. |
 | 1 | City-in-a-box (Mumbai) | 100 % | 2026-09-07 | Runs from cache in 2 min 43 s cold, 19 s warm. 21,296 segments, 10,646 units, 50,110 drain nodes, 1,757 km inferred pipe. Depressions explain 89.3 % of the register (target 60 %); connectivity 100 %. Layers served. |
 | 2 | Replay bundle & storm designer | 5 % | 2026-09-07 | Ground truth curated: 29 sourced pins inside the AOI, replay window moved to 06:40 IST (ADR-0007). Storm designer next. |
 | 3 | VARUNA-Sky | 0 % | — | — |
@@ -887,7 +887,7 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 - [x] P0.7 App shell: `AppShell`, `TopBar`, `IconRail`, `ModeBanner`, `RunStamp`, `VerificationChip`, `CommandPalette`, `ShortcutsOverlay`, `sonner` toasts, error boundaries per panel, 404 (2026-09-06, 77e6b44)
 - [x] P0.8 `/design` page rendering every token, type size, and each component with loading/empty/error states as they are built (2026-09-06, a6a6818)
 - [x] P0.9 `pnpm lint:design`: script that fails on raw hex, non-token fonts, `transition-all`, or emoji in `apps/command` (2026-09-06, 518a8ab)
-- [x] P0.10 CI (GitHub Actions): lint, typecheck, unit tests, Python tests, Playwright smoke, Lighthouse CI on `/` (2026-09-06, 77e6b44 — workflow written and every job's command verified locally; it has not yet run on GitHub because the repository has no remote)
+- [x] P0.10 CI (GitHub Actions): lint, typecheck, unit tests, Python tests, Playwright smoke, Lighthouse CI on `/` (2026-09-06, 77e6b44 — workflow written and every job's command verified locally; green on GitHub from 2026-09-07 once 063d5e4 and af793ad removed the pnpm version pin conflict, applied ruff format and installed the missing turbo)
 - [x] P0.11 `docs/`: blueprint PDF copied; `DECISIONS.md`, `SIMPLIFICATIONS.md`, `CHANGELOG.md`, `QA.md` created with headers (2026-09-06, 66993c5)
 - [x] P0.12 Empty console renders with the mode banner "No runs yet" and the replay panel open (2026-09-06, 77e6b44)
 

@@ -47,6 +47,10 @@ COPY services/ services/
 COPY Makefile ./
 RUN uv sync --frozen --no-dev
 
+# The environment is complete; do not let the two `uv run` processes at boot (API and the
+# background city build) re-check the lock against it.
+ENV UV_NO_SYNC=1
+
 # Static city layers and replay bundles are generated, not committed (see .gitignore), so the
 # image ships without them and the entrypoint builds them into the mounted volume on first
 # boot. Every layer endpoint answers 404 with "Run make city CITY=<city>" until it has, which
