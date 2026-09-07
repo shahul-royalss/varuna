@@ -60,7 +60,9 @@ def gauge_site(index: int = 0, **overrides: Any) -> streams.GaugeSite:
     return streams.GaugeSite(**defaults)
 
 
-def chain(n: int = 40, *, first_x: float = 260_000.0, y: float = 2_103_400.0) -> streams.SegmentTable:
+def chain(
+    n: int = 40, *, first_x: float = 260_000.0, y: float = 2_103_400.0
+) -> streams.SegmentTable:
     """A straight chain of segments 100 m apart, so hop distance is index distance.
 
     The default sits 13 km west of :data:`PIN_LON`/:data:`PIN_LAT`, out of snapping range, so a
@@ -137,7 +139,12 @@ def test_gauge_readings_sample_the_truth_field_and_say_they_are_synthetic(
     """12 mm/h held everywhere is 1.0 mm in five minutes, before the stated 10 % noise."""
     sites = [gauge_site(0), gauge_site(1)]
     rows = streams.gauge_rows(
-        sites, uniform_truth(small_domain, truth_times, 12.0), truth_times, small_domain, T0, seed=2019
+        sites,
+        uniform_truth(small_domain, truth_times, 12.0),
+        truth_times,
+        small_domain,
+        T0,
+        seed=2019,
     )
     assert len(rows) == len(sites) * (int(WINDOW_MIN // streams.GAUGE_CADENCE_MIN) + 1)
     assert all(row["synthetic"] is True for row in rows)
@@ -220,9 +227,7 @@ def test_a_pin_collapses_its_segment_below_five_kmh_for_two_snapshots() -> None:
     has to survive the 5-minute grid wherever the pin's minute happens to fall."""
     segments = chain(20)
     for offset in (60.0, 62.0, 63.5, 65.0):
-        anomalies = streams.pin_anomalies(
-            segments, [streams.PinSnap("MUM19-07", 10, 12.0, offset)]
-        )
+        anomalies = streams.pin_anomalies(segments, [streams.PinSnap("MUM19-07", 10, 12.0, offset)])
         frame = streams.traffic_frame(segments, anomalies, T0, 120.0, seed=2019)
         flooded = frame[frame["segment_id"] == "S010"].sort_values("ts")
         below = (flooded["kmh"] < 5.0).to_numpy()
@@ -268,9 +273,7 @@ def test_confounders_are_three_percent_and_never_sit_on_a_flooded_segment() -> N
     assert not {anomaly.segment_index for anomaly in confounders} & excluded
     assert all(0.0 <= anomaly.centre_min <= WINDOW_MIN for anomaly in confounders)
 
-    again = streams.confounder_anomalies(
-        segments, WINDOW_MIN, seed=2019, exclude=sorted(excluded)
-    )
+    again = streams.confounder_anomalies(segments, WINDOW_MIN, seed=2019, exclude=sorted(excluded))
     assert [anomaly.segment_index for anomaly in confounders] == [
         anomaly.segment_index for anomaly in again
     ]
@@ -345,13 +348,15 @@ def test_a_dry_window_produces_no_citizen_reports(
     )
 
 
-def test_reports_are_capped_and_seeded(
-    small_domain: StormDomain, truth_times: np.ndarray
-) -> None:
+def test_reports_are_capped_and_seeded(small_domain: StormDomain, truth_times: np.ndarray) -> None:
     truth = uniform_truth(small_domain, truth_times, 30.0)
     spots = [hotspot(index) for index in range(1, 15)]
-    first = streams.synthetic_reports(spots, truth, truth_times, small_domain, T0, seed=2019, count=8)
-    again = streams.synthetic_reports(spots, truth, truth_times, small_domain, T0, seed=2019, count=8)
+    first = streams.synthetic_reports(
+        spots, truth, truth_times, small_domain, T0, seed=2019, count=8
+    )
+    again = streams.synthetic_reports(
+        spots, truth, truth_times, small_domain, T0, seed=2019, count=8
+    )
     assert len(first) == 8
     assert [row["id"] for row in first] == [row["id"] for row in again]
 

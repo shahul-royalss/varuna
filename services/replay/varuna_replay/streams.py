@@ -56,7 +56,9 @@ def _to_metric(crs: int) -> Transformer:
     return Transformer.from_crs(WGS84, f"EPSG:{crs}", always_xy=True)
 
 
-def project(lons: Sequence[float], lats: Sequence[float], crs: int) -> tuple[np.ndarray, np.ndarray]:
+def project(
+    lons: Sequence[float], lats: Sequence[float], crs: int
+) -> tuple[np.ndarray, np.ndarray]:
     """WGS84 lon/lat to the metric CRS of the storm domain."""
     x, y = _to_metric(crs).transform(np.asarray(lons, dtype=float), np.asarray(lats, dtype=float))
     return (np.atleast_1d(np.asarray(x, dtype=float)), np.atleast_1d(np.asarray(y, dtype=float)))
@@ -337,7 +339,9 @@ class SegmentTable:
         return adjacency
 
 
-def load_segments(path: Path, crs: int, *, classes: Sequence[str] = TRAFFIC_CLASSES) -> SegmentTable:
+def load_segments(
+    path: Path, crs: int, *, classes: Sequence[str] = TRAFFIC_CLASSES
+) -> SegmentTable:
     """Read ``city/<city>/segments.parquet`` and keep the classes a probe feed would see."""
     import pandas as pd
     import shapely
@@ -345,7 +349,9 @@ def load_segments(path: Path, crs: int, *, classes: Sequence[str] = TRAFFIC_CLAS
     frame = pd.read_parquet(
         path, columns=["segment_id", "class", "u", "v", "speed_kmh", "geometry"]
     )
-    frame = frame[frame["class"].isin(list(classes))].sort_values("segment_id").reset_index(drop=True)
+    frame = (
+        frame[frame["class"].isin(list(classes))].sort_values("segment_id").reset_index(drop=True)
+    )
     centroids = shapely.centroid(shapely.from_wkb(frame["geometry"].to_numpy()))
     table = SegmentTable(
         segment_id=frame["segment_id"].to_numpy(dtype=object),
@@ -789,9 +795,7 @@ def ground_truth_features(pins: Sequence[Mapping[str, Any]]) -> list[dict[str, A
             )
             properties["note"] = f"{existing} {mapping_note}".strip() if existing else mapping_note
         properties["synthetic"] = False
-        ordered = {
-            key: properties[key] for key in GROUND_TRUTH_PROPERTY_ORDER if key in properties
-        }
+        ordered = {key: properties[key] for key in GROUND_TRUTH_PROPERTY_ORDER if key in properties}
         ordered.update({k: v for k, v in properties.items() if k not in ordered})
         features.append(
             {

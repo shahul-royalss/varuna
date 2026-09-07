@@ -80,7 +80,10 @@ def test_validate_of_a_missing_bundle_says_so(tmp_path: Path) -> None:
 
 
 def test_list_shows_what_is_on_disk(
-    tmp_path: Path, domain: StormDomain, make_bundle: Callable[..., Any], monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    domain: StormDomain,
+    make_bundle: Callable[..., Any],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("VARUNA_BUNDLES_DIR", str(tmp_path))
     empty = runner.invoke(bundle_app, ["list"])
@@ -126,9 +129,7 @@ def test_design_writes_and_validates_a_bundle(tmp_path: Path) -> None:
     )
     assert result.exit_code == 0, result.stdout
     assert "Bundle is valid" in result.stdout
-    manifest = json.loads(
-        (tmp_path / "MUM-IDF-25yr" / "manifest.json").read_text(encoding="utf-8")
-    )
+    manifest = json.loads((tmp_path / "MUM-IDF-25yr" / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["label"] == "Design storm"
 
 

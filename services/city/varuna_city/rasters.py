@@ -252,7 +252,9 @@ def hillshade(
     z_factor: float = 2.0,
 ) -> np.ndarray:
     """Standard Horn hillshade in 0..1. NaN cells come back as 0."""
-    filled = np.where(np.isfinite(dem), dem, np.nanmin(dem[np.isfinite(dem)]) if np.isfinite(dem).any() else 0.0)
+    filled = np.where(
+        np.isfinite(dem), dem, np.nanmin(dem[np.isfinite(dem)]) if np.isfinite(dem).any() else 0.0
+    )
     dy, dx = np.gradient(filled.astype("float64") * z_factor, res, res)
     slope = np.arctan(np.hypot(dx, dy))
     aspect = np.arctan2(-dx, dy)

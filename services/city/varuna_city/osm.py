@@ -64,6 +64,7 @@ PROXY_LAYERS: dict[str, str] = {
     "shelters": "Shelter proxy: OSM schools and community centres (CLAUDE.md 10.1)",
 }
 
+
 def _osm_cache_folder() -> Path:
     """``city/cache/osmnx`` as an absolute path, so the CLI works from any directory."""
     from varuna_city.cache import cached_osmnx_folder
@@ -216,9 +217,7 @@ def fetch_osm(
         keep = _KEEP_COLUMNS[name]
         try:
             found = ox.features_from_bbox(bbox=(left, bottom, right, top), tags=tags)
-            layer = (
-                _sanitize(found, keep, crs) if len(found) else _empty_gdf(("osmid", *keep), crs)
-            )
+            layer = _sanitize(found, keep, crs) if len(found) else _empty_gdf(("osmid", *keep), crs)
         except Exception as exc:
             log.warning("osm.layer_empty", city=city, layer=name, error=str(exc))
             layer = _empty_gdf(("osmid", *keep), crs)

@@ -253,11 +253,7 @@ def write_geojson(gdf: gpd.GeoDataFrame, path: Path, *, compact: bool = True) ->
     """Write WGS84 GeoJSON with LF endings; ``compact`` drops the indentation (map layers)."""
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = round_coordinates(json.loads(_json_safe(_to_crs(gdf, WGS84)).to_json(drop_id=True)))
-    text = (
-        json.dumps(payload, separators=(",", ":"))
-        if compact
-        else json.dumps(payload, indent=1)
-    )
+    text = json.dumps(payload, separators=(",", ":")) if compact else json.dumps(payload, indent=1)
     path.write_text(text + "\n", encoding="utf-8", newline="\n")
     return path
 
@@ -313,9 +309,7 @@ def export_city(
         result.written[f"map/{layer}"] = map_path
         result.bytes_written[f"map/{layer}"] = map_path.stat().st_size
 
-    result.written.update(
-        export_graph_tables(city, out_dir=root, result=result, frames=supplied)
-    )
+    result.written.update(export_graph_tables(city, out_dir=root, result=result, frames=supplied))
     manifest = root / "export" / "MANIFEST.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(

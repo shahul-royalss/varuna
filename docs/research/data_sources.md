@@ -269,25 +269,26 @@ Use `osmnx.graph_from_bbox(..., network_type="drive_service")` for the routable 
 
 ```python
 # 1. routable road graph (drivable + service, per CLAUDE.md 10.1 step 2)
-G = ox.graph_from_bbox(bbox=(west, south, east, north), network_type="drive_service",
-                       simplify=False, retain_all=False)
+G = ox.graph_from_bbox(
+    bbox=(west, south, east, north), network_type="drive_service", simplify=False, retain_all=False
+)
 # useful_tags_way already carries: access, area, bridge, est_width, highway, junction,
 # landuse, lanes, maxspeed, name, oneway, ref, service, tunnel, width
-ox.settings.useful_tags_way += ["layer", "covered", "surface"]   # needed for underpass detection
+ox.settings.useful_tags_way += ["layer", "covered", "surface"]  # needed for underpass detection
 
 # 2. feature layers
 TAGS = {
-    "buildings":  {"building": True},
-    "waterways":  {"waterway": ["drain", "canal", "stream", "river", "ditch"]},
-    "culverts":   {"tunnel": ["culvert"]},
-    "bridges":    {"bridge": True},
-    "stations":   {"railway": ["station", "halt"], "public_transport": ["station"]},
-    "hospitals":  {"amenity": ["hospital", "clinic"]},
-    "fire":       {"amenity": ["fire_station"]},
-    "shelters":   {"amenity": ["school", "community_centre"]},   # proxies - label as proxies in the UI
-    "pumping":    {"man_made": ["pumping_station"]},
-    "landuse":    {"landuse": True},
-    "wards":      {"boundary": "administrative"},                # admin_level 9/10/11
+    "buildings": {"building": True},
+    "waterways": {"waterway": ["drain", "canal", "stream", "river", "ditch"]},
+    "culverts": {"tunnel": ["culvert"]},
+    "bridges": {"bridge": True},
+    "stations": {"railway": ["station", "halt"], "public_transport": ["station"]},
+    "hospitals": {"amenity": ["hospital", "clinic"]},
+    "fire": {"amenity": ["fire_station"]},
+    "shelters": {"amenity": ["school", "community_centre"]},  # proxies - label as proxies in the UI
+    "pumping": {"man_made": ["pumping_station"]},
+    "landuse": {"landuse": True},
+    "wards": {"boundary": "administrative"},  # admin_level 9/10/11
 }
 ```
 

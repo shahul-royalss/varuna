@@ -619,9 +619,7 @@ def build_drain_graph(
     area_acc, imperv_acc = _accumulate(downstream, order, local_area, mean_imperv)
 
     # inverts: 1.5 m (3 m on trunks) below ground, deepened where the minimum slope demands it
-    deep = np.asarray(
-        [r["kind"] in {"trunk", "outfall"} for r in store.rows], dtype=bool
-    )
+    deep = np.asarray([r["kind"] in {"trunk", "outfall"} for r in store.rows], dtype=bool)
     depth = np.where(deep, TRUNK_INVERT_DEPTH_M, INVERT_DEPTH_M)
     z_invert = z_ground - depth
     for node in sorted(range(len(store.rows)), key=lambda i: (distance[i], i)):

@@ -66,7 +66,18 @@ def test_help_lists_every_make_target(app: typer.Typer) -> None:
     """``varuna --help`` must offer every target in CLAUDE.md 4.3."""
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for target in ("setup", "city", "bundle", "bake", "train", "dev", "demo", "test", "e2e", "pack"):
+    for target in (
+        "setup",
+        "city",
+        "bundle",
+        "bake",
+        "train",
+        "dev",
+        "demo",
+        "test",
+        "e2e",
+        "pack",
+    ):
         assert target in result.stdout
 
 
@@ -107,7 +118,9 @@ def test_register_skips_names_taken_by_an_engine() -> None:
     """When an engine ships ``varuna city``, the placeholder task must yield to it."""
     fresh = typer.Typer()
     tasks.register(fresh, skip={"city"})
-    registered = {command.name or command.callback.__name__ for command in fresh.registered_commands}
+    registered = {
+        command.name or command.callback.__name__ for command in fresh.registered_commands
+    }
     assert "city" not in registered
     assert "demo" in registered
 
@@ -159,7 +172,12 @@ def test_demo_without_a_bake_explains_what_to_run(
 def test_demo_with_baked_runs_autoplays(
     app: typer.Typer, empty_runs: Path, no_processes: list[list[tasks.Service]]
 ) -> None:
-    write_run(empty_runs, "MUM-20190702T1740Z-sky1.0-twin1.0-flash0.3-baked", mode="baked", bundle="MUM-2019-07-02")
+    write_run(
+        empty_runs,
+        "MUM-20190702T1740Z-sky1.0-twin1.0-flash0.3-baked",
+        mode="baked",
+        bundle="MUM-2019-07-02",
+    )
     result = runner.invoke(app, ["demo", "--bundle", "MUM-2019-07-02"], env={"COLUMNS": "200"})
     assert result.exit_code == 0, result.stdout
     assert "1 baked runs found" in result.stdout
@@ -230,7 +248,9 @@ def test_baked_runs_accepts_the_run_id_suffix_or_the_mode_field(empty_runs: Path
     assert [run["run_id"] for run in tasks.baked_runs("MUM-2019-07-02")] == ["MUM-A-baked"]
 
 
-def test_list_runs_on_a_missing_folder_is_empty(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_list_runs_on_a_missing_folder_is_empty(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     monkeypatch.setattr(tasks, "runs_dir", lambda: tmp_path / "nope")
     assert tasks.list_runs() == []
 

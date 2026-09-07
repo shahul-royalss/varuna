@@ -179,8 +179,12 @@ def _inlet_cells(
         return np.empty(0, dtype=np.int64), []
 
     inverse = ~transform
-    cols = np.floor(np.array([inverse.a * x + inverse.b * y + inverse.c for x, y in zip(xs, ys, strict=True)])).astype(np.int64)
-    rows = np.floor(np.array([inverse.d * x + inverse.e * y + inverse.f for x, y in zip(xs, ys, strict=True)])).astype(np.int64)
+    cols = np.floor(
+        np.array([inverse.a * x + inverse.b * y + inverse.c for x, y in zip(xs, ys, strict=True)])
+    ).astype(np.int64)
+    rows = np.floor(
+        np.array([inverse.d * x + inverse.e * y + inverse.f for x, y in zip(xs, ys, strict=True)])
+    ).astype(np.int64)
     inside = (rows >= 0) & (rows < height) & (cols >= 0) & (cols < width)
     flat = (rows[inside] * width + cols[inside]).astype(np.int64)
     kept_ids = [ids[i] for i in np.flatnonzero(inside)]
@@ -245,9 +249,7 @@ def _merge_small(
             if not neighbours:
                 continue
             candidates = [
-                (n, shared)
-                for n, shared in neighbours
-                if (counts[n], -n) > (counts[label], -label)
+                (n, shared) for n, shared in neighbours if (counts[n], -n) > (counts[label], -label)
             ]
             if not candidates:
                 continue
@@ -309,9 +311,7 @@ def _fill_nearest(labels: NDArray[np.int64]) -> NDArray[np.int64]:
     return labels[indices[0], indices[1]]
 
 
-def _polygonise(
-    labels: NDArray[np.int64], transform: Affine, crs: str | None
-) -> gpd.GeoDataFrame:
+def _polygonise(labels: NDArray[np.int64], transform: Affine, crs: str | None) -> gpd.GeoDataFrame:
     """One polygon per label (parts of a split unit are unioned)."""
     parts: dict[int, list[Polygon]] = {}
     mask = labels >= 0
@@ -600,7 +600,9 @@ def build_surface_units(
     """
     started = time.perf_counter()
     if rasters:
-        imperviousness = imperviousness if imperviousness is not None else rasters.get("imperviousness")
+        imperviousness = (
+            imperviousness if imperviousness is not None else rasters.get("imperviousness")
+        )
         cn = cn if cn is not None else rasters.get("cn")
         manning_n = manning_n if manning_n is not None else rasters.get("manning_n")
         depression_depth = (

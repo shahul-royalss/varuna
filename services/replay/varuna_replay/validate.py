@@ -360,7 +360,9 @@ def _check_cubes(report: ValidationReport, layout: BundleLayout, manifest: Bundl
             report.add("B5", "error", member, f"crs attribute is {info.crs!r}, expected 'EPSG:<n>'")
 
 
-def _check_streams(report: ValidationReport, layout: BundleLayout, manifest: BundleManifest) -> None:
+def _check_streams(
+    report: ValidationReport, layout: BundleLayout, manifest: BundleManifest
+) -> None:
     report.ran("B4")
     report.ran("B7")
     if not manifest.synthetic_notes:
@@ -598,8 +600,10 @@ def _feature_lonlat(
     geometry = feature.get("geometry") or {}
     if geometry.get("type") != "Point":
         report.add(
-            "B6", "error", GROUND_TRUTH_GEOJSON, f"{where}: geometry must be a Point, got "
-            f"{geometry.get('type')!r}"
+            "B6",
+            "error",
+            GROUND_TRUTH_GEOJSON,
+            f"{where}: geometry must be a Point, got {geometry.get('type')!r}",
         )
         return (None, None)
     coordinates = geometry.get("coordinates") or []
@@ -685,9 +689,7 @@ def validate_bundle(bundle: str | Path) -> ValidationReport:
 
     report.ran("B2")
     try:
-        manifest = BundleManifest.model_validate_json(
-            layout.manifest.read_text(encoding="utf-8")
-        )
+        manifest = BundleManifest.model_validate_json(layout.manifest.read_text(encoding="utf-8"))
     except (ValidationError, json.JSONDecodeError, UnicodeDecodeError) as exc:
         report.add("B2", "error", MANIFEST_NAME, f"does not validate: {exc}")
         return report

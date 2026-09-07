@@ -75,7 +75,9 @@ def cached_tile(kind: TileKind, name: str) -> Path:
         raise ValueError(msg)
     path = cache_root() / kind / name
     if not path.is_file():
-        available = sorted(p.name for p in (cache_root() / kind).glob("*")) if path.parent.is_dir() else []
+        available = (
+            sorted(p.name for p in (cache_root() / kind).glob("*")) if path.parent.is_dir() else []
+        )
         msg = (
             f"Cached {kind} tile {name!r} is missing at {path}. "
             f"Present in that folder: {available or 'nothing'}. {_PREFETCH_HINT}"
@@ -123,9 +125,7 @@ def verify_cache(city: CityConfig, *, strict: bool = False) -> list[TileCheck]:
         expected = entry.get("bytes")
         expected_bytes = int(expected) if isinstance(expected, int | float) else None
         if not path.is_file():
-            rows.append(
-                TileCheck(key, path, False, False, expected_bytes, None, "missing on disk")
-            )
+            rows.append(TileCheck(key, path, False, False, expected_bytes, None, "missing on disk"))
             continue
         actual_bytes = path.stat().st_size
         if expected_bytes is None:

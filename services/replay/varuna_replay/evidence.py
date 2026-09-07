@@ -91,9 +91,7 @@ INDIA_TV_URL = (
     "https://www.indiatvnews.com/news/"
     "india-mumbai-rains-live-updates-wall-collapse-local-trains-flight-cancelled-pune-531812"
 )
-GULF_NEWS_URL = (
-    "https://gulfnews.com/world/asia/india/mumbai-rains-record-july-rainfall-1.65100295"
-)
+GULF_NEWS_URL = "https://gulfnews.com/world/asia/india/mumbai-rains-record-july-rainfall-1.65100295"
 OUTLOOK_URL = (
     "https://www.outlookindia.com/website/story/india-news-mumbai-rains-live-updates/207195"
 )
@@ -380,8 +378,7 @@ def sources() -> list[BundleSource]:
             name="NOAA integrated surface database station history",
             url=NOAA_ISD_URL,
             note=(
-                "Santacruz (43003) at 19.089 N, 72.868 E and Colaba (43057) at 18.900 N, "
-                "72.817 E."
+                "Santacruz (43003) at 19.089 N, 72.868 E and Colaba (43057) at 18.900 N, 72.817 E."
             ),
             used_for="The two IMD observatory coordinates in gauges.csv.",
         ),
@@ -393,8 +390,7 @@ def sources() -> list[BundleSource]:
                 "dated path or archive exists, so July 2019 frames are not retrievable."
             ),
             used_for=(
-                "Why radar/frames.zarr is a reconstruction, and the product the P1 decoder "
-                "targets."
+                "Why radar/frames.zarr is a reconstruction, and the product the P1 decoder targets."
             ),
         ),
     ]

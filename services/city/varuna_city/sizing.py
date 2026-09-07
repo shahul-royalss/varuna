@@ -171,7 +171,9 @@ def snap_diameter(diameter_m: float) -> float | None:
     return None
 
 
-def box_q_full(width_m: float, height_m: float, slope: float, n: float = MANNING_N_CONCRETE) -> float:
+def box_q_full(
+    width_m: float, height_m: float, slope: float, n: float = MANNING_N_CONCRETE
+) -> float:
     """Manning full-flow capacity of a rectangular box drain, m3/s."""
     area = width_m * height_m
     perimeter = 2.0 * (width_m + height_m)

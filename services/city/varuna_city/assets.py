@@ -168,9 +168,7 @@ def build_assets(
     for feature in features:
         lon, lat = feature["geometry"]["coordinates"][:2]
         feature["properties"]["in_aoi"] = (
-            True
-            if bbox is None
-            else bool(bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3])
+            True if bbox is None else bool(bbox[0] <= lon <= bbox[2] and bbox[1] <= lat <= bbox[3])
         )
     features.sort(key=lambda f: (f["properties"]["kind"], f["properties"]["asset_id"]))
     synthetic = sum(1 for f in features if f["properties"]["synthetic"])
