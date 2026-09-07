@@ -47,3 +47,14 @@ Thumbs.db
 *.log
 numba_cache/
 packages/tokens/dist/
+
+# Responsible disclosure: a live, unpatched credential exposure on a third-party
+# government system. Publishing these would point people at an unfixed vulnerability.
+# Report privately to CERT-In and the operator; publish only after it is fixed.
+docs/SECURITY_FINDING_BMC.md
+docs/disclosure_email_BMC.txt
+
+# Verbatim copies of third-party news articles, kept locally as an audit trail.
+# Republishing whole articles would redistribute copyrighted work; every claim in
+# docs/research/*.md carries the live source_url and a short quoted excerpt instead.
+docs/research/_raw/pages/
