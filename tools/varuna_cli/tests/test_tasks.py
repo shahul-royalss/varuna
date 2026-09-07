@@ -30,14 +30,26 @@ def app() -> typer.Typer:
 
 @pytest.fixture
 def no_processes(monkeypatch: pytest.MonkeyPatch) -> list[list[tasks.Service]]:
-    """Capture what ``dev``/``demo`` would launch instead of launching it."""
+    """Capture what ``dev``/``demo`` would launch instead of launching it.
+
+    Building the service list resolves each tool's absolute path, so a machine without
+    ``pnpm`` on PATH raised ``ToolMissingError`` before the fake launcher was ever reached.
+    That is exactly the CI Python job, which installs uv but not Node, and it is why these
+    tests passed locally and failed on the first real CI run. What they assert is *what* the
+    task runner would launch, not what is installed on the machine, so tool resolution is
+    stubbed as well; ``varuna doctor`` still reports a genuinely missing tool.
+    """
     launched: list[list[tasks.Service]] = []
 
     def fake_run_concurrently(services: list[tasks.Service], **_: Any) -> int:
         launched.append(list(services))
         return 0
 
+    def fake_resolve_executable(name: str) -> str:
+        return f"/usr/bin/{name}"
+
     monkeypatch.setattr(tasks.procs, "run_concurrently", fake_run_concurrently)
+    monkeypatch.setattr(tasks.procs, "resolve_executable", fake_resolve_executable)
     return launched
 
 
