@@ -30,6 +30,7 @@ export const OUTPUT_FILES = ["tokens.css", "tokens.js", "tokens.d.ts"];
 
 const HEX6 = /^#[0-9A-F]{6}$/;
 const DEPTH_ORDER = ["dry", "1", "2", "3", "4", "5"];
+const RAIN_ORDER = ["1", "2", "3", "4", "5", "6"];
 const DRAIN_ORDER = ["0", "1", "2", "3"];
 const CHART_ORDER = ["1", "2", "3", "4", "5"];
 const REACH_ORDER = ["5", "10", "15"];
@@ -75,6 +76,7 @@ export function validateTokens(t) {
   }
   needGroup(t.color.base, ["ink", "deep", "well", "line", "line-strong", "text", "text-2", "text-3", "tide", "tide-soft"], "color.base");
   needGroup(t.color.depth, DEPTH_ORDER, "color.depth");
+  needGroup(t.color.rain, RAIN_ORDER, "color.rain");
   needGroup(t.color.drain, DRAIN_ORDER, "color.drain");
   needGroup(t.color.semantic, ["surcharge", "naive", "truth", "danger"], "color.semantic");
   needGroup(t.color.reach, REACH_ORDER, "color.reach");
@@ -90,6 +92,16 @@ export function validateTokens(t) {
     previousMax = band.max_cm;
   }
   if (previousMax !== null) fail("the last depth band must be open-ended (max_cm: null)");
+  let previousRate = t.color.rain[RAIN_ORDER[0]].min_mm_h;
+  if (typeof previousRate !== "number" || previousRate <= 0) fail(`color.rain.${RAIN_ORDER[0]}.min_mm_h must be a rain rate above 0`);
+  for (const key of RAIN_ORDER) {
+    const band = t.color.rain[key];
+    if (typeof band.min_mm_h !== "number" || band.min_mm_h !== previousRate) fail(`color.rain.${key}.min_mm_h must equal the previous band's max_mm_h (${previousRate})`);
+    if (band.max_mm_h !== null && (typeof band.max_mm_h !== "number" || band.max_mm_h <= band.min_mm_h)) fail(`color.rain.${key}.max_mm_h must be a number above min_mm_h, or null`);
+    if (typeof band.label !== "string") fail(`color.rain.${key}.label is missing`);
+    previousRate = band.max_mm_h;
+  }
+  if (previousRate !== null) fail("the last rain band must be open-ended (max_mm_h: null)");
   let previousBeta = 0;
   for (const key of DRAIN_ORDER) {
     const band = t.color.drain[key];
@@ -146,6 +158,7 @@ export function solidColorEntries(t) {
   const out = [];
   for (const [k, v] of Object.entries(t.color.base)) out.push([k, v.value]);
   for (const k of DEPTH_ORDER) out.push([`depth-${k}`, t.color.depth[k].value]);
+  for (const k of RAIN_ORDER) out.push([`rain-${k}`, t.color.rain[k].value]);
   for (const k of DRAIN_ORDER) out.push([`drain-${k}`, t.color.drain[k].value]);
   for (const [k, v] of Object.entries(t.color.semantic)) out.push([k, v.value]);
   for (const [k, v] of Object.entries(t.color.obs)) out.push([`obs-${k}`, v.value]);
@@ -166,6 +179,10 @@ export function cssVarGroups(t) {
   group(
     "Depth ramp: water depth only, fixed meaning everywhere",
     DEPTH_ORDER.map((k) => [`--depth-${k}`, t.color.depth[k].value, `${t.color.depth[k].label}, ${t.color.depth[k].meaning}`]),
+  );
+  group(
+    "Rain rate ramp: radar and nowcast rain only, never water depth",
+    RAIN_ORDER.map((k) => [`--rain-${k}`, t.color.rain[k].value, `${t.color.rain[k].label}, ${t.color.rain[k].meaning}`]),
   );
   group(
     "Drain blockage (posterior beta)",
@@ -340,6 +357,13 @@ function depthBands(t) {
   });
 }
 
+function rainBands(t) {
+  return RAIN_ORDER.map((key) => {
+    const b = t.color.rain[key];
+    return { key, hex: b.value, label: b.label, meaning: b.meaning, min_mm_h: b.min_mm_h, max_mm_h: b.max_mm_h };
+  });
+}
+
 function drainBands(t) {
   return DRAIN_ORDER.map((key) => {
     const b = t.color.drain[key];
@@ -349,6 +373,10 @@ function drainBands(t) {
 
 function depthThresholds(t) {
   return DEPTH_ORDER.slice(1).map((k) => t.color.depth[k].min_cm);
+}
+
+function rainThresholds(t) {
+  return RAIN_ORDER.map((k) => t.color.rain[k].min_mm_h);
 }
 
 /** Private helpers emitted at the top of dist/tokens.js. */
@@ -376,6 +404,11 @@ export function depthRampStops() {
   return DEPTH_BANDS.slice();
 }
 
+/** Rain-rate bands in ramp order: 1 (drizzle) to 6 (cloudburst). */
+export function rainRampStops() {
+  return RAIN_BANDS.slice();
+}
+
 /** Drain bands in ramp order: 0 (clear) to 3 (blocked). */
 export function drainRampStops() {
   return DRAIN_BANDS.slice();
@@ -398,6 +431,28 @@ export function depthColor(cm) {
 /** [r, g, b, a] for deck.gl, alpha 0-255 (default 255). */
 export function depthColorRgba(cm, alpha = 255) {
   return hexToRgba(depthColor(cm), alpha);
+}
+
+/**
+ * The rain band for a rate in mm/h, lower bounds inclusive: 2 -> 2, 20 -> 4, 80 and above -> 6.
+ * Below the first band (0.5 mm/h) there is no echo to draw, so the result is null; so is NaN.
+ */
+export function rainBand(mmH) {
+  const rate = real(mmH, 0);
+  for (let i = RAIN_BANDS.length - 1; i >= 0; i -= 1) if (rate >= RAIN_BANDS[i].min_mm_h) return RAIN_BANDS[i];
+  return null;
+}
+
+/** Hex colour of the rain band for a rate in mm/h; null below the first band. */
+export function rainColor(mmH) {
+  const band = rainBand(mmH);
+  return band === null ? null : band.hex;
+}
+
+/** [r, g, b, a] for deck.gl rain rasters, alpha 0-255 (default 255); fully transparent below the first band. */
+export function rainColorRgba(mmH, alpha = 255) {
+  const hex = rainColor(mmH);
+  return hex === null ? [0, 0, 0, 0] : hexToRgba(hex, alpha);
 }
 
 /** The drain band for a posterior blockage beta clamped to [0, 1]: 0.25 -> 1, 0.5 -> 2, 0.75 -> 3; NaN -> 0. */
@@ -503,6 +558,9 @@ export function generateJs(t, hash) {
     "/** Depth band lower bounds in centimetres: the fixed thresholds of the ramp. */",
     `export const DEPTH_THRESHOLDS_CM = deepFreeze(${json(depthThresholds(t))});`,
     "",
+    "/** Rain band lower bounds in mm/h; 20 and 40 are the exceedance thresholds Sky publishes. */",
+    `export const RAIN_THRESHOLDS_MM_H = deepFreeze(${json(rainThresholds(t))});`,
+    "",
     "/** Thresholds offered by the probability-mode selector. */",
     `export const PROBABILITY_THRESHOLDS_CM = deepFreeze(${json(t.probability.thresholds_cm)});`,
     "",
@@ -516,6 +574,8 @@ export function generateJs(t, hash) {
     `export const DEPTH_RASTER_OPACITY = ${t.raster.depth_layer_opacity};`,
     "",
     `const DEPTH_BANDS = deepFreeze(${json(depthBands(t))});`,
+    "",
+    `const RAIN_BANDS = deepFreeze(${json(rainBands(t))});`,
     "",
     `const DRAIN_BANDS = deepFreeze(${json(drainBands(t))});`,
     "",
@@ -566,6 +626,7 @@ export function generateDts(t, hash) {
     "export type Rgba = readonly [number, number, number, number];",
     "",
     `export type DepthKey = ${DEPTH_ORDER.map((k) => JSON.stringify(k)).join(" | ")};`,
+    `export type RainKey = ${RAIN_ORDER.map((k) => JSON.stringify(k)).join(" | ")};`,
     `export type DrainKey = ${DRAIN_ORDER.map((k) => JSON.stringify(k)).join(" | ")};`,
     `export type ReachMinutes = ${REACH_ORDER.map((k) => Number(k)).join(" | ")};`,
     `export type StatusMode = ${Object.keys(t.color.status).map((k) => JSON.stringify(k)).join(" | ")};`,
@@ -584,6 +645,19 @@ export function generateDts(t, hash) {
     "  readonly min_cm: number;",
     "  /** Exclusive upper bound in centimetres; null for the open-ended top band. */",
     "  readonly max_cm: number | null;",
+    "}",
+    "",
+    "export interface RainBand {",
+    "  readonly key: RainKey;",
+    "  readonly hex: Hex;",
+    "  /** Human label, e.g. \"20-40 mm/h\". */",
+    "  readonly label: string;",
+    "  /** What the rate means, e.g. \"heavy rain\". */",
+    "  readonly meaning: string;",
+    "  /** Inclusive lower bound in mm/h. */",
+    "  readonly min_mm_h: number;",
+    "  /** Exclusive upper bound in mm/h; null for the open-ended top band. */",
+    "  readonly max_mm_h: number | null;",
     "}",
     "",
     "export interface DrainBand {",
@@ -607,6 +681,8 @@ export function generateDts(t, hash) {
     "",
     "/** Depth band lower bounds in centimetres: the fixed thresholds of the ramp. */",
     `export declare const DEPTH_THRESHOLDS_CM: ${typeLiteral(depthThresholds(t))};`,
+    "/** Rain band lower bounds in mm/h; 20 and 40 are the exceedance thresholds Sky publishes. */",
+    `export declare const RAIN_THRESHOLDS_MM_H: ${typeLiteral(rainThresholds(t))};`,
     "/** Thresholds offered by the probability-mode selector. */",
     `export declare const PROBABILITY_THRESHOLDS_CM: ${typeLiteral(t.probability.thresholds_cm)};`,
     "/** Opacity floor in probability mode so a segment never vanishes. */",
@@ -618,6 +694,8 @@ export function generateDts(t, hash) {
     "",
     "/** Depth bands in ramp order (dry, 1 ... 5). Returns a fresh array of frozen bands. */",
     "export declare function depthRampStops(): DepthBand[];",
+    "/** Rain-rate bands in ramp order (1 drizzle ... 6 cloudburst). */",
+    "export declare function rainRampStops(): RainBand[];",
     "/** Drain bands in ramp order (0 clear ... 3 blocked). */",
     "export declare function drainRampStops(): DrainBand[];",
     "/** Band for a depth in cm; lower bounds inclusive (5 -> band 1); NaN, negatives and -Infinity -> dry; +Infinity -> the top band. */",
@@ -626,6 +704,12 @@ export function generateDts(t, hash) {
     "export declare function depthColor(cm: number): Hex;",
     "/** [r, g, b, a] for a depth in cm; alpha 0-255, default 255. */",
     "export declare function depthColorRgba(cm: number, alpha?: number): Rgba;",
+    "/** Band for a rain rate in mm/h; lower bounds inclusive; null below 0.5 mm/h (no echo). */",
+    "export declare function rainBand(mmH: number): RainBand | null;",
+    "/** Hex colour for a rain rate in mm/h; null below the first band. */",
+    "export declare function rainColor(mmH: number): Hex | null;",
+    "/** [r, g, b, a] for a rain rate in mm/h; alpha 0-255, default 255; transparent below the first band. */",
+    "export declare function rainColorRgba(mmH: number, alpha?: number): Rgba;",
     "/** Band for a posterior blockage beta in [0, 1]; 0.25 -> 1, 0.5 -> 2, 0.75 -> 3. */",
     "export declare function drainBand(beta: number): DrainBand;",
     "/** Hex colour for a posterior blockage beta. */",

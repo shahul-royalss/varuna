@@ -59,6 +59,31 @@ class DrainBand:
 
 
 @dataclass(frozen=True, slots=True)
+class RainBand:
+    """One band of the radar rain-rate ramp.
+
+    ``min_mm_h`` is inclusive, ``max_mm_h`` exclusive (``None`` = open-ended top band).
+    There is no band below 0.5 mm/h: a radar pixel under that is no echo, not a colour.
+    """
+
+    key: str
+    hex: Hex
+    min_mm_h: float
+    max_mm_h: float | None
+    label: str
+    meaning: str
+
+    @property
+    def css_var(self) -> str:
+        return f"--rain-{self.key}"
+
+    def contains(self, mm_h: float) -> bool:
+        if mm_h < self.min_mm_h:
+            return False
+        return self.max_mm_h is None or mm_h < self.max_mm_h
+
+
+@dataclass(frozen=True, slots=True)
 class ReachLevel:
     """A reachability isochrone level: the tide colour at a fixed opacity."""
 
@@ -137,6 +162,23 @@ def drain_bands(path: Path | None = None) -> list[DrainBand]:
     return sorted(bands, key=lambda b: b.min_beta)
 
 
+def rain_bands(path: Path | None = None) -> list[RainBand]:
+    """The six rain-rate bands in ascending order: ``1`` .. ``6`` (0.5 mm/h upwards)."""
+    section = load_tokens(path)["color"]["rain"]
+    bands = [
+        RainBand(
+            key=key,
+            hex=entry["value"],
+            min_mm_h=float(entry["min_mm_h"]),
+            max_mm_h=None if entry["max_mm_h"] is None else float(entry["max_mm_h"]),
+            label=entry["label"],
+            meaning=entry.get("meaning", ""),
+        )
+        for key, entry in section.items()
+    ]
+    return sorted(bands, key=lambda b: b.min_mm_h)
+
+
 def semantic_colors(path: Path | None = None) -> dict[str, Hex]:
     """``surcharge``, ``naive``, ``truth``, ``danger``."""
     return _values(load_tokens(path)["color"]["semantic"])
@@ -195,6 +237,7 @@ __all__ = [
     "DepthBand",
     "DrainBand",
     "Hex",
+    "RainBand",
     "ReachLevel",
     "base_colors",
     "chart_colors",
@@ -206,6 +249,7 @@ __all__ = [
     "obs_colors",
     "probability_min_opacity",
     "probability_thresholds_cm",
+    "rain_bands",
     "reach_levels",
     "semantic_colors",
     "status_colors",

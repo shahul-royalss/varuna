@@ -167,6 +167,64 @@ export type ReplayBundle = z.infer<typeof ReplayBundle>;
 export const ReplayBundleList = z.array(ReplayBundle);
 export type ReplayBundleList = z.infer<typeof ReplayBundleList>;
 
+/** One frame of a bundle's radar cube; `url` is an API-root-relative path to its PNG. */
+export const RadarFrameRef = z.looseObject({
+  index: z.number().int(),
+  ts: z.string(),
+  url: z.string(),
+});
+export type RadarFrameRef = z.infer<typeof RadarFrameRef>;
+
+/**
+ * The AOI as a rectangle in radar-cube pixels, top-left origin, `right`/`bottom` exclusive:
+ * the storm domain is 60 km wide and the city takes a small window of it.
+ */
+export const RadarAoiPixels = z.looseObject({
+  left: z.number(),
+  top: z.number(),
+  right: z.number(),
+  bottom: z.number(),
+  width: z.number(),
+  height: z.number(),
+});
+export type RadarAoiPixels = z.infer<typeof RadarAoiPixels>;
+
+/** One band of the rain ramp, so the legend is drawn from the tokens the PNG was coloured with. */
+export const RainRampBand = z.looseObject({
+  min_mm_h: z.number(),
+  hex: z.string(),
+  label: z.string(),
+});
+export type RainRampBand = z.infer<typeof RainRampBand>;
+
+/** The 3-hour accumulation image and the honesty copy that belongs beside it. */
+export const RadarAccumulation = z.looseObject({
+  url: z.string(),
+  label: z.string(),
+  note: z.string(),
+});
+export type RadarAccumulation = z.infer<typeof RadarAccumulation>;
+
+/**
+ * `GET /v1/replay/bundles/{bundle_id}/radar`: everything the storm designer needs to animate a
+ * bundle's radar frames. Bundle-scoped, so there is no `run_id` or `valid_ts` here.
+ */
+export const RadarPreview = z.looseObject({
+  bundle_id: z.string(),
+  label: z.string(),
+  variable: z.string(),
+  n_frames: z.number().int(),
+  step_min: z.number(),
+  t0: z.string(),
+  width: z.number().int(),
+  height: z.number().int(),
+  frames: z.array(RadarFrameRef).default([]),
+  aoi_px: RadarAoiPixels,
+  ramp: z.array(RainRampBand).default([]),
+  accumulation: RadarAccumulation,
+});
+export type RadarPreview = z.infer<typeof RadarPreview>;
+
 export const CycleStagePayload = z.looseObject({
   stage: z.string(),
   ms: z.number().nullish(),

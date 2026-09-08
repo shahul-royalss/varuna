@@ -424,6 +424,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/replay/bundles/{bundle_id}/radar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Radar frames of one bundle: how many, when, how big, and where to fetch them
+         * @description The index behind the storm-designer player. Frame PNGs are separate requests.
+         */
+        get: operations["replay_radar_index_v1_replay_bundles__bundle_id__radar_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/replay/bundles/{bundle_id}/radar/accumulation.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rainfall accumulated over the whole replay window, in mm
+         * @description Integrated from ``truth/rain.zarr``, the mm/h field, never the quantised radar frames.
+         */
+        get: operations["replay_radar_accumulation_v1_replay_bundles__bundle_id__radar_accumulation_png_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/replay/bundles/{bundle_id}/radar/{index}.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One radar frame of a bundle, coloured by rain rate
+         * @description The frame as the forecast will see it: dBZ inverted to mm/h, then the shared rain ramp.
+         */
+        get: operations["replay_radar_frame_v1_replay_bundles__bundle_id__radar__index__png_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/replay/clock": {
         parameters: {
             query?: never;
@@ -862,6 +922,29 @@ export interface components {
             min_lat: number;
             /** Min Lon */
             min_lon: number;
+        };
+        /**
+         * BundleSource
+         * @description A public source cited by the bundle (gauge totals, event timeline, tide table).
+         */
+        BundleSource: {
+            /**
+             * Name
+             * @description e.g. IMD Santacruz 24-h total, 2 July 2019
+             */
+            name: string;
+            /**
+             * Note
+             * @description What number was taken and how.
+             */
+            note?: string | null;
+            /** Url */
+            url: string;
+            /**
+             * Used For
+             * @description e.g. 'AOI 3-hour accumulation target 15:00-21:00 IST'.
+             */
+            used_for?: string | null;
         };
         /**
          * CleanTopNEffect
@@ -2101,6 +2184,143 @@ export interface components {
             valid_ts: string;
         };
         /**
+         * RadarAccumulation
+         * @description The whole-window accumulation image that sits beside the frame player.
+         */
+        RadarAccumulation: {
+            /**
+             * Label
+             * @description What the image shows, in UI copy.
+             */
+            label: string;
+            /**
+             * Note
+             * @description Honesty line for the shared legend: the image is a depth in mm coloured by the rain-rate band edges (CLAUDE.md 6.8).
+             */
+            note: string;
+            /**
+             * Url
+             * @description Path to the accumulation PNG on this API.
+             */
+            url: string;
+        };
+        /**
+         * RadarAoiPixels
+         * @description The area of interest as a rectangle in radar-cube pixels, top-left origin.
+         *
+         *     The storm domain is 60 km wide and the AOI is a small window inside it, so the preview
+         *     draws this rectangle over the frames to say which rain the city actually receives.
+         *     ``right`` and ``bottom`` are exclusive, and the rectangle is rounded outward, so it never
+         *     cuts a pixel the AOI touches.
+         */
+        RadarAoiPixels: {
+            /** Bottom */
+            bottom: number;
+            /** Height */
+            height: number;
+            /** Left */
+            left: number;
+            /** Right */
+            right: number;
+            /** Top */
+            top: number;
+            /** Width */
+            width: number;
+        };
+        /**
+         * RadarFrameRef
+         * @description One frame of a bundle's radar cube, and where to fetch its PNG.
+         */
+        RadarFrameRef: {
+            /**
+             * Index
+             * @description Frame number in the cube, 0-based.
+             */
+            index: number;
+            /**
+             * Ts
+             * Format: date-time
+             * @description The instant the frame shows (IST).
+             */
+            ts: string;
+            /**
+             * Url
+             * @description Path to the frame PNG on this API.
+             */
+            url: string;
+        };
+        /**
+         * RadarPreviewIndex
+         * @description Everything the storm designer needs to animate a bundle's radar frames.
+         *
+         *     Bundle-scoped, not run-scoped: a bundle is an input to the cycle, so there is no ``run_id``
+         *     or ``valid_ts`` here, exactly as in :class:`ReplayBundleSummary`.
+         */
+        RadarPreviewIndex: {
+            accumulation: components["schemas"]["RadarAccumulation"];
+            aoi_px: components["schemas"]["RadarAoiPixels"];
+            /** Bundle Id */
+            bundle_id: string;
+            /** Frames */
+            frames?: components["schemas"]["RadarFrameRef"][];
+            /**
+             * Height
+             * @description Frame height in pixels.
+             */
+            height: number;
+            /**
+             * Label
+             * @enum {string}
+             */
+            label: "Reconstructed replay" | "Design storm";
+            /** N Frames */
+            n_frames: number;
+            /** Ramp */
+            ramp?: components["schemas"]["RainRampBand"][];
+            /**
+             * Step Min
+             * @description Minutes between frames.
+             */
+            step_min: number;
+            /**
+             * T0
+             * Format: date-time
+             * @description Instant of frame 0 (IST).
+             */
+            t0: string;
+            /**
+             * Variable
+             * @description Cube variable the frames were read from, e.g. dbz.
+             */
+            variable: string;
+            /**
+             * Width
+             * @description Frame width in pixels.
+             */
+            width: number;
+        };
+        /**
+         * RainRampBand
+         * @description One band of the shared rain ramp, so the legend is drawn from the tokens the PNG used.
+         */
+        RainRampBand: {
+            /**
+             * Hex
+             * @description The band's colour, from packages/tokens/tokens.json.
+             */
+            hex: string;
+            /**
+             * Label
+             * @description What the band means, in UI copy.
+             */
+            label: string;
+            /**
+             * Min Mm H
+             * @description Lower edge of the band, inclusive, in mm/h.
+             */
+            min_mm_h: number;
+        };
+        /**
          * ReachabilityResponse
          * @description ``GET /v1/reachability`` and one feature group of ``reachability.geojson``.
          */
@@ -2206,10 +2426,20 @@ export interface components {
              * @default true
              */
             built: boolean;
+            /**
+             * Calibration Basis
+             * @description How the bundle's calibration numbers were arrived at, verbatim from the manifest. This is the basis text the replay page shows under a reconstructed replay (docs/SIMPLIFICATIONS.md, replay window accumulation).
+             */
+            calibration_basis?: string | null;
             /** City */
             city: string;
             /** Description */
             description?: string | null;
+            /**
+             * Design Storm Basis
+             * @description Why the design storm is not a fitted IDF curve, verbatim from ``manifest.design_storm.basis``. None on bundles that carry no design storm (docs/SIMPLIFICATIONS.md, design storms).
+             */
+            design_storm_basis?: string | null;
             /**
              * Ground Truth N
              * @default 0
@@ -2230,6 +2460,11 @@ export interface components {
             /** Seed */
             seed: number;
             /**
+             * Sources
+             * @description The public sources the bundle cites, so the card can link them instead of only counting them (CLAUDE.md 0.7).
+             */
+            sources?: components["schemas"]["BundleSource"][];
+            /**
              * Sources N
              * @default 0
              */
@@ -2246,6 +2481,11 @@ export interface components {
              * Format: date-time
              */
             t1: string;
+            /**
+             * Tide Source
+             * @description Where the tide series came from: a published table, or 'illustrative' when the stage is modelled from a single sourced height.
+             */
+            tide_source?: ("tide_table" | "illustrative") | null;
             /** Total Cycles */
             total_cycles: number;
         };
@@ -4005,6 +4245,145 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    replay_radar_index_v1_replay_bundles__bundle_id__radar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Bundle id, e.g. MUM-2019-07-02. */
+                bundle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RadarPreviewIndex"];
+                };
+            };
+            /** @description No such bundle under bundles/ */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_radar_accumulation_v1_replay_bundles__bundle_id__radar_accumulation_png_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Bundle id, e.g. MUM-2019-07-02. */
+                bundle_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description RGBA PNG on the shared rain ramp */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description The browser already holds this render */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such bundle under bundles/ */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    replay_radar_frame_v1_replay_bundles__bundle_id__radar__index__png_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Bundle id, e.g. MUM-2019-07-02. */
+                bundle_id: string;
+                /** @description Frame number, 0-based. */
+                index: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description RGBA PNG on the shared rain ramp */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description The browser already holds this render */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No such bundle under bundles/ */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

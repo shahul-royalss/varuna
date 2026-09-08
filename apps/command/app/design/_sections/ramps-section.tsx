@@ -6,6 +6,7 @@ import {
   drainLegendStops,
   passabilityStops,
   probabilityLegendStops,
+  rainLegendStops,
   type LegendStop,
   type PassabilityProfile,
 } from "@/lib/ramps";
@@ -86,6 +87,11 @@ export function RampsSection() {
             <DepthChip cm={null} />
           </div>
         </div>
+        <Ramp
+          title="Rain"
+          description="Radar echoes and the nowcast field, in millimetres per hour. It is deliberately a different palette from depth: rain overhead must never read as water on the street. The two upper edges are the exceedance thresholds Sky reports, 20 and 40 mm/h."
+          stops={rainLegendStops()}
+        />
         <Ramp
           title="Drain health"
           description="Posterior blockage beta per pipe after Pulse assimilates the cycle. Magenta means blocked."

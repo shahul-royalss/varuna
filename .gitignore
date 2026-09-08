@@ -59,3 +59,6 @@ docs/disclosure_email_BMC.txt
 # docs/research/*.md carries the live source_url and a short quoted excerpt instead.
 docs/research/_raw/pages/
 .vercel/
+
+# Claude Code plugin/skill cache, not project source
+skills/

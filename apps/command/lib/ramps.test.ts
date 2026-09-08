@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -17,8 +19,14 @@ import {
   probabilityLegendStops,
   probabilityOpacity,
   probabilityRgba,
+  rainLegendStops,
   rgbaCss,
 } from "./ramps";
+
+/** The rain group as committed, so the legend is checked against tokens.json and not against itself. */
+const rainTokens = JSON.parse(
+  readFileSync(path.resolve(__dirname, "../../../packages/tokens/tokens.json"), "utf8"),
+).color.rain as Record<string, { value: string; label: string; meaning: string }>;
 
 describe("depth ramp", () => {
   it("has the fixed thresholds from tokens.json", () => {
@@ -71,6 +79,36 @@ describe("drain ramp", () => {
   it("gives deck.gl rgba with alpha from opacity", () => {
     const [, , , a] = drainRgba(0.9, 0.5);
     expect(a).toBe(128);
+  });
+});
+
+describe("rain ramp", () => {
+  it("lists every rain band of tokens.json, in ramp order, with its label and colour", () => {
+    const stops = rainLegendStops();
+    const bands = Object.entries(rainTokens);
+    expect(stops).toHaveLength(bands.length);
+    expect(stops.map((s) => s.key)).toEqual(bands.map(([key]) => `rain-${key}`));
+    expect(stops.map((s) => s.label)).toEqual(bands.map(([, band]) => band.label));
+    expect(stops.map((s) => s.meaning)).toEqual(bands.map(([, band]) => band.meaning));
+    expect(stops.map((s) => s.hex)).toEqual(bands.map(([, band]) => band.value));
+    expect(stops[3]?.label).toBe("20-40 mm/h");
+    expect(stops[3]?.cssVar).toBe("var(--rain-4)");
+    expect(stops.every((s) => s.opacity === 1)).toBe(true);
+  });
+  it("never reuses a depth or drain colour, so an echo cannot read as a flooded street", () => {
+    const water = new Set<string>([
+      colors["depth-dry"],
+      colors["depth-1"],
+      colors["depth-2"],
+      colors["depth-3"],
+      colors["depth-4"],
+      colors["depth-5"],
+      colors["drain-0"],
+      colors["drain-1"],
+      colors["drain-2"],
+      colors["drain-3"],
+    ]);
+    expect(rainLegendStops().some((s) => water.has(s.hex))).toBe(false);
   });
 });
 

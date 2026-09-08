@@ -8,16 +8,33 @@ client never has to guess what its own request did, and the same state goes out 
 The clock is opened lazily: the first request for it loads ``VARUNA_BUNDLE``'s manifest. When
 that bundle is not on disk the answer is a 404 whose message names the make target rather than
 an empty clock that pretends a replay exists.
+
+The three ``radar`` routes are the storm-designer preview (task P2.10): a browser cannot open
+a Zarr store, so the frames and the window accumulation are served as PNGs rendered by
+:mod:`varuna_replay.preview`, with a small index telling the player how many there are and
+when each one is. The index also carries the storm the frames were generated from - the
+convective cells of a reconstructed replay, or the Chicago hyetograph of a design storm - in
+the units the ``/replay`` cell table prints, so the console converts nothing. They read a
+bundle without touching the clock - looking at a bundle card is not the same as pointing the
+replay at it.
 """
 
 from __future__ import annotations
 
+import math
+from datetime import timedelta
+from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import Path as PathParam
 from pydantic import Field
-from varuna_replay.bundle import BundleNotFoundError
+from pyproj import Transformer
+from varuna_replay import preview
+from varuna_replay.bundle import BundleLayout, BundleNotFoundError, load_manifest
 from varuna_replay.clock import REPLAY_SPEEDS, ReplayClock
+from varuna_replay.domain import WGS84
 from varuna_schemas.models import (
     ErrorEnvelope,
     ReplayBundleSummary,
@@ -28,8 +45,20 @@ from varuna_schemas.models import (
 from varuna_schemas.models import (
     ReplayClock as ReplayClockState,
 )
+from varuna_schemas.models.bundle import BundleManifest
+from varuna_schemas.models.replay import (
+    DesignStormBlocks,
+    RadarAccumulation,
+    RadarAoiPixels,
+    RadarFrameRef,
+    RadarPreviewIndex,
+    RainRampBand,
+    StormCellRow,
+)
+from varuna_schemas.paths import bundle_dir
 
 from varuna_api.replay import bundle_hint, bundle_summaries
+from varuna_api.routers.city import CACHE_CONTROL
 from varuna_api.state import AppState, api_error, get_state
 
 router = APIRouter(
@@ -74,6 +103,107 @@ async def _clock(state: AppState, bundle_id: str | None = None) -> ReplayClock:
             f"The manifest of {wanted} does not match the bundle contract: {exc}. "
             f"Run varuna bundle validate {wanted}.",
         ) from exc
+
+
+def _bundle(bundle_id: str) -> tuple[BundleLayout, BundleManifest]:
+    """A bundle's layout and manifest, without opening the clock on it.
+
+    The preview is what a bundle card shows; selecting a bundle is ``POST /v1/replay/bundle``.
+    A missing folder answers with the same 404 as :func:`_clock`, naming the make target.
+    """
+    try:
+        layout = BundleLayout(root=bundle_dir(bundle_id).resolve())
+        manifest = load_manifest(layout.root)
+    # ValueError covers a bundle id that is not a path segment and an unreadable manifest;
+    # either way there is no bundle here to preview.
+    except (BundleNotFoundError, ValueError) as exc:
+        raise api_error(
+            404,
+            "bundle_not_found",
+            f"No replay bundle {bundle_id} under bundles/. {bundle_hint(bundle_id)}",
+        ) from exc
+    return layout, manifest
+
+
+def _cube_etag(kind: str, cube: Path) -> str:
+    """A weak ETag for one cube, as ``city.city_layer`` builds one for a layer file.
+
+    A Zarr cube is a folder, so the stamp comes from the group's ``zarr.json``, which
+    ``write_cube`` rewrites on every build. Deliberately not an immutable year-long cache:
+    ``bundles/*/radar/`` is gitignored and ``make bundle`` rewrites it, so a stale frame must
+    not outlive a rebuild on the demo laptop.
+    """
+    meta = cube / "zarr.json"
+    stat = (meta if meta.is_file() else cube).stat()
+    return f'W/"{kind}-{int(stat.st_mtime)}-{stat.st_size}"'
+
+
+def _cube_missing(bundle_id: str, member: str) -> Exception:
+    return api_error(
+        404,
+        "cube_not_built",
+        f"Bundle {bundle_id} has no {member} yet. {bundle_hint(bundle_id)}",
+    )
+
+
+def _not_modified(request: Request, etag: str) -> Response | None:
+    """A 304 when the browser already holds this render, so nothing is rendered twice."""
+    if request.headers.get("if-none-match") != etag:
+        return None
+    return Response(status_code=304, headers={"ETag": etag, "Cache-Control": CACHE_CONTROL})
+
+
+@lru_cache(maxsize=4)
+def _to_wgs84(crs: int) -> Transformer:
+    """Metric CRS to lon/lat: the inverse of the transformer ``varuna_replay.domain`` caches."""
+    return Transformer.from_crs(f"EPSG:{crs}", WGS84, always_xy=True)
+
+
+def storm_cell_rows(manifest: BundleManifest) -> list[StormCellRow]:
+    """The manifest's convective cells in the units the ``/replay`` cell table prints.
+
+    Everything the table shows is converted here rather than in the browser, so one place owns
+    the arithmetic: minutes from ``t0`` become an IST instant, the design CRS becomes lon/lat,
+    the two velocity components become one speed, metres become kilometres, and the peak is
+    multiplied by ``intensity_scale``. That last one matters: the manifest keeps the unscaled
+    draw, and the field the bundle actually carries is the scaled one, so printing the raw
+    number would put a rain rate on screen that no frame contains (rule 6).
+
+    Empty on a design storm, which has no cells; see :func:`design_storm_blocks`.
+    """
+    storm = manifest.storm
+    if storm is None:
+        return []
+    to_wgs84 = _to_wgs84(storm.crs)
+    rows: list[StormCellRow] = []
+    for cell in storm.cells:
+        lon, lat = to_wgs84.transform(cell.start_x_m, cell.start_y_m)
+        rows.append(
+            StormCellRow(
+                id=cell.id,
+                birth=manifest.t0 + timedelta(minutes=cell.birth_min),
+                lifetime_min=cell.lifetime_min,
+                start_lat=float(lat),
+                start_lon=float(lon),
+                velocity_ms=math.hypot(cell.u_ms, cell.v_ms),
+                sigma_km=cell.sigma_m / 1000.0,
+                peak_mm_h=cell.peak_mm_h * storm.intensity_scale,
+            )
+        )
+    return rows
+
+
+def design_storm_blocks(manifest: BundleManifest) -> DesignStormBlocks | None:
+    """The design storm's hyetograph blocks, or None on a reconstructed replay."""
+    design = manifest.design_storm
+    if design is None:
+        return None
+    return DesignStormBlocks(
+        step_min=design.step_min,
+        blocks_mm_h=list(design.hyetograph_mm_h),
+        total_depth_mm=design.total_depth_mm,
+        peak_position_r=design.peak_position_r,
+    )
 
 
 @router.get(
@@ -141,4 +271,119 @@ async def replay_set_bundle(body: ReplayBundleRequest, state: State) -> ReplayCl
     return clock.snapshot()
 
 
-__all__ = ["ReplayBundleRequest", "router"]
+BundleId = Annotated[str, PathParam(description="Bundle id, e.g. MUM-2019-07-02.")]
+
+PNG_RESPONSE: dict[int | str, dict[str, object]] = {
+    200: {"content": {"image/png": {}}, "description": "RGBA PNG on the shared rain ramp"},
+    304: {"description": "The browser already holds this render"},
+}
+
+
+@router.get(
+    "/bundles/{bundle_id}/radar",
+    response_model=RadarPreviewIndex,
+    summary="Radar frames of one bundle: how many, when, how big, and where to fetch them",
+)
+def replay_radar_index(request: Request, bundle_id: BundleId) -> RadarPreviewIndex:
+    """The index behind the storm-designer player. Frame PNGs are separate requests."""
+    layout, manifest = _bundle(bundle_id)
+    try:
+        index = preview.radar_index(manifest, layout)
+    except BundleNotFoundError as exc:
+        raise _cube_missing(bundle_id, "radar/frames.zarr") from exc
+
+    app = request.app
+    return RadarPreviewIndex(
+        bundle_id=index["bundle"],
+        label=index["label"],
+        variable=index["variable"],
+        n_frames=index["n_frames"],
+        step_min=index["step_min"],
+        t0=index["t0"],
+        width=index["width"],
+        height=index["height"],
+        frames=[
+            RadarFrameRef(
+                index=frame["index"],
+                ts=frame["ts"],
+                url=str(
+                    app.url_path_for(
+                        "replay_radar_frame", bundle_id=bundle_id, index=frame["index"]
+                    )
+                ),
+            )
+            for frame in index["frames"]
+        ],
+        aoi_px=RadarAoiPixels(**index["aoi_px"]),
+        ramp=[RainRampBand(**band) for band in index["bands"]],
+        accumulation=RadarAccumulation(
+            url=str(app.url_path_for("replay_radar_accumulation", bundle_id=bundle_id)),
+            label=index["accumulation_label"],
+            note=index["accumulation_note"],
+        ),
+        cells=storm_cell_rows(manifest),
+        design_storm=design_storm_blocks(manifest),
+    )
+
+
+@router.get(
+    "/bundles/{bundle_id}/radar/accumulation.png",
+    responses=PNG_RESPONSE,
+    response_class=Response,
+    summary="Rainfall accumulated over the whole replay window, in mm",
+)
+def replay_radar_accumulation(request: Request, bundle_id: BundleId) -> Response:
+    """Integrated from ``truth/rain.zarr``, the mm/h field, never the quantised radar frames."""
+    layout, _ = _bundle(bundle_id)
+    if not layout.truth.exists():
+        raise _cube_missing(bundle_id, "truth/rain.zarr")
+
+    etag = _cube_etag("accumulation", layout.truth)
+    cached = _not_modified(request, etag)
+    if cached is not None:
+        return cached
+    try:
+        png = preview.accumulation_png(layout)
+    except BundleNotFoundError as exc:
+        raise _cube_missing(bundle_id, "truth/rain.zarr") from exc
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"ETag": etag, "Cache-Control": CACHE_CONTROL},
+    )
+
+
+@router.get(
+    "/bundles/{bundle_id}/radar/{index}.png",
+    responses=PNG_RESPONSE,
+    response_class=Response,
+    summary="One radar frame of a bundle, coloured by rain rate",
+)
+def replay_radar_frame(
+    request: Request,
+    bundle_id: BundleId,
+    index: Annotated[int, PathParam(ge=0, description="Frame number, 0-based.")],
+) -> Response:
+    """The frame as the forecast will see it: dBZ inverted to mm/h, then the shared rain ramp."""
+    layout, _ = _bundle(bundle_id)
+    if not layout.radar.exists():
+        raise _cube_missing(bundle_id, "radar/frames.zarr")
+
+    etag = _cube_etag(f"radar-{index}", layout.radar)
+    cached = _not_modified(request, etag)
+    if cached is not None:
+        return cached
+    try:
+        png = preview.radar_frame_png(layout, index)
+    except BundleNotFoundError as exc:
+        raise _cube_missing(bundle_id, "radar/frames.zarr") from exc
+    except IndexError as exc:
+        raise api_error(404, "frame_not_found", str(exc)) from exc
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"ETag": etag, "Cache-Control": CACHE_CONTROL},
+    )
+
+
+__all__ = ["ReplayBundleRequest", "design_storm_blocks", "router", "storm_cell_rows"]

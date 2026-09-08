@@ -496,6 +496,52 @@
         "title": "BBox",
         "type": "object"
       },
+      "BundleSource": {
+        "additionalProperties": false,
+        "description": "A public source cited by the bundle (gauge totals, event timeline, tide table).",
+        "properties": {
+          "name": {
+            "description": "e.g. IMD Santacruz 24-h total, 2 July 2019",
+            "title": "Name",
+            "type": "string"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What number was taken and how.",
+            "title": "Note"
+          },
+          "url": {
+            "minLength": 8,
+            "title": "Url",
+            "type": "string"
+          },
+          "used_for": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "e.g. 'AOI 3-hour accumulation target 15:00-21:00 IST'.",
+            "title": "Used For"
+          }
+        },
+        "required": [
+          "name",
+          "url"
+        ],
+        "title": "BundleSource",
+        "type": "object"
+      },
       "CleanTopNEffect": {
         "additionalProperties": false,
         "description": "Combined effect of cleaning the top N pipes by attribution (the demo's 'clean 14').",
@@ -3241,6 +3287,225 @@
         "title": "PumpPlan",
         "type": "object"
       },
+      "RadarAccumulation": {
+        "additionalProperties": false,
+        "description": "The whole-window accumulation image that sits beside the frame player.",
+        "properties": {
+          "label": {
+            "description": "What the image shows, in UI copy.",
+            "title": "Label",
+            "type": "string"
+          },
+          "note": {
+            "description": "Honesty line for the shared legend: the image is a depth in mm coloured by the rain-rate band edges (CLAUDE.md 6.8).",
+            "title": "Note",
+            "type": "string"
+          },
+          "url": {
+            "description": "Path to the accumulation PNG on this API.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "label",
+          "note"
+        ],
+        "title": "RadarAccumulation",
+        "type": "object"
+      },
+      "RadarAoiPixels": {
+        "additionalProperties": false,
+        "description": "The area of interest as a rectangle in radar-cube pixels, top-left origin.\n\nThe storm domain is 60 km wide and the AOI is a small window inside it, so the preview\ndraws this rectangle over the frames to say which rain the city actually receives.\n``right`` and ``bottom`` are exclusive, and the rectangle is rounded outward, so it never\ncuts a pixel the AOI touches.",
+        "properties": {
+          "bottom": {
+            "minimum": 0.0,
+            "title": "Bottom",
+            "type": "integer"
+          },
+          "height": {
+            "minimum": 0.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "left": {
+            "minimum": 0.0,
+            "title": "Left",
+            "type": "integer"
+          },
+          "right": {
+            "minimum": 0.0,
+            "title": "Right",
+            "type": "integer"
+          },
+          "top": {
+            "minimum": 0.0,
+            "title": "Top",
+            "type": "integer"
+          },
+          "width": {
+            "minimum": 0.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "left",
+          "top",
+          "right",
+          "bottom",
+          "width",
+          "height"
+        ],
+        "title": "RadarAoiPixels",
+        "type": "object"
+      },
+      "RadarFrameRef": {
+        "additionalProperties": false,
+        "description": "One frame of a bundle's radar cube, and where to fetch its PNG.",
+        "properties": {
+          "index": {
+            "description": "Frame number in the cube, 0-based.",
+            "minimum": 0.0,
+            "title": "Index",
+            "type": "integer"
+          },
+          "ts": {
+            "description": "The instant the frame shows (IST).",
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "url": {
+            "description": "Path to the frame PNG on this API.",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "ts",
+          "url"
+        ],
+        "title": "RadarFrameRef",
+        "type": "object"
+      },
+      "RadarPreviewIndex": {
+        "additionalProperties": false,
+        "description": "Everything the storm designer needs to animate a bundle's radar frames.\n\nBundle-scoped, not run-scoped: a bundle is an input to the cycle, so there is no ``run_id``\nor ``valid_ts`` here, exactly as in :class:`ReplayBundleSummary`.",
+        "properties": {
+          "accumulation": {
+            "$ref": "#/components/schemas/RadarAccumulation"
+          },
+          "aoi_px": {
+            "$ref": "#/components/schemas/RadarAoiPixels"
+          },
+          "bundle_id": {
+            "title": "Bundle Id",
+            "type": "string"
+          },
+          "frames": {
+            "items": {
+              "$ref": "#/components/schemas/RadarFrameRef"
+            },
+            "title": "Frames",
+            "type": "array"
+          },
+          "height": {
+            "description": "Frame height in pixels.",
+            "minimum": 1.0,
+            "title": "Height",
+            "type": "integer"
+          },
+          "label": {
+            "enum": [
+              "Reconstructed replay",
+              "Design storm"
+            ],
+            "title": "Label",
+            "type": "string"
+          },
+          "n_frames": {
+            "minimum": 0.0,
+            "title": "N Frames",
+            "type": "integer"
+          },
+          "ramp": {
+            "items": {
+              "$ref": "#/components/schemas/RainRampBand"
+            },
+            "title": "Ramp",
+            "type": "array"
+          },
+          "step_min": {
+            "description": "Minutes between frames.",
+            "exclusiveMinimum": 0.0,
+            "title": "Step Min",
+            "type": "number"
+          },
+          "t0": {
+            "description": "Instant of frame 0 (IST).",
+            "format": "date-time",
+            "title": "T0",
+            "type": "string"
+          },
+          "variable": {
+            "description": "Cube variable the frames were read from, e.g. dbz.",
+            "title": "Variable",
+            "type": "string"
+          },
+          "width": {
+            "description": "Frame width in pixels.",
+            "minimum": 1.0,
+            "title": "Width",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bundle_id",
+          "label",
+          "variable",
+          "n_frames",
+          "step_min",
+          "t0",
+          "width",
+          "height",
+          "aoi_px",
+          "accumulation"
+        ],
+        "title": "RadarPreviewIndex",
+        "type": "object"
+      },
+      "RainRampBand": {
+        "additionalProperties": false,
+        "description": "One band of the shared rain ramp, so the legend is drawn from the tokens the PNG used.",
+        "properties": {
+          "hex": {
+            "description": "The band's colour, from packages/tokens/tokens.json.",
+            "title": "Hex",
+            "type": "string"
+          },
+          "label": {
+            "description": "What the band means, in UI copy.",
+            "title": "Label",
+            "type": "string"
+          },
+          "min_mm_h": {
+            "description": "Lower edge of the band, inclusive, in mm/h.",
+            "minimum": 0.0,
+            "title": "Min Mm H",
+            "type": "number"
+          }
+        },
+        "required": [
+          "min_mm_h",
+          "hex",
+          "label"
+        ],
+        "title": "RainRampBand",
+        "type": "object"
+      },
       "ReachabilityResponse": {
         "additionalProperties": false,
         "description": "``GET /v1/reachability`` and one feature group of ``reachability.geojson``.",
@@ -3438,6 +3703,18 @@
             "title": "Built",
             "type": "boolean"
           },
+          "calibration_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How the bundle's calibration numbers were arrived at, verbatim from the manifest. This is the basis text the replay page shows under a reconstructed replay (docs/SIMPLIFICATIONS.md, replay window accumulation).",
+            "title": "Calibration Basis"
+          },
           "city": {
             "title": "City",
             "type": "string"
@@ -3452,6 +3729,18 @@
               }
             ],
             "title": "Description"
+          },
+          "design_storm_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the design storm is not a fitted IDF curve, verbatim from ``manifest.design_storm.basis``. None on bundles that carry no design storm (docs/SIMPLIFICATIONS.md, design storms).",
+            "title": "Design Storm Basis"
           },
           "ground_truth_n": {
             "default": 0,
@@ -3483,6 +3772,14 @@
             "title": "Seed",
             "type": "integer"
           },
+          "sources": {
+            "description": "The public sources the bundle cites, so the card can link them instead of only counting them (CLAUDE.md 0.7).",
+            "items": {
+              "$ref": "#/components/schemas/BundleSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
           "sources_n": {
             "default": 0,
             "minimum": 0.0,
@@ -3505,6 +3802,22 @@
             "format": "date-time",
             "title": "T1",
             "type": "string"
+          },
+          "tide_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "tide_table",
+                  "illustrative"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the tide series came from: a published table, or 'illustrative' when the stage is modelled from a single sourced height.",
+            "title": "Tide Source"
           },
           "total_cycles": {
             "minimum": 1.0,
@@ -6722,6 +7035,181 @@
           }
         },
         "summary": "Replay bundles on disk, with their build and bake status",
+        "tags": [
+          "replay"
+        ]
+      }
+    },
+    "/v1/replay/bundles/{bundle_id}/radar": {
+      "get": {
+        "description": "The index behind the storm-designer player. Frame PNGs are separate requests.",
+        "operationId": "replay_radar_index_v1_replay_bundles__bundle_id__radar_get",
+        "parameters": [
+          {
+            "description": "Bundle id, e.g. MUM-2019-07-02.",
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "description": "Bundle id, e.g. MUM-2019-07-02.",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RadarPreviewIndex"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle under bundles/"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Radar frames of one bundle: how many, when, how big, and where to fetch them",
+        "tags": [
+          "replay"
+        ]
+      }
+    },
+    "/v1/replay/bundles/{bundle_id}/radar/accumulation.png": {
+      "get": {
+        "description": "Integrated from ``truth/rain.zarr``, the mm/h field, never the quantised radar frames.",
+        "operationId": "replay_radar_accumulation_v1_replay_bundles__bundle_id__radar_accumulation_png_get",
+        "parameters": [
+          {
+            "description": "Bundle id, e.g. MUM-2019-07-02.",
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "description": "Bundle id, e.g. MUM-2019-07-02.",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {}
+            },
+            "description": "RGBA PNG on the shared rain ramp"
+          },
+          "304": {
+            "description": "The browser already holds this render"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle under bundles/"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rainfall accumulated over the whole replay window, in mm",
+        "tags": [
+          "replay"
+        ]
+      }
+    },
+    "/v1/replay/bundles/{bundle_id}/radar/{index}.png": {
+      "get": {
+        "description": "The frame as the forecast will see it: dBZ inverted to mm/h, then the shared rain ramp.",
+        "operationId": "replay_radar_frame_v1_replay_bundles__bundle_id__radar__index__png_get",
+        "parameters": [
+          {
+            "description": "Bundle id, e.g. MUM-2019-07-02.",
+            "in": "path",
+            "name": "bundle_id",
+            "required": true,
+            "schema": {
+              "description": "Bundle id, e.g. MUM-2019-07-02.",
+              "title": "Bundle Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Frame number, 0-based.",
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "description": "Frame number, 0-based.",
+              "minimum": 0,
+              "title": "Index",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {}
+            },
+            "description": "RGBA PNG on the shared rain ramp"
+          },
+          "304": {
+            "description": "The browser already holds this render"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No such bundle under bundles/"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One radar frame of a bundle, coloured by rain rate",
         "tags": [
           "replay"
         ]

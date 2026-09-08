@@ -4,10 +4,11 @@ import math
 
 import pytest
 from varuna_schemas import ramps
-from varuna_schemas.tokens import depth_bands, drain_bands
+from varuna_schemas.tokens import depth_bands, drain_bands, rain_bands
 
 HEX = {b.key: b.hex for b in depth_bands()}
 DRAIN_HEX = {b.key: b.hex for b in drain_bands()}
+RAIN_HEX = {b.key: b.hex for b in rain_bands()}
 
 
 @pytest.mark.parametrize(
@@ -124,3 +125,74 @@ def test_probability_opacity_floor_and_status() -> None:
     assert ramps.status_color_hex("replay") == "#38BDF8"
     with pytest.raises(KeyError):
         ramps.status_color_hex("paused")
+
+
+@pytest.mark.parametrize(
+    ("mm_h", "key"),
+    [
+        (-1.0, None),
+        (0.0, None),
+        (0.49, None),
+        (0.5, "1"),
+        (1.99, "1"),
+        (2.0, "2"),
+        (7.99, "2"),
+        (8.0, "3"),
+        (19.99, "3"),
+        (20.0, "4"),
+        (39.99, "4"),
+        (40.0, "5"),
+        (79.99, "5"),
+        (80.0, "6"),
+        (250.0, "6"),
+        (math.nan, None),
+    ],
+)
+def test_rain_band_boundaries(mm_h: float, key: str | None) -> None:
+    band = ramps.rain_band(mm_h)
+    assert (None if band is None else band.key) == key
+    assert ramps.rain_color_hex(mm_h) == (None if key is None else RAIN_HEX[key])
+    if key is None:
+        assert ramps.rain_color_rgba(mm_h) == (0, 0, 0, 0)
+    else:
+        assert ramps.rain_color_rgba(mm_h, 200) == (*ramps.hex_to_rgb(RAIN_HEX[key]), 200)
+
+
+def test_rain_lut_matches_the_bands() -> None:
+    bands = rain_bands()
+    lut = ramps.rain_lut_rgba()
+    assert len(lut) == len(bands) == 6
+    for i, band in enumerate(bands):
+        assert lut[i] == ramps.hex_to_rgba(band.hex)
+        assert ramps.rgb_to_hex(lut[i]) == band.hex
+        assert ramps.rain_band_index(band.min_mm_h) == i
+    assert ramps.rain_lut_rgba(180)[0][3] == 180
+    with pytest.raises(ValueError):
+        ramps.rain_lut_rgba(300)
+
+
+def test_rain_palette_bytes_leads_with_transparent_no_echo() -> None:
+    rgb, alphas = ramps.rain_palette_bytes()
+    assert len(rgb) == 21 and len(alphas) == 7
+    assert alphas[0] == 0 and alphas[1:] == bytes([255] * 6)
+    assert rgb[3:6] == bytes(ramps.hex_to_rgb(RAIN_HEX["1"]))
+    assert rgb[18:21] == bytes(ramps.hex_to_rgb(RAIN_HEX["6"]))
+
+
+def test_rain_array_to_rgba_matches_scalar_ramp() -> None:
+    np = pytest.importorskip("numpy")
+    mm_h = np.array(
+        [[0.0, 0.49, 0.5, 1.99], [2.0, 7.99, 8.0, 19.99], [20.0, 40.0, 80.0, 250.0]],
+        dtype=np.float64,
+    )
+    rgba = ramps.rain_array_to_rgba(mm_h)
+    assert rgba.shape == (3, 4, 4) and rgba.dtype == np.uint8
+    for y in range(3):
+        for x in range(4):
+            expected = ramps.rain_color_rgba(float(mm_h[y, x]))
+            assert tuple(int(v) for v in rgba[y, x]) == expected, (y, x, mm_h[y, x])
+    no_echo = np.full((2, 2), np.nan)
+    assert ramps.rain_array_to_rgba(no_echo)[..., 3].max() == 0
+    assert ramps.rain_array_to_rgba(np.full((1, 1), -3.0))[0, 0].tolist() == [0, 0, 0, 0]
+    with pytest.raises(ValueError):
+        ramps.rain_array_to_rgba(np.zeros(3))
