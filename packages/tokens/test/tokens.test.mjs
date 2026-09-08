@@ -8,6 +8,8 @@
  *   - every hex in tokens.json appears in dist/tokens.css as the custom property CLAUDE.md 6.2 names
  *   - the Tailwind @theme block, type scale and @utility classes exist
  *   - colour helpers return the right band at every boundary
+ *   - the rain-rate ramp is contiguous, open-ended at the top, and shares no hex with depth or drains
+ *   - validateTokens rejects a broken ramp, so a bad tokens.json cannot reach dist/
  *   - `node build.mjs --check` exits non-zero when dist/ is stale
  */
 
@@ -18,7 +20,7 @@ import path from "node:path";
 import { before, describe, it } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { DIST_DIR, OUTPUT_FILES, TOKENS_PATH, build, check, generate, loadTokens } from "../build.mjs";
+import { DIST_DIR, OUTPUT_FILES, TOKENS_PATH, build, check, generate, loadTokens, validateTokens } from "../build.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BUILD_SCRIPT = path.join(HERE, "..", "build.mjs");
@@ -53,6 +55,7 @@ function expectedSolidColors() {
   const out = [];
   for (const [k, v] of Object.entries(raw.color.base)) out.push([`--${k}`, v.value]);
   for (const [k, v] of Object.entries(raw.color.depth)) out.push([`--depth-${k}`, v.value]);
+  for (const [k, v] of Object.entries(raw.color.rain)) out.push([`--rain-${k}`, v.value]);
   for (const [k, v] of Object.entries(raw.color.drain)) out.push([`--drain-${k}`, v.value]);
   for (const [k, v] of Object.entries(raw.color.semantic)) out.push([`--${k}`, v.value]);
   for (const [k, v] of Object.entries(raw.color.obs)) out.push([`--obs-${k}`, v.value]);
@@ -96,8 +99,8 @@ describe("tokens.css custom properties", () => {
   it("defines every hex from tokens.json under the CLAUDE.md 6.2 name", () => {
     const vars = parseRootVars(css);
     const expected = expectedSolidColors();
-    // 10 base + 6 depth + 4 drain + 4 semantic + 5 obs + 4 status + 5 chart. A new colour must update this.
-    assert.equal(expected.length, 38, "tokens.json has the full CLAUDE.md 6.2 colour set");
+    // 10 base + 6 depth + 6 rain + 4 drain + 4 semantic + 5 obs + 4 status + 5 chart. A new colour must update this.
+    assert.equal(expected.length, 44, "tokens.json has the full CLAUDE.md 6.2 colour set");
     for (const [name, hex] of expected) assert.equal(vars[name], hex, `${name} is ${hex}`);
   });
 
@@ -140,6 +143,28 @@ describe("tokens.css custom properties", () => {
     assert.ok(vars["--focus-ring"].includes("var(--focus-ring-color)"), "--focus-ring composes the colour and width");
   });
 
+  it("defines the six rain bands, contiguous in mm/h and distinct from depth and drain", () => {
+    const vars = parseRootVars(css);
+    const bands = Object.entries(raw.color.rain);
+    assert.equal(bands.length, 6, "the rain ramp has six bands");
+    let previous = bands[0][1].min_mm_h;
+    for (const [k, band] of bands) {
+      assert.equal(vars[`--rain-${k}`], band.value, `--rain-${k}`);
+      assert.equal(band.min_mm_h, previous, `rain band ${k} starts where the previous one ends`);
+      previous = band.max_mm_h;
+    }
+    assert.equal(previous, null, "the top rain band is open-ended");
+    assert.deepEqual(
+      bands.map(([, b]) => b.min_mm_h),
+      [0.5, 2, 8, 20, 40, 80],
+      "the ramp carries the 20 and 40 mm/h exceedance thresholds Sky publishes",
+    );
+    // CLAUDE.md 6.2: the depth ramp means water depth and nothing else, so a radar echo must never
+    // wear a depth or a blockage colour.
+    const taken = new Set([...Object.values(raw.color.depth), ...Object.values(raw.color.drain)].map((b) => b.value));
+    for (const [k, band] of bands) assert.ok(!taken.has(band.value), `--rain-${k} is not a depth or drain colour`);
+  });
+
   it("does not leak the depth ramp or --tide into unrelated names", () => {
     const vars = parseRootVars(css);
     assert.equal(vars["--danger"], raw.color.semantic.danger.value);
@@ -152,6 +177,11 @@ describe("tokens.css Tailwind theme", () => {
     const theme = parseThemeVars(css);
     for (const [name, hex] of expectedSolidColors()) assert.equal(theme[`--color-${name.slice(2)}`], hex, `--color-${name.slice(2)}`);
     for (const k of Object.keys(raw.color.reach)) assert.match(theme[`--color-reach-${k}`], /^rgb\(45 212 191 \/ 0\.\d+\)$/);
+  });
+
+  it("exposes the rain ramp as bg-rain-1 ... bg-rain-6", () => {
+    const theme = parseThemeVars(css);
+    for (const [k, band] of Object.entries(raw.color.rain)) assert.equal(theme[`--color-rain-${k}`], band.value, `--color-rain-${k}`);
   });
 
   it("exposes radius, fonts and the type scale in Tailwind v4 form", () => {
@@ -257,6 +287,44 @@ describe("tokens.js helpers", () => {
     assert.equal(tokensModule.depthRampStops().length, 6);
   });
 
+  it("rainBand picks the right band at every boundary and is empty below the first", () => {
+    const { rainBand, rainColor, rainColorRgba, RAIN_THRESHOLDS_MM_H } = tokensModule;
+    assert.deepEqual([...RAIN_THRESHOLDS_MM_H], [0.5, 2, 8, 20, 40, 80]);
+    const cases = [
+      [0, null],
+      [0.49, null],
+      [0.5, "1"],
+      [1.99, "1"],
+      [2, "2"],
+      [8, "3"],
+      [19.9, "3"],
+      [20, "4"],
+      [40, "5"],
+      [80, "6"],
+      [300, "6"],
+      [Number.NaN, null],
+      [Number.POSITIVE_INFINITY, "6"],
+      [undefined, null],
+    ];
+    for (const [mmH, key] of cases) assert.equal(rainBand(mmH)?.key ?? null, key, `${mmH} mm/h -> band ${key}`);
+    assert.equal(rainBand(80).max_mm_h, null, "the cloudburst band is open-ended");
+    assert.equal(rainColor(25), raw.color.rain["4"].value);
+    assert.equal(rainColor(0.1), null, "no echo below 0.5 mm/h");
+    assert.deepEqual(rainColorRgba(45, 200), [...tokensModule.hexToRgb(raw.color.rain["5"].value), 200]);
+    assert.deepEqual(rainColorRgba(0.1), [0, 0, 0, 0], "no echo renders transparent");
+  });
+
+  it("rainRampStops returns the six bands in order, thresholds contiguous", () => {
+    const stops = tokensModule.rainRampStops();
+    assert.deepEqual(
+      stops.map((s) => s.key),
+      ["1", "2", "3", "4", "5", "6"],
+    );
+    for (let i = 1; i < stops.length; i += 1) assert.equal(stops[i].min_mm_h, stops[i - 1].max_mm_h);
+    stops.push("mutating the copy must not touch the module");
+    assert.equal(tokensModule.rainRampStops().length, 6);
+  });
+
   it("drainColor picks the magenta ramp by beta with inclusive lower bounds", () => {
     const { drainColor, drainBand } = tokensModule;
     assert.equal(drainColor(0), "#3E4C6E");
@@ -319,6 +387,10 @@ describe("tokens.d.ts", () => {
       "export declare function depthColor(cm: number): Hex;",
       "export declare function depthBand(cm: number): DepthBand;",
       "export declare function drainColor(beta: number): Hex;",
+      "export declare function rainColor(mmH: number): Hex | null;",
+      "export declare function rainBand(mmH: number): RainBand | null;",
+      "export declare function rainRampStops(): RainBand[];",
+      "export declare const RAIN_THRESHOLDS_MM_H: readonly [0.5, 2, 8, 20, 40, 80];",
       "export declare function depthRampStops(): DepthBand[];",
       "export declare function probabilityOpacity(p: number): number;",
       "export declare function hexToRgb(hex: string): Rgb;",
@@ -328,6 +400,47 @@ describe("tokens.d.ts", () => {
       assert.ok(dts.includes(sig), `d.ts contains ${JSON.stringify(sig)}`);
     }
     assert.match(dts, /readonly tide: \{\s+readonly value: "#2DD4BF";/, "tokens literal type carries the exact hex values");
+  });
+});
+
+describe("validateTokens", () => {
+  /** A deep copy of tokens.json so a test may break one field without touching the file. */
+  const clone = () => JSON.parse(JSON.stringify(raw));
+
+  it("accepts tokens.json as committed", () => {
+    assert.doesNotThrow(() => validateTokens(clone()));
+  });
+
+  it("rejects a rain band that leaves a gap in the ramp", () => {
+    const broken = clone();
+    broken.color.rain["4"].min_mm_h = 25;
+    assert.throws(() => validateTokens(broken), /color\.rain\.4\.min_mm_h/);
+  });
+
+  it("rejects a rain ramp whose top band is closed", () => {
+    const broken = clone();
+    broken.color.rain["6"].max_mm_h = 120;
+    assert.throws(() => validateTokens(broken), /last rain band must be open-ended/);
+  });
+
+  it("rejects a rain colour that is not an upper-case hex", () => {
+    const broken = clone();
+    broken.color.rain["2"].value = "rgb(47 58 158)";
+    assert.throws(() => validateTokens(broken), /color\.rain\.2\.value/);
+  });
+});
+
+describe("tokens.json shape the Python ramps read", () => {
+  it("gives every rain band the fields varuna_schemas.tokens reads straight from the file", () => {
+    // Python does not consume dist/; packages/schemas/varuna_schemas/tokens.py parses tokens.json,
+    // so the ramp reaches services/sky only if every band carries these fields (CLAUDE.md 6.7).
+    for (const [k, band] of Object.entries(raw.color.rain)) {
+      assert.match(band.value, /^#[0-9A-F]{6}$/, `color.rain.${k}.value`);
+      assert.equal(typeof band.min_mm_h, "number", `color.rain.${k}.min_mm_h`);
+      assert.ok(band.max_mm_h === null || typeof band.max_mm_h === "number", `color.rain.${k}.max_mm_h`);
+      assert.match(band.label, /mm\/h$/, `color.rain.${k}.label carries the unit`);
+      assert.equal(typeof band.meaning, "string", `color.rain.${k}.meaning`);
+    }
   });
 });
 

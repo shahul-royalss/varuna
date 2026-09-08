@@ -11,10 +11,16 @@ import { EmptyState } from "@/components/varuna/empty-state";
 import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
+import { RADAR_FRAMES_MEMBER } from "@/components/varuna/radar-preview";
 import { ReplayPanel } from "@/components/varuna/replay-panel";
 import { Skeleton } from "@/components/varuna/skeleton";
-import { StormDesigner, type StormCell } from "@/components/varuna/storm-designer";
+import {
+  StormDesigner,
+  type DesignStormHyetograph,
+  type StormCell,
+} from "@/components/varuna/storm-designer";
 import { useReplayBundles, useReplayControls, type ReplayBundle } from "@/lib/api";
+import { useRadarPreview } from "@/lib/api/replay";
 import { bundleWindowLabel } from "@/lib/format";
 import { useReplayStore } from "@/lib/stores/replay";
 import { useUiStore } from "@/lib/stores/ui";
@@ -22,8 +28,71 @@ import { useUiStore } from "@/lib/stores/ui";
 /** Cycle rows arrive from the run registry once a bundle is baked. */
 const NO_CYCLES: CycleLogRow[] = [];
 
-/** Storm cells are read from the bundle manifest once `make bundle` has run. */
-const NO_CELLS: StormCell[] = [];
+/** A finite number, or undefined: the radar index is read as loose JSON, so nothing is assumed. */
+function finite(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/**
+ * The convective cells of `GET /v1/replay/bundles/{id}/radar`, in the table's own units.
+ *
+ * The API converts them (minutes to IST, the design CRS to lon/lat, components to a speed,
+ * and the peak through `intensity_scale`), so nothing is recomputed here. A row that is not
+ * complete is dropped rather than shown with a blank cell.
+ */
+function toStormCells(value: unknown): StormCell[] {
+  if (!Array.isArray(value)) return [];
+  const cells: StormCell[] = [];
+  for (const row of value) {
+    if (typeof row !== "object" || row === null) continue;
+    const cell = row as Record<string, unknown>;
+    const lifetimeMin = finite(cell.lifetime_min);
+    const startLat = finite(cell.start_lat);
+    const startLon = finite(cell.start_lon);
+    const velocityMs = finite(cell.velocity_ms);
+    const sigmaKm = finite(cell.sigma_km);
+    const peakMmH = finite(cell.peak_mm_h);
+    if (typeof cell.id !== "string" || typeof cell.birth !== "string") continue;
+    if (
+      lifetimeMin === undefined ||
+      startLat === undefined ||
+      startLon === undefined ||
+      velocityMs === undefined ||
+      sigmaKm === undefined ||
+      peakMmH === undefined
+    ) {
+      continue;
+    }
+    cells.push({
+      id: cell.id,
+      birth: cell.birth,
+      lifetimeMin,
+      startLat,
+      startLon,
+      velocityMs,
+      sigmaKm,
+      peakMmH,
+    });
+  }
+  return cells;
+}
+
+/** The Chicago hyetograph a design storm carries instead of cells; absent on a replay. */
+function toDesignStorm(value: unknown): DesignStormHyetograph | undefined {
+  if (typeof value !== "object" || value === null) return undefined;
+  const storm = value as Record<string, unknown>;
+  const stepMin = finite(storm.step_min);
+  const totalDepthMm = finite(storm.total_depth_mm);
+  const peakPositionR = finite(storm.peak_position_r);
+  const blocksMmH = Array.isArray(storm.blocks_mm_h)
+    ? storm.blocks_mm_h.map(finite).filter((block): block is number => block !== undefined)
+    : [];
+  if (stepMin === undefined || totalDepthMm === undefined || peakPositionR === undefined) {
+    return undefined;
+  }
+  if (blocksMmH.length === 0) return undefined;
+  return { stepMin, blocksMmH, totalDepthMm, peakPositionR };
+}
 
 /** "mumbai" is how the manifest names the city; the card says it the way a person would. */
 function cityLabel(city: string): string {
@@ -73,6 +142,18 @@ export function ReplayScreen() {
 
   const cards = useMemo(() => (bundles.data ?? []).map(toCard), [bundles.data]);
   const selected = cards.find((card) => card.id === bundleId);
+  // The designer needs the manifest row itself, not the card: the radar preview decides whether to
+  // fetch from the members `make bundle` has actually written.
+  const selectedBundle = bundles.data?.find((bundle) => bundle.id === bundleId);
+
+  // The same index the preview animates, so the cell table costs a cache hit and never a second
+  // request: it carries the storm the frames were generated from (CLAUDE.md section 7.8).
+  const hasCube =
+    (selectedBundle?.built ?? false) &&
+    !(selectedBundle?.missing_members ?? []).includes(RADAR_FRAMES_MEMBER);
+  const radar = useRadarPreview(selected?.id ?? bundleId, { enabled: hasCube });
+  const stormCells = useMemo(() => toStormCells(radar.data?.cells), [radar.data]);
+  const designStorm = useMemo(() => toDesignStorm(radar.data?.design_storm), [radar.data]);
 
   const handleSelect = (bundle: BundleSummary) => {
     controls.selectBundle(bundle.id, {
@@ -170,7 +251,13 @@ export function ReplayScreen() {
                   title="Storm designer"
                   description="The convective cells the bundle was generated from, and the radar preview."
                 >
-                  <StormDesigner cells={NO_CELLS} bundleId={selected?.id ?? bundleId} />
+                  <StormDesigner
+                    cells={stormCells}
+                    designStorm={designStorm}
+                    bundleId={selected?.id ?? bundleId}
+                    built={selectedBundle?.built ?? false}
+                    missingMembers={selectedBundle?.missing_members ?? []}
+                  />
                 </Panel>
               </PanelErrorBoundary>
             </div>

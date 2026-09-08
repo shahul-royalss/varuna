@@ -58,7 +58,8 @@ export function tween(seconds: number, extra: Transition = {}): Transition {
 
 export type MotionId =
   | "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12"
-  | "M13" | "M14" | "M15" | "M16" | "M17" | "M18" | "M19" | "M20" | "M21" | "M22" | "M23" | "M24";
+  | "M13" | "M14" | "M15" | "M16" | "M17" | "M18" | "M19" | "M20" | "M21" | "M22" | "M23" | "M24"
+  | "M25";
 
 /** Framer props for one motion; spread onto a `motion.*` element. */
 export interface MotionPreset {
@@ -296,6 +297,15 @@ export const M: Readonly<Record<MotionId, MotionSpec>> = {
     reduced: "tap to expand",
     full: { transition: SPRING },
     fallback: { transition: { duration: 0 } },
+  },
+  M25: {
+    id: "M25",
+    where: "Replay radar preview",
+    motion:
+      "Radar frames loop at 4 fps (25 frames, 6.25 s), pauses on hover, focus and when the tab is hidden",
+    trigger: "bundle selected",
+    reduced: "static middle frame",
+    fallback: instant,
   },
 };
 

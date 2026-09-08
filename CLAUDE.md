@@ -617,6 +617,7 @@ Global easing: `cubic-bezier(0.2, 0.8, 0.2, 1)` for UI; springs (`stiffness 400,
 | M22 | Skeletons | Shimmer only | CSS gradient keyframe | loading | static blocks |
 | M23 | Page navigation | None — instant | — | — | — |
 | M24 | Public map bottom sheet | Drag with rubber-band, snap points | `motion` drag | drag | tap to expand |
+| M25 | Replay radar preview | Radar frames loop at 4 fps (25 frames, 6.25 s), pauses on hover, focus and when the tab is hidden | preloaded images drawn to a canvas via rAF | bundle selected | static middle frame |
 
 ---
 

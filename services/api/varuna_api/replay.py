@@ -50,7 +50,12 @@ def missing_members(layout: BundleLayout, label: str) -> list[str]:
 def summarize_bundle(
     manifest: BundleManifest, layout: BundleLayout, registry: RunRegistry
 ) -> ReplayBundleSummary:
-    """One card on the replay page: what the bundle is, whether it is built, whether it is baked."""
+    """One card on the replay page: what the bundle is, whether it is built, whether it is baked.
+
+    The card also carries the manifest's honesty text verbatim - the calibration basis, the
+    design-storm basis, the tide source and the cited sources - because those are the labels
+    ``docs/SIMPLIFICATIONS.md`` promises the operator can read on ``/replay`` (rules 6 and 7).
+    """
     absent = missing_members(layout, manifest.label)
     total = manifest.n_cycles
     baked_cycles = len({meta.cycle_ts for meta in registry.list(bundle=manifest.id, limit=10_000)})
@@ -67,8 +72,12 @@ def summarize_bundle(
         baked_cycles=min(baked_cycles, total),
         total_cycles=total,
         sources_n=len(manifest.sources),
+        sources=list(manifest.sources),
         ground_truth_n=manifest.ground_truth_n,
         synthetic_notes=list(manifest.synthetic_notes),
+        calibration_basis=manifest.calibration_basis,
+        design_storm_basis=manifest.design_storm.basis if manifest.design_storm else None,
+        tide_source=manifest.tide_source,
         description=manifest.description,
     )
 

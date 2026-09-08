@@ -73,7 +73,7 @@ The cache yields three sub-daily numbers, all from officials or a private foreca
 |---|---|---|---|
 | 3 hours, overnight 1-2 Jul | Kurla-Thane belt | **183 mm in 3 h** | Central Railway CPRO Sunil Udasi, via ANI |
 | 12 hours, to ~midday 2 Jul | "the city" | **300-400 mm in 12 h** | CM Devendra Fadnavis |
-| 6 hours, 23:30 (1 Jul) - 05:30 (2 Jul) | Mumbai | **63 mm in 6 h** | Skymet |
+| 6 hours, 23:30 (Sun 30 Jun) - 05:30 (Mon 1 Jul) | Mumbai | **63 mm in 6 h** | Skymet |
 | 6 hours (day/date not stated on the page) | Santacruz | 35 mm in 6 h | Skymet, via Deccan Herald |
 | 24 h to 2 Jul, "Mumbai and suburbs" | area estimate | 350-500 mm | Skymet's Mahesh Palawat |
 
@@ -86,7 +86,10 @@ The cache yields three sub-daily numbers, all from officials or a private foreca
   are unable to cope with such a heavy downpour, coupled with a high tide this afternoon."
 - 63 mm in 6 h and 35 mm in 6 h at Santacruz, and 350-500 mm/24 h - source_url:
   https://www.deccanherald.com/india/mumbai-rains-live-744003 (cached: `docs/research/_raw/pages/dh_744003.txt`,
-  lines 342, 321, 277). The 35 mm line does not state which 6 hours; do not date it.
+  lines 342, 321, 277). The 63 mm line reads "in a span of six hours from 1130 pm on Sunday to 05:30 am on
+  Monday" in an entry stamped 1 July 2019, and the Sunday before that is 30 June, so the window is 23:30 IST
+  30 June to 05:30 IST 1 July - the night before the event night, a day and four hours before the replay window
+  opens. The 35 mm line does not state which 6 hours; do not date it.
 
 **NOT FOUND: an hourly or three-hourly IMD hyetograph for Santacruz or Colaba covering 15:00-21:00 IST on
 2 July 2019.** Nothing in the cache carries it, and IMD's public site publishes only current observations plus
@@ -370,7 +373,7 @@ documented gauge totals in §1.1, and the UI must label the bundle **"Reconstruc
 
 - `sources[]`: every URL in §1.1, §3 and §4 above, each with its access date (cache 2026-09-04/05, this pass 2026-09-06).
 - The calibration target: **Santacruz 375.2 mm and Colaba 137.88 mm in the 24 h ending 08:30 IST 2 Jul 2019**
-  (Scroll/Indian Express), with the sub-daily anchors 183 mm/3 h (Kurla-Thane) and 63 mm/6 h (Skymet, 23:30-05:30).
+  (Scroll/Indian Express), with the sub-daily anchors 183 mm/3 h (Kurla-Thane) and 63 mm/6 h (Skymet, 23:30 IST 30 Jun - 05:30 IST 1 Jul).
 - `label`: "Reconstructed replay".
 - Radar: synthetic, designer-generated; real product URLs recorded for the P1 decoder; July 2019 frames not
   publicly retrievable (§4.4).

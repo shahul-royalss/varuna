@@ -12,7 +12,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EmptyState } from "@/components/varuna/empty-state";
+import { RadarPreview } from "@/components/varuna/radar-preview";
 import { formatIst, formatMinutes } from "@/lib/format";
+import { cssVar, rainBand } from "@/lib/ramps";
 import { cn } from "@/lib/utils";
 
 /** One convective cell of the storm designer (CLAUDE.md section 10.2). */
@@ -32,11 +34,33 @@ export interface StormCell {
   peakMmH: number;
 }
 
+/**
+ * A design storm's Chicago hyetograph (CLAUDE.md section 10.2, task P2.8). Design-storm bundles
+ * carry no convective cells, so this takes the cell table's place. The peak sits at
+ * `peakPositionR` of the duration: it is a shaped storm, never a uniform block of rain.
+ */
+export interface DesignStormHyetograph {
+  /** Block length in minutes. */
+  stepMin: number;
+  /** Block intensities in mm/h, one per block. */
+  blocksMmH: number[];
+  /** Depth over the whole storm in mm. */
+  totalDepthMm: number;
+  /** Where the peak block sits, as a fraction of the duration (0.4 = 40 % in). */
+  peakPositionR: number;
+}
+
 export interface StormDesignerProps {
-  /** Cells of the selected bundle; empty until the bundle is generated. */
+  /** Cells of the selected bundle; empty until the bundle is generated, and on a design storm. */
   cells: StormCell[];
-  /** Bundle the preview would play. */
+  /** The hyetograph a design storm carries instead of cells; absent on a reconstructed replay. */
+  designStorm?: DesignStormHyetograph;
+  /** Bundle the preview plays. */
   bundleId: string;
+  /** False until `make bundle` has written the bundle folder; the preview then fetches nothing. */
+  built: boolean;
+  /** Bundle members `make bundle` has not written yet, from `GET /v1/replay/bundles`. */
+  missingMembers: readonly string[];
   /** Reason the storm cannot be edited yet. */
   generateDisabledReason?: string;
   className?: string;
@@ -47,13 +71,66 @@ export function formatLatLon(lat: number, lon: number): string {
   return `${lat.toFixed(3)}, ${lon.toFixed(3)}`;
 }
 
+/** Floor on a bar's height so the lightest block of a design storm is still visible. */
+const MIN_BAR_FRACTION = 0.06;
+
+/** The rain ramp's colour for one block, so a block reads like a radar pixel of the same rate. */
+function blockColor(mmH: number): string {
+  const band = rainBand(mmH);
+  return cssVar(band ? `--rain-${band.key}` : "--rain-1");
+}
+
+/**
+ * A design storm's hyetograph as a block sparkline: one bar per block, height linear in mm/h
+ * against the peak, coloured by the shared rain ramp (CLAUDE.md section 6.2). The caption
+ * carries the depth, the peak and where the peak sits, so colour never carries the meaning
+ * alone and nobody can read the storm as a uniform block of rain.
+ */
+function HyetographSparkline({ storm }: { storm: DesignStormHyetograph }) {
+  const peakMmH = Math.max(...storm.blocksMmH);
+  const durationMin = storm.stepMin * storm.blocksMmH.length;
+  const peakMin = Math.round(storm.peakPositionR * durationMin);
+  const peakPercent = Math.round(storm.peakPositionR * 100);
+  const summary =
+    `${Math.round(storm.totalDepthMm)} mm over ${formatMinutes(durationMin)} in ` +
+    `${storm.stepMin}-minute blocks. Peak ${Math.round(peakMmH)} mm/h at ${peakMin} min, ` +
+    `${peakPercent} % into the storm.`;
+
+  return (
+    <figure className="space-y-2">
+      <figcaption className="type-small text-text-2">Chicago hyetograph</figcaption>
+      <div
+        role="img"
+        aria-label={summary}
+        className="flex h-16 items-end gap-px rounded-control border border-line bg-well/40 p-1"
+      >
+        {storm.blocksMmH.map((mmH, index) => (
+          <div
+            key={index * storm.stepMin}
+            className="min-w-0 flex-1 rounded-chip"
+            style={{
+              height: `${Math.max(MIN_BAR_FRACTION, mmH / peakMmH) * 100}%`,
+              background: blockColor(mmH),
+            }}
+          />
+        ))}
+      </div>
+      <p className="num type-micro text-text-3">{summary}</p>
+    </figure>
+  );
+}
+
 /**
  * Read-only storm designer: the cell table, the radar preview slot and a disabled
  * "Generate bundle" that says why. Editing is a pilot feature; the demo storm is fixed by seed.
+ * A design storm has no cells, so the table gives way to its hyetograph sparkline.
  */
 export function StormDesigner({
   cells,
+  designStorm,
   bundleId,
+  built,
+  missingMembers,
   generateDisabledReason = "Editing the storm is coming in pilot; the demo storm is read-only",
   className,
 }: StormDesignerProps) {
@@ -63,7 +140,9 @@ export function StormDesigner({
     <div className={cn("space-y-4", className)}>
       <div className="grid gap-4 lg:grid-cols-[3fr_2fr]">
         <div className="min-w-0">
-          {cells.length === 0 ? (
+          {cells.length === 0 && designStorm ? (
+            <HyetographSparkline storm={designStorm} />
+          ) : cells.length === 0 ? (
             <EmptyState
               icon={Radar}
               title="No storm cells yet"
@@ -99,26 +178,8 @@ export function StormDesigner({
           )}
         </div>
 
-        <div
-          role="region"
-          aria-label="Radar preview"
-          className="relative flex min-h-48 items-center justify-center overflow-hidden rounded-control border border-line bg-ink"
-        >
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-0 opacity-35"
-            style={{
-              backgroundImage:
-                "radial-gradient(circle, var(--line) 1px, transparent 1px), radial-gradient(circle, transparent 60%, var(--deep) 100%)",
-              backgroundSize: "24px 24px, 100% 100%",
-            }}
-          />
-          <EmptyState
-            size="sm"
-            icon={Radar}
-            title="Radar preview plays from the bundle"
-            description={`Frames every 10 minutes over the 60 km domain, read from ${bundleId} once it is generated.`}
-          />
+        <div role="region" aria-label="Radar preview" className="min-w-0">
+          <RadarPreview bundleId={bundleId} built={built} missingMembers={missingMembers} />
         </div>
       </div>
 

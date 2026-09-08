@@ -223,11 +223,21 @@ export function MotionSection() {
           <SheetDemo reduced={reduced} />
         </MotionRow>
 
-        <div className="flex flex-col gap-1 rounded-panel border border-line bg-deep p-panel">
+        <div className="flex flex-col gap-2 rounded-panel border border-line bg-deep p-panel">
           <span className="type-small font-medium text-text">Still to come</span>
           <p className="type-small max-w-[72ch] text-text-2">
-            {`${pending.join(", ")} land with the screens they belong to, from the map layers in phase 6 onwards.`}
+            These rows land with the screens they belong to, from the map layers in phase 6 onwards.
+            Each already carries the fallback a reduced-motion user gets.
           </p>
+          <ul className="flex flex-col gap-1">
+            {pending.map((id) => (
+              <li key={id} className="flex flex-wrap items-baseline gap-2">
+                <span className="type-micro num font-medium text-text">{M[id].id}</span>
+                <span className="type-micro text-text-2">{M[id].where}</span>
+                <Meta>{`reduced motion: ${M[id].reduced}`}</Meta>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </DesignSection>

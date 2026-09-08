@@ -1,4 +1,54 @@
 {
+  "$defs": {
+    "BundleSource": {
+      "additionalProperties": false,
+      "description": "A public source cited by the bundle (gauge totals, event timeline, tide table).",
+      "properties": {
+        "name": {
+          "description": "e.g. IMD Santacruz 24-h total, 2 July 2019",
+          "title": "Name",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "What number was taken and how.",
+          "title": "Note"
+        },
+        "url": {
+          "minLength": 8,
+          "title": "Url",
+          "type": "string"
+        },
+        "used_for": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "e.g. 'AOI 3-hour accumulation target 15:00-21:00 IST'.",
+          "title": "Used For"
+        }
+      },
+      "required": [
+        "name",
+        "url"
+      ],
+      "title": "BundleSource",
+      "type": "object"
+    }
+  },
   "$id": "urn:varuna:schema:ReplayBundleSummary",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
@@ -21,6 +71,19 @@
       "title": "Built",
       "type": "boolean"
     },
+    "calibration_basis": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "How the bundle's calibration numbers were arrived at, verbatim from the manifest. This is the basis text the replay page shows under a reconstructed replay (docs/SIMPLIFICATIONS.md, replay window accumulation).",
+      "title": "Calibration Basis"
+    },
     "city": {
       "title": "City",
       "type": "string"
@@ -36,6 +99,19 @@
       ],
       "default": null,
       "title": "Description"
+    },
+    "design_storm_basis": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Why the design storm is not a fitted IDF curve, verbatim from ``manifest.design_storm.basis``. None on bundles that carry no design storm (docs/SIMPLIFICATIONS.md, design storms).",
+      "title": "Design Storm Basis"
     },
     "ground_truth_n": {
       "default": 0,
@@ -67,6 +143,14 @@
       "title": "Seed",
       "type": "integer"
     },
+    "sources": {
+      "description": "The public sources the bundle cites, so the card can link them instead of only counting them (CLAUDE.md 0.7).",
+      "items": {
+        "$ref": "#/$defs/BundleSource"
+      },
+      "title": "Sources",
+      "type": "array"
+    },
     "sources_n": {
       "default": 0,
       "minimum": 0,
@@ -89,6 +173,23 @@
       "format": "date-time",
       "title": "T1",
       "type": "string"
+    },
+    "tide_source": {
+      "anyOf": [
+        {
+          "enum": [
+            "tide_table",
+            "illustrative"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Where the tide series came from: a published table, or 'illustrative' when the stage is modelled from a single sourced height.",
+      "title": "Tide Source"
     },
     "total_cycles": {
       "minimum": 1,

@@ -25,12 +25,15 @@ import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
 import { PhoneMock, type PhoneMessage } from "@/components/varuna/phone-mock";
+import { RADAR_FRAMES_MEMBER, RadarPreview } from "@/components/varuna/radar-preview";
 import { ReplayPanel } from "@/components/varuna/replay-panel";
 import { RunStamp } from "@/components/varuna/run-stamp";
 import { Skeleton, SkeletonRows } from "@/components/varuna/skeleton";
+import { StormDesigner, type StormCell } from "@/components/varuna/storm-designer";
 import { TimeBar } from "@/components/varuna/time-bar";
 import { HEADLINE_SCORE_TILES, VerificationGrid } from "@/components/varuna/verification-grid";
 import { VerificationChip } from "@/components/varuna/verification-chip";
+import { useMotionPref } from "@/lib/motion";
 import { useUiStore } from "@/lib/stores/ui";
 import { useRunStore, type RunMeta } from "@/lib/stores/run";
 
@@ -122,6 +125,113 @@ const SAMPLE_LOG_LINES: LogLine[] = [
 
 const SAMPLE_DEPTHS = [2, 8, 20, 35, 50, 80];
 
+/** The bundle the console opens on, and the one whose radar cube the previews below animate. */
+const SAMPLE_BUNDLE_ID = "MUM-2019-07-02";
+
+/** A bundle `make bundle` has written in full; nothing is missing from it. */
+const NO_MISSING_MEMBERS: readonly string[] = [];
+
+/**
+ * The convective cells of `bundles/MUM-2019-07-02/manifest.json` (seed 2019), read off the
+ * committed manifest rather than invented: metres reprojected from EPSG:32643 to WGS84, birth
+ * minutes added to the bundle's 05:40 IST start, and sigma converted to kilometres.
+ */
+const SAMPLE_STORM_CELLS: StormCell[] = [
+  {
+    id: "cell-01",
+    birth: "2019-07-02T08:05:46+05:30",
+    lifetimeMin: 80.9,
+    startLat: 18.901,
+    startLon: 72.74,
+    velocityMs: 8,
+    sigmaKm: 2.03,
+    peakMmH: 70.5,
+  },
+  {
+    id: "cell-02",
+    birth: "2019-07-02T06:08:40+05:30",
+    lifetimeMin: 57.1,
+    startLat: 18.939,
+    startLon: 72.751,
+    velocityMs: 8,
+    sigmaKm: 2.63,
+    peakMmH: 77.3,
+  },
+  {
+    id: "cell-03",
+    birth: "2019-07-02T07:54:39+05:30",
+    lifetimeMin: 69.6,
+    startLat: 18.897,
+    startLon: 72.739,
+    velocityMs: 8,
+    sigmaKm: 5.48,
+    peakMmH: 71.9,
+  },
+  {
+    id: "cell-04",
+    birth: "2019-07-02T08:20:26+05:30",
+    lifetimeMin: 76.8,
+    startLat: 18.89,
+    startLon: 72.683,
+    velocityMs: 8,
+    sigmaKm: 5.67,
+    peakMmH: 59,
+  },
+  {
+    id: "cell-05",
+    birth: "2019-07-02T07:55:13+05:30",
+    lifetimeMin: 78.4,
+    startLat: 18.921,
+    startLon: 72.793,
+    velocityMs: 8,
+    sigmaKm: 5.41,
+    peakMmH: 88.2,
+  },
+  {
+    id: "cell-06",
+    birth: "2019-07-02T06:23:34+05:30",
+    lifetimeMin: 31,
+    startLat: 19.003,
+    startLon: 72.852,
+    velocityMs: 8,
+    sigmaKm: 3.84,
+    peakMmH: 90.2,
+  },
+  {
+    id: "cell-07",
+    birth: "2019-07-02T07:19:02+05:30",
+    lifetimeMin: 59.8,
+    startLat: 19.068,
+    startLon: 72.759,
+    velocityMs: 8,
+    sigmaKm: 4.86,
+    peakMmH: 79.8,
+  },
+  {
+    id: "cell-08",
+    birth: "2019-07-02T08:04:05+05:30",
+    lifetimeMin: 50.4,
+    startLat: 19.024,
+    startLon: 72.703,
+    velocityMs: 8,
+    sigmaKm: 3.55,
+    peakMmH: 111.4,
+  },
+];
+
+/** The state before `make bundle` has run: the manifest is on disk, the storm is not. */
+const NO_STORM_CELLS: StormCell[] = [];
+
+/**
+ * What the reduced-motion demo is actually showing. The preference is read from the browser, so
+ * the fallback is checked the way section 10.3 asks for it: turn reduce motion on and reload.
+ */
+function reducedMotionNote(reduced: boolean): string {
+  return reduced
+    ? "Reduced motion is on in this browser, so the preview holds its middle frame and the loop is off."
+    : "Reduced motion holds the middle frame and never starts the loop. Turn on reduce motion in the operating system and reload to see it here.";
+}
+
 const BUTTON_VARIANTS = ["default", "outline", "secondary", "ghost", "destructive", "link"] as const;
 const BUTTON_SIZES = ["xs", "sm", "default", "lg"] as const;
 
@@ -153,6 +263,7 @@ export function ComponentsSection() {
   const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const [selectedHotspot, setSelectedHotspot] = useState<string | null>("hindmata");
+  const { reduced } = useMotionPref();
 
   return (
     <DesignSection
@@ -325,6 +436,99 @@ export function ComponentsSection() {
 
         <Panel title="Replay panel" description="Bundle, clock, speed and the cycle log.">
           <ReplayPanel />
+        </Panel>
+
+        <Panel
+          title="Radar preview"
+          description="Motion M25: the bundle's radar frames loop at 4 fps and pause on hover, on focus and while the tab is hidden. The frames are served from the bundle, so a preview only animates once make bundle has written its radar cube."
+        >
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <Demo
+                label="Animating"
+                note="Reconstructed replay, 25 frames every 10 min, with the rain ramp legend."
+                bare
+              >
+                <RadarPreview
+                  bundleId={SAMPLE_BUNDLE_ID}
+                  built
+                  missingMembers={NO_MISSING_MEMBERS}
+                />
+              </Demo>
+              <Demo label="Reduced motion, static" note={reducedMotionNote(reduced)} bare>
+                <RadarPreview
+                  bundleId={SAMPLE_BUNDLE_ID}
+                  built
+                  missingMembers={NO_MISSING_MEMBERS}
+                />
+              </Demo>
+              <Demo
+                label="Frames missing"
+                note="The bundle has no radar cube, so nothing is fetched and the empty state names the make target."
+                bare
+              >
+                <RadarPreview
+                  bundleId={SAMPLE_BUNDLE_ID}
+                  built
+                  missingMembers={[RADAR_FRAMES_MEMBER]}
+                />
+              </Demo>
+            </div>
+            <Demo
+              label="Compact"
+              note="The console replay panel drops the heading, the legend and the pause hint."
+              bare
+            >
+              <div className="max-w-56">
+                <RadarPreview
+                  compact
+                  bundleId={SAMPLE_BUNDLE_ID}
+                  built
+                  missingMembers={NO_MISSING_MEMBERS}
+                />
+              </div>
+            </Demo>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Storm designer"
+          description="The cells a bundle was generated from, beside the preview they produce. Editing is a pilot feature, so Generate bundle is off and says why."
+        >
+          <div className="flex flex-col gap-6">
+            <Demo
+              label="The 2 July 2019 storm"
+              note="Eight convective cells from the bundle manifest, seed 2019."
+              bare
+            >
+              <StormDesigner
+                cells={SAMPLE_STORM_CELLS}
+                bundleId={SAMPLE_BUNDLE_ID}
+                built
+                missingMembers={NO_MISSING_MEMBERS}
+              />
+            </Demo>
+            <Demo label="Reduced motion, static" note={reducedMotionNote(reduced)} bare>
+              <StormDesigner
+                cells={SAMPLE_STORM_CELLS}
+                bundleId={SAMPLE_BUNDLE_ID}
+                built
+                missingMembers={NO_MISSING_MEMBERS}
+              />
+            </Demo>
+            <Demo
+              label="Frames missing"
+              note="Before make bundle: the manifest is on disk, the cells and the radar cube are not."
+              bare
+            >
+              <StormDesigner
+                cells={NO_STORM_CELLS}
+                bundleId={SAMPLE_BUNDLE_ID}
+                built={false}
+                missingMembers={[RADAR_FRAMES_MEMBER]}
+              />
+            </Demo>
+          </div>
         </Panel>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

@@ -9,6 +9,7 @@ import {
   DEPTH_THRESHOLDS_CM,
   MIN_PROBABILITY_OPACITY,
   PROBABILITY_THRESHOLDS_CM,
+  RAIN_THRESHOLDS_MM_H,
   chartColor,
   colors,
   cssVar,
@@ -25,6 +26,10 @@ import {
   obsColor,
   opacityToAlpha,
   probabilityOpacity,
+  rainBand,
+  rainColor,
+  rainColorRgba,
+  rainRampStops,
   reachColorRgba,
   statusColor,
   type DepthBand,
@@ -33,6 +38,8 @@ import {
   type DrainKey,
   type Hex,
   type ObservationKind,
+  type RainBand,
+  type RainKey,
   type ReachMinutes,
   type Rgb,
   type Rgba,
@@ -45,6 +52,7 @@ export {
   DEPTH_THRESHOLDS_CM,
   MIN_PROBABILITY_OPACITY,
   PROBABILITY_THRESHOLDS_CM,
+  RAIN_THRESHOLDS_MM_H,
   chartColor,
   colors,
   cssVar,
@@ -61,6 +69,10 @@ export {
   obsColor,
   opacityToAlpha,
   probabilityOpacity,
+  rainBand,
+  rainColor,
+  rainColorRgba,
+  rainRampStops,
   reachColorRgba,
   statusColor,
 };
@@ -71,6 +83,8 @@ export type {
   DrainKey,
   Hex,
   ObservationKind,
+  RainBand,
+  RainKey,
   ReachMinutes,
   Rgb,
   Rgba,
@@ -122,6 +136,22 @@ export function drainLegendStops(): LegendStop[] {
         ? `> ${band.min_beta.toFixed(2)}`
         : `${band.min_beta.toFixed(2)}-${band.max_beta.toFixed(2)}`,
     meaning: DRAIN_MEANING[band.key],
+    opacity: 1,
+  }));
+}
+
+/**
+ * Rain-rate legend for the radar and nowcast layers: 0.5-2 mm/h drizzle up to > 80 mm/h cloudburst,
+ * in ramp order. Its own indigo ramp, never the depth ramp, so an echo cannot be read as a flooded
+ * street (CLAUDE.md section 6.2).
+ */
+export function rainLegendStops(): LegendStop[] {
+  return rainRampStops().map((band) => ({
+    key: `rain-${band.key}`,
+    hex: band.hex,
+    cssVar: cssVar(`--rain-${band.key}`),
+    label: band.label,
+    meaning: band.meaning,
     opacity: 1,
   }));
 }

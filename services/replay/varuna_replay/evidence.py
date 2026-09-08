@@ -10,17 +10,17 @@ about:
 IMD-primary rainfall number in hand.
 
 **Reported, second-hand.** Colaba 137.88 mm for the same window; 183 mm in 3 hours over the
-Kurla-Thane belt overnight (Central Railway's chief PRO); 63 mm in the 6 hours from 23:30 to
-05:30 (Skymet); 300-400 mm in the 12 hours to midday (the Chief Minister); a midday high water
-of 4.59 m forecast for 11:52 and 4.92 m as stated afterwards by the municipal corporation for
-11:30.
+Kurla-Thane belt overnight (Central Railway's chief PRO); 63 mm in the 6 hours from 23:30 IST
+30 June to 05:30 IST 1 July, the night *before* the event night (Skymet); 300-400 mm in the
+12 hours to midday (the Chief Minister); a midday high water of 4.59 m forecast for 11:52 and
+4.92 m as stated afterwards by the municipal corporation for 11:30.
 
 **Not found, and this is the fact that shapes the whole bundle.** There is no hourly or
-three-hourly hyetograph for any Mumbai station covering the demo window, and the one anchor
-that touches it (63 mm in 6 h) *ends* at 05:30, ten minutes before the window opens. So the
-accumulation this bundle carries for 05:40-09:40 IST is an **inference** from the 24-hour
-total, never a measurement, and :data:`CALIBRATION_BASIS` says so in the manifest and on
-screen. There is likewise no tide table for the day, so ``tide.csv`` is ``illustrative``.
+three-hourly hyetograph for any Mumbai station covering the demo window, and no sub-daily
+anchor touches it: the nearest one in the clock, 63 mm in 6 h, *ends* at 05:30 on 1 July, a
+day and four hours before the window opens. So the accumulation this bundle carries for
+05:40-09:40 IST is an **inference** from the 24-hour total, never a measurement, and
+:data:`CALIBRATION_BASIS` says so in the manifest and on screen. There is likewise no tide table for the day, so ``tide.csv`` is ``illustrative``.
 
 See ``docs/research/rain_gauges_tide_MUM-2019-07-02.md`` (sections 1.1, 1.2, 3, 4.4),
 ``docs/research/REVIEW.md`` (the audit that re-read the IMD chart) and ADR-0007.
@@ -73,9 +73,9 @@ chief PRO via ANI, overnight 1-2 July. An official's statement, not a gauge trac
 
 SKYMET_6H_MM = 63.0
 SKYMET_6H_HOURS = 6.0
-SKYMET_6H_WINDOW = "23:30 IST 1 July to 05:30 IST 2 July 2019"
-"""Skymet, via Deccan Herald. It ends ten minutes before the replay window opens, which makes
-it the only anchor that touches the window at all - and it touches only its edge."""
+SKYMET_6H_WINDOW = "23:30 IST 30 June to 05:30 IST 1 July 2019"
+"""Skymet, via Deccan Herald. The live-blog entry is stamped 1 July 2019 and names '1130 pm on
+Sunday'; the Sunday before it was 30 June, so this is the night before the event night."""
 
 CM_12H_RANGE_MM = (300.0, 400.0)
 """'In the past 12 hours, the city has received an unprecedented 300 to 400mm of rain' - the
@@ -131,7 +131,11 @@ def uniform_share_mm() -> float:
 
 
 def persistence_share_mm() -> float:
-    """What the window would hold if the last documented rate (Skymet, 6 h to 05:30) simply persisted."""
+    """What the window would hold at the last documented sub-daily rate anywhere in the event.
+
+    That rate is Skymet's 6 hours to 05:30 IST on 1 July, a day and four hours before the
+    window opens, so this bracket is an extrapolation across a gap, not a persistence.
+    """
     return round(SKYMET_6H_MM / SKYMET_6H_HOURS * WINDOW_MIN / 60.0, 2)
 
 
@@ -166,21 +170,23 @@ CALIBRATION_BASIS = (
     "08:30-to-08:30 window. REPORTED SECOND-HAND, used only to bracket the rate: "
     "{burst:.0f} mm in {burst_h:.0f} hours over the Kurla-Thane belt overnight (Central "
     "Railway's chief PRO via ANI, {scroll}); {skymet:.0f} mm in the {skymet_h:.0f} hours "
-    "from {skymet_window}, which ends ten minutes before this window opens (Skymet via "
+    "from {skymet_window} - the night before the event night, a day and four hours before "
+    "this window opens (Skymet via "
     "Deccan Herald, {dh}); and 300-400 mm in the 12 hours to midday (the Chief Minister, "
     "{gulf}). INFERRED: this bundle assigns {share:.0f} % of the daily total to the "
     "four-hour window, {fraction:.2f} x {santacruz:.1f} = {target:.1f} mm. The arithmetic "
     "behind that share, so it can be argued with: the window is 4 of the 24 hours, so a "
-    "uniform rate would give 16.7 % = {uniform:.1f} mm ({daily_rate:.1f} mm/h); persisting "
-    "the last documented rate, {skymet:.0f} mm / {skymet_h:.0f} h = {skymet_rate:.1f} mm/h, "
+    "uniform rate would give 16.7 % = {uniform:.1f} mm ({daily_rate:.1f} mm/h); "
+    "extrapolating the last documented sub-daily rate anywhere in the event, {skymet:.0f} mm "
+    "/ {skymet_h:.0f} h = {skymet_rate:.1f} mm/h from the night before, "
     "would give {persistence:.1f} mm ({persistence_share:.0f} % of the day); the heaviest "
     "documented burst, {burst:.0f} mm / {burst_h:.0f} h = {burst_rate:.0f} mm/h, would give "
     "{burst_window:.0f} mm ({burst_share:.0f} %), which the same daily total cannot "
     "accommodate alongside the overnight cloudburst that dominates it. {share:.0f} % sits "
     "just above the uniform share and far below the burst, because the sourced record has "
     "the flooding starting at 08:07 and worsening until 14:28 IST and the Chief Minister "
-    "put 300-400 mm in the 12 hours to midday - the rain did not simply persist at the "
-    "overnight tail rate - while the 24-hour total leaves no room for the burst to repeat. "
+    "put 300-400 mm in the 12 hours to midday - the rain did not hold to the previous "
+    "night's rate - while the 24-hour total leaves no room for the burst to repeat. "
     "ACHIEVED: the designed area-mean accumulation over MUM-CENTRAL is {achieved:.1f} mm "
     "against the {target:.1f} mm target, {error:.1f} % away, inside the stated "
     "{tolerance:.0f} % tolerance. PLACEMENT: fitted to the record rather than to a radar "
@@ -332,8 +338,9 @@ def sources() -> list[BundleSource]:
                 f"{SANTACRUZ_24H_MM} mm total as the highest since 26 July 2005."
             ),
             used_for=(
-                "The lower bracket on the window's rate: the last documented rate before the "
-                "window opens. Also the source of 14 of the ground-truth pins."
+                "The lower bracket on the window's rate: the last documented sub-daily rate "
+                "anywhere in the event, extrapolated across the day and four hours between "
+                "it and the window. Also the source of 14 of the ground-truth pins."
             ),
         ),
         BundleSource(

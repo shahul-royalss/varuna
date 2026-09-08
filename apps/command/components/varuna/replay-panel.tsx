@@ -8,6 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CycleLog, type CycleLogRow } from "@/components/varuna/cycle-log";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Panel } from "@/components/varuna/panel";
+import { RadarPreview } from "@/components/varuna/radar-preview";
 import { useReplayBundles, useReplayControls } from "@/lib/api";
 import { bundleWindowLabel } from "@/lib/format";
 import {
@@ -176,16 +177,26 @@ export function ReplayPanel() {
         <section aria-label="Storm summary" className="space-y-2">
           <h3 className="type-small font-medium text-text">Storm summary</h3>
           {bundle ? (
-            <ul className="space-y-1">
-              {bundle.synthetic_notes.slice(0, 3).map((line) => (
-                <li key={line} className="type-micro text-text-2">
-                  {line}
+            <>
+              {/* The rail is 360 px wide, so the square cube is capped rather than left to fill it. */}
+              <RadarPreview
+                bundleId={bundle.id}
+                built={bundle.built}
+                missingMembers={bundle.missing_members}
+                compact
+                className="max-w-60"
+              />
+              <ul className="space-y-1">
+                {bundle.synthetic_notes.slice(0, 3).map((line) => (
+                  <li key={line} className="type-micro text-text-2">
+                    {line}
+                  </li>
+                ))}
+                <li className="num type-micro text-text-3">
+                  Seed {bundle.seed}. {bundle.baked_cycles} of {bundle.total_cycles} cycles baked.
                 </li>
-              ))}
-              <li className="num type-micro text-text-3">
-                Seed {bundle.seed}. {bundle.baked_cycles} of {bundle.total_cycles} cycles baked.
-              </li>
-            </ul>
+              </ul>
+            </>
           ) : (
             <EmptyState
               title="No storm cells yet"

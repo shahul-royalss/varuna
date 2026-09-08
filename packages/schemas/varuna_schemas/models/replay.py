@@ -1,12 +1,13 @@
-"""Replay clock and controls (``GET /v1/replay/clock``, ``POST /v1/replay/{play,pause,seek,speed}``,
-``GET /v1/replay/bundles``; CLAUDE.md 7.8, 10.2, 12).
+"""Replay clock, controls and the storm-designer radar preview
+(``GET /v1/replay/clock``, ``POST /v1/replay/{play,pause,seek,speed}``,
+``GET /v1/replay/bundles``, ``GET /v1/replay/bundles/{id}/radar``; CLAUDE.md 7.8, 10.2, 12).
 """
 
 from __future__ import annotations
 
 from pydantic import Field, computed_field, model_validator
 
-from varuna_schemas.models.bundle import BundleLabel
+from varuna_schemas.models.bundle import BundleLabel, BundleSource, TideSourceKind
 from varuna_schemas.models.common import Timestamp, VarunaModel
 from varuna_schemas.models.run import RunMode
 
@@ -90,9 +91,174 @@ class ReplayBundleSummary(VarunaModel):
     baked_cycles: int = Field(default=0, ge=0)
     total_cycles: int = Field(ge=1)
     sources_n: int = Field(default=0, ge=0)
+    sources: list[BundleSource] = Field(
+        default_factory=list,
+        description=(
+            "The public sources the bundle cites, so the card can link them instead of only "
+            "counting them (CLAUDE.md 0.7)."
+        ),
+    )
     ground_truth_n: int = Field(default=0, ge=0)
     synthetic_notes: list[str] = Field(default_factory=list)
+    calibration_basis: str | None = Field(
+        default=None,
+        description=(
+            "How the bundle's calibration numbers were arrived at, verbatim from the manifest. "
+            "This is the basis text the replay page shows under a reconstructed replay "
+            "(docs/SIMPLIFICATIONS.md, replay window accumulation)."
+        ),
+    )
+    design_storm_basis: str | None = Field(
+        default=None,
+        description=(
+            "Why the design storm is not a fitted IDF curve, verbatim from "
+            "``manifest.design_storm.basis``. None on bundles that carry no design storm "
+            "(docs/SIMPLIFICATIONS.md, design storms)."
+        ),
+    )
+    tide_source: TideSourceKind | None = Field(
+        default=None,
+        description=(
+            "Where the tide series came from: a published table, or 'illustrative' when the "
+            "stage is modelled from a single sourced height."
+        ),
+    )
     description: str | None = None
 
 
-__all__ = ["ReplayBundleSummary", "ReplayClock", "ReplaySeekRequest", "ReplaySpeedRequest"]
+class RadarFrameRef(VarunaModel):
+    """One frame of a bundle's radar cube, and where to fetch its PNG."""
+
+    index: int = Field(ge=0, description="Frame number in the cube, 0-based.")
+    ts: Timestamp = Field(description="The instant the frame shows (IST).")
+    url: str = Field(description="Path to the frame PNG on this API.")
+
+
+class RadarAoiPixels(VarunaModel):
+    """The area of interest as a rectangle in radar-cube pixels, top-left origin.
+
+    The storm domain is 60 km wide and the AOI is a small window inside it, so the preview
+    draws this rectangle over the frames to say which rain the city actually receives.
+    ``right`` and ``bottom`` are exclusive, and the rectangle is rounded outward, so it never
+    cuts a pixel the AOI touches.
+    """
+
+    left: int = Field(ge=0)
+    top: int = Field(ge=0)
+    right: int = Field(ge=0)
+    bottom: int = Field(ge=0)
+    width: int = Field(ge=0)
+    height: int = Field(ge=0)
+
+
+class RainRampBand(VarunaModel):
+    """One band of the shared rain ramp, so the legend is drawn from the tokens the PNG used."""
+
+    min_mm_h: float = Field(ge=0, description="Lower edge of the band, inclusive, in mm/h.")
+    hex: str = Field(description="The band's colour, from packages/tokens/tokens.json.")
+    label: str = Field(description="What the band means, in UI copy.")
+
+
+class RadarAccumulation(VarunaModel):
+    """The whole-window accumulation image that sits beside the frame player."""
+
+    url: str = Field(description="Path to the accumulation PNG on this API.")
+    label: str = Field(description="What the image shows, in UI copy.")
+    note: str = Field(
+        description=(
+            "Honesty line for the shared legend: the image is a depth in mm coloured by the "
+            "rain-rate band edges (CLAUDE.md 6.8)."
+        )
+    )
+
+
+class StormCellRow(VarunaModel):
+    """One row of the ``/replay`` storm-designer cell table (CLAUDE.md 7.8).
+
+    The manifest stores a cell the way the generator needs it - minutes from ``t0``, metres in
+    the design CRS, a velocity split into components, and the peak *before* the calibration
+    multiplier. This is the same cell in the units the table prints, so the console converts
+    nothing and cannot drift from the field that was actually rendered (rule 6).
+    """
+
+    id: str
+    birth: Timestamp = Field(description="t0 + birth_min, the instant the cell is born (IST).")
+    lifetime_min: float = Field(gt=0, description="Minutes from birth to death.")
+    start_lat: float = Field(ge=-90, le=90, description="Cell centre at birth, WGS84 latitude.")
+    start_lon: float = Field(ge=-180, le=180, description="Cell centre at birth, WGS84 longitude.")
+    velocity_ms: float = Field(
+        ge=0, description="Advection speed in m/s: hypot(u_ms, v_ms) of the manifest's cell."
+    )
+    sigma_km: float = Field(gt=0, description="Gaussian radius in kilometres.")
+    peak_mm_h: float = Field(
+        ge=0,
+        description=(
+            "Peak rain rate at the cell centre in mm/h, after intensity_scale - the value the "
+            "rendered field carries, not the unscaled draw the manifest stores."
+        ),
+    )
+
+
+class DesignStormBlocks(VarunaModel):
+    """A design storm's Chicago hyetograph, as the ``/replay`` block sparkline draws it.
+
+    Design-storm bundles carry no convective cells, so the cell table has nothing to show and
+    this takes its place. The peak sits at :attr:`peak_position_r` of the duration - a Chicago
+    hyetograph is never a uniform block of rain.
+    """
+
+    step_min: int = Field(gt=0, description="Block length in minutes.")
+    blocks_mm_h: list[float] = Field(
+        min_length=1, description="Block intensities in mm/h, one per step_min block."
+    )
+    total_depth_mm: float = Field(ge=0, description="Depth over the whole storm, in mm.")
+    peak_position_r: float = Field(
+        gt=0, lt=1, description="Where the peak block sits, as a fraction of the duration."
+    )
+
+
+class RadarPreviewIndex(VarunaModel):
+    """Everything the storm designer needs to animate a bundle's radar frames.
+
+    Bundle-scoped, not run-scoped: a bundle is an input to the cycle, so there is no ``run_id``
+    or ``valid_ts`` here, exactly as in :class:`ReplayBundleSummary`.
+    """
+
+    bundle_id: str
+    label: BundleLabel
+    variable: str = Field(description="Cube variable the frames were read from, e.g. dbz.")
+    n_frames: int = Field(ge=0)
+    step_min: float = Field(gt=0, description="Minutes between frames.")
+    t0: Timestamp = Field(description="Instant of frame 0 (IST).")
+    width: int = Field(ge=1, description="Frame width in pixels.")
+    height: int = Field(ge=1, description="Frame height in pixels.")
+    frames: list[RadarFrameRef] = Field(default_factory=list)
+    aoi_px: RadarAoiPixels
+    ramp: list[RainRampBand] = Field(default_factory=list)
+    accumulation: RadarAccumulation
+    cells: list[StormCellRow] = Field(
+        default_factory=list,
+        description=(
+            "The convective cells the field was generated from, in table units. Empty on a "
+            "design storm, which is a hyetograph rather than a set of cells."
+        ),
+    )
+    design_storm: DesignStormBlocks | None = Field(
+        default=None,
+        description="The Chicago hyetograph, on design-storm bundles only; None otherwise.",
+    )
+
+
+__all__ = [
+    "DesignStormBlocks",
+    "RadarAccumulation",
+    "RadarAoiPixels",
+    "RadarFrameRef",
+    "RadarPreviewIndex",
+    "RainRampBand",
+    "ReplayBundleSummary",
+    "ReplayClock",
+    "ReplaySeekRequest",
+    "ReplaySpeedRequest",
+    "StormCellRow",
+]
