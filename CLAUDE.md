@@ -37,7 +37,7 @@ This file is the single source of truth for building the VARUNA prototype. The b
 |---|---|---|---|---|
 | 0 | Foundation, shell, design tokens | 100 % | 2026-09-07 | All gates green: typecheck, ESLint, design lint, 126 vitest, 335 pytest (90 % cov), Next build 21 routes. CI green on GitHub (`shahul-royalss/varuna`). Console on Vercel at `varuna-dhrishta.vercel.app` (production still behind Vercel Authentication until the team switches it off). API packaged for Railway (ADR-0014); the deploy itself waits on `railway login`. |
 | 1 | City-in-a-box (Mumbai) | 100 % | 2026-09-07 | Runs from cache in 2 min 43 s cold, 19 s warm. 21,296 segments, 10,646 units, 50,110 drain nodes, 1,757 km inferred pipe. Depressions explain 89.3 % of the register (target 60 %); connectivity 100 %. Layers served. |
-| 2 | Replay bundle & storm designer | 5 % | 2026-09-07 | Ground truth curated: 29 sourced pins inside the AOI, replay window moved to 06:40 IST (ADR-0007). Storm designer next. |
+| 2 | Replay bundle & storm designer | 100 % | 2026-09-08 | All three bundles build and validate (10 contract rules, 0 warnings). MUM-2019-07-02 calibrated to the documented gauge totals for 05:40-09:40 IST; 29 sourced ground-truth pins; synthetic gauges, tide, traffic and reports all labelled. Replay clock drives play/pause/seek/speed; the replay screen animates the radar preview (M25). P2.9 (IMD PNG decoder) stays P1. |
 | 3 | VARUNA-Sky | 0 % | — | — |
 | 4 | VARUNA-Twin + drains + coupling | 0 % | — | — |
 | 5 | Products, cycle, API | 0 % | — | — |
@@ -913,15 +913,16 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ### Phase 2 — Replay bundle and storm designer
 
-- [ ] P2.1 Bundle manifest schema, loader, validator (`varuna bundle validate`)
-- [ ] P2.2 Storm designer (cells, wind, lifecycle, stratiform background, Marshall–Palmer inverse, noise, coverage, quantisation); seeded
-- [ ] P2.3 `MUM-2019-07-02` calibration to documented public gauge totals for the 05:40–09:40 IST window (ADR-0007); sources in the manifest
-- [ ] P2.4 Synthetic gauges at real station locations; tide series (public tide table if obtainable, else "illustrative" label) with the demo's high tide in the window
-- [ ] P2.5 Synthetic traffic baseline + anomalies + confounders, labelled
-- [ ] P2.6 Curated **real** ground-truth pins (≥ 10, `source_url`, time uncertainty) + synthetic reports stream
-- [ ] P2.7 Replay clock service: play/pause/seek/speed, bus publishing, cycle triggering, baked mode
-- [ ] P2.8 Design-storm bundles `MUM-IDF-25yr` (Chicago hyetograph) and `CHN-IDF-25yr`
+- [x] P2.1 Bundle manifest schema, loader, validator (`varuna bundle validate`) (2026-09-07, 8045e63)
+- [x] P2.2 Storm designer (cells, wind, lifecycle, stratiform background, Marshall–Palmer inverse, noise, coverage, quantisation); seeded (2026-09-07, 8045e63)
+- [x] P2.3 `MUM-2019-07-02` calibration to documented public gauge totals for the 05:40–09:40 IST window (ADR-0007); sources in the manifest (2026-09-07, 639b71a)
+- [x] P2.4 Synthetic gauges at real station locations; tide series (public tide table if obtainable, else "illustrative" label) with the demo's high tide in the window (2026-09-07, 639b71a)
+- [x] P2.5 Synthetic traffic baseline + anomalies + confounders, labelled (2026-09-07, 639b71a)
+- [x] P2.6 Curated **real** ground-truth pins (≥ 10, `source_url`, time uncertainty) + synthetic reports stream (2026-09-07, 639b71a)
+- [x] P2.7 Replay clock service: play/pause/seek/speed, bus publishing, cycle triggering, baked mode (2026-09-07, 639b71a)
+- [x] P2.8 Design-storm bundles `MUM-IDF-25yr` (Chicago hyetograph) and `CHN-IDF-25yr` (2026-09-07, 8045e63)
 - [ ] P2.9 IMD radar PNG decoder (`services/sky/decode_imd.py`): legend lookup, georeference by site and range rings, 5-dBZ classes; tested on one archived image — P1
+- [x] P2.10 Radar preview for the replay screen: bundle frames and AOI accumulation rendered server-side through the shared rain ramp, played at 4 fps (motion M25) (2026-09-08, 4a88b42)
 
 **Exit:** `make bundle` builds all three bundles; the console's replay panel plays the radar animation from a bundle.
 
