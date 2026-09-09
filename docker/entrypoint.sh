@@ -52,7 +52,37 @@ drop_download_cache() {
   rm -rf "${cache}" && log "dropped the ${freed:-?} download cache; the built city is what persists"
 }
 
+# A replay bundle is only half committed. The manifest, gauges, tide, reports and the sourced
+# ground truth are in git; radar/frames.zarr, truth/rain.zarr and traffic/speeds.parquet are
+# gitignored because they are generated (.gitignore lines 31-33), so the image ships a bundle
+# the API can describe but not run a cycle from. They regenerate in about seven seconds and are
+# byte-identical every time - the storm designer is seeded with 2019 (rule 8) - so rebuilding
+# them on the volume is cheaper and more honest than committing 4 MB of derived Zarr.
+BUNDLE="${VARUNA_BUNDLE:-MUM-2019-07-02}"
+BUNDLES_DIR="${VARUNA_BUNDLES_DIR:-/data/bundles}"
+
+build_bundle() {
+  if [ -d "${BUNDLES_DIR}/${BUNDLE}/radar" ]; then
+    log "bundle ${BUNDLE} already generated, skipping"
+    return 0
+  fi
+  # The generator is self-sufficient: from an empty directory it writes the whole bundle,
+  # manifest and curated ground truth included, reading the sourced pins from docs/research.
+  # Verified locally that manifest.json, ground_truth.geojson, gauges.csv, tide.csv and
+  # reports.jsonl come back byte-identical to what git carries, so nothing is seeded from the
+  # image and there is no second copy to drift.
+  mkdir -p "${BUNDLES_DIR}"
+  log "generating bundle ${BUNDLE} into ${BUNDLES_DIR}"
+  if uv run varuna bundle --bundle "${BUNDLE}"; then
+    log "bundle ${BUNDLE} ready"
+  else
+    log "bundle ${BUNDLE} generation failed; replay endpoints will say so"
+    return 1
+  fi
+}
+
 if [ "${BUILD_ON_BOOT}" = "1" ]; then
+  build_bundle &
   build_city &
 fi
 

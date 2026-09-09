@@ -64,6 +64,14 @@ RUN apt-get update \
 COPY packages/ packages/
 COPY services/ services/
 COPY Makefile README.md ./
+
+# docs/research holds curated DATA the pipelines read at runtime, not prose: the chronic-hotspot
+# register (CLAUDE.md 10.1 step 9), the sourced ground-truth pins, the gauge station list. Without
+# it `varuna city` fails its hotspots step with "No hotspot register for mumbai", which is how the
+# first Railway boot failed. `.dockerignore` drops docs/research/_raw, the 19 MB of evidence
+# screenshots, so this copies about 2 MB.
+COPY docs/ docs/
+
 RUN uv sync --frozen --no-dev
 
 # The environment is complete; do not let the two `uv run` processes at boot (API and the
