@@ -126,6 +126,7 @@ def run_cycle(
         segment_forecast,
         write_depth_rasters,
     )
+    from varuna_products.hotspots import rank_hotspots
     from varuna_twin.city import load_network, load_terrain, load_tide
     from varuna_twin.runner import run_twin
     from varuna_twin.types import TwinInputs
@@ -164,9 +165,11 @@ def run_cycle(
     mark = perf_counter()
     index = segment_cell_index(city_dir(city), terrain.transform, terrain.shape, terrain.crs)
     frame, depth_cm = segment_forecast(twin.depth_m, twin.times, index, run_id="pending")
-    stage_ms["products"] = round((perf_counter() - mark) * 1000.0)
-
     run_id = build_run_id(city, cycle_ts, SKY_VERSION, TWIN_VERSION, FLASH_VERSION, mode)
+    hotspots = rank_hotspots(
+        twin.depth_m, twin.times, city_dir(city), terrain.transform, terrain.crs, run_id, index
+    )
+    stage_ms["products"] = round((perf_counter() - mark) * 1000.0)
     frame["run_id"] = run_id
 
     notes = [
@@ -213,6 +216,7 @@ def run_cycle(
     def _write(tmp: Path) -> None:
         write_depth_rasters(tmp, twin.depth_m, terrain.transform, terrain.crs, stat="p50")
         frame.to_parquet(tmp / "segment_forecast.parquet", index=False)
+        (tmp / "hotspots.json").write_text(json.dumps(hotspots, indent=2) + "\n", encoding="utf-8")
         surcharge = twin.q_surcharge
         (tmp / "node_summary.json").write_text(
             json.dumps(

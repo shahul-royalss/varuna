@@ -14,9 +14,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CityMap, type SegmentPath } from "./city-map";
+import { CityMap, type MapFocus, type SegmentPath } from "./city-map";
 import { apiUrl } from "@/lib/api/client";
 import { allSegments, joinSegments, loadRunDepth, type RunDepth } from "@/lib/api/run-depth";
+import type { Hotspot } from "@/lib/api/hotspots";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Button } from "@/components/ui/button";
 
@@ -32,6 +33,11 @@ export interface FloodMapProps {
   /** Current step, owned by the time bar so keyboard and play share one clock. */
   step: number;
   onLoaded?: (run: RunDepth) => void;
+  /** The run's ranked hotspots, drawn as 120 m rings (section 6.7). */
+  hotspots?: readonly Hotspot[];
+  selectedHotspotId?: string | null;
+  /** Camera target from the rail; a new `key` starts a new flight (motion M10). */
+  focus?: MapFocus | null;
   showRaster?: boolean;
   showSegments?: boolean;
   showHotspots?: boolean;
@@ -42,6 +48,9 @@ export function FloodMap({
   runId,
   step,
   onLoaded,
+  hotspots: ranked = [],
+  selectedHotspotId = null,
+  focus = null,
   showRaster = true,
   showSegments = true,
   showHotspots = true,
@@ -91,7 +100,13 @@ export function FloodMap({
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
-  const hotspots = useMemo(() => [], []);
+  // The rings only need a position and an identity; the rail owns everything else about a
+  // hotspot, so the map is not re-created when the scrub moves its depth chips.
+  const rings = useMemo(
+    () => ranked.map((h) => ({ id: h.id, name: h.name, lon: h.lon, lat: h.lat })),
+    [ranked],
+  );
+  // Surcharge markers are task P6.6; an empty layer is honest, a fabricated one is not.
   const surcharge = useMemo(() => [], []);
 
   if (status.kind === "loading") {
@@ -146,7 +161,9 @@ export function FloodMap({
       baseSegments={status.baseSegments}
       segments={status.segments}
       surcharge={surcharge}
-      hotspots={hotspots}
+      hotspots={rings}
+      selectedHotspotId={selectedHotspotId}
+      focus={focus}
       step={Math.min(step, status.run.provenance.nSteps - 1)}
       showRaster={showRaster}
       showSegments={showSegments}

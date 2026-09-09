@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { FloodMap } from "@/components/map/flood-map";
 import type { RunDepth } from "@/lib/api/run-depth";
+import { loadHotspots, type Hotspot, type HotspotSet } from "@/lib/api/hotspots";
+import type { MapFocus } from "@/components/map/city-map";
 import { AppShell } from "@/components/varuna/app-shell";
 import { MapSlot } from "@/components/varuna/map-slot";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
@@ -59,6 +61,45 @@ export function ConsoleScreen() {
   );
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
+  // The loaded set is stamped with the run it belongs to, which is what lets "loading" be
+  // derived rather than tracked: a rail whose stamp does not match the map's run is, by
+  // definition, still catching up. One state, no flag to fall out of step with it.
+  const [loadedHotspots, setLoadedHotspots] = useState<{
+    runId: string;
+    set: HotspotSet | null;
+  } | null>(null);
+  const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
+  const [focus, setFocus] = useState<MapFocus | null>(null);
+
+  // The rail loads once the map has told us which run it settled on, so the two can never be
+  // describing different cycles. `?run=` may be absent, in which case the API picks the newest
+  // run and the map reports back which one that was.
+  const loadedRunId = run?.provenance.runId;
+  useEffect(() => {
+    if (!loadedRunId) return;
+    const controller = new AbortController();
+    loadHotspots(loadedRunId, controller.signal)
+      .then((set) => setLoadedHotspots({ runId: loadedRunId, set }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        // A rail that cannot load is an empty rail, never a broken console: the map, the scrub
+        // and the run stamp are all still telling the truth about this run.
+        console.error("Hotspots failed to load", error);
+        setLoadedHotspots({ runId: loadedRunId, set: null });
+      });
+    return () => controller.abort();
+  }, [loadedRunId]);
+
+  const current = loadedHotspots?.runId === loadedRunId ? loadedHotspots : null;
+  const hotspots = current?.set ?? null;
+  const hotspotsLoading = Boolean(loadedRunId) && current === null;
+
+  // Selecting a hotspot flies the map to it and rings it (motion M10). The key carries the click
+  // count so choosing the same row after panning away flies back rather than doing nothing.
+  const selectHotspot = useCallback((hotspot: Hotspot) => {
+    setSelectedHotspotId(hotspot.id);
+    setFocus({ lon: hotspot.lon, lat: hotspot.lat, key: `${hotspot.id}-${Date.now()}`, zoom: 14 });
+  }, []);
 
   // Play advances the same `step` the slider and the keyboard write, so there is one clock and
   // no way for the readout to disagree with the map.
@@ -98,12 +139,30 @@ export function ConsoleScreen() {
   }, [run]);
 
   return (
-    <AppShell rightRail={<RightRail />} bottomBar={<TimeBar />}>
+    <AppShell
+      rightRail={
+        <RightRail
+          hotspots={hotspots}
+          step={step}
+          selectedHotspotId={selectedHotspotId}
+          onSelectHotspot={selectHotspot}
+          hotspotsLoading={hotspotsLoading}
+        />
+      }
+      bottomBar={<TimeBar />}
+    >
       <div className="relative h-full min-h-0 w-full">
         {/* The map is the one memorable element on this screen (CLAUDE.md 6.1); everything else
             floats over it. `MapSlot` stays behind it as the legend and attribution host. */}
         <MapSlot legendClearsRightPanel={replayPanelOpen} />
-        <FloodMap runId={runParam} step={step} onLoaded={(run) => setRun(run)} />
+        <FloodMap
+          runId={runParam}
+          step={step}
+          onLoaded={(loaded) => setRun(loaded)}
+          hotspots={hotspots?.hotspots ?? []}
+          selectedHotspotId={selectedHotspotId}
+          focus={focus}
+        />
 
         {/* The scrub. Owned here so the map, the readout and the keyboard share one step. */}
         {run ? (
