@@ -57,10 +57,13 @@ RUN apt-get update \
  && apt-get purge -y --auto-remove build-essential \
  && rm -rf /var/lib/apt/lists/*
 
-# Source layer.
+# Source layer. README.md is not documentation here: the root pyproject declares
+# `readme = "README.md"`, so hatchling reads it while validating the root package's metadata
+# and this `uv sync` dies with `OSError: Readme file does not exist` without it. The dependency
+# layer above passes because `--no-install-workspace` never builds the root package.
 COPY packages/ packages/
 COPY services/ services/
-COPY Makefile ./
+COPY Makefile README.md ./
 RUN uv sync --frozen --no-dev
 
 # The environment is complete; do not let the two `uv run` processes at boot (API and the
