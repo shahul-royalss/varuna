@@ -16,10 +16,27 @@ CITY_DIR="${VARUNA_CITY_DIR:-/data/city}"
 
 log() { printf '{"event":"entrypoint","msg":"%s","ts":"%s"}\n' "$1" "$(date -Is)"; }
 
+# A city is "built" only when every step passed, which is what pipeline.json's `ok` records.
+# Testing for one output file is not enough: varuna city does not stop at a failed step, it
+# records the failure and carries on, so a run whose hotspots step failed still writes
+# segments.geojson, drains.geojson and the rest. That is exactly what happened on this volume -
+# the first boot had no docs/research to read the hotspot register from, failed that one step,
+# and left a city complete enough to fool a single-file check. Every later boot then skipped the
+# rebuild and the hotspots layer stayed 404 for good.
+city_is_complete() {
+  record="${CITY_DIR}/${CITY}/pipeline.json"
+  [ -f "${record}" ] || return 1
+  python -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('ok') else 1)" \
+    "${record}" 2>/dev/null
+}
+
 build_city() {
-  if [ -f "${CITY_DIR}/${CITY}/map/segments.geojson" ]; then
-    log "city ${CITY} already built, skipping"
+  if city_is_complete; then
+    log "city ${CITY} already built and every step passed, skipping"
     return 0
+  fi
+  if [ -f "${CITY_DIR}/${CITY}/pipeline.json" ]; then
+    log "city ${CITY} is present but incomplete; rebuilding the steps that failed"
   fi
   log "building city ${CITY} into ${CITY_DIR} in the background (first boot; a few minutes)"
   # The open data is public and fetched through the OS trust store (ADR-0006). Both steps
