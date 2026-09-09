@@ -99,8 +99,13 @@ build_bundle() {
 }
 
 if [ "${BUILD_ON_BOOT}" = "1" ]; then
-  build_bundle &
-  build_city &
+  # Sequential, and in that order: the bundle is built ON the city. Its reconstruction reads
+  # the city's own segments.parquet - the traffic feed is synthesised on real road segments -
+  # and its hotspots.geojson. Backgrounding the two independently raced them, and the bundle
+  # lost: it failed at 10:03:45 on a city that finished exporting at 10:05:01. The pair still
+  # runs in the background as a whole, so the API is up for the platform health check either
+  # way, and a city that fails short-circuits the bundle rather than letting it fail confusingly.
+  ( build_city && build_bundle ) &
 fi
 
 log "starting the API on :${PORT}"
