@@ -1,0 +1,182 @@
+"""Serving a baked run's depth products to the console (CLAUDE.md 12, P5.7).
+
+Three things the map needs and nothing else:
+
+* ``GET /v1/nowcast/raster`` - the RGBA PNG for one step, straight off disk. The console
+  preloads all 36 of a run on ``runs.published`` and swaps them during a scrub, so this must be
+  a plain file read: no decoding, no re-ramping, no per-request work (CLAUDE.md 7.2 AC, "no
+  network during scrub" - the network happens once, up front).
+* ``GET /v1/nowcast/raster/bounds`` - where to put it, in lon/lat.
+* ``GET /v1/nowcast/segments`` - the per-segment depth series the streets are coloured by.
+
+Every response carries ``run_id`` and the run's honesty notes, because the console prints them
+under the run stamp and a depth map with no provenance is exactly what CLAUDE.md rule 6 exists
+to prevent.
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Annotated, Any, Literal
+
+import structlog
+from fastapi import APIRouter, Query, Response
+from varuna_schemas.paths import run_dir, runs_dir
+
+from varuna_api.state import api_error
+
+log = structlog.get_logger("varuna.api.depth")
+
+router = APIRouter(prefix="/v1", tags=["nowcast"])
+
+BAKE_HINT = (
+    "No baked run carries depth products yet. Run `make bake BUNDLE=MUM-2019-07-02`, "
+    "or press Compute live on the replay panel."
+)
+
+
+def _latest_run_with_depth() -> Path | None:
+    """The newest run directory that actually has depth rasters in it.
+
+    Newest by run id, which sorts chronologically because the id embeds a UTC stamp
+    (CLAUDE.md 10.3). A run without a ``depth/`` folder is skipped rather than returned and then
+    404'd one request later: a bake in progress leaves earlier complete runs perfectly usable.
+    """
+    root = runs_dir()
+    if not root.is_dir():
+        return None
+    candidates = [
+        p for p in sorted(root.iterdir(), reverse=True)
+        if p.is_dir() and not p.name.startswith(".") and (p / "depth" / "bounds.json").is_file()
+    ]
+    return candidates[0] if candidates else None
+
+
+def _resolve(run_id: str | None) -> Path:
+    """The run directory to serve, or an error that names the command that makes one."""
+    if run_id:
+        path = run_dir(run_id)
+        if not (path / "depth" / "bounds.json").is_file():
+            raise api_error(
+                404,
+                "run_not_found",
+                f"Run {run_id} has no depth products. {BAKE_HINT}",
+                run_id=run_id,
+            )
+        return path
+    latest = _latest_run_with_depth()
+    if latest is None:
+        raise api_error(404, "no_baked_runs", BAKE_HINT)
+    return latest
+
+
+def _meta(path: Path) -> dict[str, Any]:
+    record = path / "run.json"
+    return json.loads(record.read_text(encoding="utf-8")) if record.is_file() else {}
+
+
+@router.get("/nowcast/raster/bounds", summary="Where a run's depth rasters sit, and what they are")
+def raster_bounds(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+    """The lon/lat corners for the BitmapLayer, the step count, and the run's provenance."""
+    path = _resolve(run_id)
+    meta = _meta(path)
+    bounds = json.loads((path / "depth" / "bounds.json").read_text(encoding="utf-8"))
+    steps = sorted(p.name for p in (path / "depth").glob("p50_*.png"))
+    return {
+        "run_id": meta.get("run_id", path.name),
+        "cycle_ts": meta.get("cycle_ts"),
+        "mode": meta.get("mode"),
+        "bundle": meta.get("bundle"),
+        "bounds": bounds,
+        "n_steps": len(steps),
+        "step_min": meta.get("step_min", 5),
+        "ensemble_n": meta.get("ensemble_n", 1),
+        "mass_balance_err": meta.get("mass_balance_err"),
+        "stage_ms": meta.get("stage_ms", {}),
+        "notes": meta.get("notes", []),
+        "frames": [f"/v1/nowcast/raster?run_id={meta.get('run_id', path.name)}&step={i}" for i in range(len(steps))],
+    }
+
+
+@router.get(
+    "/nowcast/raster",
+    response_class=Response,
+    responses={200: {"content": {"image/png": {}}, "description": "Depth PNG"}},
+    summary="One step's depth raster as RGBA PNG",
+)
+def raster(
+    step: Annotated[int, Query(ge=0)] = 0,
+    run_id: Annotated[str | None, Query()] = None,
+    stat: Annotated[Literal["p50", "p90"], Query()] = "p50",
+) -> Response:
+    """The PNG for one 5-minute step, cached hard because a baked run never changes.
+
+    ``immutable`` is honest here in a way it usually is not: the run id contains the cycle time
+    and the engine versions, so a given URL's bytes cannot change. That is what lets the console
+    preload 36 frames and scrub without touching the network again.
+    """
+    path = _resolve(run_id)
+    png = path / "depth" / f"{stat}_{step:02d}.png"
+    if not png.is_file():
+        available = len(list((path / "depth").glob(f"{stat}_*.png")))
+        raise api_error(
+            404,
+            "step_not_found",
+            f"Step {step} has no {stat} raster in this run; it has {available} steps (0-{available - 1}).",
+            run_id=path.name,
+        )
+    return Response(
+        content=png.read_bytes(),
+        media_type="image/png",
+        headers={"Cache-Control": "public, max-age=31536000, immutable"},
+    )
+
+
+@router.get("/nowcast/segments", summary="Per-segment depth series for the street layer")
+def segments(
+    run_id: Annotated[str | None, Query()] = None,
+    min_depth_cm: Annotated[float, Query(ge=0)] = 5.0,
+) -> dict[str, Any]:
+    """Every segment that gets wet in this run, with its depth at each step.
+
+    Only segments reaching ``min_depth_cm`` at some point are returned, and the default is the
+    5 cm the depth ramp calls dry (CLAUDE.md 6.2). Mumbai has 21,296 segments and a storm cycle
+    wets about 1,900 of them, so this is the difference between a 200 KB response the console can
+    hold and a 20 MB one it cannot. The dry remainder is drawn from the city layer, in the dry
+    colour, and needs no per-step data at all.
+    """
+    path = _resolve(run_id)
+    parquet = path / "segment_forecast.parquet"
+    if not parquet.is_file():
+        raise api_error(404, "no_segment_forecast", BAKE_HINT, run_id=path.name)
+
+    import pandas as pd
+
+    frame = pd.read_parquet(parquet)
+    meta = _meta(path)
+    wet_ids = frame.loc[frame["depth_p50_cm"] >= min_depth_cm, "segment_id"].unique()
+    wet = frame[frame["segment_id"].isin(wet_ids)].sort_values(["segment_id", "valid_ts"])
+
+    times = [str(t) for t in sorted(frame["valid_ts"].unique())]
+    series: dict[str, list[float]] = {}
+    safe_until: dict[str, Any] = {}
+    for seg_id, group in wet.groupby("segment_id", sort=True):
+        series[str(seg_id)] = [round(float(v), 1) for v in group["depth_p50_cm"]]
+        first = group.iloc[0]
+        if isinstance(first.get("safe_until"), str):
+            safe_until[str(seg_id)] = json.loads(first["safe_until"])
+
+    log.info("api.segments", run_id=path.name, wet=len(series), of=int(frame["segment_id"].nunique()))
+    return {
+        "run_id": meta.get("run_id", path.name),
+        "valid_ts": times,
+        "step_min": meta.get("step_min", 5),
+        "ensemble_n": meta.get("ensemble_n", 1),
+        "min_depth_cm": min_depth_cm,
+        "n_segments_total": int(frame["segment_id"].nunique()),
+        "n_segments_wet": len(series),
+        "depth_cm": series,
+        "safe_until": safe_until,
+        "notes": meta.get("notes", []),
+    }
