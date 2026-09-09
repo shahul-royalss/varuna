@@ -128,7 +128,7 @@ RAIN_QUANTILES = "rain/quantiles.zarr"
 CUBE_VARIABLE = "rain"
 """Array name inside ``cube.zarr``, matching the bundle cubes' ``rain``/``dbz`` convention."""
 
-QUANTILE_VARIABLES: tuple[str, ...] = ("p10", "p50", "p90", "p_gt_20", "p_gt_40")
+QUANTILE_VARIABLES: tuple[str, ...] = ("p10", "p50", "p90", "mean", "p_gt_20", "p_gt_40")
 """Array names inside ``quantiles.zarr``, in the order :class:`SkyProducts` declares them."""
 
 HYETOGRAPH_VARIABLE = "aoi_hyetographs"
@@ -522,6 +522,7 @@ def sky_products(ensemble: RainEnsemble, aoi: AoiGrid) -> SkyProducts:
         p10=_published(q10),
         p50=_published(q50),
         p90=_published(q90),
+        mean=_published(cube.mean(axis=0)),
         p_gt_20=_published(exceedance(cube, EXCEEDANCE_MM_H[0])),
         p_gt_40=_published(exceedance(cube, EXCEEDANCE_MM_H[1])),
         aoi_hyetographs=_published(hyetographs),
@@ -536,6 +537,7 @@ def sky_products(ensemble: RainEnsemble, aoi: AoiGrid) -> SkyProducts:
         aoi_peak_mm_h=round(float(hyetographs.max()), 2),
         aoi_mean_mm_h=round(float(hyetographs.mean()), 2),
         p90_max_mm_h=round(float(q90.max()), 2),
+        mean_max_mm_h=round(float(cube.mean(axis=0).max()), 2),
         source=ensemble.source,
     )
     return products
@@ -713,6 +715,7 @@ def write_quantiles(run_dir: Path, products: SkyProducts, aoi: AoiGrid | None = 
         "p10": products.p10,
         "p50": products.p50,
         "p90": products.p90,
+        "mean": products.mean,
         "p_gt_20": products.p_gt_20,
         "p_gt_40": products.p_gt_40,
     }
@@ -736,7 +739,7 @@ def write_quantiles(run_dir: Path, products: SkyProducts, aoi: AoiGrid | None = 
             dims=("time", "y", "x"),
             chunks=(1, grid.n_px, grid.n_px),
             shards=(len(products.times), grid.n_px, grid.n_px),
-            units="mm/h" if name in ("p10", "p50", "p90") else "probability",
+            units="mm/h" if name in ("p10", "p50", "p90", "mean") else "probability",
         )
     hyetographs = np.asarray(products.aoi_hyetographs)
     _write_field(
@@ -818,6 +821,7 @@ def read_sky_products(path: Path) -> SkyProducts:
     t0 = datetime.fromisoformat(str(attrs["t0"])).astimezone(IST)
     offsets = np.asarray(group["time_min"][:], dtype=np.float64)
     return SkyProducts(
+        mean=np.asarray(group["mean"][:], dtype=PRODUCT_DTYPE),
         p10=np.asarray(group["p10"][:], dtype=PRODUCT_DTYPE),
         p50=np.asarray(group["p50"][:], dtype=PRODUCT_DTYPE),
         p90=np.asarray(group["p90"][:], dtype=PRODUCT_DTYPE),

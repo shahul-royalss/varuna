@@ -175,6 +175,41 @@ def test_quantiles_are_taken_across_members_only() -> None:
     assert np.allclose(q10, 1.9) and np.allclose(q50, 9.5) and np.allclose(q90, 17.1)
 
 
+def test_the_mean_conserves_the_ensemble_volume_where_the_median_does_not() -> None:
+    """Why the Twin runs on the mean (CLAUDE.md 11.11), stated as arithmetic.
+
+    Twenty members each carry the same convective cell in a different place - which is exactly
+    what a STEPS ensemble is. Every member delivers the same volume of water, so the forecast
+    volume is unambiguous; but at any one pixel most members are dry, so the pixelwise median is
+    zero almost everywhere and the field it makes delivers a fraction of it. Feed that to a
+    water balance and the city receives rain nobody forecast.
+    """
+    grid = sky_grid()
+    n_members, n_steps = 20, 3
+    assert grid.n_px >= n_members, "fixture needs a column per member so none of them overlap"
+    cube = np.zeros((n_members, n_steps, grid.n_px, grid.n_px), dtype=np.float64)
+    for m in range(n_members):
+        # One column per member, so no pixel is wet in more than one of them - the extreme of
+        # the disagreement a STEPS ensemble has about where a convective cell will be.
+        cube[m, :, 4:7, m] = 60.0
+
+    _q10, q50, _q90 = quantiles(cube)
+    mean = cube.mean(axis=0)
+    member_volume = cube.sum(axis=(1, 2, 3))
+
+    assert np.allclose(member_volume, member_volume[0]), "fixture: every member carries the same"
+    assert mean.sum() == pytest.approx(float(member_volume[0]))
+    assert q50.sum() == pytest.approx(0.0), "the median of mostly-dry members is dry"
+
+
+def test_products_publish_the_mean_beside_the_quantiles() -> None:
+    """The Twin reads ``products.mean``; it must be the mean of the members, not a quantile."""
+    cube = storm_cube()
+    products = sky_products(ensemble_from(cube), aoi_grid())
+    assert products.mean.shape == products.p50.shape
+    assert np.allclose(products.mean, cube.mean(axis=0), atol=1e-6)
+
+
 def test_exceedance_is_the_member_fraction_strictly_above_the_threshold() -> None:
     grid = sky_grid()
     cube = np.zeros((10, 1, grid.n_px, grid.n_px), dtype=np.float64)

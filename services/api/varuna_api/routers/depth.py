@@ -222,3 +222,31 @@ def hotspots(
         "hotspots": ranked[:limit],
         "notes": meta.get("notes", []),
     }
+
+
+@router.get("/nowcast/surcharge", summary="Manholes surcharging and pipes running backwards")
+def surcharge(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+    """The run's surcharging manholes and reversed edges (CLAUDE.md 11.4, 11.5; P6.6).
+
+    This is the demo's 1:40 moment made drawable: red markers where the drain is pushing water
+    back up into the street, and the edges where the sea is holding a trunk shut. Only the nodes
+    that actually surcharge are stored, so this stays a small file over a 49,897-node graph.
+    """
+    path = _resolve(run_id)
+    record = path / "node_surcharge.json"
+    if not record.is_file():
+        raise api_error(
+            404,
+            "no_surcharge_product",
+            f"Run {path.name} predates the surcharge product. {BAKE_HINT}",
+            run_id=path.name,
+        )
+    product = json.loads(record.read_text(encoding="utf-8"))
+    meta = _meta(path)
+    log.info(
+        "api.surcharge",
+        run_id=path.name,
+        surcharging=product.get("n_surcharging"),
+        reversed_edges=product.get("n_reversed_edges"),
+    )
+    return {**product, "notes": meta.get("notes", [])}

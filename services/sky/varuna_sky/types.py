@@ -321,6 +321,16 @@ class SkyProducts:
     p10: NDArray[np.floating]
     p50: NDArray[np.floating]
     p90: NDArray[np.floating]
+    mean: NDArray[np.floating]
+    """Ensemble mean rain rate, ``(n_steps, n_px, n_px)``, and the field the Twin runs on.
+
+    Kept beside the quantiles because it answers a different question and the two disagree
+    sharply for convective rain. At a pixel and a lead time the members disagree about *where*
+    the cell is, so the pixelwise median can be near zero while every member carries a
+    downpour - on the 2 July storm the p50 field delivers 13 mm over three hours where the mean
+    delivers what the members actually carry. The mean is the only reduction here that
+    conserves volume, which is what a water balance needs (CLAUDE.md 11.11)."""
+
     p_gt_20: NDArray[np.floating]
     p_gt_40: NDArray[np.floating]
     aoi_hyetographs: NDArray[np.floating]

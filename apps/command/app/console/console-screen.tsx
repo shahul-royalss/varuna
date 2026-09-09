@@ -7,10 +7,12 @@ import { FloodMap } from "@/components/map/flood-map";
 import type { RunDepth } from "@/lib/api/run-depth";
 import { loadHotspots, type Hotspot, type HotspotSet } from "@/lib/api/hotspots";
 import type { MapFocus } from "@/components/map/city-map";
+import { loadSurcharge, type SurchargeSet } from "@/lib/api/surcharge";
 import { AppShell } from "@/components/varuna/app-shell";
 import { MapSlot } from "@/components/varuna/map-slot";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
 import { ReplayPanel } from "@/components/varuna/replay-panel";
+import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
 import { TimeBar } from "@/components/varuna/time-bar";
@@ -68,6 +70,9 @@ export function ConsoleScreen() {
     runId: string;
     set: HotspotSet | null;
   } | null>(null);
+  const [surcharge, setSurcharge] = useState<{ runId: string; set: SurchargeSet | null } | null>(
+    null,
+  );
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
 
@@ -90,9 +95,24 @@ export function ConsoleScreen() {
     return () => controller.abort();
   }, [loadedRunId]);
 
+  // Same shape for the surcharge product: stamped with its run, loaded once, scrubbed for free.
+  useEffect(() => {
+    if (!loadedRunId) return;
+    const controller = new AbortController();
+    loadSurcharge(loadedRunId, controller.signal)
+      .then((set) => setSurcharge({ runId: loadedRunId, set }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        console.error("Surcharge failed to load", error);
+        setSurcharge({ runId: loadedRunId, set: null });
+      });
+    return () => controller.abort();
+  }, [loadedRunId]);
+
   const current = loadedHotspots?.runId === loadedRunId ? loadedHotspots : null;
   const hotspots = current?.set ?? null;
   const hotspotsLoading = Boolean(loadedRunId) && current === null;
+  const selected = hotspots?.hotspots.find((h) => h.id === selectedHotspotId) ?? null;
 
   // Selecting a hotspot flies the map to it and rings it (motion M10). The key carries the click
   // count so choosing the same row after panning away flies back rather than doing nothing.
@@ -141,13 +161,24 @@ export function ConsoleScreen() {
   return (
     <AppShell
       rightRail={
-        <RightRail
-          hotspots={hotspots}
-          step={step}
-          selectedHotspotId={selectedHotspotId}
-          onSelectHotspot={selectHotspot}
-          hotspotsLoading={hotspotsLoading}
-        />
+        // The drawer slides in *over* the rail (CLAUDE.md 7.2), so it takes the same slot.
+        selected ? (
+          <HotspotDrawer
+            hotspot={selected}
+            step={step}
+            stepMin={run?.provenance.stepMin ?? 5}
+            validTs={run?.validTs ?? []}
+            onClose={() => setSelectedHotspotId(null)}
+          />
+        ) : (
+          <RightRail
+            hotspots={hotspots}
+            step={step}
+            selectedHotspotId={selectedHotspotId}
+            onSelectHotspot={selectHotspot}
+            hotspotsLoading={hotspotsLoading}
+          />
+        )
       }
       bottomBar={<TimeBar />}
     >
@@ -161,6 +192,7 @@ export function ConsoleScreen() {
           onLoaded={(loaded) => setRun(loaded)}
           hotspots={hotspots?.hotspots ?? []}
           selectedHotspotId={selectedHotspotId}
+          surcharge={surcharge?.runId === loadedRunId ? surcharge?.set : null}
           focus={focus}
         />
 
