@@ -1,0 +1,253 @@
+"""One full cycle: radar in, a run directory out (CLAUDE.md 11.11, 10.3).
+
+This is the stage that turns everything the engines can do into something the console can draw.
+It runs Sky, feeds its rain onto the city grid, runs the coupled Twin, reduces the depth field
+to products, and writes the whole lot into ``data/runs/<run_id>/`` atomically.
+
+**The order** (CLAUDE.md 11.11): decode/QC -> Sky -> Twin -> products -> publish. Flash and
+Pulse are Phase 7; their stages are absent rather than faked, and ``ensemble_n`` says 1 so no
+screen can imply a 50-member spread that was never computed (rule 6).
+
+**Atomicity.** The registry writes into a temporary folder and renames it into place, so a
+half-written run can never be served: a reader either sees a complete run directory or none at
+all. That matters during a bake, where the console may be polling while cycles are landing.
+
+**The rain hand-off.** Sky produces its ensemble on the 500 m radar grid; the Twin wants mm/h on
+the 30 m city grid. ``varuna_sky.products.resample_to_aoi`` owns that resample and is called
+here rather than inside the Twin, which keeps the Twin ignorant of Sky (its ``types.py`` says as
+much). The **ensemble mean** is what the Twin runs on, because one deterministic Twin run is what
+Phase 4 provides; the 20 members go to Flash in Phase 7.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from time import perf_counter
+from typing import TYPE_CHECKING
+
+import numpy as np
+import structlog
+from varuna_schemas.constants import IST, N_STEPS, STEP_MIN
+from varuna_schemas.models.run import EngineVersions, GridSpec, RunMeta, build_run_id
+from varuna_schemas.paths import city_dir
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from varuna_twin.types import TwinResult
+
+log = structlog.get_logger("varuna.cycle.twin")
+
+__all__ = ["CycleResult", "run_cycle"]
+
+SKY_VERSION = "1.0"
+TWIN_VERSION = "1.0"
+FLASH_VERSION = "0.0"
+"""Flash has not been built yet (Phase 7). ``0.0`` says so in the run id rather than claiming a
+version of an engine that did not run - the run stamp is on screen throughout the demo."""
+
+PULSE_VERSION = "0.0"
+PRODUCTS_VERSION = "1.0"
+
+INFERRED_NOTE = (
+    "Drain graph inferred from roads and terrain, not a municipal SWD model "
+    "(CLAUDE.md 10.1 step 7); every pipe carries a learned blockage."
+)
+DETERMINISTIC_NOTE = (
+    "One deterministic Twin run, so p10 = p50 = p90 and every exceedance is 0 or 1. "
+    "The 50-member street ensemble arrives with Flash-lite in Phase 7."
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CycleResult:
+    """What one cycle produced, for the caller that has to report it."""
+
+    run_id: str
+    run_dir: Path
+    stage_ms: dict[str, int]
+    mass_balance_err: float
+    peak_depth_cm: float
+    wet_segments: int
+    surcharging_nodes: int
+    backflow_edges: int
+    notes: tuple[str, ...]
+
+
+def _sky_rain_on_city(bundle: str, cycle_ts: datetime | None, city: str, n_steps: int):
+    """Run Sky for this cycle and return its median rain on the 30 m city grid, in mm/h.
+
+    The **p50** field is what forces the deterministic Twin. The ensemble median rather than one
+    member, because a member is one draw and would put its own noise into the depth map; and the
+    median rather than the mean because it is the statistic the console already draws and labels
+    everywhere else, so the depth map and the fan chart are answering the same question. The
+    spread this discards is exactly what Flash-lite consumes in Phase 7, and the run's notes say
+    it was discarded.
+    """
+    from varuna_sky.products import load_aoi_grid, resample_to_aoi
+
+    from varuna_cycle.sky_cycle import run_bundle_cycle
+
+    cycle = run_bundle_cycle(bundle, cycle_ts)
+    aoi = load_aoi_grid(city)
+    p50 = np.asarray(cycle.products.p50, dtype=np.float64)  # (steps, y, x) on the Sky grid
+    steps = min(int(p50.shape[0]), int(n_steps))
+    cube = np.stack([resample_to_aoi(p50[k], cycle.products.grid, aoi) for k in range(steps)])
+    # resample_to_aoi fills outside the radar domain with nan; the Twin reads that as no rain
+    # (hydrology logs and zeroes non-finite rain), but zeroing here keeps the mass-balance
+    # accounting reading a real number rather than nan.
+    cube = np.where(np.isfinite(cube), cube, 0.0)
+    return cube, cycle
+
+
+def run_cycle(
+    bundle: str = "MUM-2019-07-02",
+    cycle_ts: datetime | None = None,
+    *,
+    city: str = "mumbai",
+    n_steps: int = N_STEPS,
+    mode: str = "baked",
+    overwrite: bool = False,
+) -> CycleResult:
+    """Run one cycle end to end and write its run directory.
+
+    Args:
+        bundle: replay bundle the radar and gauges come from.
+        cycle_ts: the instant to forecast from; defaults to the bundle's first computable cycle.
+        city: which built city to run on.
+        n_steps: forecast steps of ``STEP_MIN`` minutes each (36 = 3 hours).
+        mode: ``baked`` when pre-computing, ``live`` when the operator pressed Compute live.
+        overwrite: replace an existing run directory of the same id.
+    """
+    from varuna_products.depth import (
+        depth_bounds,
+        segment_cell_index,
+        segment_forecast,
+        write_depth_rasters,
+    )
+    from varuna_twin.city import load_network, load_terrain, load_tide
+    from varuna_twin.runner import run_twin
+    from varuna_twin.types import TwinInputs
+
+    from varuna_cycle.registry import RunRegistry
+
+    stage_ms: dict[str, int] = {}
+    started = perf_counter()
+
+    # ---- Sky ----------------------------------------------------------------------------
+    mark = perf_counter()
+    rain_cube, sky = _sky_rain_on_city(bundle, cycle_ts, city, n_steps)
+    cycle_ts = sky.cycle_ts
+    n_steps = int(rain_cube.shape[0])
+    stage_ms["sky"] = round((perf_counter() - mark) * 1000.0)
+
+    # ---- Twin ---------------------------------------------------------------------------
+    mark = perf_counter()
+    terrain = load_terrain(city)
+    network = load_network(city)
+    tide = load_tide(bundle)
+    twin: TwinResult = run_twin(
+        TwinInputs(
+            terrain=terrain,
+            network=network,
+            rain_mm_h=rain_cube,
+            t0=cycle_ts,
+            step_min=STEP_MIN,
+            tide=tide,
+        )
+    )
+    stage_ms["twin"] = round((perf_counter() - mark) * 1000.0)
+    stage_ms.update({f"twin_{k}": v for k, v in twin.stage_ms.items()})
+
+    # ---- Products -----------------------------------------------------------------------
+    mark = perf_counter()
+    index = segment_cell_index(city_dir(city), terrain.transform, terrain.shape, terrain.crs)
+    frame, depth_cm = segment_forecast(twin.depth_m, twin.times, index, run_id="pending")
+    stage_ms["products"] = round((perf_counter() - mark) * 1000.0)
+
+    run_id = build_run_id(city, cycle_ts, SKY_VERSION, TWIN_VERSION, FLASH_VERSION, mode)
+    frame["run_id"] = run_id
+
+    notes = [
+        INFERRED_NOTE,
+        DETERMINISTIC_NOTE,
+        *twin.notes,
+        *(getattr(sky, "notes", None) or ()),
+    ]
+    if tide is not None and "illustrative" in tide.source.lower():
+        notes.append(f"Tide series is {tide.source}, not a published tide table (rule 7).")
+
+    bounds = depth_bounds(terrain.transform, terrain.shape, terrain.crs)
+    meta = RunMeta(
+        run_id=run_id,
+        city=city,
+        cycle_ts=cycle_ts,
+        radar_frame_ts=sky.products.times[0] if sky.products.times else None,
+        versions=EngineVersions(
+            sky=SKY_VERSION,
+            twin=TWIN_VERSION,
+            flash=FLASH_VERSION,
+            pulse=PULSE_VERSION,
+            products=PRODUCTS_VERSION,
+        ),
+        mode=mode,
+        ensemble_n=1,
+        stage_ms=stage_ms,
+        mass_balance_err=float(twin.mass_balance.error_fraction),
+        bundle=bundle,
+        created_at=datetime.now(tz=IST),
+        grid=GridSpec(
+            dx_m=terrain.res_m,
+            nx=terrain.n_cols,
+            ny=terrain.n_rows,
+            crs=terrain.crs,
+            bounds=bounds["wgs84"],
+            transform=terrain.transform,
+        ),
+        step_min=STEP_MIN,
+        n_steps=n_steps,
+        notes=notes,
+    )
+
+    def _write(tmp: Path) -> None:
+        write_depth_rasters(tmp, twin.depth_m, terrain.transform, terrain.crs, stat="p50")
+        frame.to_parquet(tmp / "segment_forecast.parquet", index=False)
+        surcharge = twin.q_surcharge
+        (tmp / "node_summary.json").write_text(
+            json.dumps(
+                {
+                    "n_nodes": int(network.n_nodes),
+                    "surcharging_by_step": [int((s > 0).sum()) for s in surcharge],
+                    "backflow_by_step": [int((f < 0).sum()) for f in twin.edge_flow],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    registry = RunRegistry()
+    run_dir = registry.write_run_dir(run_id, _write, meta=meta, overwrite=overwrite)
+    stage_ms["total"] = round((perf_counter() - started) * 1000.0)
+
+    result = CycleResult(
+        run_id=run_id,
+        run_dir=run_dir,
+        stage_ms=stage_ms,
+        mass_balance_err=float(twin.mass_balance.error_fraction),
+        peak_depth_cm=round(float(np.nanmax(twin.depth_m)) * 100.0, 1),
+        wet_segments=int((depth_cm.max(axis=0) > 5.0).sum()) if depth_cm.size else 0,
+        surcharging_nodes=int((twin.q_surcharge[-1] > 0).sum()),
+        backflow_edges=int((twin.edge_flow[-1] < 0).sum()),
+        notes=tuple(notes),
+    )
+    log.info(
+        "cycle.published",
+        run_id=run_id,
+        total_ms=stage_ms["total"],
+        peak_cm=result.peak_depth_cm,
+        wet_segments=result.wet_segments,
+        mass_balance=round(result.mass_balance_err, 6),
+    )
+    return result
