@@ -39,7 +39,23 @@ COPY services/sky/pyproject.toml services/sky/
 COPY services/twin/pyproject.toml services/twin/
 COPY services/verify/pyproject.toml services/verify/
 COPY tools/ tools/
-RUN uv sync --frozen --no-dev --no-install-workspace
+
+# pysteps publishes no Linux wheel, so uv builds it from source and its Cython extensions
+# (`_proesmans`, `_vet`) compile with `gcc ... -fopenmp`. Without a toolchain the build dies on
+# `error: [Errno 2] No such file or directory: 'gcc'`, which is what every deploy of this image
+# did until 2026-09-09 - the failure is in the dependency layer, so it is not something a
+# working local checkout would ever show you.
+#
+# The toolchain is installed, used and purged in ONE layer, because a purge in a later layer
+# would leave the ~250 MB in the image anyway. `libgomp1` is installed on its own line first so
+# apt marks it manually installed: the compiled extension links against OpenMP at *runtime*, and
+# `--auto-remove` would otherwise take it away with the compiler that pulled it in.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libgomp1 \
+ && apt-get install -y --no-install-recommends build-essential \
+ && uv sync --frozen --no-dev --no-install-workspace \
+ && apt-get purge -y --auto-remove build-essential \
+ && rm -rf /var/lib/apt/lists/*
 
 # Source layer.
 COPY packages/ packages/
