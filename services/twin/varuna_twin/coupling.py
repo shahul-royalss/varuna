@@ -118,6 +118,7 @@ def compute_exchange(
     network: DrainNetwork,
     solver: DrainSolver,
     cell_area_m2: float,
+    sync_s: float = 5.0,
 ) -> ExchangeResult:
     """Compute the inlet capture and surcharge fluxes for one sync interval.
 
@@ -128,6 +129,11 @@ def compute_exchange(
         network: the drain graph with geometry and clogging parameters.
         solver: the prepared solver (for ``fixed_head``).
         cell_area_m2: area of one 2D cell in m2.
+        sync_s: the interval these rates will be held over, in seconds. Every limiter below
+            divides a *volume* the cell or the node actually has by this, so a rate can never
+            move water that is not there. Passing a value that does not match the interval the
+            caller then integrates over would break that guarantee, which is why it is an
+            argument rather than a constant.
 
     Returns:
         An :class:`ExchangeResult` with per-node and per-cell rates.
@@ -172,7 +178,8 @@ def compute_exchange(
     # without exceeding ground level. This is a linear estimate over the sync interval.
     # A more precise value would integrate the 1D solver, but that is what the sync
     # interval is for: the error is small when sync_s is small.
-    q_avail = np.where(depth_available > 0.0, depth_available * storage_area / 5.0, 0.0)
+    dt = max(float(sync_s), 1e-9)
+    q_avail = np.where(depth_available > 0.0, depth_available * storage_area / dt, 0.0)
 
     q_inlet = (1.0 - kappa) * np.minimum(q_hydraulic, q_avail)
 
@@ -196,9 +203,19 @@ def compute_exchange(
     pushing_up = (excess_head > 0.0) & has_cell
     if np.any(pushing_up):
         manhole_area = storage_area[pushing_up]  # A_m approximated by the manhole area
-        q_surcharge[pushing_up] = (
-            SURCHARGE_CD * manhole_area * np.sqrt(2.0 * GRAVITY * excess_head[pushing_up])
-        )
+        orifice = SURCHARGE_CD * manhole_area * np.sqrt(2.0 * GRAVITY * excess_head[pushing_up])
+        # The orifice equation says how fast water COULD leave the manhole, not how much is
+        # there to leave. Unlimited, it invents water: a node a centimetre over the street emits
+        # at that rate for the whole interval whether or not it holds the volume, and on the
+        # Mumbai graph 39,801 nodes doing that once every 5 s turned 861,096 m3 of rain into
+        # 196,951,114 m3 of standing water - a 228x mass gain, and peak depths of 28 m.
+        #
+        # The cap is the volume that would bring the node's head down to the street's water
+        # surface, which is where the exchange stops by definition: below that there is no
+        # excess head left to push with. The inlet side has always had its mirror of this in
+        # q_avail; this is the half that was missing.
+        emitted = excess_head[pushing_up] * manhole_area / dt
+        q_surcharge[pushing_up] = np.minimum(orifice, emitted)
 
     # Street drains into the pipe (reversed surcharge)
     # This happens when the street level is above the pipe head AND the node head is
@@ -209,9 +226,13 @@ def compute_exchange(
         # The drainage flow uses the same orifice formula with the reversed head
         reversed_excess = -excess_head[pulling_down]
         manhole_area = storage_area[pulling_down]
-        # This flow enters the drain, so it's treated as additional inlet
-        additional_inlet = SURCHARGE_CD * manhole_area * np.sqrt(2.0 * GRAVITY * reversed_excess)
-        q_inlet[pulling_down] += additional_inlet
+        # This flow enters the drain, so it's treated as additional inlet. Limited the same way
+        # and for the same reason, but against the STREET: the cell cannot give the manhole more
+        # water than is standing on it, or the surface goes negative and the deficit reappears
+        # downstream as invented water.
+        orifice = SURCHARGE_CD * manhole_area * np.sqrt(2.0 * GRAVITY * reversed_excess)
+        on_street = h_at_node[pulling_down] * cell_area_m2 / dt
+        q_inlet[pulling_down] += np.minimum(orifice, on_street)
 
     # No surcharge at outfalls
     q_surcharge[solver.fixed_head] = 0.0
@@ -221,14 +242,22 @@ def compute_exchange(
     q_inlet_cell = np.zeros(grid_shape, dtype=np.float64)
     q_surcharge_cell = np.zeros(grid_shape, dtype=np.float64)
 
-    # Scatter node fluxes onto cells: m3/s / cell_area = m/s
+    # Scatter node fluxes onto cells: m3/s / cell_area = m/s.
+    #
+    # `np.add.at` rather than `cell[rows, cols] += values`, because several nodes share a cell -
+    # inlets sit every 40 m along a road and the grid is 30 m, so a cell routinely carries two or
+    # three - and fancy-index assignment applies each repeated index only ONCE, silently dropping
+    # every duplicate's contribution. `np.add.at` is the unbuffered form that accumulates them.
+    #
+    # It replaces a Python loop over all 50,110 nodes. That loop ran once per sync, 60 times per
+    # 5-minute step, which is three million interpreted iterations per step and was the single
+    # largest cost in the coupled run at 4.5 s of the 7.9 s each step took.
     rate_factor = 1.0 / cell_area_m2
     active = has_cell & ~solver.fixed_head
-    for i in range(n_nodes):
-        if active[i]:
-            r, c = int(row[i]), int(col[i])
-            q_inlet_cell[r, c] += q_inlet[i] * rate_factor
-            q_surcharge_cell[r, c] += q_surcharge[i] * rate_factor
+    rows_active = row[active]
+    cols_active = col[active]
+    np.add.at(q_inlet_cell, (rows_active, cols_active), q_inlet[active] * rate_factor)
+    np.add.at(q_surcharge_cell, (rows_active, cols_active), q_surcharge[active] * rate_factor)
 
     return ExchangeResult(
         q_inlet_node=q_inlet,
