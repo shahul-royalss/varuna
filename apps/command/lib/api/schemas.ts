@@ -225,6 +225,109 @@ export const RadarPreview = z.looseObject({
 });
 export type RadarPreview = z.infer<typeof RadarPreview>;
 
+/* ---------------------------------------------------------------------- rain nowcast (Sky)
+ * `GET /v1/nowcast/rain` and `/v1/nowcast/rain/series` (CLAUDE.md sections 11.1 and 12): the
+ * quantiles.zarr of one cycle in JSON. Both shapes carry the same provenance block, because the
+ * run stamp above a chart has to say where its numbers came from.
+ */
+
+/** The nowcaster that produced the ensemble; the CLAUDE.md section 17 fallback is named, not hidden. */
+export const NOWCASTERS = ["pysteps_steps", "fallback_steps"] as const;
+export type Nowcaster = (typeof NOWCASTERS)[number];
+
+export const NOWCASTER_LABELS: Record<Nowcaster, string> = {
+  pysteps_steps: "pySTEPS STEPS",
+  fallback_steps: "Fallback nowcaster (own advection, AR(2) and noise)",
+};
+
+/** The `Z = a R^b` relation the cycle came through (CLAUDE.md Appendix A). */
+export const ZRRelation = z.looseObject({
+  a: z.number(),
+  b: z.number(),
+  /** "adaptive" = fitted this cycle from gauge-radar pairs; "marshall_palmer" = the fallback. */
+  source: z.string(),
+  n_pairs: z.number().int().nullish(),
+});
+export type ZRRelation = z.infer<typeof ZRRelation>;
+
+/** One forecast step of a rain series, in mm/h. */
+export const RainStep = z.looseObject({
+  valid_ts: z.string(),
+  lead_min: z.number(),
+  p10_mm_h: z.number(),
+  p50_mm_h: z.number(),
+  p90_mm_h: z.number(),
+});
+export type RainStep = z.infer<typeof RainStep>;
+
+/** A step at one Sky pixel, with the two exceedance probabilities the pixel carries. */
+export const RainPointStep = RainStep.extend({
+  p_gt_20: z.number(),
+  p_gt_40: z.number(),
+});
+export type RainPointStep = z.infer<typeof RainPointStep>;
+
+/** One ensemble member's area-of-interest-mean hyetograph, one value per step. */
+export const RainMemberSeries = z.looseObject({
+  member: z.number().int(),
+  mm_h: z.array(z.number()).default([]),
+});
+export type RainMemberSeries = z.infer<typeof RainMemberSeries>;
+
+/**
+ * Provenance on every rain response. `run_id` is null in exactly one case: the cycle was computed
+ * on demand and never published as a run, and `mode` then reads "live".
+ */
+const rainProduct = {
+  run_id: z.string().nullable(),
+  valid_ts: z.string(),
+  mode: z.string(),
+  bundle: z.string().nullish(),
+  city: z.string(),
+  n_members: z.number().int(),
+  n_steps: z.number().int(),
+  step_min: z.number(),
+  nowcaster: z.string().nullish(),
+  seed: z.number().int().nullish(),
+  zr: ZRRelation.nullish(),
+  stage_ms: z.record(z.string(), z.number()).default({}),
+  /** The run's honesty labels, printed verbatim (CLAUDE.md rule 6). */
+  notes: z.array(z.string()).default([]),
+  peak_p50_mm_h: z.number().nullish(),
+  peak_ts: z.string().nullish(),
+};
+
+/** `GET /v1/nowcast/rain`: every member's AOI-mean hyetograph and the band across them. */
+export const RainNowcast = z.looseObject({
+  ...rainProduct,
+  steps: z.array(RainStep).default([]),
+  members: z.array(RainMemberSeries).default([]),
+});
+export type RainNowcast = z.infer<typeof RainNowcast>;
+
+/** Where a fan chart was sampled, and the 500 m Sky pixel the point fell in. */
+export const RainPoint = z.looseObject({
+  lon: z.number(),
+  lat: z.number(),
+  name: z.string(),
+  hotspot_id: z.string().nullish(),
+  /** Where the register's coordinate was verified against; the honesty label for the point. */
+  source_url: z.string().nullish(),
+  row: z.number().int(),
+  col: z.number().int(),
+  res_m: z.number(),
+});
+export type RainPoint = z.infer<typeof RainPoint>;
+
+/** `GET /v1/nowcast/rain/series`: the fan chart at one junction. */
+export const RainPointSeries = z.looseObject({
+  ...rainProduct,
+  point: RainPoint,
+  steps: z.array(RainPointStep).default([]),
+  exceedance_mm_h: z.array(z.number()).default([]),
+});
+export type RainPointSeries = z.infer<typeof RainPointSeries>;
+
 export const CycleStagePayload = z.looseObject({
   stage: z.string(),
   ms: z.number().nullish(),

@@ -211,6 +211,14 @@ class ZRParams:
     n_pairs: int
     clamped: bool = False
     r2: float | None = None
+    reason: str | None = None
+    """Why the fit was abandoned, when ``source`` is ``marshall_palmer``; ``None`` for a real fit.
+
+    The console prints this. It exists because the pair count alone does not explain the
+    fallback: :mod:`varuna_sky.zr` abandons the fit for three different reasons, and only one of
+    them is "too few pairs". A cycle with twenty gauges that all read within a factor of two of
+    each other falls back with twenty pairs in hand, and a caption inferring "fewer than eight"
+    from ``source`` would be stating something false on screen (rule 6)."""
 
 
 @dataclass(frozen=True, slots=True)

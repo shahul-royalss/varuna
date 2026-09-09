@@ -38,7 +38,7 @@ from varuna_sky.products import AoiGrid, load_aoi_grid, sky_products
 from varuna_sky.qc import run_qc
 from varuna_sky.steps import nowcast
 from varuna_sky.types import SkyInputs, SkyResult
-from varuna_sky.zr import MIN_ZR_PAIRS, run_zr
+from varuna_sky.zr import MP_A, MP_B, run_zr
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from varuna_sky.types import MergeResult, QCResult, RainEnsemble, ZRParams
@@ -77,10 +77,13 @@ def sky_notes(
     notes = [NWP_NOTE]
 
     if zr.source == "marshall_palmer":
-        notes.append(
-            f"Z-R is Marshall-Palmer (a=200, b=1.6): {zr.n_pairs} usable gauge-radar pairs, "
-            f"fewer than the {MIN_ZR_PAIRS} an adaptive fit needs."
-        )
+        # The reason comes from the fit, never from the pair count. varuna_sky.zr abandons the
+        # fit for three different reasons and only one of them is "too few pairs": a cycle whose
+        # gauges all read within a factor of two falls back holding twenty pairs. Inferring
+        # "fewer than eight" from `source` alone printed a false sentence on the console until
+        # ZRParams.reason existed (rule 6).
+        why = zr.reason or f"{zr.n_pairs} usable gauge-radar pairs did not support a fit"
+        notes.append(f"Z-R is Marshall-Palmer (a={MP_A:.0f}, b={MP_B}): {why}.")
     else:
         fitted = f"Z-R fitted this cycle: a={zr.a:.0f}, b={zr.b:.2f} from {zr.n_pairs} pairs"
         notes.append(f"{fitted}, clamped to the allowed range." if zr.clamped else f"{fitted}.")

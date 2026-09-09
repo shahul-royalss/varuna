@@ -214,6 +214,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/nowcast/rain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rain over the city: every member's hyetograph and the spread band
+         * @description The time bar's spread band (CLAUDE.md 7.2): the ensemble's own disagreement about how
+         *     much rain the city is about to get, one line per member over the three-hour horizon.
+         */
+        get: operations["nowcast_rain_v1_nowcast_rain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/nowcast/rain/series": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rain fan chart at one junction: quantiles and exceedance per step
+         * @description The fan chart at Hindmata (task P3.8), or at any point inside the radar domain.
+         */
+        get: operations["nowcast_rain_series_v1_nowcast_rain_series_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/nowcast/raster": {
         parameters: {
             query?: never;
@@ -1091,6 +1132,36 @@ export interface components {
              * @default 15000
              */
             total_budget_ms: number;
+        };
+        /**
+         * DesignStormBlocks
+         * @description A design storm's Chicago hyetograph, as the ``/replay`` block sparkline draws it.
+         *
+         *     Design-storm bundles carry no convective cells, so the cell table has nothing to show and
+         *     this takes its place. The peak sits at :attr:`peak_position_r` of the duration - a Chicago
+         *     hyetograph is never a uniform block of rain.
+         */
+        DesignStormBlocks: {
+            /**
+             * Blocks Mm H
+             * @description Block intensities in mm/h, one per step_min block.
+             */
+            blocks_mm_h: number[];
+            /**
+             * Peak Position R
+             * @description Where the peak block sits, as a fraction of the duration.
+             */
+            peak_position_r: number;
+            /**
+             * Step Min
+             * @description Block length in minutes.
+             */
+            step_min: number;
+            /**
+             * Total Depth Mm
+             * @description Depth over the whole storm, in mm.
+             */
+            total_depth_mm: number;
         };
         /**
          * DrainEdgeHealth
@@ -2261,6 +2332,13 @@ export interface components {
             aoi_px: components["schemas"]["RadarAoiPixels"];
             /** Bundle Id */
             bundle_id: string;
+            /**
+             * Cells
+             * @description The convective cells the field was generated from, in table units. Empty on a design storm, which is a hyetograph rather than a set of cells.
+             */
+            cells?: components["schemas"]["StormCellRow"][];
+            /** @description The Chicago hyetograph, on design-storm bundles only; None otherwise. */
+            design_storm?: components["schemas"]["DesignStormBlocks"] | null;
             /** Frames */
             frames?: components["schemas"]["RadarFrameRef"][];
             /**
@@ -2300,6 +2378,299 @@ export interface components {
             width: number;
         };
         /**
+         * RainMemberSeries
+         * @description One ensemble member's AOI-mean hyetograph, one value per forecast step.
+         */
+        RainMemberSeries: {
+            /**
+             * Member
+             * @description Member index in the ensemble, 0-based.
+             */
+            member: number;
+            /**
+             * Mm H
+             * @description AOI-mean rain rate per step, in mm/h.
+             */
+            mm_h: number[];
+        };
+        /**
+         * RainNowcast
+         * @description The cycle's rain averaged over the city: the time bar's spread band (CLAUDE.md 7.2).
+         *
+         *     ``members`` is the AOI-mean hyetograph of each member - the ensemble's own disagreement,
+         *     not a smoothed envelope - and ``steps`` is the quantile band across those members, taken
+         *     with the same quantiles and interpolation as the per-pixel products so the band and the map
+         *     cannot mean different things. Note what the band is *of*: the spread of the AOI mean, which
+         *     is narrower than the spread over any one street.
+         */
+        RainNowcast: {
+            /**
+             * Bundle
+             * @description Replay bundle id, null when live.
+             */
+            bundle?: string | null;
+            /**
+             * City
+             * @description City slug the AOI belongs to, e.g. mumbai.
+             */
+            city: string;
+            /**
+             * Members
+             * @description One hyetograph per member, in member order.
+             */
+            members?: components["schemas"]["RainMemberSeries"][];
+            /**
+             * Mode
+             * @description baked = read from a run under data/runs; live = computed for this request.
+             * @enum {string}
+             */
+            mode: "baked" | "live";
+            /**
+             * N Members
+             * @description Ensemble members (20 in the prototype).
+             */
+            n_members: number;
+            /**
+             * N Steps
+             * @description Forecast steps (36 = 3 h at 5 min).
+             */
+            n_steps: number;
+            /**
+             * Notes
+             * @description The run's honesty labels, verbatim: which Z-R relation ran, what the gauge merge did, whether the NWP blend is off (CLAUDE.md 0.6). The console prints them as they arrive.
+             */
+            notes?: string[];
+            /**
+             * Nowcaster
+             * @description Nowcaster that produced the ensemble. Null when the run's rain/cube.zarr is not on disk to say, which is the only artifact that records it.
+             */
+            nowcaster?: ("pysteps_steps" | "fallback_steps") | null;
+            /**
+             * Peak P50 Mm H
+             * @description Highest median rain rate over the horizon; 0 when the series is empty.
+             */
+            readonly peak_p50_mm_h: number;
+            /**
+             * Peak Ts
+             * @description When :attr:`peak_p50_mm_h` occurs, or null when the series is empty.
+             */
+            readonly peak_ts: string | null;
+            /**
+             * Run Id
+             * @description Run the products were read from, or null when they were computed on demand and not published as a run.
+             */
+            run_id: string | null;
+            /**
+             * Seed
+             * @description Seed the ensemble was drawn with.
+             */
+            seed?: number | null;
+            /**
+             * Stage Ms
+             * @description Wall-clock per stage in ms, for the cycle budget bar (CLAUDE.md 7.2).
+             */
+            stage_ms?: {
+                [key: string]: number;
+            };
+            /**
+             * Step Min
+             * @description Minutes between forecast steps.
+             */
+            step_min: number;
+            /**
+             * Steps
+             * @description One entry per forecast step, in time order.
+             */
+            steps?: components["schemas"]["RainStep"][];
+            /**
+             * Valid Ts
+             * Format: date-time
+             * @description Cycle time of the run (IST): the instant the forecast was made. Each step's own valid time is on the step.
+             */
+            valid_ts: string;
+            /** @description The Z-R relation of this cycle. */
+            zr?: components["schemas"]["ZRRelation"] | null;
+        };
+        /**
+         * RainPoint
+         * @description The point a fan chart was sampled at, and the Sky pixel it fell in.
+         */
+        RainPoint: {
+            /**
+             * Col
+             * @description Column of the Sky pixel the point falls in.
+             */
+            col: number;
+            /**
+             * Hotspot Id
+             * @description Register id when the point came from the city's hotspots.
+             */
+            hotspot_id?: string | null;
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+            /**
+             * Name
+             * @description What the point is called, e.g. Hindmata junction.
+             */
+            name: string;
+            /**
+             * Res M
+             * @description Sky pixel size in metres: a 500 m pixel, not a street.
+             */
+            res_m: number;
+            /**
+             * Row
+             * @description Row of the Sky pixel the point falls in.
+             */
+            row: number;
+            /**
+             * Source Url
+             * @description Where the register's coordinate was verified against.
+             */
+            source_url?: string | null;
+        };
+        /**
+         * RainPointSeries
+         * @description The rain fan chart at one point (CLAUDE.md 7.2, task P3.8).
+         *
+         *     Sampled from the 500 m Sky grid, which is the grid the quantiles are published on: the
+         *     30 m AOI resample is the Twin's forcing and is never written to disk (CLAUDE.md 10.3), so a
+         *     point series describes the pixel the junction sits in, not the junction's own square metre.
+         */
+        RainPointSeries: {
+            /**
+             * Bundle
+             * @description Replay bundle id, null when live.
+             */
+            bundle?: string | null;
+            /**
+             * City
+             * @description City slug the AOI belongs to, e.g. mumbai.
+             */
+            city: string;
+            /**
+             * Exceedance Mm H
+             * @description The two thresholds p_gt_20 and p_gt_40 report, in mm/h.
+             */
+            exceedance_mm_h: number[];
+            /**
+             * Mode
+             * @description baked = read from a run under data/runs; live = computed for this request.
+             * @enum {string}
+             */
+            mode: "baked" | "live";
+            /**
+             * N Members
+             * @description Ensemble members (20 in the prototype).
+             */
+            n_members: number;
+            /**
+             * N Steps
+             * @description Forecast steps (36 = 3 h at 5 min).
+             */
+            n_steps: number;
+            /**
+             * Notes
+             * @description The run's honesty labels, verbatim: which Z-R relation ran, what the gauge merge did, whether the NWP blend is off (CLAUDE.md 0.6). The console prints them as they arrive.
+             */
+            notes?: string[];
+            /**
+             * Nowcaster
+             * @description Nowcaster that produced the ensemble. Null when the run's rain/cube.zarr is not on disk to say, which is the only artifact that records it.
+             */
+            nowcaster?: ("pysteps_steps" | "fallback_steps") | null;
+            /**
+             * Peak P50 Mm H
+             * @description Highest median rain rate over the horizon; 0 when the series is empty.
+             */
+            readonly peak_p50_mm_h: number;
+            /**
+             * Peak Ts
+             * @description When :attr:`peak_p50_mm_h` occurs, or null when the series is empty.
+             */
+            readonly peak_ts: string | null;
+            point: components["schemas"]["RainPoint"];
+            /**
+             * Run Id
+             * @description Run the products were read from, or null when they were computed on demand and not published as a run.
+             */
+            run_id: string | null;
+            /**
+             * Seed
+             * @description Seed the ensemble was drawn with.
+             */
+            seed?: number | null;
+            /**
+             * Stage Ms
+             * @description Wall-clock per stage in ms, for the cycle budget bar (CLAUDE.md 7.2).
+             */
+            stage_ms?: {
+                [key: string]: number;
+            };
+            /**
+             * Step Min
+             * @description Minutes between forecast steps.
+             */
+            step_min: number;
+            /**
+             * Steps
+             * @description One entry per forecast step, in time order.
+             */
+            steps?: components["schemas"]["RainPointStep"][];
+            /**
+             * Valid Ts
+             * Format: date-time
+             * @description Cycle time of the run (IST): the instant the forecast was made. Each step's own valid time is on the step.
+             */
+            valid_ts: string;
+            /** @description The Z-R relation of this cycle. */
+            zr?: components["schemas"]["ZRRelation"] | null;
+        };
+        /**
+         * RainPointStep
+         * @description One forecast step at a point, with the two exceedance probabilities the pixel carries.
+         */
+        RainPointStep: {
+            /**
+             * Lead Min
+             * @description Minutes from the cycle time; 5 for the first step.
+             */
+            lead_min: number;
+            /**
+             * P10 Mm H
+             * @description 10th percentile across the ensemble members.
+             */
+            p10_mm_h: number;
+            /**
+             * P50 Mm H
+             * @description Median across the ensemble members.
+             */
+            p50_mm_h: number;
+            /**
+             * P90 Mm H
+             * @description 90th percentile across the ensemble members.
+             */
+            p90_mm_h: number;
+            /**
+             * P Gt 20
+             * @description P(R > 20 mm/h) across the members at this pixel.
+             */
+            p_gt_20: number;
+            /**
+             * P Gt 40
+             * @description P(R > 40 mm/h) across the members at this pixel.
+             */
+            p_gt_40: number;
+            /**
+             * Valid Ts
+             * Format: date-time
+             * @description When this step is valid (IST).
+             */
+            valid_ts: string;
+        };
+        /**
          * RainRampBand
          * @description One band of the shared rain ramp, so the legend is drawn from the tokens the PNG used.
          */
@@ -2319,6 +2690,38 @@ export interface components {
              * @description Lower edge of the band, inclusive, in mm/h.
              */
             min_mm_h: number;
+        };
+        /**
+         * RainStep
+         * @description One forecast step of a rain series: the ensemble spread in mm/h.
+         */
+        RainStep: {
+            /**
+             * Lead Min
+             * @description Minutes from the cycle time; 5 for the first step.
+             */
+            lead_min: number;
+            /**
+             * P10 Mm H
+             * @description 10th percentile across the ensemble members.
+             */
+            p10_mm_h: number;
+            /**
+             * P50 Mm H
+             * @description Median across the ensemble members.
+             */
+            p50_mm_h: number;
+            /**
+             * P90 Mm H
+             * @description 90th percentile across the ensemble members.
+             */
+            p90_mm_h: number;
+            /**
+             * Valid Ts
+             * Format: date-time
+             * @description When this step is valid (IST).
+             */
+            valid_ts: string;
         };
         /**
          * ReachabilityResponse
@@ -3067,6 +3470,55 @@ export interface components {
              */
             threshold_mm_h: 20 | 40;
         };
+        /**
+         * StormCellRow
+         * @description One row of the ``/replay`` storm-designer cell table (CLAUDE.md 7.8).
+         *
+         *     The manifest stores a cell the way the generator needs it - minutes from ``t0``, metres in
+         *     the design CRS, a velocity split into components, and the peak *before* the calibration
+         *     multiplier. This is the same cell in the units the table prints, so the console converts
+         *     nothing and cannot drift from the field that was actually rendered (rule 6).
+         */
+        StormCellRow: {
+            /**
+             * Birth
+             * Format: date-time
+             * @description t0 + birth_min, the instant the cell is born (IST).
+             */
+            birth: string;
+            /** Id */
+            id: string;
+            /**
+             * Lifetime Min
+             * @description Minutes from birth to death.
+             */
+            lifetime_min: number;
+            /**
+             * Peak Mm H
+             * @description Peak rain rate at the cell centre in mm/h, after intensity_scale - the value the rendered field carries, not the unscaled draw the manifest stores.
+             */
+            peak_mm_h: number;
+            /**
+             * Sigma Km
+             * @description Gaussian radius in kilometres.
+             */
+            sigma_km: number;
+            /**
+             * Start Lat
+             * @description Cell centre at birth, WGS84 latitude.
+             */
+            start_lat: number;
+            /**
+             * Start Lon
+             * @description Cell centre at birth, WGS84 longitude.
+             */
+            start_lon: number;
+            /**
+             * Velocity Ms
+             * @description Advection speed in m/s: hypot(u_ms, v_ms) of the manifest's cell.
+             */
+            velocity_ms: number;
+        };
         /** ValidationError */
         ValidationError: {
             /** Context */
@@ -3284,6 +3736,33 @@ export interface components {
              * @description Handle for the physics check and the diff raster.
              */
             whatif_id: string;
+        };
+        /**
+         * ZRRelation
+         * @description The ``Z = a R^b`` relation the analysis came through (CLAUDE.md Appendix A).
+         */
+        ZRRelation: {
+            /**
+             * A
+             * @description Prefactor; 200 for Marshall-Palmer, 100-400 when fitted.
+             */
+            a: number;
+            /**
+             * B
+             * @description Exponent; 1.6 for Marshall-Palmer, 1.1-1.8 when fitted.
+             */
+            b: number;
+            /**
+             * N Pairs
+             * @description Co-located gauge-radar pairs the fit had. Null on a baked run: rain/cube.zarr records the relation but not the pair count it was fitted from.
+             */
+            n_pairs?: number | null;
+            /**
+             * Source
+             * @description adaptive = fitted this cycle from gauge-radar pairs.
+             * @enum {string}
+             */
+            source: "adaptive" | "marshall_palmer";
         };
     };
     responses: never;
@@ -3750,6 +4229,106 @@ export interface operations {
             };
             /** @description Engine not built yet (phase named) */
             501: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    nowcast_rain_v1_nowcast_rain_get: {
+        parameters: {
+            query?: {
+                /** @description Run id; default = the newest run under data/runs that carries rain. */
+                run_id?: string | null;
+                /** @description Compute this cycle from the replay bundle instead of reading a baked run. The result is not published as a run, and the response reads mode=live. */
+                compute?: boolean;
+                /** @description Bundle to compute from; default = the open replay, else VARUNA_BUNDLE. */
+                bundle?: string | null;
+                /** @description Cycle time to compute (ISO 8601 with offset, e.g. 2019-07-02T06:40:00+05:30). Floored onto the bundle's five-minute cycle ladder; default = the replay clock. */
+                t?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description AOI-mean rain per member in mm/h, with the p10/p50/p90 band */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RainNowcast"];
+                };
+            };
+            /** @description No run, bundle or city to answer from */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request names a point or cycle that cannot be served */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+        };
+    };
+    nowcast_rain_series_v1_nowcast_rain_series_get: {
+        parameters: {
+            query?: {
+                /** @description Register id, slug or part of a name from the city's hotspots, e.g. Hindmata. The coordinate comes from the register, with the source it was verified against. */
+                hotspot?: string | null;
+                /** @description WGS84 longitude. */
+                lon?: number | null;
+                /** @description WGS84 latitude. */
+                lat?: number | null;
+                /** @description Run id; default = the newest run under data/runs that carries rain. */
+                run_id?: string | null;
+                /** @description Compute this cycle from the replay bundle instead of reading a baked run. The result is not published as a run, and the response reads mode=live. */
+                compute?: boolean;
+                /** @description Bundle to compute from; default = the open replay, else VARUNA_BUNDLE. */
+                bundle?: string | null;
+                /** @description Cycle time to compute (ISO 8601 with offset, e.g. 2019-07-02T06:40:00+05:30). Floored onto the bundle's five-minute cycle ladder; default = the replay clock. */
+                t?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description p10/p50/p90 in mm/h and P(R > 20/40 mm/h) at the point's Sky pixel */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RainPointSeries"];
+                };
+            };
+            /** @description No run, bundle or city to answer from */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description The request names a point or cycle that cannot be served */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

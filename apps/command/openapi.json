@@ -896,6 +896,48 @@
         "title": "CycleStatus",
         "type": "object"
       },
+      "DesignStormBlocks": {
+        "additionalProperties": false,
+        "description": "A design storm's Chicago hyetograph, as the ``/replay`` block sparkline draws it.\n\nDesign-storm bundles carry no convective cells, so the cell table has nothing to show and\nthis takes its place. The peak sits at :attr:`peak_position_r` of the duration - a Chicago\nhyetograph is never a uniform block of rain.",
+        "properties": {
+          "blocks_mm_h": {
+            "description": "Block intensities in mm/h, one per step_min block.",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "title": "Blocks Mm H",
+            "type": "array"
+          },
+          "peak_position_r": {
+            "description": "Where the peak block sits, as a fraction of the duration.",
+            "exclusiveMaximum": 1.0,
+            "exclusiveMinimum": 0.0,
+            "title": "Peak Position R",
+            "type": "number"
+          },
+          "step_min": {
+            "description": "Block length in minutes.",
+            "exclusiveMinimum": 0.0,
+            "title": "Step Min",
+            "type": "integer"
+          },
+          "total_depth_mm": {
+            "description": "Depth over the whole storm, in mm.",
+            "minimum": 0.0,
+            "title": "Total Depth Mm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "step_min",
+          "blocks_mm_h",
+          "total_depth_mm",
+          "peak_position_r"
+        ],
+        "title": "DesignStormBlocks",
+        "type": "object"
+      },
       "DrainEdgeHealth": {
         "additionalProperties": false,
         "description": "Posterior blockage state of one pipe (feature properties of ``drain_health.geojson``).",
@@ -3405,6 +3447,25 @@
             "title": "Bundle Id",
             "type": "string"
           },
+          "cells": {
+            "description": "The convective cells the field was generated from, in table units. Empty on a design storm, which is a hyetograph rather than a set of cells.",
+            "items": {
+              "$ref": "#/components/schemas/StormCellRow"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "design_storm": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DesignStormBlocks"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Chicago hyetograph, on design-storm bundles only; None otherwise."
+          },
           "frames": {
             "items": {
               "$ref": "#/components/schemas/RadarFrameRef"
@@ -3477,6 +3538,520 @@
         "title": "RadarPreviewIndex",
         "type": "object"
       },
+      "RainMemberSeries": {
+        "additionalProperties": false,
+        "description": "One ensemble member's AOI-mean hyetograph, one value per forecast step.",
+        "properties": {
+          "member": {
+            "description": "Member index in the ensemble, 0-based.",
+            "minimum": 0.0,
+            "title": "Member",
+            "type": "integer"
+          },
+          "mm_h": {
+            "description": "AOI-mean rain rate per step, in mm/h.",
+            "items": {
+              "type": "number"
+            },
+            "minItems": 1,
+            "title": "Mm H",
+            "type": "array"
+          }
+        },
+        "required": [
+          "member",
+          "mm_h"
+        ],
+        "title": "RainMemberSeries",
+        "type": "object"
+      },
+      "RainNowcast": {
+        "additionalProperties": false,
+        "description": "The cycle's rain averaged over the city: the time bar's spread band (CLAUDE.md 7.2).\n\n``members`` is the AOI-mean hyetograph of each member - the ensemble's own disagreement,\nnot a smoothed envelope - and ``steps`` is the quantile band across those members, taken\nwith the same quantiles and interpolation as the per-pixel products so the band and the map\ncannot mean different things. Note what the band is *of*: the spread of the AOI mean, which\nis narrower than the spread over any one street.",
+        "properties": {
+          "bundle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Replay bundle id, null when live.",
+            "title": "Bundle"
+          },
+          "city": {
+            "description": "City slug the AOI belongs to, e.g. mumbai.",
+            "title": "City",
+            "type": "string"
+          },
+          "members": {
+            "description": "One hyetograph per member, in member order.",
+            "items": {
+              "$ref": "#/components/schemas/RainMemberSeries"
+            },
+            "title": "Members",
+            "type": "array"
+          },
+          "mode": {
+            "description": "baked = read from a run under data/runs; live = computed for this request.",
+            "enum": [
+              "baked",
+              "live"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "n_members": {
+            "description": "Ensemble members (20 in the prototype).",
+            "minimum": 1.0,
+            "title": "N Members",
+            "type": "integer"
+          },
+          "n_steps": {
+            "description": "Forecast steps (36 = 3 h at 5 min).",
+            "minimum": 1.0,
+            "title": "N Steps",
+            "type": "integer"
+          },
+          "notes": {
+            "description": "The run's honesty labels, verbatim: which Z-R relation ran, what the gauge merge did, whether the NWP blend is off (CLAUDE.md 0.6). The console prints them as they arrive.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "nowcaster": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pysteps_steps",
+                  "fallback_steps"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nowcaster that produced the ensemble. Null when the run's rain/cube.zarr is not on disk to say, which is the only artifact that records it.",
+            "title": "Nowcaster"
+          },
+          "peak_p50_mm_h": {
+            "description": "Highest median rain rate over the horizon; 0 when the series is empty.",
+            "readOnly": true,
+            "title": "Peak P50 Mm H",
+            "type": "number"
+          },
+          "peak_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When :attr:`peak_p50_mm_h` occurs, or null when the series is empty.",
+            "readOnly": true,
+            "title": "Peak Ts"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Run the products were read from, or null when they were computed on demand and not published as a run.",
+            "title": "Run Id"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seed the ensemble was drawn with.",
+            "title": "Seed"
+          },
+          "stage_ms": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Wall-clock per stage in ms, for the cycle budget bar (CLAUDE.md 7.2).",
+            "title": "Stage Ms",
+            "type": "object"
+          },
+          "step_min": {
+            "description": "Minutes between forecast steps.",
+            "exclusiveMinimum": 0.0,
+            "title": "Step Min",
+            "type": "number"
+          },
+          "steps": {
+            "description": "One entry per forecast step, in time order.",
+            "items": {
+              "$ref": "#/components/schemas/RainStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "valid_ts": {
+            "description": "Cycle time of the run (IST): the instant the forecast was made. Each step's own valid time is on the step.",
+            "format": "date-time",
+            "title": "Valid Ts",
+            "type": "string"
+          },
+          "zr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZRRelation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Z-R relation of this cycle."
+          }
+        },
+        "required": [
+          "run_id",
+          "valid_ts",
+          "mode",
+          "city",
+          "n_members",
+          "n_steps",
+          "step_min",
+          "peak_p50_mm_h",
+          "peak_ts"
+        ],
+        "title": "RainNowcast",
+        "type": "object"
+      },
+      "RainPoint": {
+        "additionalProperties": false,
+        "description": "The point a fan chart was sampled at, and the Sky pixel it fell in.",
+        "properties": {
+          "col": {
+            "description": "Column of the Sky pixel the point falls in.",
+            "minimum": 0.0,
+            "title": "Col",
+            "type": "integer"
+          },
+          "hotspot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Register id when the point came from the city's hotspots.",
+            "title": "Hotspot Id"
+          },
+          "lat": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat",
+            "type": "number"
+          },
+          "lon": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon",
+            "type": "number"
+          },
+          "name": {
+            "description": "What the point is called, e.g. Hindmata junction.",
+            "title": "Name",
+            "type": "string"
+          },
+          "res_m": {
+            "description": "Sky pixel size in metres: a 500 m pixel, not a street.",
+            "exclusiveMinimum": 0.0,
+            "title": "Res M",
+            "type": "number"
+          },
+          "row": {
+            "description": "Row of the Sky pixel the point falls in.",
+            "minimum": 0.0,
+            "title": "Row",
+            "type": "integer"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "minLength": 8,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the register's coordinate was verified against.",
+            "title": "Source Url"
+          }
+        },
+        "required": [
+          "lon",
+          "lat",
+          "name",
+          "row",
+          "col",
+          "res_m"
+        ],
+        "title": "RainPoint",
+        "type": "object"
+      },
+      "RainPointSeries": {
+        "additionalProperties": false,
+        "description": "The rain fan chart at one point (CLAUDE.md 7.2, task P3.8).\n\nSampled from the 500 m Sky grid, which is the grid the quantiles are published on: the\n30 m AOI resample is the Twin's forcing and is never written to disk (CLAUDE.md 10.3), so a\npoint series describes the pixel the junction sits in, not the junction's own square metre.",
+        "properties": {
+          "bundle": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Replay bundle id, null when live.",
+            "title": "Bundle"
+          },
+          "city": {
+            "description": "City slug the AOI belongs to, e.g. mumbai.",
+            "title": "City",
+            "type": "string"
+          },
+          "exceedance_mm_h": {
+            "description": "The two thresholds p_gt_20 and p_gt_40 report, in mm/h.",
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "title": "Exceedance Mm H",
+            "type": "array"
+          },
+          "mode": {
+            "description": "baked = read from a run under data/runs; live = computed for this request.",
+            "enum": [
+              "baked",
+              "live"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "n_members": {
+            "description": "Ensemble members (20 in the prototype).",
+            "minimum": 1.0,
+            "title": "N Members",
+            "type": "integer"
+          },
+          "n_steps": {
+            "description": "Forecast steps (36 = 3 h at 5 min).",
+            "minimum": 1.0,
+            "title": "N Steps",
+            "type": "integer"
+          },
+          "notes": {
+            "description": "The run's honesty labels, verbatim: which Z-R relation ran, what the gauge merge did, whether the NWP blend is off (CLAUDE.md 0.6). The console prints them as they arrive.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "nowcaster": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pysteps_steps",
+                  "fallback_steps"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Nowcaster that produced the ensemble. Null when the run's rain/cube.zarr is not on disk to say, which is the only artifact that records it.",
+            "title": "Nowcaster"
+          },
+          "peak_p50_mm_h": {
+            "description": "Highest median rain rate over the horizon; 0 when the series is empty.",
+            "readOnly": true,
+            "title": "Peak P50 Mm H",
+            "type": "number"
+          },
+          "peak_ts": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When :attr:`peak_p50_mm_h` occurs, or null when the series is empty.",
+            "readOnly": true,
+            "title": "Peak Ts"
+          },
+          "point": {
+            "$ref": "#/components/schemas/RainPoint"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Run the products were read from, or null when they were computed on demand and not published as a run.",
+            "title": "Run Id"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seed the ensemble was drawn with.",
+            "title": "Seed"
+          },
+          "stage_ms": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "description": "Wall-clock per stage in ms, for the cycle budget bar (CLAUDE.md 7.2).",
+            "title": "Stage Ms",
+            "type": "object"
+          },
+          "step_min": {
+            "description": "Minutes between forecast steps.",
+            "exclusiveMinimum": 0.0,
+            "title": "Step Min",
+            "type": "number"
+          },
+          "steps": {
+            "description": "One entry per forecast step, in time order.",
+            "items": {
+              "$ref": "#/components/schemas/RainPointStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "valid_ts": {
+            "description": "Cycle time of the run (IST): the instant the forecast was made. Each step's own valid time is on the step.",
+            "format": "date-time",
+            "title": "Valid Ts",
+            "type": "string"
+          },
+          "zr": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ZRRelation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Z-R relation of this cycle."
+          }
+        },
+        "required": [
+          "run_id",
+          "valid_ts",
+          "mode",
+          "city",
+          "n_members",
+          "n_steps",
+          "step_min",
+          "point",
+          "exceedance_mm_h",
+          "peak_p50_mm_h",
+          "peak_ts"
+        ],
+        "title": "RainPointSeries",
+        "type": "object"
+      },
+      "RainPointStep": {
+        "additionalProperties": false,
+        "description": "One forecast step at a point, with the two exceedance probabilities the pixel carries.",
+        "properties": {
+          "lead_min": {
+            "description": "Minutes from the cycle time; 5 for the first step.",
+            "title": "Lead Min",
+            "type": "integer"
+          },
+          "p10_mm_h": {
+            "description": "10th percentile across the ensemble members.",
+            "minimum": 0.0,
+            "title": "P10 Mm H",
+            "type": "number"
+          },
+          "p50_mm_h": {
+            "description": "Median across the ensemble members.",
+            "minimum": 0.0,
+            "title": "P50 Mm H",
+            "type": "number"
+          },
+          "p90_mm_h": {
+            "description": "90th percentile across the ensemble members.",
+            "minimum": 0.0,
+            "title": "P90 Mm H",
+            "type": "number"
+          },
+          "p_gt_20": {
+            "description": "P(R > 20 mm/h) across the members at this pixel.",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "P Gt 20",
+            "type": "number"
+          },
+          "p_gt_40": {
+            "description": "P(R > 40 mm/h) across the members at this pixel.",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "P Gt 40",
+            "type": "number"
+          },
+          "valid_ts": {
+            "description": "When this step is valid (IST).",
+            "format": "date-time",
+            "title": "Valid Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "valid_ts",
+          "lead_min",
+          "p10_mm_h",
+          "p50_mm_h",
+          "p90_mm_h",
+          "p_gt_20",
+          "p_gt_40"
+        ],
+        "title": "RainPointStep",
+        "type": "object"
+      },
       "RainRampBand": {
         "additionalProperties": false,
         "description": "One band of the shared rain ramp, so the legend is drawn from the tokens the PNG used.",
@@ -3504,6 +4079,50 @@
           "label"
         ],
         "title": "RainRampBand",
+        "type": "object"
+      },
+      "RainStep": {
+        "additionalProperties": false,
+        "description": "One forecast step of a rain series: the ensemble spread in mm/h.",
+        "properties": {
+          "lead_min": {
+            "description": "Minutes from the cycle time; 5 for the first step.",
+            "title": "Lead Min",
+            "type": "integer"
+          },
+          "p10_mm_h": {
+            "description": "10th percentile across the ensemble members.",
+            "minimum": 0.0,
+            "title": "P10 Mm H",
+            "type": "number"
+          },
+          "p50_mm_h": {
+            "description": "Median across the ensemble members.",
+            "minimum": 0.0,
+            "title": "P50 Mm H",
+            "type": "number"
+          },
+          "p90_mm_h": {
+            "description": "90th percentile across the ensemble members.",
+            "minimum": 0.0,
+            "title": "P90 Mm H",
+            "type": "number"
+          },
+          "valid_ts": {
+            "description": "When this step is valid (IST).",
+            "format": "date-time",
+            "title": "Valid Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "valid_ts",
+          "lead_min",
+          "p10_mm_h",
+          "p50_mm_h",
+          "p90_mm_h"
+        ],
+        "title": "RainStep",
         "type": "object"
       },
       "ReachabilityResponse": {
@@ -5031,6 +5650,72 @@
         "title": "SkillByLead",
         "type": "object"
       },
+      "StormCellRow": {
+        "additionalProperties": false,
+        "description": "One row of the ``/replay`` storm-designer cell table (CLAUDE.md 7.8).\n\nThe manifest stores a cell the way the generator needs it - minutes from ``t0``, metres in\nthe design CRS, a velocity split into components, and the peak *before* the calibration\nmultiplier. This is the same cell in the units the table prints, so the console converts\nnothing and cannot drift from the field that was actually rendered (rule 6).",
+        "properties": {
+          "birth": {
+            "description": "t0 + birth_min, the instant the cell is born (IST).",
+            "format": "date-time",
+            "title": "Birth",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lifetime_min": {
+            "description": "Minutes from birth to death.",
+            "exclusiveMinimum": 0.0,
+            "title": "Lifetime Min",
+            "type": "number"
+          },
+          "peak_mm_h": {
+            "description": "Peak rain rate at the cell centre in mm/h, after intensity_scale - the value the rendered field carries, not the unscaled draw the manifest stores.",
+            "minimum": 0.0,
+            "title": "Peak Mm H",
+            "type": "number"
+          },
+          "sigma_km": {
+            "description": "Gaussian radius in kilometres.",
+            "exclusiveMinimum": 0.0,
+            "title": "Sigma Km",
+            "type": "number"
+          },
+          "start_lat": {
+            "description": "Cell centre at birth, WGS84 latitude.",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Start Lat",
+            "type": "number"
+          },
+          "start_lon": {
+            "description": "Cell centre at birth, WGS84 longitude.",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Start Lon",
+            "type": "number"
+          },
+          "velocity_ms": {
+            "description": "Advection speed in m/s: hypot(u_ms, v_ms) of the manifest's cell.",
+            "minimum": 0.0,
+            "title": "Velocity Ms",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "birth",
+          "lifetime_min",
+          "start_lat",
+          "start_lon",
+          "velocity_ms",
+          "sigma_km",
+          "peak_mm_h"
+        ],
+        "title": "StormCellRow",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -5486,6 +6171,53 @@
           "emulator_ms"
         ],
         "title": "WhatIfResponse",
+        "type": "object"
+      },
+      "ZRRelation": {
+        "additionalProperties": false,
+        "description": "The ``Z = a R^b`` relation the analysis came through (CLAUDE.md Appendix A).",
+        "properties": {
+          "a": {
+            "description": "Prefactor; 200 for Marshall-Palmer, 100-400 when fitted.",
+            "exclusiveMinimum": 0.0,
+            "title": "A",
+            "type": "number"
+          },
+          "b": {
+            "description": "Exponent; 1.6 for Marshall-Palmer, 1.1-1.8 when fitted.",
+            "exclusiveMinimum": 0.0,
+            "title": "B",
+            "type": "number"
+          },
+          "n_pairs": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Co-located gauge-radar pairs the fit had. Null on a baked run: rain/cube.zarr records the relation but not the pair count it was fitted from.",
+            "title": "N Pairs"
+          },
+          "source": {
+            "description": "adaptive = fitted this cycle from gauge-radar pairs.",
+            "enum": [
+              "adaptive",
+              "marshall_palmer"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "a",
+          "b",
+          "source"
+        ],
+        "title": "ZRRelation",
         "type": "object"
       }
     }
@@ -6222,6 +6954,286 @@
           }
         },
         "summary": "Ranked hotspots with attribution",
+        "tags": [
+          "nowcast"
+        ]
+      }
+    },
+    "/v1/nowcast/rain": {
+      "get": {
+        "description": "The time bar's spread band (CLAUDE.md 7.2): the ensemble's own disagreement about how\nmuch rain the city is about to get, one line per member over the three-hour horizon.",
+        "operationId": "nowcast_rain_v1_nowcast_rain_get",
+        "parameters": [
+          {
+            "description": "Run id; default = the newest run under data/runs that carries rain.",
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Run id; default = the newest run under data/runs that carries rain.",
+              "title": "Run Id"
+            }
+          },
+          {
+            "description": "Compute this cycle from the replay bundle instead of reading a baked run. The result is not published as a run, and the response reads mode=live.",
+            "in": "query",
+            "name": "compute",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Compute this cycle from the replay bundle instead of reading a baked run. The result is not published as a run, and the response reads mode=live.",
+              "title": "Compute",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Bundle to compute from; default = the open replay, else VARUNA_BUNDLE.",
+            "in": "query",
+            "name": "bundle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bundle to compute from; default = the open replay, else VARUNA_BUNDLE.",
+              "title": "Bundle"
+            }
+          },
+          {
+            "description": "Cycle time to compute (ISO 8601 with offset, e.g. 2019-07-02T06:40:00+05:30). Floored onto the bundle's five-minute cycle ladder; default = the replay clock.",
+            "in": "query",
+            "name": "t",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cycle time to compute (ISO 8601 with offset, e.g. 2019-07-02T06:40:00+05:30). Floored onto the bundle's five-minute cycle ladder; default = the replay clock.",
+              "title": "T"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RainNowcast"
+                }
+              }
+            },
+            "description": "AOI-mean rain per member in mm/h, with the p10/p50/p90 band"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No run, bundle or city to answer from"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request names a point or cycle that cannot be served"
+          }
+        },
+        "summary": "Rain over the city: every member's hyetograph and the spread band",
+        "tags": [
+          "nowcast"
+        ]
+      }
+    },
+    "/v1/nowcast/rain/series": {
+      "get": {
+        "description": "The fan chart at Hindmata (task P3.8), or at any point inside the radar domain.",
+        "operationId": "nowcast_rain_series_v1_nowcast_rain_series_get",
+        "parameters": [
+          {
+            "description": "Register id, slug or part of a name from the city's hotspots, e.g. Hindmata. The coordinate comes from the register, with the source it was verified against.",
+            "in": "query",
+            "name": "hotspot",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Register id, slug or part of a name from the city's hotspots, e.g. Hindmata. The coordinate comes from the register, with the source it was verified against.",
+              "title": "Hotspot"
+            }
+          },
+          {
+            "description": "WGS84 longitude.",
+            "in": "query",
+            "name": "lon",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 180,
+                  "minimum": -180,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "WGS84 longitude.",
+              "title": "Lon"
+            }
+          },
+          {
+            "description": "WGS84 latitude.",
+            "in": "query",
+            "name": "lat",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 90,
+                  "minimum": -90,
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "WGS84 latitude.",
+              "title": "Lat"
+            }
+          },
+          {
+            "description": "Run id; default = the newest run under data/runs that carries rain.",
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Run id; default = the newest run under data/runs that carries rain.",
+              "title": "Run Id"
+            }
+          },
+          {
+            "description": "Compute this cycle from the replay bundle instead of reading a baked run. The result is not published as a run, and the response reads mode=live.",
+            "in": "query",
+            "name": "compute",
+            "required": false,
+            "schema": {
+              "default": false,
+              "description": "Compute this cycle from the replay bundle instead of reading a baked run. The result is not published as a run, and the response reads mode=live.",
+              "title": "Compute",
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Bundle to compute from; default = the open replay, else VARUNA_BUNDLE.",
+            "in": "query",
+            "name": "bundle",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Bundle to compute from; default = the open replay, else VARUNA_BUNDLE.",
+              "title": "Bundle"
+            }
+          },
+          {
+            "description": "Cycle time to compute (ISO 8601 with offset, e.g. 2019-07-02T06:40:00+05:30). Floored onto the bundle's five-minute cycle ladder; default = the replay clock.",
+            "in": "query",
+            "name": "t",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Cycle time to compute (ISO 8601 with offset, e.g. 2019-07-02T06:40:00+05:30). Floored onto the bundle's five-minute cycle ladder; default = the replay clock.",
+              "title": "T"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RainPointSeries"
+                }
+              }
+            },
+            "description": "p10/p50/p90 in mm/h and P(R > 20/40 mm/h) at the point's Sky pixel"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "No run, bundle or city to answer from"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "The request names a point or cycle that cannot be served"
+          }
+        },
+        "summary": "Rain fan chart at one junction: quantiles and exceedance per step",
         "tags": [
           "nowcast"
         ]

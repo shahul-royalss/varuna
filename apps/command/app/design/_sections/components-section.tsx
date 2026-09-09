@@ -11,6 +11,7 @@ import { CycleBudgetBar, type StageTiming } from "@/components/varuna/cycle-budg
 import { DeltaTable, type DeltaRow } from "@/components/varuna/delta-table";
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { EmptyState } from "@/components/varuna/empty-state";
+import { FanChart, type FanChartPoint } from "@/components/varuna/fan-chart";
 import { HotspotRail, type HotspotSummary } from "@/components/varuna/hotspot-rail";
 import { IconRail } from "@/components/varuna/icon-rail";
 import { Kbd } from "@/components/varuna/kbd";
@@ -29,10 +30,12 @@ import { RADAR_FRAMES_MEMBER, RadarPreview } from "@/components/varuna/radar-pre
 import { ReplayPanel } from "@/components/varuna/replay-panel";
 import { RunStamp } from "@/components/varuna/run-stamp";
 import { Skeleton, SkeletonRows } from "@/components/varuna/skeleton";
+import { SkyPanel } from "@/components/varuna/sky-panel";
 import { StormDesigner, type StormCell } from "@/components/varuna/storm-designer";
 import { TimeBar } from "@/components/varuna/time-bar";
 import { HEADLINE_SCORE_TILES, VerificationGrid } from "@/components/varuna/verification-grid";
 import { VerificationChip } from "@/components/varuna/verification-chip";
+import { addMinutesIso } from "@/lib/format";
 import { useMotionPref } from "@/lib/motion";
 import { useUiStore } from "@/lib/stores/ui";
 import { useRunStore, type RunMeta } from "@/lib/stores/run";
@@ -218,6 +221,70 @@ const SAMPLE_STORM_CELLS: StormCell[] = [
     peakMmH: 111.4,
   },
 ];
+
+/** The cycle the fan-chart sample was computed for. */
+const HINDMATA_CYCLE_TS = "2019-07-02T07:40:00+05:30";
+
+/**
+ * Rain at Hindmata for that cycle, as
+ * `GET /v1/nowcast/rain/series?hotspot=hindmata&compute=true&t=2019-07-02T07:40:00+05:30` answered
+ * on bundle MUM-2019-07-02 (seed 2019): lead minutes, then p10, p50 and p90 in mm/h. Read off a
+ * real cycle rather than invented, so the fan on this page opens the way the ensemble opens - the
+ * median falls away after about an hour while p90 holds near 4 mm/h (CLAUDE.md rule 6).
+ */
+const HINDMATA_RAIN: readonly (readonly [number, number, number, number])[] = [
+  [5, 3.636, 4.009, 4.299],
+  [10, 2.965, 3.955, 4.364],
+  [15, 2.47, 3.396, 4.134],
+  [20, 2.169, 3.381, 4.564],
+  [25, 2.391, 3.845, 5.191],
+  [30, 2.146, 3.742, 4.238],
+  [35, 2.132, 3.766, 4.25],
+  [40, 2.043, 3.442, 4.105],
+  [45, 1.344, 3.761, 4.418],
+  [50, 0.44, 3.55, 4.642],
+  [55, 0, 2.553, 5.348],
+  [60, 0, 3.814, 4.238],
+  [65, 0, 3.556, 4.311],
+  [70, 0, 2.442, 4.127],
+  [75, 0, 2.677, 4.736],
+  [80, 0, 1.252, 4.108],
+  [85, 0, 1.037, 4.105],
+  [90, 0, 1.137, 4.101],
+  [95, 0, 0.956, 4.078],
+  [100, 0, 0.103, 4.065],
+  [105, 0, 0, 4.022],
+  [110, 0, 0, 4.082],
+  [115, 0, 0, 4.042],
+  [120, 0, 0, 4.121],
+  [125, 0, 0, 4.156],
+  [130, 0, 0, 4.273],
+  [135, 0, 0, 4.144],
+  [140, 0, 0, 4.042],
+  [145, 0, 0, 3.298],
+  [150, 0, 0, 3.892],
+  [155, 0, 0, 3.591],
+  [160, 0, 0, 3.937],
+  [165, 0, 0, 0.563],
+  [170, 0, 0, 3.514],
+  [175, 0, 0, 1.853],
+  [180, 0, 0, 3.238],
+];
+
+const SAMPLE_FAN: FanChartPoint[] = HINDMATA_RAIN.map(([leadMin, p10, p50, p90]) => ({
+  leadMin,
+  p10,
+  p50,
+  p90,
+  validTs: addMinutesIso(HINDMATA_CYCLE_TS, leadMin) ?? HINDMATA_CYCLE_TS,
+}));
+
+/** The API's own answer when nothing is baked; the error state prints it verbatim. */
+const NO_RAIN_RUNS_MESSAGE =
+  "No run under data/runs carries rain products yet. Run make bake BUNDLE=MUM-2019-07-02, press Play on the replay, or add compute=true to compute this cycle from MUM-2019-07-02 now.";
+
+/** The lead the fan charts mark: confidence decays after about 90 minutes (CLAUDE.md 7.10). */
+const DIVERGENCE_MARKER_MIN = 90;
 
 /** The state before `make bundle` has run: the manifest is on disk, the storm is not. */
 const NO_STORM_CELLS: StormCell[] = [];
@@ -529,6 +596,52 @@ export function ComponentsSection() {
               />
             </Demo>
           </div>
+        </Panel>
+
+        <Panel
+          title="Fan chart"
+          description="The ensemble band at 20 % opacity of the line colour with the median over it, per the uncertainty rule of section 6.2. Nothing animates: the motion catalogue has no row for a chart drawing itself in, so the series are drawn, not played."
+        >
+          <div className="flex flex-col gap-6">
+            <Demo
+              label="Rain at Hindmata, the 07:40 cycle"
+              note="36 steps to +180 min from one real Sky cycle of MUM-2019-07-02. The band widens as the median falls away, which is the divergence Phase 3 has to show."
+              bare
+            >
+              <FanChart
+                points={SAMPLE_FAN}
+                quantity="Rain rate"
+                unit="mm/h"
+                height={240}
+                markerLeadMin={DIVERGENCE_MARKER_MIN}
+                markerLabel="+90 min"
+              />
+            </Demo>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+              <Demo label="Loading" note="Shimmer at the plot's own height, never a spinner." bare>
+                <FanChart points={[]} quantity="Rain rate" unit="mm/h" height={140} loading />
+              </Demo>
+              <Demo label="Empty" note="Before the first run: no chart, and what to do about it." bare>
+                <FanChart points={[]} quantity="Rain rate" unit="mm/h" height={140} />
+              </Demo>
+              <Demo label="Error" note="The API's message, verbatim." bare>
+                <FanChart
+                  points={[]}
+                  quantity="Rain rate"
+                  unit="mm/h"
+                  height={140}
+                  error={NO_RAIN_RUNS_MESSAGE}
+                />
+              </Demo>
+            </div>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Rain nowcast panel"
+          description="Phase 3 scaffolding for the console (task P3.8): the fan chart at Hindmata, every member's city-mean hyetograph, the run stamp and the honesty labels the run earned. Phase 6 deletes it and keeps the fan chart. It reads the API live, so what it shows here is whatever the API can answer now - with nothing baked, that is its empty state."
+        >
+          <SkyPanel chartHeight={240} />
         </Panel>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
