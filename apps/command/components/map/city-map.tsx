@@ -30,7 +30,7 @@
 import { FlyToInterpolator } from "@deck.gl/core";
 import { BitmapLayer, PathLayer, ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { boundsCentre, cityBounds } from "./basemap";
 import type { CityMapMode } from "./types";
@@ -52,6 +52,8 @@ export interface SurchargeNode {
   id: string;
   lon: number;
   lat: number;
+  /** Discharge out of the manhole at the current step, in m³/s; sets the marker's size. */
+  q?: number;
 }
 
 export interface HotspotRing {
@@ -106,6 +108,43 @@ const RASTER_OPACITY = 0.55;
 /** `--depth-dry` #2B3A55: present, and quiet enough that water is the only bright thing. */
 const DRY_STREET: [number, number, number, number] = [43, 58, 85, 210];
 
+/**
+ * Phase 0-1 of the surcharge pulse, or a fixed 0 when it should not run (motion M8).
+ *
+ * The loop runs every display frame but the phase it publishes is quantised, and the setter
+ * bails when the value has not changed - so React re-renders `PULSE_FRAMES` times per cycle
+ * (12.5 a second) rather than 60. Quantising also makes the pulse the same size on a 60 Hz and
+ * a 144 Hz display.
+ *
+ * The surcharge markers are the only looping thing on the console, and CLAUDE.md 8 allows it
+ * because a pulsing manhole is data - it is the drain failing - not decoration.
+ */
+function useSurchargePulse(active: boolean): number {
+  const [phase, setPhase] = useState(0);
+
+  useEffect(() => {
+    if (!active) return;
+    let frame = 0;
+    const started = performance.now();
+    const tick = (now: number) => {
+      const next =
+        Math.round((((now - started) % DUR_MS.surchargePulse) / DUR_MS.surchargePulse) *
+          PULSE_FRAMES) / PULSE_FRAMES;
+      setPhase((current) => (current === next ? current : next));
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [active]);
+
+  // Read through `active` rather than resetting the state when the loop stops: a phase left over
+  // from the last pulse would otherwise freeze the ring mid-expansion under reduced motion.
+  return active ? phase : 0;
+}
+
+/** Steps the pulse is quantised to over its 1.6 s: 20 is smooth and costs 12 renders a second. */
+const PULSE_FRAMES = 20;
+
 export function CityMap({
   mode = "console",
   frames,
@@ -124,6 +163,7 @@ export function CityMap({
 }: CityMapProps) {
   const interactive = mode !== "hero";
   const reducedMotion = usePrefersReducedMotion();
+  const pulse = useSurchargePulse(showSurcharge && surcharge.length > 0 && !reducedMotion);
 
   // Motion M10: a 900 ms flight to the selected hotspot, a jump cut under reduced motion.
   //
@@ -206,24 +246,6 @@ export function CityMap({
       );
     }
 
-    if (showSurcharge && surcharge.length > 0) {
-      built.push(
-        new ScatterplotLayer<SurchargeNode>({
-          id: "surcharge",
-          data: surcharge as SurchargeNode[],
-          getPosition: (d) => [d.lon, d.lat],
-          getRadius: 80,
-          radiusUnits: "meters",
-          radiusMinPixels: 2,
-          radiusMaxPixels: 10,
-          filled: true,
-          getFillColor: [239, 68, 68, 170], // --surcharge
-          stroked: false,
-          pickable: false,
-        }),
-      );
-    }
-
     if (showHotspots && hotspots.length > 0) {
       built.push(
         new ScatterplotLayer<HotspotRing>({
@@ -253,16 +275,52 @@ export function CityMap({
 
     return built;
   }, [
-    baseSegments, frames, step, rasterBounds, segments, surcharge, hotspots, selectedHotspotId,
-    showRaster, showSegments, showSurcharge, showHotspots,
+    baseSegments, frames, step, rasterBounds, segments, hotspots, selectedHotspotId,
+    showRaster, showSegments, showHotspots,
   ]);
+
+  // Motion M8: an expanding ring pulse on every surcharging manhole, 1.6 s, static under
+  // reduced motion. Built apart from the layers above so that a pulse frame rebuilds one layer
+  // and leaves the 21,296-path street network untouched - deck.gl then diffs and re-uploads
+  // nothing but the markers. The clock is a phase 0-1 rather than a timestamp, so the pulse is
+  // the same size on every machine regardless of how often the tick actually fires.
+  const surchargeLayer = useMemo(() => {
+    if (!showSurcharge || surcharge.length === 0) return null;
+    // 0 at the start of a pulse, 1 at the end. The ring grows and fades across it.
+    const grow = 1 + 1.4 * pulse;
+    const fade = Math.round(200 * (1 - pulse));
+    return new ScatterplotLayer<SurchargeNode>({
+      id: "surcharge",
+      data: surcharge as SurchargeNode[],
+      getPosition: (d) => [d.lon, d.lat],
+      // Radius by discharge, so a manhole shifting 0.4 m³/s reads bigger than one at 0.01.
+      // Square root because the eye compares areas, and the marker's area is what it is.
+      getRadius: (d) => 30 + 90 * Math.sqrt(Math.min(d.q ?? 0, 1)),
+      radiusUnits: "meters",
+      radiusMinPixels: 3,
+      radiusMaxPixels: 14,
+      radiusScale: grow,
+      filled: true,
+      getFillColor: [239, 68, 68, Math.max(fade, 60)], // --surcharge
+      stroked: true,
+      getLineColor: [239, 68, 68, 235],
+      lineWidthMinPixels: 1,
+      pickable: false,
+      updateTriggers: { getRadius: surcharge, getFillColor: fade },
+    });
+  }, [showSurcharge, surcharge, pulse]);
+
+  const allLayers = useMemo(
+    () => (surchargeLayer ? [...layers, surchargeLayer] : layers),
+    [layers, surchargeLayer],
+  );
 
   return (
     <div className="absolute inset-0 bg-[var(--ink)]">
       <DeckGL
         initialViewState={viewState as never}
         controller={interactive}
-        layers={layers as never}
+        layers={allLayers as never}
       />
     </div>
   );

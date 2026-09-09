@@ -76,14 +76,19 @@ class CycleResult:
 
 
 def _sky_rain_on_city(bundle: str, cycle_ts: datetime | None, city: str, n_steps: int):
-    """Run Sky for this cycle and return its median rain on the 30 m city grid, in mm/h.
+    """Run Sky for this cycle and return its **ensemble-mean** rain on the 30 m city grid, mm/h.
 
-    The **p50** field is what forces the deterministic Twin. The ensemble median rather than one
-    member, because a member is one draw and would put its own noise into the depth map; and the
-    median rather than the mean because it is the statistic the console already draws and labels
-    everywhere else, so the depth map and the fan chart are answering the same question. The
-    spread this discards is exactly what Flash-lite consumes in Phase 7, and the run's notes say
-    it was discarded.
+    The mean, as CLAUDE.md 11.11 specifies, and the reason is a water balance. A pixelwise
+    quantile is not a rainfall field: at a given pixel and lead time the 20 STEPS members
+    disagree about *where* the convective cell is, so the median there can be near zero while
+    every member is carrying a downpour a kilometre away. Measured on the 2 July storm, the p50
+    field delivers 13 mm over three hours against the truth field's 100 mm at the chronic spots;
+    the Twin ran on it and gave Hindmata 4 cm.
+
+    The mean is the only reduction here that conserves volume - the expected total is the total
+    of the expectations - so the city receives the water the ensemble actually forecasts. It
+    smooths the peak, which is a real cost and is why the ensemble goes to Flash-lite whole in
+    Phase 7; the run's notes say the spread was discarded.
     """
     from varuna_sky.products import load_aoi_grid, resample_to_aoi
 
@@ -91,9 +96,9 @@ def _sky_rain_on_city(bundle: str, cycle_ts: datetime | None, city: str, n_steps
 
     cycle = run_bundle_cycle(bundle, cycle_ts)
     aoi = load_aoi_grid(city)
-    p50 = np.asarray(cycle.products.p50, dtype=np.float64)  # (steps, y, x) on the Sky grid
-    steps = min(int(p50.shape[0]), int(n_steps))
-    cube = np.stack([resample_to_aoi(p50[k], cycle.products.grid, aoi) for k in range(steps)])
+    field = np.asarray(cycle.products.mean, dtype=np.float64)  # (steps, y, x) on the Sky grid
+    steps = min(int(field.shape[0]), int(n_steps))
+    cube = np.stack([resample_to_aoi(field[k], cycle.products.grid, aoi) for k in range(steps)])
     # resample_to_aoi fills outside the radar domain with nan; the Twin reads that as no rain
     # (hydrology logs and zeroes non-finite rain), but zeroing here keeps the mass-balance
     # accounting reading a real number rather than nan.
@@ -127,6 +132,7 @@ def run_cycle(
         write_depth_rasters,
     )
     from varuna_products.hotspots import rank_hotspots
+    from varuna_products.surcharge import surcharge_product, write_surcharge
     from varuna_twin.city import load_network, load_terrain, load_tide
     from varuna_twin.runner import run_twin
     from varuna_twin.types import TwinInputs
@@ -168,6 +174,9 @@ def run_cycle(
     run_id = build_run_id(city, cycle_ts, SKY_VERSION, TWIN_VERSION, FLASH_VERSION, mode)
     hotspots = rank_hotspots(
         twin.depth_m, twin.times, city_dir(city), terrain.transform, terrain.crs, run_id, index
+    )
+    surcharge = surcharge_product(
+        twin.q_surcharge, twin.edge_flow, network, terrain.transform, terrain.crs, run_id
     )
     stage_ms["products"] = round((perf_counter() - mark) * 1000.0)
     frame["run_id"] = run_id
@@ -217,12 +226,13 @@ def run_cycle(
         write_depth_rasters(tmp, twin.depth_m, terrain.transform, terrain.crs, stat="p50")
         frame.to_parquet(tmp / "segment_forecast.parquet", index=False)
         (tmp / "hotspots.json").write_text(json.dumps(hotspots, indent=2) + "\n", encoding="utf-8")
-        surcharge = twin.q_surcharge
+        write_surcharge(tmp, surcharge)
+        q_node = twin.q_surcharge
         (tmp / "node_summary.json").write_text(
             json.dumps(
                 {
                     "n_nodes": int(network.n_nodes),
-                    "surcharging_by_step": [int((s > 0).sum()) for s in surcharge],
+                    "surcharging_by_step": [int((s > 0).sum()) for s in q_node],
                     "backflow_by_step": [int((f < 0).sum()) for f in twin.edge_flow],
                 },
                 indent=2,

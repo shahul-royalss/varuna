@@ -259,6 +259,7 @@ def test_products_path_scores_the_published_numbers() -> None:
         p10=truth_field,
         p50=truth_field,
         p90=truth_field,
+        mean=truth_field,
         p_gt_20=(truth_field > 20.0).astype(np.float64),
         p_gt_40=(truth_field > 40.0).astype(np.float64),
         aoi_hyetographs=np.zeros((20, n_steps)),

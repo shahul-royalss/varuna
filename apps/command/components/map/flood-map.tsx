@@ -18,6 +18,7 @@ import { CityMap, type MapFocus, type SegmentPath } from "./city-map";
 import { apiUrl } from "@/lib/api/client";
 import { allSegments, joinSegments, loadRunDepth, type RunDepth } from "@/lib/api/run-depth";
 import type { Hotspot } from "@/lib/api/hotspots";
+import type { SurchargeSet } from "@/lib/api/surcharge";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Button } from "@/components/ui/button";
 
@@ -36,6 +37,9 @@ export interface FloodMapProps {
   /** The run's ranked hotspots, drawn as 120 m rings (section 6.7). */
   hotspots?: readonly Hotspot[];
   selectedHotspotId?: string | null;
+  /** The run's surcharging manholes; only those active at the current step are drawn. */
+  surcharge?: SurchargeSet | null;
+  showSurcharge?: boolean;
   /** Camera target from the rail; a new `key` starts a new flight (motion M10). */
   focus?: MapFocus | null;
   showRaster?: boolean;
@@ -50,6 +54,8 @@ export function FloodMap({
   onLoaded,
   hotspots: ranked = [],
   selectedHotspotId = null,
+  surcharge: surchargeSet = null,
+  showSurcharge = true,
   focus = null,
   showRaster = true,
   showSegments = true,
@@ -106,8 +112,14 @@ export function FloodMap({
     () => ranked.map((h) => ({ id: h.id, name: h.name, lon: h.lon, lat: h.lat })),
     [ranked],
   );
-  // Surcharge markers are task P6.6; an empty layer is honest, a fabricated one is not.
-  const surcharge = useMemo(() => [], []);
+  // Only the manholes actually surcharging *now*: a marker that stayed put for the whole run
+  // would say the drain is failing at 06:40, when it is not yet.
+  const surcharge = useMemo(() => {
+    if (!surchargeSet) return [];
+    return surchargeSet.nodes
+      .map((n) => ({ id: n.id, lon: n.lon, lat: n.lat, q: n.q[step] ?? 0 }))
+      .filter((n) => n.q > 0);
+  }, [surchargeSet, step]);
 
   if (status.kind === "loading") {
     const pct = status.total > 0 ? Math.round((status.done / status.total) * 100) : 0;
@@ -161,6 +173,7 @@ export function FloodMap({
       baseSegments={status.baseSegments}
       segments={status.segments}
       surcharge={surcharge}
+      showSurcharge={showSurcharge}
       hotspots={rings}
       selectedHotspotId={selectedHotspotId}
       focus={focus}
