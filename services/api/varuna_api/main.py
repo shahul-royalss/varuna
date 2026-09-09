@@ -26,7 +26,7 @@ from varuna_schemas.models import ErrorEnvelope
 from varuna_schemas.settings import Settings
 
 from varuna_api import __version__
-from varuna_api.routers import city, cycle, health, live, replay, runs, stubs
+from varuna_api.routers import city, cycle, health, live, nowcast, replay, runs, stubs
 from varuna_api.state import AppState
 
 _LOGGING_CONFIGURED = False
@@ -220,6 +220,9 @@ def create_app(
     app.include_router(live.router)
     app.include_router(city.router)
     app.include_router(replay.router)
+    # Before the stubs: the rain routes are real, and the stub router owns the rest of the
+    # /v1/nowcast namespace until Phase 5 fills it in.
+    app.include_router(nowcast.router)
     app.include_router(stubs.router)
     return app
 

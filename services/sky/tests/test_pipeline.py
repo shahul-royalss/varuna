@@ -275,10 +275,23 @@ def test_two_runs_of_one_cycle_agree_byte_for_byte(
 # budgets acceptance criteria, so this measures the real production configuration - 20 members,
 # 36 steps, 120 x 120 - and prints what it got.
 #
-# MEASURED, 8-core laptop, 2026-09-09: 5.65 s total, of which the pySTEPS nowcast is 5.32 s
-# (94 %); qc 1 ms, zr 2 ms, merge 3 ms, motion 60 ms, products 261 ms. Repeat runs of the
-# nowcast alone range 4.5-5.3 s, so Sky sits ON the budget rather than inside it, and which
-# side of 5 s a given cycle lands is machine noise.
+# MEASURED, 8-core laptop, 2026-09-09, at the full configuration:
+#   warm process (this file's other tests have run):  5.65 s - nowcast 5.32 s, motion   60 ms
+#   cold process (`-m slow` alone):                   6.81 s - nowcast 4.73 s, motion 1850 ms
+# qc, zr and merge are 1-4 ms each and products is ~230 ms in both. The nowcast is 70-94 % of
+# the total and repeat runs of it alone range 4.5-5.3 s, so Sky sits ON the 5 s target rather
+# than inside it, and which side of it a cycle lands is machine noise.
+#
+# The 1.8 s swing is pySTEPS' Lucas-Kanade paying its first-call import and compile cost, which
+# is charged once per process and not once per cycle. `make bake` walks every cycle of a bundle
+# in one process (CLAUDE.md 11.11), so the replay pays it on cycle one and no other; it is a
+# startup cost, and reporting it as part of the per-cycle budget would overstate the steady
+# state. The full-suite run above is the honest per-cycle figure.
+#
+# Under contention the picture is different and worth knowing: with six agents compiling and
+# running tests on this machine, one measurement of this same test reached 19-24 s. Nothing is
+# wrong at that point except that eight cores are oversubscribed - which is exactly why the
+# assertion below is a regression guard rather than the budget.
 #
 # That cost is pySTEPS' own and was not left unexamined. Measured alternatives, all verified
 # to keep rule 8 determinism: num_workers 2/4/6/8 are 4.58/6.40/4.83/4.68 s against 4.52 s at

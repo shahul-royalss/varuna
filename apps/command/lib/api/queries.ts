@@ -26,6 +26,10 @@ export const queryKeys = {
   verification: (event: string) => ["verification", event] as const,
   bundles: ["replay", "bundles"] as const,
   replayClock: ["replay", "clock"] as const,
+  /** Rain products of one cycle; the source object distinguishes a baked read from a compute. */
+  rain: (source: unknown) => ["nowcast", "rain", source] as const,
+  rainSeries: (hotspot: string, source: unknown) =>
+    ["nowcast", "rain", "series", hotspot, source] as const,
 };
 
 /** Do not hammer an API that answers 4xx (wrong request) or 501 (phase not landed). */

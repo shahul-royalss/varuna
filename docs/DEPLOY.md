@@ -49,14 +49,37 @@ Environment:
 
 | Variable | Value | Notes |
 |---|---|---|
-| `NEXT_PUBLIC_API_URL` | the Railway URL | Without it the client falls back to `http://localhost:8000`, and every screen shows its honest "The VARUNA API is unreachable" state rather than breaking. |
+| `NEXT_PUBLIC_API_URL` | the Railway URL | **Not set as of 2026-09-09** (`vercel env ls production` lists only `NEXT_PUBLIC_SITE_URL`), because Railway is not deployed yet. Without it the client falls back to `http://localhost:8000`, so every data screen shows its honest "The VARUNA API is unreachable" state rather than breaking — and a visitor running the API locally on the same machine gets a working console, which is a coincidence of the fallback, not a feature to rely on. |
 | `NEXT_PUBLIC_SITE_URL` | `https://varuna-dhrishta.vercel.app` | Resolves the Open Graph image. Set. |
 
+The production alias is `varuna-dhrishta.vercel.app`; the same deployment also answers on
+`command-mu-lime.vercel.app` and `varuna-git-main-dhrishta.vercel.app`. A second, abandoned
+project called `command` exists on the team with two failed deployments and no alias pointing at
+anything live — it is left over from the first attempt at the root directory setting (commits
+`0f89bd5`, `f1f4612`) and can be deleted whenever someone is in the dashboard.
+
 **Deployment protection.** A new Vercel project protects every deployment with Vercel
-Authentication, so the production URL redirects to a Vercel sign-in until a team member changes
-it: project *Settings → Deployment Protection → Vercel Authentication → Only Preview
-Deployments* (or *Disabled*), then *Save*. The Vercel CLI has no command for this, so it is a
-dashboard click.
+Authentication, so the production URL answers 200 but serves Vercel's own sign-in page
+(`<title>Login – Vercel</title>`) to anyone outside the team. A team member logged into Vercel
+sees the real site; a judge or a mentor following the link does not. The state is readable:
+
+```bash
+vercel project protection varuna --json
+```
+
+`"ssoProtection": {"deploymentType": "all_except_custom_domains"}` means it is on, and
+`"ssoProtection": null` means it is off. To lift it, either the dashboard (project *Settings →
+Deployment Protection → Vercel Authentication → Only Preview Deployments*, or *Disabled*, then
+*Save*) or, from CLI 58.4.4 onwards:
+
+```bash
+vercel project protection disable varuna --sso
+```
+
+Earlier revisions of this file said the CLI had no command for it; `vercel project protection`
+exists and that sentence was stale. **This is a publish**: it makes every production deployment
+readable by anyone with the URL, so it is the team's call, not a step to run because a build
+went green.
 
 ## Railway (API)
 

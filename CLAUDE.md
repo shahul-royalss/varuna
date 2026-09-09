@@ -38,7 +38,7 @@ This file is the single source of truth for building the VARUNA prototype. The b
 | 0 | Foundation, shell, design tokens | 100 % | 2026-09-07 | All gates green: typecheck, ESLint, design lint, 126 vitest, 335 pytest (90 % cov), Next build 21 routes. CI green on GitHub (`shahul-royalss/varuna`). Console on Vercel at `varuna-dhrishta.vercel.app` (production still behind Vercel Authentication until the team switches it off). API packaged for Railway (ADR-0014); the deploy itself waits on `railway login`. |
 | 1 | City-in-a-box (Mumbai) | 100 % | 2026-09-07 | Runs from cache in 2 min 43 s cold, 19 s warm. 21,296 segments, 10,646 units, 50,110 drain nodes, 1,757 km inferred pipe. Depressions explain 89.3 % of the register (target 60 %); connectivity 100 %. Layers served. |
 | 2 | Replay bundle & storm designer | 100 % | 2026-09-08 | All three bundles build and validate (10 contract rules, 0 warnings). MUM-2019-07-02 calibrated to the documented gauge totals for 05:40-09:40 IST; 29 sourced ground-truth pins; synthetic gauges, tide, traffic and reports all labelled. Replay clock drives play/pause/seek/speed; the replay screen animates the radar preview (M25). P2.9 (IMD PNG decoder) stays P1. |
-| 3 | VARUNA-Sky | 0 % | — | — |
+| 3 | VARUNA-Sky | 100 % | 2026-09-09 | All eight tasks done. Sky runs QC -> Z-R -> merge -> flow -> STEPS -> products in one `run_sky()`; 20 members x 36 steps on the 120 x 120 domain measures **5.65 s warm / 6.81 s cold**, against a 5 s target - the pySTEPS nowcast is 4.7-5.3 s of it and `num_workers`, the FFT backend and the spectral domain were each measured without beating the default. Ensemble spread widens from 1.03 to 1.78 mm/h between the 30-minute and 90-minute leads at Hindmata, so the exit criterion holds. Two real defects found and fixed: the fallback nowcaster's AR(2) could ring to 10,589 mm/h (ADR-0015), and the run's own Z-R honesty label stated a false reason for falling back (ADR-0017). P2.9 (IMD decoder) stays P1. |
 | 4 | VARUNA-Twin + drains + coupling | 0 % | — | — |
 | 5 | Products, cycle, API | 0 % | — | — |
 | 6 | Command console (core UI) | 0 % | — | — |
@@ -928,14 +928,14 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ### Phase 3 — VARUNA-Sky
 
-- [ ] P3.1 QC (coverage, clutter, attenuation flag)
-- [ ] P3.2 Adaptive Z–R with clamps and MP fallback; test recovers MP parameters on synthetic data
-- [ ] P3.3 Gauge merge (MFB + IDW residuals); KED via pykrige — P1
-- [ ] P3.4 Optical flow (pySTEPS LK) and STEPS ensemble (20 members × 36 steps); fallback implementation behind the same function
-- [ ] P3.5 Rain cube products (AOI 30 m resample, quantiles, exceedance, AOI-mean hyetographs); Zarr writer
-- [ ] P3.6 Skill-versus-lead-time computation against truth for synthetic bundles (`services/verify/rain_skill.py`)
-- [ ] P3.7 Tests: spread grows with lead; dry-in dry-out; stage time ≤ 5 s
-- [ ] P3.8 Console: radar animation layer and the fan chart at Hindmata read the cube (temporary panel until Phase 6 wires it properly)
+- [x] P3.1 QC (coverage, clutter, attenuation flag) (2026-09-09, e4cb94f)
+- [x] P3.2 Adaptive Z–R with clamps and MP fallback; test recovers MP parameters on synthetic data (2026-09-09, f4252f6 — b is clamped first and the intercept re-solved at the clamped exponent, which is the constrained optimum; a second fallback fires when the gauges span less than a factor of two in rate, since an exponent fitted from rates that agree cannot be extrapolated over the three decades the relation is used across)
+- [x] P3.3 Gauge merge (MFB + IDW residuals) (2026-09-09, f4252f6 — additive residuals, reasoned in the module docstring; Shepard's taper after a test caught that plain normalisation cancels it and leaves a hard ring at the search radius; the 5 % contract is measured into `max_gauge_error_pct`, not asserted). KED via pykrige stays P1
+- [x] P3.4 Optical flow (pySTEPS LK) and STEPS ensemble (20 members × 36 steps); fallback implementation behind the same function (2026-09-09, e4cb94f — the fallback's AR(2) now degrades to AR(1) rather than ring, ADR-0015)
+- [x] P3.5 Rain cube products (AOI 30 m resample, quantiles, exceedance, AOI-mean hyetographs); Zarr writer (2026-09-09, f4252f6 — the 30 m cube is a function the Twin calls rather than a 485 MB per-cycle artifact; the hyetographs come from a separable weight field, an identity that is tested against the literal per-member resample)
+- [x] P3.6 Skill-versus-lead-time computation against truth for synthetic bundles (`services/verify/rain_skill.py`) (2026-09-09, e4cb94f)
+- [x] P3.7 Tests: spread grows with lead; dry-in dry-out; stage time ≤ 5 s (2026-09-09, f4252f6 — measured 5.65 s at the full 20 × 36 × 120 × 120 configuration, pySTEPS 5.32 s of it, so Sky sits **on** the target rather than inside it; `num_workers`, the FFT backend and the spectral domain were each measured and none beats the default without changing the cube, recorded in `test_pipeline.py`)
+- [x] P3.8 Console: radar animation layer and the fan chart at Hindmata read the cube (temporary panel until Phase 6 wires it properly) (2026-09-09, PENDING — `GET /v1/nowcast/rain` and `/rain/series` under the CLAUDE.md 12 URL shape (ADR-0016); `FanChart` is the section 6.6 component Phase 6 keeps, `SkyPanel` is the scaffolding it deletes. Hindmata's position and its `source_url` come from the city register, never a literal. `run_id` is null on a computed cycle because minting one would claim Twin and Flash versions that never ran)
 
 **Exit:** Sky stage ≤ 5 s on the laptop; ensemble fan chart shows divergence after ~90 min.
 

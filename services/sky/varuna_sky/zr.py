@@ -304,13 +304,23 @@ def gauge_pairs(
 
 
 # ============================================================================ the fit
-def marshall_palmer(n_pairs: int = 0) -> ZRParams:
+def marshall_palmer(n_pairs: int = 0, reason: str | None = None) -> ZRParams:
     """The fallback relation, labelled as such (CLAUDE.md 11.1 step 2).
 
     ``n_pairs`` records how many pairs the cycle *did* have, so the console can tell a cycle
-    with no gauges at all from one that was two readings short.
+    with no gauges at all from one that was two readings short. ``reason`` records *why* the
+    fit was abandoned, because the pair count does not imply it: a cycle can fall back holding
+    twenty pairs when they all read within a factor of two. The console prints this, so a
+    caption cannot infer a reason that was not the real one (rule 6).
     """
-    return ZRParams(a=MP_A, b=MP_B, source="marshall_palmer", n_pairs=n_pairs, clamped=False)
+    return ZRParams(
+        a=MP_A,
+        b=MP_B,
+        source="marshall_palmer",
+        n_pairs=n_pairs,
+        clamped=False,
+        reason=reason,
+    )
 
 
 def _r_squared(x: NDArray[np.floating], y: NDArray[np.floating], a: float, b: float) -> float:
@@ -347,8 +357,11 @@ def fit_zr(pairs: list[GaugePair]) -> ZRParams:
     reason.
     """
     if len(pairs) < MIN_ZR_PAIRS:
+        reason = (
+            f"only {len(pairs)} usable gauge-radar pairs, fewer than the {MIN_ZR_PAIRS} a fit needs"
+        )
         log.info("sky.zr.fallback", reason="too few pairs", n_pairs=len(pairs))
-        return marshall_palmer(len(pairs))
+        return marshall_palmer(len(pairs), reason)
 
     x = np.log10(np.array([pair.gauge_mm_h for pair in pairs], dtype=np.float64))
     y = np.array([pair.dbz for pair in pairs], dtype=np.float64) / 10.0
@@ -360,7 +373,11 @@ def fit_zr(pairs: list[GaugePair]) -> ZRParams:
             n_pairs=len(pairs),
             log10_span=round(span, 4),
         )
-        return marshall_palmer(len(pairs))
+        return marshall_palmer(
+            len(pairs),
+            f"{len(pairs)} gauges span only a factor of "
+            f"{10.0**span:.1f} in rain rate, too little to fit an exponent",
+        )
 
     x_mean, y_mean = float(x.mean()), float(y.mean())
     variance = float(np.sum((x - x_mean) ** 2))
@@ -370,7 +387,9 @@ def fit_zr(pairs: list[GaugePair]) -> ZRParams:
     a = min(max(10.0**intercept, A_RANGE[0]), A_RANGE[1])
     if not (math.isfinite(a) and math.isfinite(b)):
         log.warning("sky.zr.fallback", reason="fit did not converge", n_pairs=len(pairs))
-        return marshall_palmer(len(pairs))
+        return marshall_palmer(
+            len(pairs), f"the least-squares fit over {len(pairs)} pairs did not come back finite"
+        )
 
     clamped = b != slope or a != 10.0**intercept
     params = ZRParams(
