@@ -96,28 +96,61 @@ Deploy from the `Dockerfile` at the repository root. Attach a volume mounted at 
 | `VARUNA_BUILD_ON_BOOT` | `1` on the first deploy, then `0` |
 | `VARUNA_CORS_ORIGINS` | `https://varuna-dhrishta.vercel.app` (`CORS_ORIGINS` is accepted too) |
 
-### Deploying with the CLI
+### What is deployed, and how it was done
 
-Railway CLI 5.x. `railway login` opens a browser and is the only step that needs a person;
-everything after it runs from the repository root.
+Deployed 2026-09-09. Project `varuna-api` (`bbb05788-6d11-4757-a1ab-2dac3fd08748`), service
+`fce11314-62a8-4b4f-b403-101ce8fa167d`, production environment
+`4628844f-aa32-4957-8124-db5d43e1ca55`, volume `varuna-data` (500 MB) at `/data`, public at
+<https://varuna-api-production-f577.up.railway.app>.
+
+**Attach the GitHub repo; do not `railway up`.** `railway up` uploads the working directory and
+lets Railway's Railpack auto-builder guess how to build it, which ignores the `Dockerfile` this
+repo ships and fails on the scientific stack. Attaching `shahul-royalss/varuna` as the service
+source makes Railway read `railway.json` and build the Dockerfile. Order matters: set the
+variables and attach the volume *first*, so the first build comes up already configured rather
+than deploying once without `/data` and again with it.
+
+**Railway's GitHub webhook does not fire on push for this service.** A `git push` alone will not
+redeploy; re-attach the source (Railway MCP `connect-service-source`, or the dashboard's
+Deploy button) to start a build. `redeploy` is not a substitute - it re-runs the *existing*
+build and will not pick up a new commit.
+
+### Three things that made this image unbuildable
+
+All three were invisible locally, because a local checkout resolves dependencies from a warm
+`uv` cache and never rebuilds them. Railway was the first clean build this image ever had.
+
+1. **No C compiler.** pysteps publishes no Linux wheel, so `uv` builds it from its sdist and its
+   Cython extensions compile with `gcc ... -fopenmp`. Fixed in the Dockerfile (ADR-0018), not
+   with Railway's suggested `RAILPACK_BUILD_APT_PACKAGES` - that patches one platform's
+   auto-builder and leaves `docker build` broken everywhere else, `make pack` included.
+2. **`README.md` was never copied.** The root `pyproject.toml` declares `readme = "README.md"`,
+   so hatchling opens it while validating the root package during the second `uv sync`. The
+   dependency layer survives because `--no-install-workspace` never builds the root package.
+3. **The volume would have filled.** The Copernicus/WorldCover download cache is 339 MB and
+   lands on the volume beside the 116 MB the build produces: 469 MB of a 500 MB volume, and a
+   volume that fills mid-build leaves a half-written city. `docker/entrypoint.sh` now drops the
+   cache after a *successful* build, settling the volume near 120 MB. A failed boot keeps it, so
+   the build stays restartable. Railway ties volume size to the plan; a larger volume would make
+   this unnecessary.
+
+### The console side
+
+`NEXT_PUBLIC_API_URL` had never been set, which is why every deployed screen fell back to
+`http://localhost:8000` and showed its honest "API unreachable" state. It is a build-time inline,
+so setting it needs a redeploy:
 
 ```bash
-railway login
-railway init --name varuna-api            # once: creates the project and links this directory
-railway up --detach                       # creates the service and the first deployment from the Dockerfile
-railway volume add --mount-path /data     # once: the persistent disk for city/, bundles/, runs/; Railway redeploys
-railway variable set VARUNA_BUILD_ON_BOOT=1 VARUNA_CORS_ORIGINS=https://varuna-dhrishta.vercel.app
-railway domain                            # prints the public URL
+printf 'https://varuna-api-production-f577.up.railway.app' | vercel env add NEXT_PUBLIC_API_URL production
 ```
 
-(Flags checked against Railway CLI 5.49.3; `railway variables --set` still works but is marked
-legacy.) The service has to exist before a volume can attach to it, so the very first deployment
-runs without `/data`: its background city build lands on the container's own disk and is thrown
-away when the volume attaches and the service redeploys. The build after that writes into
-`/data` once and is kept.
+```bash
+vercel --prod
+```
 
-Then put that URL into `NEXT_PUBLIC_API_URL` on Vercel (`vercel env add NEXT_PUBLIC_API_URL
-production` from `apps/command`) and redeploy the console.
+Run both from the **repository root**, not from `apps/command`: the Vercel project's root
+directory is already `apps/command`, and running from inside it makes the CLI look for
+`apps/command/apps/command`.
 
 ### The data question
 
