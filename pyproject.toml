@@ -72,6 +72,11 @@ testpaths = ["packages", "services", "tests", "tools"]
 addopts = "-q -p no:cacheprovider --import-mode=importlib"
 asyncio_mode = "auto"
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+  # Performance budgets from CLAUDE.md section 14, which calls them acceptance criteria. They
+  # run with the suite; `-m "not slow"` skips them when only correctness is being checked.
+  "slow: measures a performance budget at full production configuration",
+]
 
 [tool.ruff]
 line-length = 100
