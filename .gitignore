@@ -62,3 +62,5 @@ docs/research/_raw/pages/
 
 # Claude Code plugin/skill cache, not project source
 skills/
+
+.vercel
