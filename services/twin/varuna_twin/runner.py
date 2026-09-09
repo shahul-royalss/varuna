@@ -189,6 +189,7 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
                 network=network,
                 solver=drain_solver,
                 cell_area_m2=kernel_terrain.cell_area_m2,
+                sync_s=actual_sync_s,
             )
             t_coupling += int((perf_counter() - t0) * 1000)
 

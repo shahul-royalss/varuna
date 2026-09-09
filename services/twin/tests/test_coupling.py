@@ -231,7 +231,21 @@ class TestSurcharge:
         assert np.all(exchange.q_surcharge_node == 0.0)
 
     def test_surcharge_formula_matches_appendix_a(self) -> None:
-        """Q_surch = 0.6 * A_m * sqrt(2g(H - z_g - h))."""
+        """Q_surch = 0.6 * A_m * sqrt(2g(H - z_g - h)) - at a sync short enough to use it.
+
+        The orifice equation gives the rate water *could* leave a manhole; the flux limiter
+        CLAUDE.md 11.5 requires ("fluxes frozen and limited so no cell goes negative") caps it at
+        the volume that is actually there to leave. Which of the two binds is a race between
+        ``0.6*A*sqrt(2 g e)`` and ``e*A/dt``, and the manhole area cancels: the orifice only wins
+        when ``dt <= sqrt(e) / 2.657``. At half a metre of excess head that is 0.19 s, so at the
+        5 s sync of a real run the limiter binds essentially always and this equation sets an
+        upper bound rather than the answer.
+
+        That is worth stating plainly rather than hiding behind a passing test, so this one uses
+        a 0.15 s interval - short enough for the formula itself to be what is checked - and
+        ``test_surcharge_cannot_emit_more_than_the_node_holds`` checks the limiter at the
+        interval a run actually uses.
+        """
         network, surface_h, surface_z = _coupled_network()
         solver = prepare(network)
 
@@ -246,13 +260,49 @@ class TestSurcharge:
             network=network,
             solver=solver,
             cell_area_m2=900.0,
+            sync_s=0.15,
         )
 
-        # Expected
-        A_m = 1.0  # storage_area = manhole area
-        q_expected = SURCHARGE_CD * A_m * np.sqrt(2.0 * GRAVITY * excess)
-
+        a_m = float(network.storage_area[0])
+        q_expected = SURCHARGE_CD * a_m * np.sqrt(2.0 * GRAVITY * excess)
         assert exchange.q_surcharge_node[0] == pytest.approx(q_expected, rel=1e-4)
+        # And the limiter really was slack here, which is what makes this a test of the formula.
+        assert q_expected < excess * a_m / 0.15
+
+    def test_surcharge_cannot_emit_more_than_the_node_holds(self) -> None:
+        """The cap that keeps the coupled run mass-balanced.
+
+        Without it the city run manufactured water on a spectacular scale: 39,801 nodes each
+        emitting an unbacked orifice flow every 5 s turned 861,096 m3 of rain into 196,951,114 m3
+        of standing water, a 228x gain, with 28 m deep streets. The cap is the volume that would
+        bring the node's head down to the street surface, which is where the exchange stops
+        anyway - below it there is no excess head left to push with.
+        """
+        network, surface_h, surface_z = _coupled_network()
+        solver = prepare(network)
+
+        excess = 0.5
+        network.storage_area[:] = 1.0  # a 1 m2 manhole holds 0.5 m3 above the street
+        head = np.asarray(network.z_invert, dtype=np.float64).copy()
+        head[0] = surface_z[1, 1] + surface_h[1, 1] + excess
+
+        sync_s = 5.0
+        exchange = compute_exchange(
+            surface_h=surface_h,
+            surface_z=surface_z,
+            drain_head=head,
+            network=network,
+            solver=solver,
+            cell_area_m2=900.0,
+            sync_s=sync_s,
+        )
+
+        orifice = SURCHARGE_CD * 1.0 * np.sqrt(2.0 * GRAVITY * excess)
+        held_m3 = excess * 1.0
+        assert exchange.q_surcharge_node[0] == pytest.approx(held_m3 / sync_s, rel=1e-9)
+        assert exchange.q_surcharge_node[0] < orifice, "the cap must bind here"
+        # Over the interval it emits exactly what it had, and not a drop more.
+        assert exchange.q_surcharge_node[0] * sync_s == pytest.approx(held_m3, rel=1e-9)
 
 
 class TestExchangeConservation:

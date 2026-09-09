@@ -629,6 +629,37 @@ def build_drain_graph(
         length = float(graph.edges[node, parent]["length"])
         z_invert[node] = max(z_invert[node], z_invert[parent] + min_slope * length)
 
+    # The pass above only ever RAISES an invert, to buy the minimum slope down to its parent,
+    # and nothing was stopping it from raising one clean out of the ground. Along a chain that
+    # climbs away from the sea the raises accumulate: on Mumbai it put 32,877 of 50,110 inverts
+    # ABOVE their own street - a mean of 2.7 m up and a worst case of 33 m - and wrote
+    # invert_depth_m values as negative as -33.4 m, which is a pipe hanging in the air.
+    #
+    # Downstream that is not a cosmetic error. The Twin surcharges a manhole when its head rises
+    # over the street, and a node whose invert already stands above the street surcharges while
+    # the pipe is still empty: the first coupled city run pushed 237,545 m3 onto the streets
+    # every 5 s from a drain holding nothing, and ended 44x out on mass balance with 12 m of
+    # standing water.
+    #
+    # A pipe keeps its cover, so the cover wins and the slope gives way. That is also the honest
+    # answer for this city: a flat coastal plain cannot deliver 0.3 % everywhere without digging
+    # trunks metres deeper than a prototype has any evidence for, and the sections that end up
+    # flat or adverse are a real feature of Mumbai's drainage rather than an artefact - the
+    # solver is head-driven (CLAUDE.md 11.4 uses dH, not the bed slope), so it handles them.
+    # The count is logged so the number is visible rather than buried.
+    ceiling = z_ground - depth
+    lifted = z_invert > ceiling + 1e-9
+    if bool(np.any(lifted)):
+        excess = (z_invert - ceiling)[lifted]
+        log.warning(
+            "drains.invert_clamped_to_cover",
+            nodes=int(lifted.sum()),
+            of=len(store.rows),
+            mean_excess_m=round(float(excess.mean()), 3),
+            max_excess_m=round(float(excess.max()), 3),
+        )
+        z_invert = np.minimum(z_invert, ceiling)
+
     intensity = config.design_intensity_mm_h
     legacy = float(getattr(intensity, "legacy", 25.0))
     upgraded = float(getattr(intensity, "upgraded", 50.0))
