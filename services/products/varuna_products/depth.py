@@ -95,8 +95,9 @@ because the cost of being wrong is a stranded ambulance rather than a longer dri
 
 
 # ============================================================================ rasters
-def depth_bounds(transform: tuple[float, float, float, float, float, float],
-                 shape: tuple[int, int], crs: str) -> dict[str, object]:
+def depth_bounds(
+    transform: tuple[float, float, float, float, float, float], shape: tuple[int, int], crs: str
+) -> dict[str, object]:
     """The lon/lat bounds a deck.gl ``BitmapLayer`` needs, plus the metric ones it does not.
 
     The console places the raster by lon/lat, so the metric grid is reprojected here rather than

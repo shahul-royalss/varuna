@@ -180,3 +180,45 @@ def segments(
         "safe_until": safe_until,
         "notes": meta.get("notes", []),
     }
+
+
+@router.get("/nowcast/hotspots", summary="Ranked hotspots for the rail")
+def hotspots(
+    run_id: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 10,
+) -> dict[str, Any]:
+    """The run's ranked chronic spots, deepest first (CLAUDE.md 11.8, P5.4).
+
+    Read straight off the run directory: ``hotspots.json`` was computed once when the cycle ran,
+    and re-deriving it per request would let the rail and the map disagree about the same run.
+
+    Every entry carries the register's ``source_url``, so the claim "this junction floods" stays
+    traceable to the report it was verified against (rule 7). ``ranking`` says out loud which
+    score ordered the list, because on a deterministic run it is **not** the spec's
+    ``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash
+    brings a real ensemble in Phase 7.
+    """
+    path = _resolve(run_id)
+    record = path / "hotspots.json"
+    if not record.is_file():
+        raise api_error(
+            404,
+            "no_hotspots",
+            f"Run {path.name} predates hotspot ranking. {BAKE_HINT}",
+            run_id=path.name,
+        )
+
+    ranked = json.loads(record.read_text(encoding="utf-8"))
+    meta = _meta(path)
+    log.info("api.hotspots", run_id=path.name, n=len(ranked), limit=limit)
+    return {
+        "run_id": meta.get("run_id", path.name),
+        "cycle_ts": meta.get("cycle_ts"),
+        "step_min": meta.get("step_min", 5),
+        "ensemble_n": meta.get("ensemble_n", 1),
+        "ranking": "peak depth",
+        "impassable_threshold_cm": 30,
+        "n_total": len(ranked),
+        "hotspots": ranked[:limit],
+        "notes": meta.get("notes", []),
+    }

@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/varuna/empty-state";
-import { HotspotRail, type HotspotSummary } from "@/components/varuna/hotspot-rail";
+import { HotspotRail } from "@/components/varuna/hotspot-rail";
+import type { Hotspot, HotspotSet } from "@/lib/api/hotspots";
 import { RIGHT_RAIL_TABS, useUiStore, type RightRailTab } from "@/lib/stores/ui";
 
 const TAB_LABELS: Record<RightRailTab, string> = {
@@ -14,15 +15,28 @@ const TAB_LABELS: Record<RightRailTab, string> = {
   reachability: "Reachability",
 };
 
-/** Hotspots come from `hotspots.json` of the current run (Phase 6); the empty console has none. */
-const NO_HOTSPOTS: HotspotSummary[] = [];
+export interface RightRailProps {
+  /** The current run's ranked hotspots; null before one has loaded. */
+  hotspots?: HotspotSet | null;
+  /** Step on the time bar, so the rail's depth chips track the map. */
+  step?: number;
+  selectedHotspotId?: string | null;
+  onSelectHotspot?: (hotspot: Hotspot) => void;
+  hotspotsLoading?: boolean;
+}
 
 function isRightRailTab(value: unknown): value is RightRailTab {
   return typeof value === "string" && (RIGHT_RAIL_TABS as readonly string[]).includes(value);
 }
 
 /** The console's right rail (CLAUDE.md section 6.5): Hotspots, Alerts, Pumps and Reachability tabs. */
-export function RightRail() {
+export function RightRail({
+  hotspots = null,
+  step = 0,
+  selectedHotspotId = null,
+  onSelectHotspot,
+  hotspotsLoading = false,
+}: RightRailProps = {}) {
   const tab = useUiStore((s) => s.rightRailTab);
   const setTab = useUiStore((s) => s.setRightRailTab);
 
@@ -43,7 +57,15 @@ export function RightRail() {
       </TabsList>
 
       <TabsContent value="hotspots" className="min-h-0 flex-1">
-        <HotspotRail hotspots={NO_HOTSPOTS} />
+        <HotspotRail
+          hotspots={hotspots?.hotspots ?? []}
+          step={step}
+          selectedId={selectedHotspotId}
+          onSelect={onSelectHotspot}
+          ranking={hotspots?.ranking}
+          impassableThresholdCm={hotspots?.impassableThresholdCm}
+          loading={hotspotsLoading}
+        />
       </TabsContent>
 
       <TabsContent value="alerts" className="min-h-0 flex-1 overflow-y-auto p-4">

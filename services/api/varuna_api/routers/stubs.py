@@ -19,7 +19,6 @@ from varuna_schemas.models import (
     DrainHealthProduct,
     ErrorEnvelope,
     FeatureCollection,
-    HotspotList,
     Observation,
     PhysicsCheckRequest,
     PhysicsCheckResponse,
@@ -140,18 +139,6 @@ def nowcast_raster(
     stat: Annotated[Literal["p50", "p90", "prob30"], Query()] = "p50",
 ) -> Response:
     raise not_implemented("Depth rasters", 5, "P5.3")
-
-
-@router.get(
-    "/nowcast/hotspots",
-    tags=["nowcast"],
-    response_model=HotspotList,
-    summary="Ranked hotspots with attribution",
-)
-def nowcast_hotspots(
-    run_id: RunIdQ = None, limit: Annotated[int, Query(ge=1, le=100)] = 10
-) -> HotspotList:
-    raise not_implemented("Hotspot ranking", 5, "P5.4")
 
 
 @router.get(

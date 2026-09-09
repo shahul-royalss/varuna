@@ -47,10 +47,10 @@ SECTION_12_PATHS = [
     "/v1/city/{city}/layers/{name}",
 ]
 
+# Endpoints that are still 501. Phase 5 implemented the depth products - segments, rasters and
+# the hotspot ranking - so they left this list; the *paths* stay in SECTION_12_PATHS above,
+# which is what asserts the contract in CLAUDE.md 12 is complete either way.
 STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None]] = [
-    ("GET", "/v1/nowcast/segments", None, None),
-    ("GET", "/v1/nowcast/raster", None, None),
-    ("GET", "/v1/nowcast/hotspots", None, None),
     ("GET", "/v1/nowcast/segments/88213/series", None, None),
     ("GET", "/v1/drains/health", None, None),
     ("GET", "/v1/drains/health.csv", None, None),

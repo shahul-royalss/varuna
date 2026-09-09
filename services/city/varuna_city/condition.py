@@ -359,10 +359,14 @@ def breach_spurious_pits(
     seed: int = 0,
     use_pyflwdir: bool = True,
 ) -> tuple[NDArray[np.float64], dict[str, Any]]:
-    """Breach every depression smaller than ``min_area_m2`` that holds no protected cell.
+    """Breach every depression no larger than ``min_area_m2`` that holds no protected cell.
 
     Larger depressions and anything under ``protect`` (underpasses, subways, the chronic-spot
     register) are left exactly as they are - they are the flooding we are trying to predict.
+
+    The comparison is deliberately inclusive at the threshold: at 30 m a single cell is exactly
+    ``MIN_PIT_AREA_M2``, and a one-cell pit is a DEM artefact rather than a place that floods.
+    ``protect`` is what keeps the real one-cell sinks - Andheri and Milan subways among them.
     """
     out = np.array(dem, dtype=np.float64, copy=True)
     cell_area = abs(transform.a) * abs(transform.e)
@@ -385,16 +389,31 @@ def breach_spurious_pits(
     )
     spurious: list[int] = []
     protected_labels: list[int] = []
+    kept_large = 0
+    kept_protected = 0
     for lab in range(1, n_labels + 1):
         cells = labels == lab
         area = float(cells.sum()) * cell_area
-        if area >= min_area_m2 or bool((cells & protect_mask).any()):
+        # `>` and not `>=`. On a 30 m grid one cell is exactly 900 m², so `>=` kept every
+        # single-cell pit - the most obviously spurious kind there is, and 47 % of all the
+        # depressions in Mumbai. Each one then filled to 60 cm and over in a 3-hour run,
+        # putting deep water on hillsides while the real, larger sinks drained through their
+        # inlets. The threshold means "a pit no bigger than one cell is a DEM artefact".
+        if area > min_area_m2:
             protected_labels.append(lab)
+            kept_large += 1
+            continue
+        if bool((cells & protect_mask).any()):
+            protected_labels.append(lab)
+            kept_protected += 1
             continue
         spurious.append(lab)
     stats["pits_before"] = n_labels
     stats["pits_spurious"] = len(spurious)
-    stats["pits_protected"] = len(protected_labels)
+    # Counted apart, because conflating them is what hid the bug above: every pit was reported
+    # as "protected" and 4,004 protected pits reads perfectly plausible.
+    stats["pits_large"] = kept_large
+    stats["pits_protected"] = kept_protected
     if not spurious:
         return out, stats
 

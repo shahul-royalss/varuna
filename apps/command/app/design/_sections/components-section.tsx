@@ -12,7 +12,8 @@ import { DeltaTable, type DeltaRow } from "@/components/varuna/delta-table";
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { FanChart, type FanChartPoint } from "@/components/varuna/fan-chart";
-import { HotspotRail, type HotspotSummary } from "@/components/varuna/hotspot-rail";
+import { HotspotRail } from "@/components/varuna/hotspot-rail";
+import type { Hotspot } from "@/lib/api/hotspots";
 import { IconRail } from "@/components/varuna/icon-rail";
 import { Kbd } from "@/components/varuna/kbd";
 import { LogStream, type LogLine } from "@/components/varuna/log-stream";
@@ -57,10 +58,77 @@ const SAMPLE_RUN: RunMeta = {
   versions: { sky: "1.0", twin: "1.0", flash: "0.3" },
 };
 
-const SAMPLE_HOTSPOTS: HotspotSummary[] = [
-  { id: "hindmata", name: "Hindmata junction", depthCm: 55, timeToPeak: "08:20" },
-  { id: "kings-circle", name: "King's Circle", depthCm: 38, timeToPeak: "18:35" },
-  { id: "sion-circle", name: "Sion Circle", depthCm: 27, timeToPeak: "18:50" },
+/** A plausible rise-and-recede shape, so the story panel's sparklines are not flat lines. */
+function sampleSeries(peakCm: number, peakStep: number): number[] {
+  return Array.from({ length: 36 }, (_, i) =>
+    Math.round(peakCm * Math.exp(-(((i - peakStep) / 7) ** 2)) * 10) / 10,
+  );
+}
+
+const SAMPLE_HOTSPOTS: Hotspot[] = [
+  {
+    rank: 1,
+    id: "hindmata",
+    name: "Hindmata junction",
+    slug: "hindmata",
+    lon: 72.841,
+    lat: 19.012,
+    ward: "F/S",
+    isSink: true,
+    sourceUrl: "https://www.openstreetmap.org/node/1646774128",
+    sourced: true,
+    peakDepthCm: 55,
+    peakTs: "2019-07-02T08:20:00+05:30",
+    timeToPeakMin: 100,
+    depthCm: sampleSeries(55, 20),
+    pImpassableAtPeak: 1,
+    impassableFromTs: "2019-07-02T07:45:00+05:30",
+    minutesImpassable: 95,
+    expectedImpact: 0.86,
+    exposure: { weight: 0.86, facilities: ["hospital", "station"] },
+  },
+  {
+    rank: 2,
+    id: "kings-circle",
+    name: "King's Circle",
+    slug: "kings-circle",
+    lon: 72.857,
+    lat: 19.027,
+    ward: "F/N",
+    isSink: true,
+    sourceUrl: null,
+    sourced: true,
+    peakDepthCm: 38,
+    peakTs: "2019-07-02T08:35:00+05:30",
+    timeToPeakMin: 115,
+    depthCm: sampleSeries(38, 23),
+    pImpassableAtPeak: 1,
+    impassableFromTs: "2019-07-02T08:05:00+05:30",
+    minutesImpassable: 55,
+    expectedImpact: 0.71,
+    exposure: { weight: 0.71, facilities: ["station"] },
+  },
+  {
+    rank: 3,
+    id: "sion-circle",
+    name: "Sion Circle",
+    slug: "sion-circle",
+    lon: 72.862,
+    lat: 19.039,
+    ward: "F/N",
+    isSink: false,
+    sourceUrl: null,
+    sourced: true,
+    peakDepthCm: 27,
+    peakTs: "2019-07-02T08:50:00+05:30",
+    timeToPeakMin: 130,
+    depthCm: sampleSeries(27, 26),
+    pImpassableAtPeak: 0,
+    impassableFromTs: null,
+    minutesImpassable: 0,
+    expectedImpact: 0,
+    exposure: { weight: 0.64, facilities: ["hospital"] },
+  },
 ];
 
 const SAMPLE_ALERT: AlertSummary = {
@@ -484,12 +552,13 @@ export function ComponentsSection() {
               <Demo label="Three hotspots" bare>
                 <HotspotRail
                   hotspots={SAMPLE_HOTSPOTS}
+                  step={20}
                   selectedId={selectedHotspot}
-                  onSelect={setSelectedHotspot}
+                  onSelect={(hotspot) => setSelectedHotspot(hotspot.id)}
                 />
               </Demo>
               <Demo label="Empty" note="Before the first run is published." bare>
-                <HotspotRail hotspots={[]} />
+                <HotspotRail hotspots={[]} step={0} />
               </Demo>
             </div>
           </Panel>

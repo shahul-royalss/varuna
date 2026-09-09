@@ -212,3 +212,47 @@ def test_conditioned_dem_feeds_find_depressions(use_pyflwdir: bool) -> None:
     )
     assert len(pits) == 1
     assert pits.iloc[0]["area_m2"] == pytest.approx(2000.0)
+
+
+def _dem_with_a_one_cell_pit_at_thirty_metres() -> tuple[np.ndarray, Affine]:
+    """A plateau at the city's real 30 m resolution with a single-cell pit 2 m deep."""
+    height, width = 20, 20
+    dem = np.full((height, width), 20.0)
+    dem[0, :] = 14.0  # a drainable edge
+    dem[10, 10] = 18.0  # one cell -> exactly 900 m2 at 30 m
+    return dem, Affine(30.0, 0.0, 0.0, 0.0, -30.0, height * 30.0)
+
+
+def test_a_one_cell_pit_is_spurious_at_the_grid_resolution() -> None:
+    """One 30 m cell is exactly ``MIN_PIT_AREA_M2``, and it must still be breached.
+
+    A `>=` comparison here kept every single-cell pit in the city - 47 % of Mumbai's
+    depressions - and each one filled to over 60 cm in a 3-hour run, putting deep water on
+    hillsides while the real sinks drained. The threshold reads "no bigger than one cell".
+    """
+    dem, transform = _dem_with_a_one_cell_pit_at_thirty_metres()
+    labels, _ = label_pits(dem, use_pyflwdir=False)
+    assert labels.max() == 1, "fixture should start with exactly one pit"
+
+    result = condition_dem(dem, transform, CRS, min_pit_area_m2=900.0, use_whitebox=False)
+
+    after, _ = label_pits(result.dem, use_pyflwdir=False)
+    assert after[10, 10] == 0, "a single-cell pit is a DEM artefact, not a place that floods"
+    assert result.changes["pits_spurious"] == 1
+    assert result.changes["pits_breached"] == 1
+    assert result.changes["pits_large"] == 0
+
+
+def test_a_protected_one_cell_pit_survives_at_thirty_metres() -> None:
+    """Andheri and Milan subways are one cell across; the sink list is what keeps them."""
+    dem, transform = _dem_with_a_one_cell_pit_at_thirty_metres()
+    sink = Point(*cell_center(transform, 10, 10))
+
+    result = condition_dem(
+        dem, transform, CRS, sinks=[sink], min_pit_area_m2=900.0, use_whitebox=False
+    )
+
+    after, _ = label_pits(result.dem, use_pyflwdir=False)
+    assert after[10, 10] > 0, "a registered subway must stay a sink whatever its area"
+    assert result.changes["pits_protected"] == 1
+    assert result.changes["pits_spurious"] == 0
