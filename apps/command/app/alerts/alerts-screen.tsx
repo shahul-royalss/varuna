@@ -22,6 +22,7 @@ import { AppShell } from "@/components/varuna/app-shell";
 import { CapViewer } from "@/components/varuna/cap-viewer";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { EscalationMatrix } from "@/components/varuna/escalation-matrix";
+import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PhoneMock, type PhoneMessage } from "@/components/varuna/phone-mock";
@@ -60,15 +61,25 @@ export function AlertsScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [capXml, setCapXml] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
+  // **Which cycle.** An alert is a statement about a forecast, so it only means anything beside
+  // the run that raised it - and the newest baked run is 09:10 IST, after the storm, where the
+  // queue is nearly empty. The operator picks the cycle here as they do on the console; the row
+  // of cycles is the morning's own escalation.
+  const [runId, setRunId] = useState<string | undefined>(undefined);
 
-  // The queue is the newest baked run's. An alert is a statement about a forecast, so it only
-  // means anything alongside the run that made it.
   useEffect(() => {
     const controller = new AbortController();
-    loadAlerts(undefined, controller.signal)
+    loadAlerts(runId, controller.signal)
       .then((set) => setRaised(set?.alerts ?? []))
       .catch(() => setRaised([]));
     return () => controller.abort();
+  }, [runId]);
+
+  // A new cycle is a new queue, so the selected alert and its CAP go with it.
+  const pickCycle = useCallback((next: string) => {
+    setRunId(next);
+    setSelectedId(null);
+    setCapXml(null);
   }, []);
 
   // The CAP document of whichever alert is selected, defaulting to the worst one raised.
@@ -76,11 +87,11 @@ export function AlertsScreen() {
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
-    loadCap(active, undefined, controller.signal)
+    loadCap(active, runId, controller.signal)
       .then(setCapXml)
       .catch(() => setCapXml(null));
     return () => controller.abort();
-  }, [active]);
+  }, [active, runId]);
 
   const acknowledge = useCallback(
     (id: string) => setAcknowledged((current) => ({ ...current, [id]: true })),
@@ -121,6 +132,8 @@ export function AlertsScreen() {
             title="Alert centre"
             description="Every alert VARUNA raises, the CAP document it sends, and the message the ward officer receives."
           />
+
+          <CyclePicker currentRunId={runId} onPick={pickCycle} />
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,0.9fr)]">
             <Panel

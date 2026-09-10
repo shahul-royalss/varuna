@@ -1,11 +1,25 @@
 "use client";
 
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { PackageOpen } from "lucide-react";
+import { motion } from "motion/react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { PumpCard, type Pump } from "@/components/varuna/pump-card";
 import { formatMinutes } from "@/lib/format";
+import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { cn } from "@/lib/utils";
 
 /**
@@ -32,7 +46,7 @@ export const DEFAULT_PUMP_COLUMNS: readonly PumpColumn[] = [
 
 /** The one sentence every disabled control on this board carries. */
 export const PUMP_ACTIONS_HELPER =
-  "The plan is the greedy optimiser's; drag-to-assign arrives with the emulator.";
+  "The plan is the greedy optimiser's; it is recomputed when the cycle runs.";
 
 /** Placeholder line where the excess-inflow sparkline will be drawn. */
 export const SPARKLINE_PLACEHOLDER = "Excess inflow appears with the first run";
@@ -45,7 +59,77 @@ export interface PumpBoardProps {
   onOptimise?: () => void;
   /** Sends the current plan; absent in Phase 0, so the button stays disabled. */
   onDispatch?: () => void;
+  /** Moves a pump to a hotspot column, or back to the pool when `columnId` is null.
+   *
+   * Absent leaves the board read-only: a card that can be picked up but not put down is worse
+   * than one that never moves. */
+  onAssign?: (pumpId: string, columnId: string | null) => void;
   className?: string;
+}
+
+/** The droppable id of the "Available pumps" column: dropping here un-assigns a pump. */
+const POOL_ID = "__pool__";
+
+/** Motion M17: the card flies to its column and settles. A spring, per CLAUDE.md 8's handles. */
+const CARD_SPRING = { type: "spring" as const, stiffness: 400, damping: 32 };
+
+/** One draggable pump card. `layoutId` is what makes the card *fly* between columns rather than
+ * disappearing from one and appearing in another - the whole of motion M17. */
+function DraggablePump({
+  pump,
+  disabled,
+  reducedMotion,
+}: {
+  pump: Pump;
+  disabled: boolean;
+  reducedMotion: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: pump.id,
+    disabled,
+  });
+
+  return (
+    <motion.div
+      ref={setNodeRef}
+      layoutId={reducedMotion ? undefined : `pump-${pump.id}`}
+      transition={reducedMotion ? { duration: 0 } : CARD_SPRING}
+      // The original stays in place at low opacity while the overlay follows the cursor, so the
+      // column it came from does not reflow underneath the drag.
+      style={{ opacity: isDragging ? 0.35 : 1 }}
+      className={disabled ? undefined : "cursor-grab active:cursor-grabbing"}
+      {...listeners}
+      {...attributes}
+    >
+      <PumpCard pump={pump} />
+    </motion.div>
+  );
+}
+
+/** A column that accepts a dropped pump, lit while one is over it. */
+function DropColumn({
+  id,
+  children,
+  className,
+}: {
+  id: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const { setNodeRef, isOver } = useDroppable({ id });
+  return (
+    <div
+      ref={setNodeRef}
+      data-column-id={id}
+      className={cn(
+        className,
+        // `--line-strong` on hover-over: the only feedback that says "this is where it lands".
+        isOver && "border-line-strong bg-well",
+      )}
+    >
+      {children}
+    </div>
+  );
 }
 
 function benefitLine(column: PumpColumn): string {
@@ -66,11 +150,33 @@ export function PumpBoard({
   columns,
   onOptimise,
   onDispatch,
+  onAssign,
   className,
 }: PumpBoardProps) {
   const helperId = "pump-board-actions-helper";
+  const reducedMotion = usePrefersReducedMotion();
+  const [dragging, setDragging] = useState<Pump | null>(null);
 
-  return (
+  // A short activation distance, so a click on a card is still a click and only a deliberate
+  // pull starts a drag.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+
+  const byId = new Map<string, Pump>();
+  for (const pump of pumps) byId.set(pump.id, pump);
+  for (const column of columns) for (const pump of column.pumps) byId.set(pump.id, pump);
+
+  const onDragStart = (event: DragStartEvent) =>
+    setDragging(byId.get(String(event.active.id)) ?? null);
+
+  const onDragEnd = (event: DragEndEvent) => {
+    setDragging(null);
+    const over = event.over?.id;
+    if (over === undefined || !onAssign) return;
+    const target = String(over);
+    onAssign(String(event.active.id), target === POOL_ID ? null : target);
+  };
+
+  const board = (
     <section
       data-slot="pump-board"
       aria-label="Pump board"
@@ -108,7 +214,10 @@ export function PumpBoard({
       )}
 
       <div className="flex gap-4 overflow-x-auto pb-2">
-        <div className="flex w-[280px] shrink-0 flex-col rounded-panel border border-line bg-deep">
+        <DropColumn
+          id={POOL_ID}
+          className="flex w-[280px] shrink-0 flex-col rounded-panel border border-line bg-deep transition-colors"
+        >
           <header className="border-b border-line px-4 py-3">
             <h3 className="type-small font-medium text-text">Available pumps</h3>
             <p className="type-micro text-text-3">Synthetic pump inventory</p>
@@ -122,16 +231,23 @@ export function PumpBoard({
                 description="The inventory arrives with the city layers."
               />
             ) : (
-              pumps.map((pump) => <PumpCard key={pump.id} pump={pump} />)
+              pumps.map((pump) => (
+                <DraggablePump
+                  key={pump.id}
+                  pump={pump}
+                  disabled={!onAssign}
+                  reducedMotion={reducedMotion}
+                />
+              ))
             )}
           </div>
-        </div>
+        </DropColumn>
 
         {columns.map((column) => (
-          <div
+          <DropColumn
             key={column.id}
-            data-column-id={column.id}
-            className="flex w-[280px] shrink-0 flex-col rounded-panel border border-line bg-deep"
+            id={column.id}
+            className="flex w-[280px] shrink-0 flex-col rounded-panel border border-line bg-deep transition-colors"
           >
             <header className="border-b border-line px-4 py-3">
               <h3 className="type-small font-medium text-text">{column.title}</h3>
@@ -150,12 +266,36 @@ export function PumpBoard({
                   description="Assign a pump once the inventory and a run are loaded."
                 />
               ) : (
-                column.pumps.map((pump) => <PumpCard key={pump.id} pump={pump} />)
+                column.pumps.map((pump) => (
+                  <DraggablePump
+                    key={pump.id}
+                    pump={pump}
+                    disabled={!onAssign}
+                    reducedMotion={reducedMotion}
+                  />
+                ))
               )}
             </div>
-          </div>
+          </DropColumn>
         ))}
       </div>
     </section>
+  );
+
+  if (!onAssign) return board;
+
+  return (
+    <DndContext sensors={sensors} onDragStart={onDragStart} onDragEnd={onDragEnd}>
+      {board}
+      {/* The card under the cursor. A `DragOverlay` renders outside the scroll container, so the
+          card does not disappear behind a column edge while it is being carried across. */}
+      <DragOverlay dropAnimation={reducedMotion ? null : undefined}>
+        {dragging ? (
+          <div className="w-[256px] rotate-2 opacity-95">
+            <PumpCard pump={dragging} />
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }
