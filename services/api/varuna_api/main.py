@@ -33,6 +33,7 @@ from varuna_api.routers import (
     health,
     live,
     nowcast,
+    onboard,
     replay,
     reports,
     route,
@@ -243,6 +244,7 @@ def create_app(
     app.include_router(whatif.router)
     app.include_router(reports.router)
     app.include_router(route.router)
+    app.include_router(onboard.router)
     app.include_router(verify.router)
     app.include_router(nowcast.router)
     app.include_router(stubs.router)

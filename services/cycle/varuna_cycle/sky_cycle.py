@@ -38,7 +38,6 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import structlog
 from varuna_replay.bundle import (
-    GAUGES_CSV,
     RADAR_VARIABLE,
     RADAR_ZARR,
     BundleLayout,
@@ -246,14 +245,18 @@ def gauge_window(
     Timestamps are parsed as timezone-aware IST: ``varuna_sky.zr`` refuses naive ones, because
     a reading without an offset cannot be matched to a radar frame.
 
-    Raises:
-        BundleNotFoundError: ``gauges.csv`` is not in the bundle.
+    **A bundle with no gauges is a valid bundle**, and returns an empty frame rather than raising.
+    A design storm - `CHN-IDF-25yr`, the one the onboarding wizard runs on stage - is a synthetic
+    hyetograph over a city that has no gauge network in the bundle, and there is nothing wrong with
+    that: Sky's Z-R already falls back to Marshall-Palmer below eight co-located pairs
+    (CLAUDE.md 11.1) and labels the run accordingly. Raising here made the first forecast for a
+    newly onboarded city impossible, which is the whole point of the wizard.
     """
     import pandas as pd
 
     if not layout.gauges.is_file():
-        msg = f"No {GAUGES_CSV} in {layout.bundle_id}"
-        raise BundleNotFoundError(msg)
+        log.info("sky.no_gauges", bundle=layout.bundle_id, note="Z-R falls back to Marshall-Palmer")
+        return pd.DataFrame(columns=["ts", "station_id", "lat", "lon", "mm_5min"])
     frame = pd.read_csv(layout.gauges)
     frame["ts"] = pd.to_datetime(frame["ts"], format="ISO8601", utc=True).dt.tz_convert(IST)
     start = cycle_ts - timedelta(minutes=minutes)

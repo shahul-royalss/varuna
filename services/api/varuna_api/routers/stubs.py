@@ -196,21 +196,9 @@ def physics_check(body: PhysicsCheckRequest) -> PhysicsCheckResponse:
 # ``varuna_api.routers.replay`` (task P2.7).
 
 
-# ---- onboarding and verification (Phase 9) -------------------------------------------------
-@router.post(
-    "/onboard",
-    tags=["onboard"],
-    response_model=OnboardJob,
-    status_code=202,
-    summary="Start a city-in-a-box job",
-)
-def onboard(body: OnboardRequest) -> OnboardJob:
-    raise not_implemented("City onboarding", 9, "P9.5")
-
-
-@router.get("/onboard/{job_id}", tags=["onboard"], response_model=OnboardJob, summary="Job status")
-def onboard_job(job_id: str) -> OnboardJob:
-    raise not_implemented("City onboarding", 9, "P9.5")
+# Onboarding is no longer a stub: ``varuna_api.routers.onboard`` runs the real city pipeline in a
+# background thread and streams its own log lines (tasks P9.5, P9.6). `OnboardRequest` and
+# `OnboardJob` stay here as the documented shapes of that contract.
 
 
 # Verification is no longer a stub: `varuna_api.routers.verify` scores an event against its

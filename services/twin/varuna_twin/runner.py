@@ -129,6 +129,9 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
 
     # Sea boundary mask for the 2D solver
     sea_mask = _build_sea_mask(terrain, network)
+    # `_tide_at` needs to know whether the domain has a sea at all, so it can hold it at mean sea
+    # level when the bundle has no tide series rather than leaving the solver without a level.
+    has_sea = sea_mask is not None and bool(sea_mask.any())
 
     # Sinks (pumps/tanks)  -  not wired until Phase 7, but the interface is ready
     sinks, sink_state = drain1d.no_sinks()
@@ -184,7 +187,7 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         for sync_idx in range(n_syncs):
             # Time within the step for tide lookup
             sync_time = inputs.t0 + timedelta(seconds=step_idx * step_s + sync_idx * actual_sync_s)
-            tide_stage = _tide_at(inputs, sync_time)
+            tide_stage = _tide_at(inputs, sync_time, has_sea=has_sea)
 
             # 2a. Compute exchange fluxes
             t0 = perf_counter()
@@ -275,6 +278,12 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         error_fraction=error_fraction,
     )
 
+    if inputs.tide is None and has_sea:
+        notes.append(
+            "No tide series in this bundle, so the sea was held at mean sea level (0.0 m). "
+            "The tide-lock behaviour a real event shows is absent by assumption, not by result."
+        )
+
     if error_fraction > MASS_BALANCE_TOLERANCE and total_in > MASS_BALANCE_MIN_VOLUME_M3:
         notes.append(
             f"Coupled mass balance error {error_fraction:.3%} exceeds the 0.1% budget "
@@ -314,10 +323,24 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
 # ============================================================================ helpers
 
 
-def _tide_at(inputs: TwinInputs, when) -> float | None:
-    """Tide stage at a given time, or None if there is no tide series."""
+MEAN_SEA_LEVEL_M = 0.0
+"""Where the sea is held when a bundle carries no tide series.
+
+A design storm has no tide table - `CHN-IDF-25yr` is a synthetic hyetograph, not a day - but a
+coastal city still has sea cells, and the 2D solver has to be told what level they sit at. Refusing
+to run was the previous behaviour and it made a first forecast for a newly onboarded coastal city
+impossible. Mean sea level is the neutral assumption, it is what a design storm is normally
+evaluated against, and the run's notes say it was assumed rather than measured (rule 6)."""
+
+
+def _tide_at(inputs: TwinInputs, when, *, has_sea: bool = False) -> float | None:
+    """Tide stage at a given time.
+
+    Falls back to mean sea level when there is no series but the domain has sea cells: see
+    :data:`MEAN_SEA_LEVEL_M`. Without sea cells it stays None and no boundary is applied.
+    """
     if inputs.tide is None:
-        return None
+        return MEAN_SEA_LEVEL_M if has_sea else None
     return inputs.tide.at(when)
 
 

@@ -386,10 +386,58 @@ def _load_landcover(ctx: Ctx) -> dict[str, Any]:
 
 
 def _step_hotspots(ctx: Ctx) -> dict[str, Any]:
-    from varuna_city.hotspots import build_hotspots, read_hotspots
+    """The chronic waterlogging register, where one has been curated for this city.
 
-    path = build_hotspots(ctx.config.id, bbox=ctx.config.bbox.as_tuple(), out_dir=ctx.out_dir)
+    **A city with no register is the normal case, not a failure.** The register is hand-curated
+    from civic logs and news with a `source_url` on every point (CLAUDE.md 10.1 step 9, rule 7),
+    and a city onboarded on stage has never had that done. This used to raise, which stopped the
+    Chennai build dead at step four with two thirds of the pipeline still to run.
+
+    So a missing register writes an empty one and says so. Nothing is invented to fill it: the
+    DEM's own depressions are the hotspot *candidates* for a new city, and they are computed two
+    steps later regardless. That is exactly the wizard's closing line - the city arrives
+    uncalibrated and VARUNA learns it from the next monsoon.
+    """
+    from varuna_city.hotspots import RegisterNotFoundError, build_hotspots, read_hotspots
+
+    try:
+        path = build_hotspots(ctx.config.id, bbox=ctx.config.bbox.as_tuple(), out_dir=ctx.out_dir)
+    except (RegisterNotFoundError, FileNotFoundError) as error:
+        path = _write_empty_register(ctx, str(error))
+        summary = _load_hotspots(ctx, path=path, read=read_hotspots)
+        summary["uncurated"] = True
+        return summary
     return _load_hotspots(ctx, path=path, read=read_hotspots)
+
+
+def _write_empty_register(ctx: Ctx, reason: str) -> Path:
+    """An empty, honestly-labelled hotspot register for a city nobody has curated yet."""
+    import json
+
+    path = ctx.path("hotspots.geojson")
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [],
+                "properties": {
+                    "city": ctx.config.id,
+                    "uncurated": True,
+                    "note": (
+                        "No chronic waterlogging register has been curated for this city. Every "
+                        "point in a register carries a source_url, and none were available at "
+                        "build time, so this is empty rather than guessed."
+                    ),
+                    "reason": reason,
+                },
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    log.warning("city.hotspots_uncurated", city=ctx.config.id, reason=reason)
+    return path
 
 
 def _load_hotspots(ctx: Ctx, *, path: Path | None = None, read: Any = None) -> dict[str, Any]:
@@ -407,14 +455,34 @@ def _load_hotspots(ctx: Ctx, *, path: Path | None = None, read: Any = None) -> d
 
 
 def _step_assets(ctx: Ctx) -> dict[str, Any]:
+    """Facilities from OSM, plus whatever infrastructure has been curated for this city.
+
+    Same reasoning as the register above: `<city>_infra.json` is hand-curated pumping stations and
+    holding tanks with sources, and a newly onboarded city has none. OSM still supplies the
+    hospitals, fire stations and railway stations - which is what reachability and exposure
+    actually need - so the step degrades to those rather than failing the build.
+    """
     from varuna_city.assets import build_assets
 
-    build_assets(
-        ctx.config.id,
-        osm_assets=ctx.get("osm.assets"),
-        out_dir=ctx.out_dir,
-        bbox=ctx.config.bbox.as_tuple(),
-    )
+    try:
+        build_assets(
+            ctx.config.id,
+            osm_assets=ctx.get("osm.assets"),
+            out_dir=ctx.out_dir,
+            bbox=ctx.config.bbox.as_tuple(),
+        )
+    except FileNotFoundError as error:
+        log.warning("city.assets_uncurated", city=ctx.config.id, reason=str(error))
+        build_assets(
+            ctx.config.id,
+            osm_assets=ctx.get("osm.assets"),
+            out_dir=ctx.out_dir,
+            bbox=ctx.config.bbox.as_tuple(),
+            curated=False,
+        )
+        summary = _load_assets(ctx)
+        summary["uncurated"] = True
+        return summary
     return _load_assets(ctx)
 
 
@@ -922,6 +990,26 @@ def _cache_paths(ctx: Ctx) -> Sequence[Path]:
     return paths
 
 
+FETCHING_STEPS: frozenset[str] = frozenset({"cache", "dem", "osm", "landcover"})
+"""The steps that reach the network, and therefore the ones a pre-cache has to run.
+
+CLAUDE.md 10.4 asks for a Chennai pre-cache that lets the onboarding wizard run on stage with
+`VARUNA_OFFLINE=1`. `--cache-only` used to run only `cache`, which *verifies DEM tiles* and
+downloads nothing else - so a pre-cached Chennai still had to fetch its roads from Overpass and
+its land cover from the WorldCover bucket the moment the wizard started, which is exactly the
+thing that cannot be allowed to happen in front of judges on a venue's Wi-Fi.
+
+These four are every step with an external input: the Copernicus tiles, the Overpass extract and
+the ESA WorldCover tile. Running them writes their outputs into `city/<city>/` *and* leaves the
+raw responses in `city/cache/`, so the wizard afterwards is pure computation."""
+
+
+def _cache_steps() -> tuple[Step, ...]:
+    """The fetching steps, in pipeline order, up to and including the last one."""
+    last = max(i for i, step in enumerate(STEPS) if step.name in FETCHING_STEPS)
+    return STEPS[: last + 1]
+
+
 STEPS: tuple[Step, ...] = (
     Step("cache", "Verify the open-data cache", _step_cache),
     Step(
@@ -1083,7 +1171,9 @@ def run_city(
 
     Args:
         city: city slug with a config under ``services/city/configs/``.
-        cache_only: stop after the cache check (``make city CITY=chennai ARGS=--cache-only``).
+        cache_only: run only the steps that fetch open data, so the caches are warm and the
+            rest of the build can run offline (``make city-cache CITY=chennai``). See
+            :func:`_cache_steps`.
         force: ignore cached step outputs and recompute everything.
         out_dir: city folder (default ``city/<city>/``).
         only: run just these step names; the steps before them load from cache.
@@ -1103,7 +1193,7 @@ def run_city(
         started_at=time.strftime("%Y-%m-%dT%H:%M:%S%z"),
     )
     wanted = set(only) if only is not None else None
-    steps = STEPS[:1] if cache_only else STEPS
+    steps = _cache_steps() if cache_only else STEPS
     log.info("city.start", city=config.id, steps=len(steps), out_dir=str(target), force=force)
     _publish({"city": config.id, "event": "started", "steps": [s.name for s in steps]})
 

@@ -38,6 +38,12 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 log = structlog.get_logger(__name__)
 
 #: Tag sets pulled with ``ox.features_from_bbox``. Layer name -> OSM tags.
+OVERPASS_TRIES = 3
+"""Attempts per layer before giving up. Overpass is a shared public service and resets under load."""
+
+OVERPASS_BACKOFF_S = 4.0
+"""Pause before a retry, multiplied by the attempt number."""
+
 FEATURE_TAGS: dict[str, dict[str, Any]] = {
     "buildings": {"building": True},
     "waterways": {"waterway": ["drain", "canal", "stream", "river"]},
@@ -102,10 +108,18 @@ class OsmLayers:
     fire_stations: gpd.GeoDataFrame | None = None
     shelters: gpd.GeoDataFrame | None = None
     stage_ms: dict[str, float] = field(default_factory=dict)
+    fetch_errors: dict[str, str] = field(default_factory=dict)
+    """Layers whose download failed, and why.
+
+    An empty layer means one of two very different things - "this AOI has no canals" or "Overpass
+    reset the connection" - and only the second is a reason to distrust everything downstream. On
+    Chennai the second happened to `waterways`, which is where the drain graph gets its river
+    outfalls, and without this it was recorded as the first. Anything in here is reported rather
+    than swallowed (CLAUDE.md 6)."""
 
     def layer_names(self) -> list[str]:
         """Names of the GeoDataFrame layers, in write order."""
-        skip = {"city", "crs", "graph", "stage_ms"}
+        skip = {"city", "crs", "graph", "stage_ms", "fetch_errors"}
         return [f.name for f in fields(self) if f.name not in skip]
 
     def assets(self) -> gpd.GeoDataFrame:
@@ -215,11 +229,36 @@ def fetch_osm(
     for name, tags in FEATURE_TAGS.items():
         t1 = time.perf_counter()
         keep = _KEEP_COLUMNS[name]
-        try:
-            found = ox.features_from_bbox(bbox=(left, bottom, right, top), tags=tags)
-            layer = _sanitize(found, keep, crs) if len(found) else _empty_gdf(("osmid", *keep), crs)
-        except Exception as exc:
-            log.warning("osm.layer_empty", city=city, layer=name, error=str(exc))
+        layer = None
+        last_error: Exception | None = None
+        # Overpass drops connections under load, and a single reset used to leave the layer
+        # permanently empty - a network flake recorded as a fact about the city. Three tries with
+        # a widening pause is enough for every reset seen on Chennai, and a genuinely empty layer
+        # costs nothing extra because it succeeds on the first.
+        for attempt in range(OVERPASS_TRIES):
+            try:
+                found = ox.features_from_bbox(bbox=(left, bottom, right, top), tags=tags)
+                layer = (
+                    _sanitize(found, keep, crs) if len(found) else _empty_gdf(("osmid", *keep), crs)
+                )
+                break
+            except Exception as exc:
+                last_error = exc
+                if attempt + 1 < OVERPASS_TRIES:
+                    pause = OVERPASS_BACKOFF_S * (attempt + 1)
+                    log.warning(
+                        "osm.layer_retry",
+                        city=city,
+                        layer=name,
+                        attempt=attempt + 1,
+                        of=OVERPASS_TRIES,
+                        pause_s=pause,
+                        error=str(exc),
+                    )
+                    time.sleep(pause)
+        if layer is None:
+            log.warning("osm.layer_failed", city=city, layer=name, error=str(last_error))
+            layers.fetch_errors[name] = str(last_error)
             layer = _empty_gdf(("osmid", *keep), crs)
         if name in PROXY_LAYERS:
             layer["proxy_note"] = PROXY_LAYERS[name]
