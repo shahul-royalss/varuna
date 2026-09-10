@@ -204,6 +204,13 @@ class RunMeta(VarunaModel):
         default_factory=list,
         description="Honesty notes shown in the run stamp, e.g. 'reconstructed replay'.",
     )
+    rain_aoi_mm_h: list[float] = Field(
+        default_factory=list,
+        description=(
+            "AOI-mean rain rate in mm/h at each forecast step: the storm this run was given. "
+            "What-if scales it, so a run without it can only answer 'what if' about pipes."
+        ),
+    )
 
     @field_validator("run_id")
     @classmethod

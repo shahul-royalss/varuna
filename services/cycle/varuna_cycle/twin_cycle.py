@@ -268,6 +268,9 @@ def run_cycle(
         step_min=STEP_MIN,
         n_steps=n_steps,
         notes=notes,
+        # The storm, one number per step. What-if scales this to answer "what if it rains 30 %
+        # harder", and without it stored the endpoint can only answer questions about pipes.
+        rain_aoi_mm_h=[round(float(v), 3) for v in rain_cube.mean(axis=(1, 2))],
     )
 
     def _write(tmp: Path) -> None:

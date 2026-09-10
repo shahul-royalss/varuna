@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useEffect, useState } from "react";
 
-import { CityMap } from "@/components/map/city-map";
+import { CityMap, type SegmentPath } from "@/components/map/city-map";
+import { apiUrl } from "@/lib/api/client";
+import { allSegments } from "@/lib/api/run-depth";
 import {
   desiltingCsvUrl,
   loadDrainHealth,
@@ -37,6 +39,7 @@ const TOGGLE_REASON = "Available once Pulse has assimilated an observation";
 export function DrainsScreen() {
   const [health, setHealth] = useState<DrainHealth | null>(null);
   const [observed, setObserved] = useState<ObservationSet | null>(null);
+  const [streets, setStreets] = useState<SegmentPath[]>([]);
   const [showPrior, setShowPrior] = useState(false);
 
   useEffect(() => {
@@ -49,6 +52,19 @@ export function DrainsScreen() {
         setHealth(h);
         setObserved(o);
       })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  // The streets, drawn under the pipes in the dry colour. Without them the drain graph is a
+  // scatter of magenta strokes on black and nobody can tell which junction is which; with them
+  // it reads as what it is - a sewer beneath a city, following the roads it was inferred from.
+  // Loaded second, because the pipes are the subject and this is the paper they sit on.
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(apiUrl("/v1/city/mumbai/layers/segments"), { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : { features: [] }))
+      .then((geojson) => setStreets(allSegments(geojson)))
       .catch(() => undefined);
     return () => controller.abort();
   }, []);
@@ -84,19 +100,26 @@ export function DrainsScreen() {
 
   return (
     <AppShell>
-      <div className="h-full min-h-0 overflow-y-auto">
-        <div className="mx-auto flex max-w-[1600px] flex-col gap-6 p-6">
+      {/*
+       * A two-pane screen with the viewport's height, not a scrolling page. The map used to be a
+       * grid item with `min-h-[560px]` beside a table of 25 pipes, and a grid row stretches to its
+       * tallest item: the map's canvas grew to 7,196 px, the drain graph was framed in the middle
+       * of it, and all the viewport showed was the empty top of a very tall picture. The map takes
+       * the height it is given here and the panels beside it scroll on their own.
+       */}
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-4 p-6">
           <PageHeader
             title="Drain X-ray"
             description="The learned blockage map, the observations that taught it, and the desilting priority list."
             honesty="Inferred drain graph"
           />
 
-          <div className="grid min-h-0 gap-4 lg:grid-cols-[62fr_38fr]">
+          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[62fr_38fr]">
             <PanelErrorBoundary title="Drain map">
               <section
                 aria-label="Drain map"
-                className="flex min-h-[560px] flex-col overflow-hidden rounded-panel border border-line bg-deep"
+                className="flex min-h-[420px] flex-col overflow-hidden rounded-panel border border-line bg-deep"
               >
                 <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
                   <div className="min-w-0">
@@ -141,11 +164,11 @@ export function DrainsScreen() {
                   </div>
                 </header>
                 <div className="relative min-h-0 flex-1">
-                  {drains.length > 0 ? (
+                  {drains.length > 0 || streets.length > 0 ? (
                     <CityMap
                       frames={[]}
                       rasterBounds={null}
-                      baseSegments={[]}
+                      baseSegments={streets}
                       segments={[]}
                       surcharge={[]}
                       hotspots={[]}
@@ -164,7 +187,7 @@ export function DrainsScreen() {
               </section>
             </PanelErrorBoundary>
 
-            <div className="flex min-w-0 flex-col gap-4">
+            <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-1">
               <PanelErrorBoundary title="Drain health">
                 <Panel
                   title="Drain health"

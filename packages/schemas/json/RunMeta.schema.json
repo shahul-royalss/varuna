@@ -252,6 +252,14 @@
       "description": "Timestamp of the latest radar frame used, if any.",
       "title": "Radar Frame Ts"
     },
+    "rain_aoi_mm_h": {
+      "description": "AOI-mean rain rate in mm/h at each forecast step: the storm this run was given. What-if scales it, so a run without it can only answer 'what if' about pipes.",
+      "items": {
+        "type": "number"
+      },
+      "title": "Rain Aoi Mm H",
+      "type": "array"
+    },
     "replay_mode": {
       "default": "replay",
       "description": "Ingestion mode of the cycle.",
