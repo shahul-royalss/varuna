@@ -135,6 +135,26 @@ export function formatPct(
   return `${integerFormatter.format(Math.round(clamped))} %`;
 }
 
+/** The Twin's mass-balance budget: the coupled run must conserve to within 0.1 % (CLAUDE.md 11.3). */
+export const MASS_BALANCE_BUDGET = 0.001;
+
+/**
+ * A mass-balance error, to the precision the budget is judged at.
+ *
+ * `formatPct` rounds to whole percent, which is right for "82 % likely" and useless here: a run
+ * conserving to 3.7e-04 rendered as "0 %", so the cycle log said nothing at all about the number
+ * it exists to report. Three significant figures below a tenth of a percent, so 0.037 % reads as
+ * comfortably inside a 0.1 % budget rather than as zero.
+ */
+export function formatMassBalance(value: number | null | undefined): string {
+  if (value === null || value === undefined || !isFinite(value)) return MISSING;
+  const percent = Math.abs(value) * 100;
+  if (percent === 0) return "0 %";
+  if (percent < 0.001) return "< 0.001 %";
+  if (percent < 1) return `${percent.toPrecision(2)} %`;
+  return `${percent.toFixed(1)} %`;
+}
+
 /** "820 ms" below a second, "3.9 s" above, "1 min 05 s" above a minute (cycle budget bar). */
 export function formatMs(ms: number | null | undefined): string {
   if (!isFinite(ms)) return MISSING;
