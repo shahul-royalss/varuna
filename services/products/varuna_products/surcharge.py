@@ -30,7 +30,16 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 log = structlog.get_logger("varuna.products.surcharge")
 
-__all__ = ["MIN_SURCHARGE_M3S", "surcharge_product"]
+__all__ = ["MAX_NODES", "MIN_SURCHARGE_M3S", "surcharge_product", "write_surcharge"]
+
+MAX_NODES = 500
+"""How many surcharging manholes a run stores, worst first.
+
+A heavy Mumbai cycle surcharges 9,524 of the 49,897 nodes, and writing all of them with a
+per-step series produced a 17 MB JSON file the console had to download before it could draw
+anything. The map cannot show 9,524 markers usefully at any zoom - they merge into a red
+smear - so the top 500 by peak discharge is what is kept, and the total is reported beside it
+so the count on screen is the true one."""
 
 MIN_SURCHARGE_M3S = 1e-4
 """Below this, a node is not surcharging; it is arithmetic noise.
@@ -66,7 +75,7 @@ def surcharge_product(
     active = active[np.argsort(-peak[active])]
 
     nodes: list[dict[str, Any]] = []
-    for index in active:
+    for index in active[:MAX_NODES]:
         row = int(network.cell_row[index])
         col = int(network.cell_col[index])
         if row < 0 or col < 0:
@@ -86,7 +95,7 @@ def surcharge_product(
                 "n_steps": int(steps.size),
                 # Two decimals in m3/s: enough to order them, small enough to keep the file
                 # something the console can hold for every step of a 3-hour run.
-                "q_m3s": [round(float(v), 3) for v in series],
+                "q_m3s": [round(float(v), 2) for v in series],
             }
         )
 
@@ -109,14 +118,19 @@ def surcharge_product(
             }
         )
     edges.sort(key=lambda e: (not e["tidal"], e["min_q_m3s"]))
+    n_reversed_total = len(edges)
+    # Counted before the cap, so the number on screen is the run's, not the file's.
+    n_tidal_total = sum(1 for e in edges if e["tidal"])
+    edges = edges[:MAX_NODES]
 
     product = {
         "run_id": run_id,
         "n_steps": n_steps,
         "n_nodes_total": int(network.n_nodes),
-        "n_surcharging": len(nodes),
-        "n_reversed_edges": len(edges),
-        "n_reversed_at_tidal_outfall": sum(1 for e in edges if e["tidal"]),
+        "n_surcharging": int(active.size),
+        "n_stored": len(nodes),
+        "n_reversed_edges": n_reversed_total,
+        "n_reversed_at_tidal_outfall": n_tidal_total,
         "min_surcharge_m3s": MIN_SURCHARGE_M3S,
         "nodes": nodes,
         "reversed_edges": edges,
@@ -124,10 +138,11 @@ def surcharge_product(
     log.info(
         "products.surcharge",
         run_id=run_id,
-        surcharging=len(nodes),
+        surcharging=int(active.size),
+        stored=len(nodes),
         of=int(network.n_nodes),
-        reversed_edges=len(edges),
-        at_tidal=product["n_reversed_at_tidal_outfall"],
+        reversed_edges=n_reversed_total,
+        at_tidal=n_tidal_total,
     )
     return product
 

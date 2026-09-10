@@ -233,12 +233,35 @@ class TestMassBalance:
         result = run_twin(inputs)
 
         mb = result.mass_balance
-        # The combined error should be small. We use a relaxed tolerance here because
-        # the coupling introduces a sync error at the 5 s interval that the individual
-        # solvers don't have. A 5% tolerance is generous but captures gross errors.
-        assert mb.error_fraction < 0.05, (
-            f"Coupled mass balance error {mb.error_fraction:.4%} too high"
+        # CLAUDE.md 11.3's budget, not a generous one. The 5 % tolerance this used to carry
+        # was wide enough to pass a run that had lost 1.5 % of its water down unaudited
+        # outfalls, which is the whole point of measuring: a budget nothing can fail is not
+        # a check. The coupling's 5 s sync error is orders of magnitude below this.
+        assert mb.error_fraction < 1e-3, (
+            f"Coupled mass balance error {mb.error_fraction:.4%} is over the 0.1 % budget"
         )
+
+    def test_water_leaving_through_an_outfall_stays_in_the_audit(self) -> None:
+        """Rain captured by an inlet and discharged at an outfall must still be accounted.
+
+        It is the drain network's main sink, so leaving it out does not make the balance
+        slightly wrong - it makes the balance a measure of how much the drains removed. On a
+        Mumbai storm cycle the unaudited term was 131,162 m3 and the whole of a 1.5 % error.
+        """
+        terrain = _make_terrain(shape=(15, 15))
+        network = _make_network(terrain, n_nodes=10)
+        rain = _make_rain_cube(n_steps=4, shape=(15, 15), peak_mm_h=50.0)
+
+        result = run_twin(
+            TwinInputs(terrain=terrain, network=network, rain_mm_h=rain, t0=T0)
+        )
+
+        mb = result.mass_balance
+        stored = mb.volume_stored_m3
+        assert mb.volume_in_m3 > 0.0, "fixture: the storm must put water into the city"
+        # Rain in, minus what left, is what is standing - to within the budget. Any term the
+        # audit forgets shows up here, whatever its sign.
+        assert abs(stored - (mb.volume_in_m3 - mb.volume_out_m3)) < 1e-3 * mb.volume_in_m3
 
     def test_stage_timings_are_populated(self) -> None:
         terrain = _make_terrain(shape=(10, 10))

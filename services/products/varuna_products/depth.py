@@ -29,7 +29,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
@@ -47,10 +47,12 @@ __all__ = [
     "PROFILE_TOLERANCE",
     "SEGMENT_BUFFER_M",
     "SEGMENT_PERCENTILE",
+    "WET_THRESHOLD_CM",
     "depth_bounds",
     "segment_cell_index",
     "segment_forecast",
     "write_depth_rasters",
+    "write_wet_segments",
 ]
 
 SEGMENT_BUFFER_M = 15.0
@@ -289,3 +291,46 @@ def segment_forecast(
         wet_segments=int((depth_cm.max(axis=0) > 5.0).sum()) if depth_cm.size else 0,
     )
     return frame, depth_cm
+
+
+WET_THRESHOLD_CM = 5.0
+"""Below this a street is not wet, it is damp (CLAUDE.md 6.2's `--depth-dry` band)."""
+
+
+def write_wet_segments(
+    run_dir: Path,
+    depth_cm: NDArray[np.floating],
+    segment_ids: tuple[str, ...],
+    times: tuple[datetime, ...],
+    run_id: str,
+) -> dict[str, Any]:
+    """Write the console's segment layer as a small JSON, once, at bake time.
+
+    The parquet beside it is the product of record - every segment, every step, every profile's
+    safe-until, 19 MB of it - and it is the right thing for `services/verify` and for anyone
+    who wants the numbers. It is the wrong thing to put on the wire: the API was reading all
+    19 MB with pandas, filtering it and re-serialising it **on every request**, which is most of
+    why the console took so long to show a map.
+
+    So the shape the map actually draws is computed once here: the segments that get wet, their
+    depth at each step, one decimal, and nothing else. On a heavy Mumbai cycle that is about
+    6,500 of 21,296 segments and lands near 1 MB - a file the API can stream straight off disk.
+    """
+    peak = np.asarray(depth_cm).max(axis=0)
+    wet = np.flatnonzero(peak >= WET_THRESHOLD_CM)
+    series = {
+        str(segment_ids[k]): [round(float(v), 1) for v in depth_cm[:, k]] for k in wet
+    }
+    product = {
+        "run_id": run_id,
+        "valid_ts": [t.isoformat() for t in times],
+        "min_depth_cm": WET_THRESHOLD_CM,
+        "n_segments_total": len(segment_ids),
+        "n_segments_wet": len(series),
+        "depth_cm": series,
+    }
+    (run_dir / "segments_wet.json").write_text(
+        json.dumps(product, separators=(",", ":")), encoding="utf-8"
+    )
+    log.info("products.wet_segments", run_id=run_id, wet=len(series), of=len(segment_ids))
+    return product

@@ -147,6 +147,23 @@ def segments(
     colour, and needs no per-step data at all.
     """
     path = _resolve(run_id)
+
+    # The fast path, and the only one a baked run ever takes: the cycle already wrote exactly
+    # this shape at bake time. Reading the 19 MB parquet, filtering it and re-serialising it
+    # per request was most of the console's time-to-first-map.
+    compact = path / "segments_wet.json"
+    if compact.is_file():
+        product = json.loads(compact.read_text(encoding="utf-8"))
+        meta = _meta(path)
+        log.info("api.segments", run_id=path.name, wet=product.get("n_segments_wet"), cached=True)
+        return {
+            **product,
+            "step_min": meta.get("step_min", 5),
+            "ensemble_n": meta.get("ensemble_n", 1),
+            "safe_until": {},
+            "notes": meta.get("notes", []),
+        }
+
     parquet = path / "segment_forecast.parquet"
     if not parquet.is_file():
         raise api_error(404, "no_segment_forecast", BAKE_HINT, run_id=path.name)
@@ -250,3 +267,55 @@ def surcharge(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
         reversed_edges=product.get("n_reversed_edges"),
     )
     return {**product, "notes": meta.get("notes", [])}
+
+
+@router.get("/alerts", tags=["alerts"], summary="Alerts raised by a run")
+def alerts(
+    run_id: Annotated[str | None, Query()] = None,
+    level: Annotated[Literal["severe", "moderate", "watch"] | None, Query()] = None,
+) -> dict[str, Any]:
+    """The alert queue for a run, worst level first (CLAUDE.md 11.10, P8.7).
+
+    Computed once when the cycle ran, so the queue, the map and the hotspot rail are all reading
+    the same forecast. Every alert on a replay carries CAP ``status=Exercise``.
+    """
+    path = _resolve(run_id)
+    record = path / "alerts.json"
+    if not record.is_file():
+        raise api_error(404, "no_alerts", f"Run {path.name} has no alert product. {BAKE_HINT}",
+                        run_id=path.name)
+
+    body = json.loads(record.read_text(encoding="utf-8"))
+    queue = body.get("alerts", [])
+    if level:
+        queue = [a for a in queue if a.get("level") == level]
+    meta = _meta(path)
+    log.info("api.alerts", run_id=path.name, n=len(queue), level=level)
+    return {
+        "run_id": meta.get("run_id", path.name),
+        "cycle_ts": meta.get("cycle_ts"),
+        "n_total": len(body.get("alerts", [])),
+        "alerts": queue,
+        "notes": meta.get("notes", []),
+    }
+
+
+@router.get(
+    "/alerts/{alert_id}.cap",
+    tags=["alerts"],
+    response_class=Response,
+    responses={200: {"content": {"application/xml": {}}, "description": "CAP 1.2"}},
+    summary="CAP 1.2 XML document for one alert",
+)
+def alert_cap(alert_id: str, run_id: Annotated[str | None, Query()] = None) -> Response:
+    """One alert as a CAP 1.2 document, exactly as it was written into the run directory."""
+    path = _resolve(run_id)
+    document = path / "alerts" / f"{alert_id}.cap.xml"
+    if not document.is_file():
+        raise api_error(
+            404,
+            "alert_not_found",
+            f"No CAP document {alert_id} in run {path.name}.",
+            run_id=path.name,
+        )
+    return Response(content=document.read_text(encoding="utf-8"), media_type="application/xml")

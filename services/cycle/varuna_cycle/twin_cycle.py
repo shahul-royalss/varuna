@@ -125,11 +125,13 @@ def run_cycle(
         mode: ``baked`` when pre-computing, ``live`` when the operator pressed Compute live.
         overwrite: replace an existing run directory of the same id.
     """
+    from varuna_products.alerts import build_alerts, write_alerts
     from varuna_products.depth import (
         depth_bounds,
         segment_cell_index,
         segment_forecast,
         write_depth_rasters,
+        write_wet_segments,
     )
     from varuna_products.hotspots import rank_hotspots
     from varuna_products.surcharge import surcharge_product, write_surcharge
@@ -175,6 +177,7 @@ def run_cycle(
     hotspots = rank_hotspots(
         twin.depth_m, twin.times, city_dir(city), terrain.transform, terrain.crs, run_id, index
     )
+    alerts = build_alerts(hotspots, run_id, cycle_ts, twin.times, mode)
     surcharge = surcharge_product(
         twin.q_surcharge, twin.edge_flow, network, terrain.transform, terrain.crs, run_id
     )
@@ -225,8 +228,10 @@ def run_cycle(
     def _write(tmp: Path) -> None:
         write_depth_rasters(tmp, twin.depth_m, terrain.transform, terrain.crs, stat="p50")
         frame.to_parquet(tmp / "segment_forecast.parquet", index=False)
+        write_wet_segments(tmp, depth_cm, index[0], twin.times, run_id)
         (tmp / "hotspots.json").write_text(json.dumps(hotspots, indent=2) + "\n", encoding="utf-8")
         write_surcharge(tmp, surcharge)
+        write_alerts(tmp, alerts)
         q_node = twin.q_surcharge
         (tmp / "node_summary.json").write_text(
             json.dumps(

@@ -37,6 +37,7 @@ from varuna_api.routers import (
     runs,
     stubs,
 )
+from varuna_api.seed import seed_demo_runs
 from varuna_api.state import AppState
 
 _LOGGING_CONFIGURED = False
@@ -162,6 +163,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state.bus.bind()
+        seeded = seed_demo_runs()
         structlog.get_logger("varuna.api").info(
             "api.started",
             version=state.version,
@@ -170,6 +172,7 @@ def create_app(
             bundle=state.settings.varuna_bundle,
             runs_dir=str(state.registry.runs_dir),
             offline=state.settings.varuna_offline,
+            seeded_runs=seeded,
         )
         yield
         await state.replay.aclose()
