@@ -194,9 +194,7 @@ def run_cycle(
     street_depths = street_series(
         {sid: list(depth_cm[:, k]) for k, sid in enumerate(index[0])}, names, points
     )
-    alerts = build_alerts(
-        hotspots, run_id, cycle_ts, twin.times, mode, streets=street_depths
-    )
+    alerts = build_alerts(hotspots, run_id, cycle_ts, twin.times, mode, streets=street_depths)
     pump_plan = build_pump_plan(
         hotspots, city_dir(city), run_id, STEP_MIN, street_depths, dict(STREET_POINTS)
     )

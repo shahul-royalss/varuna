@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { FloodMap } from "@/components/map/flood-map";
+import type { Isochrone } from "@/components/map/city-map";
 import type { RunDepth } from "@/lib/api/run-depth";
 import { loadHotspots, type Hotspot, type HotspotSet } from "@/lib/api/hotspots";
 import type { MapFocus } from "@/components/map/city-map";
@@ -106,6 +107,10 @@ export function ConsoleScreen() {
   );
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
+  // Reachability bands live here rather than in the rail, because two things need them: the rail
+  // draws the clocks and the map draws the polygons, and the rail is unmounted whenever the
+  // hotspot drawer is open.
+  const [isochrones, setIsochrones] = useState<Isochrone[]>([]);
   const [layers, setLayers] = useState<LayerToggles>({
     raster: true,
     segments: true,
@@ -240,6 +245,8 @@ export function ConsoleScreen() {
             selectedHotspotId={selectedHotspotId}
             onSelectHotspot={selectHotspot}
             hotspotsLoading={hotspotsLoading}
+            simTime={run?.validTs[step] ?? null}
+            onIsochrones={setIsochrones}
           />
         )
       }
@@ -257,6 +264,7 @@ export function ConsoleScreen() {
           selectedHotspotId={selectedHotspotId}
           surcharge={surcharge?.runId === loadedRunId ? surcharge?.set : null}
           focus={focus}
+          isochrones={isochrones}
           showRaster={layers.raster}
           showSegments={layers.segments}
           showSurcharge={layers.surcharge}

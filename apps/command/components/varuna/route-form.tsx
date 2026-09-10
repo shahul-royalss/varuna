@@ -19,6 +19,45 @@ import { cn } from "@/lib/utils";
 export interface RoutePlace {
   id: string;
   name: string;
+  /** Which group the option sits under. Mumbai's asset register has 354 hospitals and 14 fire
+   * stations; a flat list of them is not a picker, and grouping is what makes it one. */
+  group?: string;
+}
+
+/** Option groups, in the order the pickers show them. */
+const GROUP_ORDER = ["Demo trip", "Chronic junctions", "Hospitals", "Fire stations"] as const;
+
+function grouped(places: readonly RoutePlace[]): [string, RoutePlace[]][] {
+  const buckets = new Map<string, RoutePlace[]>();
+  for (const place of places) {
+    const key = place.group ?? "Places";
+    const bucket = buckets.get(key);
+    if (bucket) bucket.push(place);
+    else buckets.set(key, [place]);
+  }
+  const known = GROUP_ORDER.filter((g) => buckets.has(g)).map(
+    (g) => [g, buckets.get(g) as RoutePlace[]] as [string, RoutePlace[]],
+  );
+  const rest = [...buckets.entries()].filter(
+    ([g]) => !(GROUP_ORDER as readonly string[]).includes(g),
+  );
+  return [...known, ...rest];
+}
+
+function Options({ places }: { places: readonly RoutePlace[] }) {
+  return (
+    <>
+      {grouped(places).map(([group, items]) => (
+        <optgroup key={group} label={group}>
+          {items.map((place) => (
+            <option key={`${group}-${place.id}`} value={place.id}>
+              {place.name}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </>
+  );
 }
 
 export const ROUTE_PLACES: readonly RoutePlace[] = [
@@ -88,6 +127,9 @@ export interface RouteFormProps {
   onChange: (next: RouteRequest) => void;
   /** Called by "Find route"; absent or `disabled` keeps the button off with its reason. */
   onSubmit?: (request: RouteRequest) => void;
+  /** The pickable places. Defaults to the demo shortlist; the page passes the city's own register
+   * once it has loaded, so the ids in the request resolve to sourced coordinates. */
+  places?: readonly RoutePlace[];
   disabled?: boolean;
   /** One sentence saying why "Find route" is off. */
   submitDisabledReason?: string;
@@ -103,6 +145,7 @@ export function RouteForm({
   value,
   onChange,
   onSubmit,
+  places = ROUTE_PLACES,
   disabled = false,
   submitDisabledReason = "Routing lands in Phase 8; the form is live so the demo trip is preset",
   className,
@@ -137,11 +180,7 @@ export function RouteForm({
           value={value.originId}
           onChange={(event) => onChange({ ...value, originId: event.target.value })}
         >
-          {ROUTE_PLACES.map((place) => (
-            <option key={place.id} value={place.id}>
-              {place.name}
-            </option>
-          ))}
+          <Options places={places} />
         </select>
       </div>
 
@@ -155,11 +194,7 @@ export function RouteForm({
           value={value.destinationId}
           onChange={(event) => onChange({ ...value, destinationId: event.target.value })}
         >
-          {ROUTE_PLACES.map((place) => (
-            <option key={place.id} value={place.id}>
-              {place.name}
-            </option>
-          ))}
+          <Options places={places} />
         </select>
       </div>
 

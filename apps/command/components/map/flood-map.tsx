@@ -14,7 +14,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CityMap, type MapFocus, type SegmentPath } from "./city-map";
+import { CityMap, type Isochrone, type MapFocus, type SegmentPath } from "./city-map";
 import {
   loadBuildings,
   loadDrains,
@@ -50,6 +50,8 @@ export interface FloodMapProps {
   showDrains?: boolean;
   /** Camera target from the rail; a new `key` starts a new flight (motion M10). */
   focus?: MapFocus | null;
+  /** Reachability bands from the right rail, drawn over the streets (section 6.7). */
+  isochrones?: readonly Isochrone[];
   showRaster?: boolean;
   showSegments?: boolean;
   showHotspots?: boolean;
@@ -67,6 +69,7 @@ export function FloodMap({
   showBuildings = true,
   showDrains = false,
   focus = null,
+  isochrones = [],
   showRaster = true,
   showSegments = true,
   showHotspots = true,
@@ -215,6 +218,7 @@ export function FloodMap({
       showBuildings={showBuildings}
       showDrains={showDrains}
       hotspots={rings}
+      isochrones={isochrones}
       selectedHotspotId={selectedHotspotId}
       focus={focus}
       step={Math.min(step, status.run.provenance.nSteps - 1)}
