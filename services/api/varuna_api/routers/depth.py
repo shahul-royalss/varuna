@@ -319,3 +319,23 @@ def alert_cap(alert_id: str, run_id: Annotated[str | None, Query()] = None) -> R
             run_id=path.name,
         )
     return Response(content=document.read_text(encoding="utf-8"), media_type="application/xml")
+
+
+@router.get("/pumps", tags=["pumps"], summary="The run's pump inventory and dispatch plan")
+def pumps(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+    """The greedy assignment of the synthetic pump fleet to the hotspots that flood.
+
+    The inventory is synthetic and the response says so in `inventory`; the benefit is a
+    documented reduced model, labelled in `benefit_label` and printed beside every number the
+    board shows (CLAUDE.md rule 6, 11.10).
+    """
+    path = _resolve(run_id)
+    record = path / "pump_plan.json"
+    if not record.is_file():
+        raise api_error(
+            404, "no_pump_plan", f"Run {path.name} has no pump plan. {BAKE_HINT}", run_id=path.name
+        )
+    plan = json.loads(record.read_text(encoding="utf-8"))
+    meta = _meta(path)
+    log.info("api.pumps", run_id=path.name, assigned=len(plan.get("assignments", [])))
+    return {**plan, "cycle_ts": meta.get("cycle_ts"), "notes": meta.get("notes", [])}

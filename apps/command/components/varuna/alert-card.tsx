@@ -21,6 +21,12 @@ export interface AlertSummary {
   raisedAt: string;
   /** Consecutive cycles the condition has persisted (hysteresis state). */
   persistsCycles: number;
+  /**
+   * What `persistsCycles` counts. CLAUDE.md 11.10's hysteresis is in *cycles*; a deterministic
+   * Phase 4 run has no memory across cycles, so it is measured in forecast steps instead and
+   * the card has to say which - "persists 36 cycles" over a 3-hour forecast would be a lie.
+   */
+  persistsUnit?: string;
   /** Channels the alert went out on, e.g. ["Dashboard", "WhatsApp mock"]. */
   channels: string[];
   acknowledged?: boolean;
@@ -50,8 +56,9 @@ export function AlertCard({
   onSelect,
   className,
 }: AlertCardProps) {
+  const unit = alert.persistsUnit ?? "cycle";
   const hysteresis = `raised ${formatIst(alert.raisedAt)} - persists ${alert.persistsCycles} ${
-    alert.persistsCycles === 1 ? "cycle" : "cycles"
+    alert.persistsCycles === 1 ? unit : `${unit}s`
   }`;
 
   return (
