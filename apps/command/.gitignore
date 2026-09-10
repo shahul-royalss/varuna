@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# Opted in: the production API base has to exist when Vercel runs `next build`, because
+# NEXT_PUBLIC_* is inlined then. It holds no secret - it is the public URL of the API the
+# browser calls anyway.
+!.env.production
 
 # vercel
 .vercel
