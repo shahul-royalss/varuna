@@ -1,0 +1,26 @@
+rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E011792,Swami Vivekanand Road,0.6326,0.2254,81.2,0,,inferred
+2,MUM-E011795,Swami Vivekanand Road,0.5343,0.2306,72.0,0,,inferred
+3,MUM-E012242,M Ambedkar Marg,0.4741,0.2219,65.7,0,,inferred
+4,MUM-E022906,,0.4423,0.2202,62.2,0,,inferred
+5,MUM-E020507,,0.4193,0.138,59.6,0,,inferred
+6,MUM-E005881,Road No 24,0.4024,0.1792,57.6,0,,inferred
+7,MUM-E016886,,0.4011,0.1501,57.5,0,,inferred
+8,MUM-E023095,,0.3945,0.1817,56.7,0,,inferred
+9,MUM-E016855,,0.3832,0.1538,55.3,0,,inferred
+10,MUM-E001193,Senapati Bapat Marg,0.3788,0.2015,54.8,1,,inferred
+11,MUM-E016121,,0.3715,0.1593,53.9,0,,inferred
+12,MUM-E020505,,0.3693,0.1464,53.6,0,,inferred
+13,MUM-E042336,,0.3683,0.1371,53.5,0,,inferred
+14,MUM-E003841,,0.3679,0.2125,53.4,0,,inferred
+15,MUM-E020504,,0.3629,0.1281,52.8,0,,inferred
+16,MUM-E019716,,0.3618,0.1863,52.7,0,,inferred
+17,MUM-E018152,,0.3608,0.1327,52.6,0,,inferred
+18,MUM-E042338,,0.3582,0.1297,52.2,0,,inferred
+19,MUM-E017178,,0.356,0.1218,52.0,0,,inferred
+20,MUM-E020503,,0.3549,0.1351,51.8,0,,inferred
+21,MUM-E035281,,0.3539,0.2248,51.7,0,,inferred
+22,MUM-E017176,,0.3525,0.1278,51.5,0,,inferred
+23,MUM-E017177,,0.3505,0.1198,51.3,0,,inferred
+24,MUM-E018153,,0.3503,0.1417,51.3,0,,inferred
+25,MUM-E000218,,0.35,0.15,51.2,0,,inferred

@@ -67,17 +67,40 @@ def test_a_changed_demo_set_replaces_what_it_seeded(dirs: tuple[Path, Path]) -> 
 
 
 def test_a_locally_baked_run_is_never_replaced(dirs: tuple[Path, Path]) -> None:
-    """A cycle this deployment computed is its own work, whatever the shipped set holds."""
+    """A cycle this deployment computed is its own work, whatever the shipped set holds.
+
+    A baked run is recognised by being complete: it has everything the shipped set has and the
+    19 MB `segment_forecast.parquet` besides, which the shipped set deliberately omits.
+    """
     source, target = dirs
     _demo_run(source, "RUN-A", {"note.txt": "from the repo"})
 
-    # A run of the same id, baked here: no marker.
-    (target / "RUN-A").mkdir(parents=True)
-    (target / "RUN-A" / "run.json").write_text('{"run_id": "RUN-A"}', encoding="utf-8")
-    (target / "RUN-A" / "note.txt").write_text("baked here", encoding="utf-8")
+    baked = _demo_run(target.parent / "runs", "RUN-A", {"note.txt": "baked here"})
+    (baked / "segment_forecast.parquet").write_text("the product of record", encoding="utf-8")
 
     assert seed.seed_demo_runs() == 0
     assert (target / "RUN-A" / "note.txt").read_text(encoding="utf-8") == "baked here"
+
+
+def test_a_copy_seeded_before_markers_existed_is_brought_up_to_date(
+    dirs: tuple[Path, Path],
+) -> None:
+    """The migration this whole mechanism exists for.
+
+    The volume already held runs copied by the first version of this function, which wrote no
+    marker. Reading "no marker" as "baked here" left `/v1/pumps` 404 on a deployment whose image
+    already carried the plan. An unmarked copy that is *missing* something the shipped set has
+    is an old seed, and is replaced.
+    """
+    source, target = dirs
+    _demo_run(source, "RUN-A", {"pump_plan.json": '{"assignments":[]}'})
+
+    # What the old seeder left: the same run, without the product added since.
+    _demo_run(target.parent / "runs", "RUN-A")
+
+    assert seed.seed_demo_runs() == 1
+    assert (target / "RUN-A" / "pump_plan.json").is_file()
+    assert (target / "RUN-A" / seed.MARKER).is_file()
 
 
 def test_no_demo_directory_is_not_an_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

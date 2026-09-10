@@ -65,12 +65,23 @@ def run_fingerprint(run: Path) -> str:
     return digest.hexdigest()[:16]
 
 
+def _missing_from(source: Path, destination: Path) -> bool:
+    """True when source holds a file destination does not."""
+    return any(
+        item.is_file()
+        and item.name != MARKER
+        and not (destination / item.relative_to(source)).exists()
+        for item in source.rglob("*")
+    )
+
+
 def seed_demo_runs() -> int:
     """Copy the committed demo runs onto the volume. Returns how many were written.
 
-    A run the deployment baked for itself - anything without a :data:`MARKER` - is left alone
-    even when a demo run of the same id exists, because that run is the deployment's own work
-    and the shipped set is only a fallback for a volume that has none.
+    A run the deployment baked for itself is left alone even when a demo run of the same id
+    exists, because that run is the deployment's own work and the shipped set is only a fallback
+    for a volume that has none. It is recognised by being complete: a baked run carries every
+    file the shipped one does and more.
     """
     source = demo_runs_dir()
     if not source.is_dir():
@@ -91,13 +102,23 @@ def seed_demo_runs() -> int:
         marker = destination / MARKER
 
         if destination.is_dir():
-            if not marker.is_file():
-                # Baked here. Not ours to replace.
+            if marker.is_file():
+                if marker.read_text(encoding="utf-8").strip() == fingerprint:
+                    current += 1
+                    continue
+            elif not _missing_from(run, destination):
+                # Unknown provenance, and complete. Either this deployment baked the cycle
+                # itself, or an earlier version of this function seeded it before markers
+                # existed; either way it already has everything the shipped set holds, so
+                # leave it alone. A locally baked run is a superset - it carries
+                # `segment_forecast.parquet`, which the shipped set deliberately omits - so it
+                # can never fall into the branch below.
                 skipped_local += 1
                 continue
-            if marker.read_text(encoding="utf-8").strip() == fingerprint:
-                current += 1
-                continue
+            else:
+                # Unmarked *and* missing something the shipped set has: an old seeded copy from
+                # before the markers, which is exactly what needs replacing.
+                log.info("api.reseed_unmarked", run=run.name)
             shutil.rmtree(destination)
 
         shutil.copytree(run, destination)

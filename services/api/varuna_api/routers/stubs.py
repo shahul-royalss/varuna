@@ -16,10 +16,8 @@ from pydantic import Field
 from varuna_schemas.constants import DEFAULT_RISK_TOLERANCE, VehicleProfile
 from varuna_schemas.models import (
     Alert,
-    DrainHealthProduct,
     ErrorEnvelope,
     FeatureCollection,
-    Observation,
     PhysicsCheckRequest,
     PhysicsCheckResponse,
     PumpAssignment,
@@ -32,8 +30,6 @@ from varuna_schemas.models import (
     SegmentSeries,
     VarunaModel,
     VerificationSummary,
-    WhatIfRequest,
-    WhatIfResponse,
 )
 from varuna_schemas.models.common import BBox, Timestamp
 
@@ -151,37 +147,6 @@ def nowcast_segment_series(segment_id: str, run_id: RunIdQ = None) -> SegmentSer
 
 
 # ---- drains and observations (Phase 7) ----------------------------------------------------
-@router.get(
-    "/drains/health",
-    tags=["drains"],
-    response_model=DrainHealthProduct,
-    summary="Drain-health product (posterior blockage per pipe)",
-)
-def drains_health(run_id: RunIdQ = None, bbox: BboxQ = None) -> DrainHealthProduct:
-    raise not_implemented("The drain-health product (Pulse)", 7, "P7.4")
-
-
-@router.get(
-    "/drains/health.csv",
-    tags=["drains"],
-    response_class=Response,
-    responses={**NOT_BUILT, 200: {"content": {"text/csv": {}}, "description": "Desilting CSV"}},
-    summary="Desilting priority list as CSV",
-)
-def drains_health_csv(run_id: RunIdQ = None) -> Response:
-    raise not_implemented("The desilting CSV export", 7, "P7.4")
-
-
-@router.get(
-    "/observations",
-    tags=["observations"],
-    response_model=list[Observation],
-    summary="Observations assimilated in a run, with their effects",
-)
-def observations(run_id: RunIdQ = None) -> list[Observation]:
-    raise not_implemented("Assimilated observations (Pulse)", 7, "P7.4")
-
-
 @router.post(
     "/reports",
     tags=["observations"],
@@ -263,13 +228,6 @@ def pumps_dispatch(body: PumpDispatchRequest) -> PumpPlan:
 
 
 # ---- what-if (Phase 7) --------------------------------------------------------------------
-@router.post(
-    "/whatif", tags=["whatif"], response_model=WhatIfResponse, summary="What-if via the emulator"
-)
-def whatif(body: WhatIfRequest) -> WhatIfResponse:
-    raise not_implemented("What-if (Flash-lite emulator)", 7, "P7.8")
-
-
 @router.post(
     "/whatif/physics-check",
     tags=["whatif"],

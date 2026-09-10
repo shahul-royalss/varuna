@@ -32,7 +32,7 @@ import numpy as np
 import structlog
 from varuna_schemas.constants import IST, N_STEPS, STEP_MIN
 from varuna_schemas.models.run import EngineVersions, GridSpec, RunMeta, build_run_id
-from varuna_schemas.paths import city_dir
+from varuna_schemas.paths import bundles_dir, city_dir
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from varuna_twin.types import TwinResult
@@ -47,7 +47,7 @@ FLASH_VERSION = "0.0"
 """Flash has not been built yet (Phase 7). ``0.0`` says so in the run id rather than claiming a
 version of an engine that did not run - the run stamp is on screen throughout the demo."""
 
-PULSE_VERSION = "0.0"
+PULSE_VERSION = "1.0"
 PRODUCTS_VERSION = "1.0"
 
 INFERRED_NOTE = (
@@ -143,6 +143,8 @@ def run_cycle(
     from varuna_products.hotspots import rank_hotspots
     from varuna_products.pumps import build_pump_plan, write_pump_plan
     from varuna_products.surcharge import surcharge_product, write_surcharge
+    from varuna_pulse.cycle import run_pulse
+    from varuna_pulse.health import write_drain_health
     from varuna_twin.city import load_network, load_terrain, load_tide
     from varuna_twin.runner import run_twin
     from varuna_twin.types import TwinInputs
@@ -202,11 +204,34 @@ def run_cycle(
         twin.q_surcharge, twin.edge_flow, network, terrain.transform, terrain.crs, run_id
     )
     stage_ms["products"] = round((perf_counter() - mark) * 1000.0)
+
+    # ---- Pulse ---------------------------------------------------------------------------
+    # After the Twin, because assimilation is about what the city showed while this cycle's
+    # water was on the ground; before publishing, because the drain map is part of the run.
+    mark = perf_counter()
+    try:
+        pulse = run_pulse(
+            network,
+            city_dir(city),
+            bundles_dir() / bundle,
+            cycle_ts,
+            transform=terrain.transform,
+            crs=terrain.crs,
+            run_id=run_id,
+        )
+    except Exception as error:
+        # Degraded, not broken (CLAUDE.md 11.11): the depth forecast is complete and useful
+        # without an assimilation, and the run says which feed was missing rather than
+        # publishing a drain map nothing computed.
+        log.warning("cycle.pulse_failed", run_id=run_id, error=str(error))
+        pulse = None
+    stage_ms["pulse"] = round((perf_counter() - mark) * 1000.0)
     frame["run_id"] = run_id
 
     notes = [
         INFERRED_NOTE,
         DETERMINISTIC_NOTE,
+        *(pulse.notes if pulse is not None else ("Pulse did not run this cycle.",)),
         *twin.notes,
         *(getattr(sky, "notes", None) or ()),
     ]
@@ -252,6 +277,23 @@ def run_cycle(
         (tmp / "hotspots.json").write_text(json.dumps(hotspots, indent=2) + "\n", encoding="utf-8")
         write_surcharge(tmp, surcharge)
         write_alerts(tmp, alerts)
+        if pulse is not None:
+            write_drain_health(tmp, pulse.health)
+            (tmp / "observations.json").write_text(
+                json.dumps(
+                    {
+                        "run_id": run_id,
+                        "n_traffic": pulse.n_traffic,
+                        "n_reports": pulse.n_reports,
+                        "n_assimilated": pulse.n_assimilated,
+                        "n_edges_updated": pulse.n_edges_updated,
+                        "observations": pulse.observations,
+                        "notes": list(pulse.notes),
+                    },
+                    separators=(",", ":"),
+                ),
+                encoding="utf-8",
+            )
         write_pump_plan(tmp, pump_plan)
         q_node = twin.q_surcharge
         (tmp / "node_summary.json").write_text(

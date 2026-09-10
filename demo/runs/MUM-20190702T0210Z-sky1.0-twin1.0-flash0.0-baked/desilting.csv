@@ -1,0 +1,26 @@
+rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E035757,Mount Mary Road,0.6834,0.158,85.3,0,,inferred
+2,MUM-E011792,Swami Vivekanand Road,0.6326,0.2254,81.2,0,,inferred
+3,MUM-E011795,Swami Vivekanand Road,0.5343,0.2306,72.0,0,,inferred
+4,MUM-E041744,Pereira Road,0.4888,0.192,67.3,0,,inferred
+5,MUM-E020507,,0.4769,0.1243,66.0,0,,inferred
+6,MUM-E012242,M Ambedkar Marg,0.4741,0.2219,65.7,0,,inferred
+7,MUM-E040776,Mahakali Caves Road,0.452,0.2277,63.3,0,,inferred
+8,MUM-E022906,,0.4423,0.2202,62.2,0,,inferred
+9,MUM-E015918,MTHL - Messant Road Ramp,0.4338,0.224,61.2,0,,inferred
+10,MUM-E015505,Sant Gadge Maharaj Marg,0.4048,0.2399,57.9,0,,inferred
+11,MUM-E005881,Road No 24,0.4024,0.1792,57.6,0,,inferred
+12,MUM-E016886,,0.4011,0.1501,57.5,0,,inferred
+13,MUM-E023095,,0.3945,0.1817,56.7,0,,inferred
+14,MUM-E008543,,0.3878,0.1195,55.9,0,,inferred
+15,MUM-E020505,,0.3859,0.1428,55.6,0,,inferred
+16,MUM-E016855,,0.3832,0.1538,55.3,0,,inferred
+17,MUM-E001193,Senapati Bapat Marg,0.3788,0.2015,54.8,0,,inferred
+18,MUM-E020504,,0.3721,0.1105,54.0,0,,inferred
+19,MUM-E016121,,0.3715,0.1593,53.9,0,,inferred
+20,MUM-E015917,MTHL - Messant Road Ramp,0.3705,0.2215,53.8,0,,inferred
+21,MUM-E042336,,0.3683,0.1371,53.5,0,,inferred
+22,MUM-E003841,,0.3679,0.2125,53.4,0,,inferred
+23,MUM-E043456,,0.3654,0.1523,53.1,0,,inferred
+24,MUM-E019716,,0.3618,0.1863,52.7,0,,inferred
+25,MUM-E008544,,0.361,0.1502,52.6,1,,inferred

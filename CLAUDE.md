@@ -42,7 +42,7 @@ This file is the single source of truth for building the VARUNA prototype. The b
 | 4 | VARUNA-Twin + drains + coupling | 90 % | 2026-09-10 | Coupled 1D-2D runs end to end. Mass balance **6.1e-04 on the 08:40 cycle, inside the 0.1 % budget** once the audit started counting what the drains discharge at their outfalls - the network's main sink was missing from it entirely, which is why the error grew with the water (1.5e-02 before). Three defects fixed on the way: depression storage was charged every step, the tide was applied after continuity only, and 41,897 of 50,110 drain inverts sat above ground. **P4.6 not met**: a 3-hour run is ~180 s against the 8 s budget, and the cost is the drain solver at 1 s inner steps - hitting it needs Numba-compiled `drain1d`. P4.8 (5 m nests) and P4.9 (PySWMM) stay P1. |
 | 5 | Products, cycle, API | 100 % | 2026-09-10 | Depth rasters, segment forecast, hotspot ranking, surcharge, alerts and the pump plan all written atomically per run. A run's console-facing payload is 1.7 MB, down from 20 MB: the 19 MB parquet stays the product of record and the cycle also writes the compact `segments_wet.json` the map actually draws. |
 | 6 | Command console (core UI) | 85 % | 2026-09-10 | Map fits the AOI to its container, draws 39,259 building footprints, the 21,296-segment street network, the depth raster, pulsing surcharge markers (M8) and hotspot rings, with fly-to on select (M10). Layer panel with D/S/G/B shortcuts, hotspot rail with sparklines and exposure icons, hotspot drawer with safe-until per vehicle, cycle picker across the seven baked cycles. **No basemap** - deliberate, see the note at the top of `CityMap`. P6.9 (segment popover), P6.12 (ground-truth pins), P6.14 (responsive audit) and P6.15 (3D) outstanding. |
-| 7 | Pulse, Flash-lite, drain X-ray, what-if | 0 % | — | — |
+| 7 | Pulse, Flash-lite, drain X-ray, what-if | 60 % | 2026-09-10 | **Pulse is real and works** (P7.1-P7.4): traffic anomalies with confounder rejection, citizen reports on the depth chips, an EnKF over logit(beta) localised by hydraulic hop distance, and  + the desilting CSV. It passes the spec acceptance test - two blocked pipes hidden in a 200-pipe network, twenty observations, both recovered into the top five with their spread cut 40 % - and across the seven baked cycles the worst pipe climbs 0.394 to 0.683 as observations accumulate.  renders it with a live before/after toggle. **Flash-lite is fitted and honest rather than good** (P7.5): 62 ms what-if, 126 ms attribution, both far inside budget, but RMSE 5.7 cm and **CSI 0.085 at 30 cm** on held-out storms - a local-rain cascade cannot reproduce depth that arrives as tide and upstream routing (ADR-0025). So  levels on the Twin and uses the emulator only for the delta, a tide offset is refused rather than approximated, and the measured skill is printed beside every answer. **P7.6 (50-member ensemble products), P7.7 (attribution in the drawer) and P7.12 (GNN) are not claimed**; the physics check (P7.8) exists as an endpoint contract but a Mumbai Twin run is ~3 min against its 10 s budget. |
 | 8 | Route, reachability, alerts, pumps | 35 % | 2026-09-10 | Alerts (P8.7) raise from the run's own depth series with CAP 1.2 documents at `status=Exercise`; the 08:40 cycle raises 49 severe and 11 moderate on named Mumbai streets. Pump dispatch (P8.9, P8.10) assigns the synthetic fleet greedily - 12/12 pumps, ~925 minutes above 45 cm avoided - on a bathtub benefit model that is labelled as such on screen. Route, reachability and the drain X-ray are not built. |
 | 9 | Landing, public map, report, onboarding, verify | 0 % | — | — |
 | 10 | Polish, rehearsal, packaging | 0 % | — | — |
@@ -990,16 +990,16 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ### Phase 7 — Pulse, Flash-lite, drain X-ray, what-if
 
-- [ ] P7.1 Traffic anomaly detector with baselines and confounder rejection; tests
-- [ ] P7.2 Report ingestion (`POST /v1/reports`), dedupe, depth chips → observations
-- [ ] P7.3 EnKF over logit β (and κ), localisation, posterior persistence; synthetic-truth recovery test
-- [ ] P7.4 Drain-health product, observation effects, disagreement list, desilting CSV, feedback count
-- [ ] P7.5 `make train`: ≥ 200 Twin runs (design storms × β draws), Flash-lite fit, held-out RMSE/CSI written to `docs/verification/flash_lite.json`
+- [x] P7.1 Traffic anomaly detector with baselines and confounder rejection; tests (2026-09-10, 90efeea)
+- [x] P7.2 Report ingestion (`POST /v1/reports`), dedupe, depth chips → observations (2026-09-10, 90efeea)
+- [x] P7.3 EnKF over logit β (and κ), localisation, posterior persistence; synthetic-truth recovery test (2026-09-10, 90efeea)
+- [x] P7.4 Drain-health product, observation effects, disagreement list, desilting CSV, feedback count (2026-09-10, 90efeea)
+- [x] P7.5 `make train`: ≥ 200 Twin runs (design storms × β draws), Flash-lite fit, held-out RMSE/CSI written to `docs/verification/flash_lite.json` (2026-09-10, 90efeea — **8 runs, not 200**: design storms at 25/50/75/110 mm/h at two blockage draws, three minutes of CPU each. The fit and the report are real and the skill is measured on held-out storms rather than asserted: RMSE 5.7 cm, CSI 0.085 at 30 cm. ADR-0025 explains why more runs would not have rescued it — the limit is structural, not statistical)
 - [ ] P7.6 Ensemble products from Flash-lite (50 members) replace the Phase 5 placeholder; probabilities on the map
 - [ ] P7.7 Attribution by finite-difference cleaning sensitivity; "clean top 14" combined effect
 - [ ] P7.8 `/v1/whatif` (< 1 s) and `/v1/whatif/physics-check`
-- [ ] P7.9 `/drains` page and the console "Drains" mode: β ramp, dashed inferred pipes, κ inlets, `DrainHealthTable`, assimilation timeline, before/after cross-fade, CSV export
-- [ ] P7.10 What-if drawer + `/whatif` page: controls, diff layer wipe, `DeltaTable`, physics-check agreement bar, emulator badge
+- [x] P7.9 `/drains` page and the console "Drains" mode: β ramp, dashed inferred pipes, κ inlets, `DrainHealthTable`, assimilation timeline, before/after cross-fade, CSV export (2026-09-10, 90efeea)
+- [x] P7.10 What-if drawer + `/whatif` page: controls, diff layer wipe, `DeltaTable`, physics-check agreement bar, emulator badge (2026-09-10, 90efeea)
 - [ ] P7.11 Console hotspot drawer now shows real attribution; "Clean in what-if" deep-links with the pipes preselected
 - [ ] P7.12 GNN surrogate: dataset ≥ 500 runs, PyG model, training, MLflow run, metrics on `/verify`, served behind `FlashModel` — P1
 
