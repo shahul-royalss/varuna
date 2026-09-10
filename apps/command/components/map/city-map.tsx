@@ -30,7 +30,7 @@
 import { FlyToInterpolator, WebMercatorViewport } from "@deck.gl/core";
 import { BitmapLayer, PathLayer, PolygonLayer, ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { boundsCentre, cityBounds, type Bbox } from "./basemap";
 import type { CityMapMode } from "./types";
@@ -115,7 +115,7 @@ export interface CityMapProps {
 
 const MUMBAI_CENTRE = boundsCentre(cityBounds("mumbai"));
 
-/** Used only until the container has been measured; the fit below replaces it immediately. */
+/** Used only until the container has been measured; the fit below replaces it on that frame. */
 const INITIAL_VIEW = { ...MUMBAI_CENTRE, zoom: 11.4, bearing: 0, pitch: 0 };
 
 type ViewState = typeof INITIAL_VIEW & {
@@ -149,8 +149,12 @@ function drainColour(beta: number): [number, number, number, number] {
   return [r, g, b, 200];
 }
 
-/** Framing margin in pixels, so the coast and the northern subways are not against the edge. */
-const FIT_PADDING = 28;
+/** Framing margin in pixels, so the coast and the northern subways are not against the edge.
+ *
+ * Deliberately small. The layer panel, the legend and the hotspot rail all float *over* the map,
+ * so the city already has furniture around it; a wide margin as well leaves it swimming in a
+ * panel it is meant to fill. */
+const FIT_PADDING = 12;
 
 /**
  * Phase 0-1 of the surcharge pulse, or a fixed 0 when it should not run (motion M8).
@@ -216,38 +220,75 @@ export function CityMap({
   const pulse = useSurchargePulse(showSurcharge && surcharge.length > 0 && !reducedMotion);
 
   // ---- Framing --------------------------------------------------------------------------
-  // The AOI is 9.5 km by 15.5 km - far taller than it is wide - so a fixed zoom either crops
-  // the north or leaves the panel half empty at every other window size. Fitting the bounds to
-  // the measured container is the only way the city fills the space it is given, on a 1366 x 768
-  // laptop and on a 4K wall alike (CLAUDE.md 6.11).
+  // **The camera is controlled.** It used to be handed to deck.gl as `initialViewState` on the
+  // theory that deck would notice a changed object and move itself. It does not: `initialViewState`
+  // is read once, when the view is created, and the fit computed from the first `ResizeObserver`
+  // callback arrives a frame *after* that. So the map stayed at the placeholder zoom for ever -
+  // the city sat in a corner of the console with the panel half empty, and on `/drains` the pipes
+  // rendered as a thumbnail in the middle of nothing.
   //
-  // Fitted **once**, when the container is first measured: refitting on every resize would yank
-  // the camera back from wherever the operator had panned to.
-  const [fitted, setFitted] = useState<ViewState | null>(null);
+  // The fit is **derived, not stored**. Only two things are state: the measured container and the
+  // camera once somebody moves it. Everything else is computed during render, which is what makes
+  // a resize or a data load re-frame on its own - no effect, no stale copy of the view.
+  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
+  // Set by `onViewStateChange`, so it is null until the operator (or a flight) moves the camera.
+  // While it is null the fit owns the view; once it is set the camera is theirs and a resize or
+  // new data must not yank it back.
+  const [camera, setCamera] = useState<ViewState | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const aoi = bounds ?? cityBounds("mumbai");
 
-  const fit = useCallback(
-    (width: number, height: number): ViewState | null => {
-      if (width < 2 || height < 2) return null;
-      const [[west, south], [east, north]] = aoi;
-      const view = new WebMercatorViewport({ width, height }).fitBounds(
-        [
-          [west, south],
-          [east, north],
-        ],
-        { padding: FIT_PADDING },
-      );
-      return {
-        longitude: view.longitude,
-        latitude: view.latitude,
-        zoom: view.zoom,
-        bearing: 0,
-        pitch: 0,
-      };
-    },
-    [aoi],
-  );
+  // **What the camera frames: what is actually drawn, not the city's configured AOI.** `/drains`
+  // draws the drain graph, the console draws the street network, and those cover different ground.
+  // The AOI is the fallback for a map with nothing on it yet.
+  const frame = useMemo<Bbox>(() => {
+    let west = Infinity;
+    let south = Infinity;
+    let east = -Infinity;
+    let north = -Infinity;
+    const eat = (lon: number, lat: number) => {
+      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
+      if (lon < west) west = lon;
+      if (lon > east) east = lon;
+      if (lat < south) south = lat;
+      if (lat > north) north = lat;
+    };
+    // Streets first: when the city layer is loaded it is the widest thing on the map, and it is
+    // the extent the console should sit at.
+    for (const segment of baseSegments) for (const [lon, lat] of segment.path) eat(lon, lat);
+    if (!Number.isFinite(west)) {
+      for (const segment of segments) for (const [lon, lat] of segment.path) eat(lon, lat);
+    }
+    if (!Number.isFinite(west)) {
+      for (const drain of drains) for (const [lon, lat] of drain.path) eat(lon, lat);
+    }
+    if (!Number.isFinite(west)) for (const ring of hotspots) eat(ring.lon, ring.lat);
+    // Nothing drawn, or an extent too small to fit against (one point, a single street).
+    if (!Number.isFinite(west) || east - west < 1e-3 || north - south < 1e-3) return aoi;
+    return [
+      [west, south],
+      [east, north],
+    ] as Bbox;
+  }, [baseSegments, segments, drains, hotspots, aoi]);
+
+  const fitted = useMemo<ViewState>(() => {
+    if (!size || size.width < 2 || size.height < 2) return INITIAL_VIEW;
+    const [[west, south], [east, north]] = frame;
+    const view = new WebMercatorViewport({ width: size.width, height: size.height }).fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding: FIT_PADDING },
+    );
+    return {
+      longitude: view.longitude,
+      latitude: view.latitude,
+      zoom: view.zoom,
+      bearing: 0,
+      pitch: 0,
+    };
+  }, [size, frame]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -255,29 +296,38 @@ export function CityMap({
     const observer = new ResizeObserver((entries) => {
       const box = entries[0]?.contentRect;
       if (!box) return;
-      // Only the first measurement sets the camera; the rest are ordinary window resizes and
-      // deck.gl handles those itself without moving the centre.
-      setFitted((current) => current ?? fit(box.width, box.height));
+      setSize((current) =>
+        current && Math.abs(current.width - box.width) < 1 &&
+        Math.abs(current.height - box.height) < 1
+          ? current
+          : { width: box.width, height: box.height },
+      );
     });
     observer.observe(element);
     return () => observer.disconnect();
-  }, [fit]);
+  }, []);
 
   // Motion M10: a 900 ms flight to the selected hotspot, a jump cut under reduced motion.
   //
-  // The camera is deck.gl's to own, not React's. Handing it a new `initialViewState` is deck's
-  // documented way to move an uncontrolled view - it diffs the object and runs the transition
-  // itself - so panning and zooming never round-trip through a React render, and the fly-to
-  // needs no effect and no mirrored copy of the view state that could drift from the real one.
-  //
   // Keyed on `focus.key` rather than the coordinates, so selecting the same row twice flies
-  // again: after panning away, "show me Hindmata" should still take you back.
+  // again: after panning away, "show me Hindmata" should still take you back. A flight counts as
+  // moving the camera, so the fit stops claiming it afterwards.
   const focusKey = focus?.key ?? null;
-  const viewState = useMemo<ViewState>(() => {
-    const base = fitted ?? INITIAL_VIEW;
-    if (!focus) return base;
-    return {
-      ...base,
+  useEffect(() => {
+    if (!focus) return;
+    // Everything the flight does not name it inherits from wherever the camera already is - and
+    // when it has never been moved, from `INITIAL_VIEW`, whose bearing and pitch are the zero the
+    // fit produces anyway. So the fallback costs nothing and a rotated camera keeps its rotation.
+    //
+    // `set-state-in-effect` is disabled here, and only here, with a reason. The rule exists to
+    // stop effects being used to recompute state that could have been derived, and the fit above
+    // takes that advice - it is derived, not stored. This is the other thing entirely: `focus` is
+    // an imperative command from the hotspot rail ("fly here now"), and deck.gl's camera is the
+    // external system it commands. Deriving it instead would pin the camera to the focus and the
+    // operator could never pan away from a selected hotspot. One render per click is the cost.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCamera((current) => ({
+      ...(current ?? INITIAL_VIEW),
       longitude: focus.lon,
       latitude: focus.lat,
       zoom: focus.zoom ?? 14,
@@ -285,10 +335,12 @@ export function CityMap({
       transitionInterpolator: reducedMotion
         ? undefined
         : new FlyToInterpolator({ curve: FLY_TO_CURVE }),
-    };
+    }));
     // `focus` is a fresh object each render; `focusKey` is the identity that matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusKey, reducedMotion, fitted]);
+  }, [focusKey, reducedMotion]);
+
+  const viewState = camera ?? fitted;
 
   // ---- Layers ---------------------------------------------------------------------------
   // Everything that does not change with the scrub, memoised apart from the things that do, so
@@ -458,7 +510,14 @@ export function CityMap({
   return (
     <div ref={containerRef} className="absolute inset-0 bg-[var(--ink)]">
       <DeckGL
-        initialViewState={viewState as never}
+        viewState={viewState as never}
+        onViewStateChange={
+          interactive
+            ? // deck reports every camera change here, the operator's drags and the frames of a
+              // fly-to alike, and a controlled view only moves because this writes it back.
+              (({ viewState: next }: { viewState: ViewState }) => setCamera(next)) as never
+            : undefined
+        }
         controller={interactive}
         layers={layers as never}
       />

@@ -1,6 +1,7 @@
 "use client";
 
 import { IconRail } from "@/components/varuna/icon-rail";
+import { useLatestRun } from "@/lib/hooks/use-latest-run";
 import { TopBar } from "@/components/varuna/top-bar";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,9 @@ export interface AppShellProps {
  * scrolls as a page; each region scrolls on its own.
  */
 export function AppShell({ children, rightRail, bottomBar, className }: AppShellProps) {
+  // Every screen wearing this chrome shows the same run stamp, so every screen loads the run.
+  useLatestRun();
+
   return (
     <div
       data-slot="app-shell"
