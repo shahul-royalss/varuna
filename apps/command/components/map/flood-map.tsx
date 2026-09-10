@@ -57,6 +57,10 @@ export interface FloodMapProps {
   mode?: CityMapMode;
   /** Set to draw wet streets in the public map's three colours against this stopping depth. */
   passableBelowCm?: number;
+  /** Aerial imagery under everything. On by default, as it is on `CityMap`. */
+  showSatellite?: boolean;
+  /** Off where `MapSlot` sits behind this map and draws the credit already. */
+  attribution?: boolean;
   showRaster?: boolean;
   showSegments?: boolean;
   showHotspots?: boolean;
@@ -77,6 +81,8 @@ export function FloodMap({
   isochrones = [],
   mode = "console",
   passableBelowCm,
+  showSatellite = true,
+  attribution = true,
   showRaster = true,
   showSegments = true,
   showHotspots = true,
@@ -228,6 +234,8 @@ export function FloodMap({
       hotspots={rings}
       isochrones={isochrones}
       passableBelowCm={passableBelowCm}
+      showSatellite={showSatellite}
+      attribution={attribution}
       selectedHotspotId={selectedHotspotId}
       focus={focus}
       step={Math.min(step, status.run.provenance.nSteps - 1)}

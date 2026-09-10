@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 
 /** The layers the console can actually draw today. */
 export interface LayerToggles {
+  satellite: boolean;
   raster: boolean;
   segments: boolean;
   surcharge: boolean;
@@ -31,6 +32,12 @@ const ROWS: readonly {
   hint: string;
   shortcut?: string;
 }[] = [
+  {
+    key: "satellite",
+    label: "Satellite",
+    hint: "Esri aerial imagery, dimmed so the water reads",
+    shortcut: "V",
+  },
   { key: "raster", label: "Depth raster", hint: "30 m surface depth from the Twin" },
   { key: "segments", label: "Streets (depth)", hint: "Road segments coloured by depth" },
   { key: "surcharge", label: "Surcharge", hint: "Manholes pushing water up", shortcut: "S" },

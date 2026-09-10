@@ -33,6 +33,7 @@ import DeckGL from "@deck.gl/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { boundsCentre, cityBounds, type Bbox } from "./basemap";
+import { MAP_ATTRIBUTION, satelliteLayers } from "./satellite";
 import type { CityMapMode } from "./types";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { DUR_MS, FLY_TO_CURVE } from "@/lib/motion";
@@ -132,6 +133,10 @@ export interface CityMapProps {
   showHotspots?: boolean;
   showBuildings?: boolean;
   showDrains?: boolean;
+  /** Draw Esri's aerial imagery under everything (section 6.7's basemap slot). */
+  showSatellite?: boolean;
+  /** Draw the map credit. Off where `MapSlot` sits behind this map and draws it already. */
+  attribution?: boolean;
 }
 
 const MUMBAI_CENTRE = boundsCentre(cityBounds("mumbai"));
@@ -275,6 +280,8 @@ export function CityMap({
   showHotspots = true,
   showBuildings = true,
   showDrains = false,
+  showSatellite = true,
+  attribution = true,
 }: CityMapProps) {
   const interactive = mode !== "hero";
   const reducedMotion = usePrefersReducedMotion();
@@ -640,15 +647,24 @@ export function CityMap({
     return built;
   }, [routes, isochrones]);
 
+  // The basemap, under everything. Rebuilt only when it is toggled or the raster comes and goes:
+  // `TileLayer` keeps its own tile cache, and handing deck a new instance every render would
+  // throw that cache away on every scrub.
+  const basemapLayers = useMemo(
+    () => satelliteLayers({ enabled: showSatellite, dimmed: showRaster }),
+    [showSatellite, showRaster],
+  );
+
   const layers = useMemo(
     () => [
+      ...basemapLayers,
       ...cityLayers,
       ...streetLayers,
       ...runLayers,
       ...(surchargeLayer ? [surchargeLayer] : []),
       ...routeLayers,
     ],
-    [cityLayers, streetLayers, runLayers, surchargeLayer, routeLayers],
+    [basemapLayers, cityLayers, streetLayers, runLayers, surchargeLayer, routeLayers],
   );
 
   return (
@@ -682,6 +698,22 @@ export function CityMap({
         controller={interactive}
         layers={layers as never}
       />
+
+      {showSatellite ? (
+        // The scrim. The imagery is already drawn dim; this takes the last of its contrast out of
+        // the midtones so the depth ramp has the only saturated colour on the screen. It is
+        // `pointer-events-none` because the map underneath still has to be draggable.
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[var(--ink)]/30" />
+      ) : null}
+
+      {/* Esri's imagery is free to use and requires the credit while it is on screen. The console
+          mounts `MapSlot` behind this map and that draws the same line; `attribution={false}`
+          there keeps it from appearing twice. */}
+      {attribution ? (
+        <p className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 py-2 type-micro text-text-3">
+          {MAP_ATTRIBUTION}
+        </p>
+      ) : null}
     </div>
   );
 }
