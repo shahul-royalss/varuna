@@ -112,12 +112,16 @@ export function ConsoleScreen() {
   // hotspot drawer is open.
   const [isochrones, setIsochrones] = useState<Isochrone[]>([]);
   const [layers, setLayers] = useState<LayerToggles>({
+    satellite: true,
     raster: true,
     segments: true,
     surcharge: true,
     // Off by default (CLAUDE.md 6.7); it is also the largest layer VARUNA serves.
     drains: false,
-    buildings: true,
+    // Off when the imagery is on: the footprints are the *same buildings* the photograph already
+    // shows, so drawing both puts a grey polygon over every roof and loses the texture that makes
+    // the basemap worth having. The toggle brings them back for anyone who wants the derived GIS.
+    buildings: false,
     hotspots: true,
   });
   const toggleLayer = useCallback(
@@ -213,12 +217,17 @@ export function ConsoleScreen() {
       } else if (event.key === "ArrowRight") {
         setPlaying(false);
         setStep((s) => Math.min(run.provenance.nSteps - 1, s + 1));
-      } else if (/^[dsgb]$/i.test(event.key)) {
+      } else if (/^[dsgbv]$/i.test(event.key)) {
         // CLAUDE.md 7.2's layer shortcuts. The map is the screen, so these are the fastest way
-        // to change what it shows without reaching for the panel.
-        const key = { d: "drains", s: "surcharge", g: "hotspots", b: "buildings" }[
-          event.key.toLowerCase()
-        ] as LayerKey;
+        // to change what it shows without reaching for the panel. V is the satellite basemap -
+        // S is already surcharge, and V for "view" is the nearest free key.
+        const key = {
+          d: "drains",
+          s: "surcharge",
+          g: "hotspots",
+          b: "buildings",
+          v: "satellite",
+        }[event.key.toLowerCase()] as LayerKey;
         setLayers((current) => ({ ...current, [key]: !current[key] }));
       }
     };
@@ -271,6 +280,8 @@ export function ConsoleScreen() {
           showDrains={layers.drains}
           showBuildings={layers.buildings}
           showHotspots={layers.hotspots}
+          showSatellite={layers.satellite}
+          attribution={false}
         />
 
         {/* The scrub. Owned here so the map, the readout and the keyboard share one step. */}

@@ -2,6 +2,7 @@
 
 import { CloudRain } from "lucide-react";
 
+import { MAP_ATTRIBUTION } from "@/components/map/satellite";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { depthLegendStops } from "@/lib/ramps";
 import { cn } from "@/lib/utils";
@@ -108,8 +109,11 @@ export function MapSlot({
         </aside>
       ) : null}
 
+      {/* One line for both: the imagery on top and the vector data VARUNA derived the city from,
+          which is on screen whether or not the imagery loaded. `CityMap` draws the same line on
+          the screens that mount it without this slot. */}
       <p className="absolute inset-x-0 bottom-0 z-10 px-4 py-2 type-micro text-text-3">
-        Basemap: CARTO, OpenStreetMap contributors
+        {MAP_ATTRIBUTION}
       </p>
     </div>
   );
