@@ -72,6 +72,13 @@ COPY Makefile README.md ./
 # screenshots, so this copies about 2 MB.
 COPY docs/ docs/
 
+# Seven baked cycles, 10.9 MB. `varuna_api.seed` copies these onto the volume the first time the
+# API starts against an empty run directory, so a fresh container serves a console with a flood
+# in it instead of an honest 404 - a real cycle takes about three minutes of CPU, and the
+# container would otherwise spend its first quarter hour with nothing to draw. They are ordinary
+# run artifacts, minus the 19 MB-per-cycle `segment_forecast.parquet` the console never reads.
+COPY demo/ demo/
+
 RUN uv sync --frozen --no-dev
 
 # The environment is complete; do not let the two `uv run` processes at boot (API and the

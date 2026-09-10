@@ -125,16 +125,23 @@ def run_cycle(
         mode: ``baked`` when pre-computing, ``live`` when the operator pressed Compute live.
         overwrite: replace an existing run directory of the same id.
     """
-    from varuna_products.alerts import build_alerts, street_series, write_alerts
+    from varuna_products.alerts import (
+        STREET_POINTS,
+        build_alerts,
+        street_series,
+        write_alerts,
+    )
     from varuna_products.depth import (
         depth_bounds,
         segment_cell_index,
         segment_forecast,
         segment_names,
+        segment_points,
         write_depth_rasters,
         write_wet_segments,
     )
     from varuna_products.hotspots import rank_hotspots
+    from varuna_products.pumps import build_pump_plan, write_pump_plan
     from varuna_products.surcharge import surcharge_product, write_surcharge
     from varuna_twin.city import load_network, load_terrain, load_tide
     from varuna_twin.runner import run_twin
@@ -181,11 +188,15 @@ def run_cycle(
     # Alerts are about named places, so the per-segment series are collapsed onto street names
     # first (`street_series`); a segment id in an alert headline is no use to a ward officer.
     names = segment_names(city_dir(city))
+    points = segment_points(city_dir(city))
     street_depths = street_series(
-        {sid: list(depth_cm[:, k]) for k, sid in enumerate(index[0])}, names
+        {sid: list(depth_cm[:, k]) for k, sid in enumerate(index[0])}, names, points
     )
     alerts = build_alerts(
         hotspots, run_id, cycle_ts, twin.times, mode, streets=street_depths
+    )
+    pump_plan = build_pump_plan(
+        hotspots, city_dir(city), run_id, STEP_MIN, street_depths, dict(STREET_POINTS)
     )
     surcharge = surcharge_product(
         twin.q_surcharge, twin.edge_flow, network, terrain.transform, terrain.crs, run_id
@@ -241,6 +252,7 @@ def run_cycle(
         (tmp / "hotspots.json").write_text(json.dumps(hotspots, indent=2) + "\n", encoding="utf-8")
         write_surcharge(tmp, surcharge)
         write_alerts(tmp, alerts)
+        write_pump_plan(tmp, pump_plan)
         q_node = twin.q_surcharge
         (tmp / "node_summary.json").write_text(
             json.dumps(

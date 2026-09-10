@@ -95,6 +95,7 @@ export function AlertsScreen() {
     triggerProbability: a.triggerP,
     raisedAt: a.raisedTs,
     persistsCycles: a.persistsCycles,
+    persistsUnit: "forecast step",
     channels: ["Dashboard", "WhatsApp mock"],
     acknowledged: Boolean(acknowledged[a.id]),
   }));

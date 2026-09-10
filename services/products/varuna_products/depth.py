@@ -351,3 +351,23 @@ def segment_names(city_root: Path) -> dict[str, str]:
     frame = pd.read_parquet(table, columns=["segment_id", "name"])
     named = frame[frame["name"].notna()]
     return {str(k): str(v) for k, v in zip(named["segment_id"], named["name"], strict=True)}
+
+
+def segment_points(city_root: Path) -> dict[str, tuple[float, float]]:
+    """Segment id to a representative lon/lat, for products that must put a pin somewhere.
+
+    The midpoint of the segment's line rather than its bounding-box centre, so the point is on
+    the road even where it bends. Used by alerts (the CAP area circle) and by the pump board,
+    which has to dispatch a lorry to a place rather than to an id.
+    """
+    import geopandas as gpd
+
+    table = city_root / "segments.parquet"
+    if not table.is_file():
+        return {}
+    frame = gpd.read_parquet(table, columns=["segment_id", "geometry"]).to_crs("EPSG:4326")
+    points = frame.geometry.interpolate(0.5, normalized=True)
+    return {
+        str(sid): (float(p.x), float(p.y))
+        for sid, p in zip(frame["segment_id"], points, strict=True)
+    }

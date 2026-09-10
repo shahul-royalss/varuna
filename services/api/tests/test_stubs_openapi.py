@@ -61,7 +61,6 @@ STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None
     ("GET", "/v1/feeds/road-conditions", None, None),
     ("POST", "/v1/alerts/ALT-1/ack", {"user": "ward officer"}, None),
     ("POST", "/v1/alerts/ALT-1/escalate", {"user": "ward officer"}, None),
-    ("GET", "/v1/pumps", None, None),
     ("POST", "/v1/pumps/optimise", {}, None),
     ("POST", "/v1/pumps/dispatch", {"plan_id": "plan-1"}, None),
     ("POST", "/v1/whatif", sample_json("WhatIfRequest"), None),

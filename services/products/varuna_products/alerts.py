@@ -95,7 +95,9 @@ def _runs(above: list[bool], min_steps: int) -> list[tuple[int, int]]:
 
 
 def street_series(
-    depth_cm: dict[str, list[float]], names: dict[str, str]
+    depth_cm: dict[str, list[float]],
+    names: dict[str, str],
+    points: dict[str, tuple[float, float]] | None = None,
 ) -> dict[str, list[float]]:
     """Collapse per-segment depth series onto street names, keeping the worst step by step.
 
@@ -104,6 +106,7 @@ def street_series(
     given a placeholder: an alert that cannot say where it is cannot be acted on.
     """
     out: dict[str, list[float]] = {}
+    deepest: dict[str, tuple[float, str]] = {}
     for segment_id, series in depth_cm.items():
         name = names.get(segment_id)
         if not name or not series:
@@ -115,7 +118,26 @@ def street_series(
             for i, value in enumerate(series[: len(current)]):
                 if value > current[i]:
                     current[i] = value
+        # The road's pin goes on its worst segment: that is where a pump would be sent and what
+        # the CAP circle should cover, not the road's midpoint two kilometres away.
+        peak = max(series)
+        if name not in deepest or peak > deepest[name][0]:
+            deepest[name] = (peak, segment_id)
+
+    if points is not None:
+        STREET_POINTS.clear()
+        for name, (_peak, segment_id) in deepest.items():
+            point = points.get(segment_id)
+            if point:
+                STREET_POINTS[name] = point
     return out
+
+
+STREET_POINTS: dict[str, tuple[float, float]] = {}
+"""Street name to the lon/lat of its worst-flooding segment, filled by :func:`street_series`.
+
+A module-level cache rather than a second return value, so the existing callers of
+``street_series`` keep their shape; ``build_alerts`` and the pump plan read it straight after."""
 
 
 def _alert_from_series(
@@ -232,6 +254,8 @@ def build_alerts(
             mode=mode,
             scope="segment",
             scope_id=None,
+            lon=STREET_POINTS.get(street, (None, None))[0],
+            lat=STREET_POINTS.get(street, (None, None))[1],
         )
         if alert:
             alerts.append(alert)

@@ -22,7 +22,6 @@ from varuna_schemas.models import (
     Observation,
     PhysicsCheckRequest,
     PhysicsCheckResponse,
-    Pump,
     PumpAssignment,
     PumpPlan,
     ReachabilityResponse,
@@ -245,11 +244,6 @@ def alert_escalate(alert_id: str, body: AlertActionRequest) -> Alert:
 
 
 # ---- pumps (Phase 8) ----------------------------------------------------------------------
-@router.get("/pumps", tags=["pumps"], response_model=list[Pump], summary="Pump inventory")
-def pumps() -> list[Pump]:
-    raise not_implemented("The pump inventory (synthetic, labelled)", 8, "P8.9")
-
-
 @router.post(
     "/pumps/optimise", tags=["pumps"], response_model=PumpPlan, summary="Optimise assignments"
 )
