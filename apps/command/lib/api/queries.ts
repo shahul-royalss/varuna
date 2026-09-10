@@ -7,7 +7,7 @@
 
 import { useMutation, useQuery, useQueryClient, type UseQueryOptions } from "@tanstack/react-query";
 
-import { ApiError, api } from "./client";
+import { ApiError, api, timeoutFor } from "./client";
 import {
   CycleStatus,
   Health,
@@ -44,7 +44,7 @@ type QueryOverrides<T> = Omit<UseQueryOptions<T, ApiError>, "queryKey" | "queryF
 export function useHealth(overrides: QueryOverrides<Health> = {}) {
   return useQuery<Health, ApiError>({
     queryKey: queryKeys.health,
-    queryFn: () => api.get("/healthz", { schema: Health, timeoutMs: 4_000 }),
+    queryFn: () => api.get("/healthz", { schema: Health, timeoutMs: timeoutFor(4_000) }),
     staleTime: 15_000,
     refetchInterval: 30_000,
     refetchOnWindowFocus: false,

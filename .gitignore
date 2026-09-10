@@ -70,3 +70,6 @@ docs/research/_raw/pages/
 skills/
 
 .vercel
+
+# Reports arrive at runtime; the inbox is a runtime artifact, not source.
+data/reports/

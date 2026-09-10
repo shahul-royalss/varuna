@@ -116,6 +116,9 @@ export interface CityMapProps {
   routes?: readonly RouteLine[];
   /** Reachability bands, under the routes and over the streets. */
   isochrones?: readonly Isochrone[];
+  /** Depth in cm at which the audience's vehicle stops. Set it and the wet streets are drawn in
+   * the public map's three colours instead of the operator's depth ramp (CLAUDE.md 7.11). */
+  passableBelowCm?: number;
   /** The hotspot the rail has selected; drawn as a second, brighter ring (motion M10). */
   selectedHotspotId?: string | null;
   /** Fly the camera here when `key` changes. */
@@ -149,6 +152,27 @@ const DRY_STREET: [number, number, number, number] = [43, 58, 85, 235];
 
 /** `--deep` #111A2E, the panel colour: buildings are the ground the streets are cut into. */
 const BUILDING_FILL: [number, number, number, number] = [17, 26, 46, 235];
+
+/** The public map's three colours (CLAUDE.md 7.11 and `PublicLegend`): go, slow down, do not
+ * enter. A commuter does not need six depth bands, they need to know whether to turn around.
+ *
+ * `--depth-1` #3B82F6, `--depth-3` #F97316, `--depth-5` #B91C1C - the same three the legend on
+ * that screen draws, so the swatch and the street are provably the same colour. */
+const PASSABLE: [number, number, number, number] = [59, 130, 246, 235];
+const CAUTION: [number, number, number, number] = [249, 115, 22, 245];
+const IMPASSABLE: [number, number, number, number] = [185, 28, 28, 255];
+
+/** Caution begins at this share of the vehicle's own stopping depth. */
+const CAUTION_FRACTION = 0.5;
+
+function passabilityRgba(
+  depthCm: number,
+  thresholdCm: number,
+): [number, number, number, number] {
+  if (depthCm >= thresholdCm) return IMPASSABLE;
+  if (depthCm >= thresholdCm * CAUTION_FRACTION) return CAUTION;
+  return PASSABLE;
+}
 
 /** `--naive` #64748B: the shortest path a navigation app would give you today. */
 const NAIVE_ROUTE: [number, number, number, number] = [100, 116, 139, 235];
@@ -240,6 +264,7 @@ export function CityMap({
   drains = [],
   routes = [],
   isochrones = [],
+  passableBelowCm,
   selectedHotspotId = null,
   focus = null,
   step,
@@ -485,7 +510,10 @@ export function CityMap({
           id: "streets-wet",
           data: segments as SegmentPath[],
           getPath: (d) => d.path,
-          getColor: (d) => depthRgba(d.depthCm[step] ?? 0),
+          getColor: (d) =>
+            passableBelowCm === undefined
+              ? depthRgba(d.depthCm[step] ?? 0)
+              : passabilityRgba(d.depthCm[step] ?? 0, passableBelowCm),
           getWidth: (d) => d.width * 1.15,
           widthUnits: "pixels",
           widthMinPixels: 1.6,
@@ -493,7 +521,7 @@ export function CityMap({
           jointRounded: true,
           pickable: false,
           // A scrub changes one thing, so one accessor is re-run.
-          updateTriggers: { getColor: step },
+          updateTriggers: { getColor: [step, passableBelowCm] },
         }),
       );
     }
@@ -526,7 +554,7 @@ export function CityMap({
       );
     }
     return built;
-  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots]);
+  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm]);
 
   // Motion M8, rebuilt on every pulse frame and therefore kept on its own so that a pulse
   // re-uploads nothing but the markers.

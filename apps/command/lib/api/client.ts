@@ -13,6 +13,23 @@ import { ApiErrorEnvelope } from "./schemas";
 export const DEFAULT_API_URL = "http://localhost:8000";
 export const DEFAULT_TIMEOUT_MS = 10_000;
 
+/** Whether the API is somewhere other than this machine.
+ *
+ * A hosted API on a free tier sleeps, and the first request after it wakes can take five seconds
+ * before a byte moves. Timeouts tuned for a local `make dev` - four seconds for the replay clock -
+ * fire against it on every cold start, which is what put "check that it is running on :8000" over
+ * a deployed console that was talking to Railway perfectly well a second later. */
+export function isRemoteApi(): boolean {
+  const configured = configuredApiUrl();
+  if (!configured) return false;
+  return !/^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(configured);
+}
+
+/** Timeout for a call, stretched when the API is not on this machine. */
+export function timeoutFor(localMs: number): number {
+  return isRemoteApi() ? Math.max(localMs * 4, 20_000) : localMs;
+}
+
 /** Error codes the client itself produces; server codes come through unchanged. */
 export type ClientErrorCode = "network" | "timeout" | "aborted" | "invalid_response" | "http_error";
 
@@ -256,7 +273,9 @@ export async function apiFetch<T = unknown>(path: string, options: ApiFetchOptio
     if (timedOut) {
       throw new ApiError({
         code: "timeout",
-        message: `The API did not answer within ${Math.round(timeoutMs / 1000)} s for ${path}. Check that it is running on :8000.`,
+        message: isRemoteApi()
+          ? `The API at ${apiUrl()} did not answer within ${Math.round(timeoutMs / 1000)} s for ${path}. It may be waking up; try again.`
+          : `The API did not answer within ${Math.round(timeoutMs / 1000)} s for ${path}. Start it with make dev.`,
         status: 0,
         path,
         cause: error,

@@ -47,15 +47,12 @@ SECTION_12_PATHS = [
     "/v1/city/{city}/layers/{name}",
 ]
 
-# Endpoints that are still 501. Phase 5 implemented the depth products - segments, rasters and
-# the hotspot ranking - so they left this list; the *paths* stay in SECTION_12_PATHS above,
-# which is what asserts the contract in CLAUDE.md 12 is complete either way.
+# Endpoints that are still 501. Phase 5 implemented the depth products, Phase 8 the route,
+# reachability and the road-conditions feed, and Phase 9 verification and report ingestion - so
+# each left this list as it landed. The *paths* stay in SECTION_12_PATHS above, which is what
+# asserts the contract in CLAUDE.md 12 is complete either way.
 STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None]] = [
     ("GET", "/v1/nowcast/segments/88213/series", None, None),
-    ("POST", "/v1/reports", sample_json("ReportIn"), None),
-    ("POST", "/v1/route", sample_json("RouteRequest"), None),
-    ("GET", "/v1/reachability", None, {"facility": "kem-hospital"}),
-    ("GET", "/v1/feeds/road-conditions", None, None),
     ("POST", "/v1/alerts/ALT-1/ack", {"user": "ward officer"}, None),
     ("POST", "/v1/alerts/ALT-1/escalate", {"user": "ward officer"}, None),
     ("POST", "/v1/pumps/optimise", {}, None),
@@ -64,7 +61,6 @@ STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None
     ("POST", "/v1/cycle/compute", sample_json("ComputeRequest"), None),
     ("POST", "/v1/onboard", {"city": "chennai"}, None),
     ("GET", "/v1/onboard/job-1", None, None),
-    ("GET", "/v1/verification", None, {"event": "MUM-2019-07-02"}),
 ]
 
 
@@ -92,9 +88,13 @@ def test_openapi_contains_every_section_12_path(client: TestClient) -> None:
     missing = [p for p in SECTION_12_PATHS if p not in doc["paths"]]
     assert not missing, f"missing from OpenAPI: {missing}"
     schemas = doc["components"]["schemas"]
-    for name in ("ErrorEnvelope", "RunMeta", "RunList", "CycleStatus", "RouteResponse"):
+    # `RouteResponse` was in this list while `/v1/route` was a stub declaring it. The served
+    # route (task P8.2) returns its own flatter shape - two comparable routes side by side, which
+    # is what the screen renders - so the draft model is no longer what the endpoint publishes.
+    # `varuna_schemas.models.route` keeps it as the pilot contract; see ADR-0027.
+    for name in ("ErrorEnvelope", "RunMeta", "RunList", "CycleStatus"):
         assert name in schemas
-    assert "501" in doc["paths"]["/v1/route"]["post"]["responses"]
+    assert "501" in doc["paths"]["/v1/onboard"]["post"]["responses"]
     assert "404" in doc["paths"]["/v1/runs/{run_id}"]["get"]["responses"]
     assert (
         doc["paths"]["/v1/nowcast/raster"]["get"]["responses"]["200"]["content"].get("image/png")
