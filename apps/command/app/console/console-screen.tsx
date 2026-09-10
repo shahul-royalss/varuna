@@ -250,6 +250,7 @@ export function ConsoleScreen() {
         ) : (
           <RightRail
             hotspots={hotspots}
+          runId={run?.provenance.runId ?? null}
             step={step}
             selectedHotspotId={selectedHotspotId}
             onSelectHotspot={selectHotspot}
