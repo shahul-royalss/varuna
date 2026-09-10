@@ -34,6 +34,12 @@ log = structlog.get_logger("varuna.api.whatif")
 
 router = APIRouter(prefix="/v1", tags=["whatif"])
 
+MAX_SEGMENTS = 4000
+"""Segments returned per scenario, largest change first.
+
+Four thousand because the diff layer draws them: 200 was enough for a table and far too few for a
+map, which is why the difference layer looked empty on a scenario that moved 1,687 streets."""
+
 MODEL_PATHS = ("data/train/flash_lite.npz", "demo/flash_lite.npz")
 """Where the fitted emulator is looked for, in order."""
 
@@ -132,7 +138,12 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
                 "delta_cm": round(delta, 1),
             }
         )
-    rows.sort(key=lambda r: r["delta_cm"])
+    # **Sorted by how much the scenario moved a street, not by the sign of the move.** Sorting
+    # ascending and taking the first 200 returned the 200 *most improved* - and when a scenario
+    # only makes things worse, as scaling the rain up does, that is 200 segments whose delta is
+    # exactly zero. The diff layer drew nothing and the table listed nothing, on a scenario that
+    # had in fact moved 1,687 streets. Largest absolute change first is what a difference is.
+    rows.sort(key=lambda r: -abs(r["delta_cm"]))
 
     ms = (perf_counter() - started) * 1000.0
     log.info(
@@ -157,7 +168,10 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         "n_improved": scenario.n_improved,
         "n_worse": scenario.n_worse,
         "ms": round(ms, 1),
-        "segments": rows[:200],
+        # Enough for the map to draw a difference and the table to rank one. The count of what
+        # moved is reported separately, so a truncated list never reads as the whole answer.
+        "segments": rows[:MAX_SEGMENTS],
+        "n_changed": sum(1 for r in rows if abs(r["delta_cm"]) >= 0.5),
         "worst_after": sorted(rows, key=lambda r: -r["after_cm"])[:20],
         "notes": [
             *scenario.notes,
