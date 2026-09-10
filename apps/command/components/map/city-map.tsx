@@ -56,6 +56,8 @@ export interface SegmentPath {
   width: number;
   /** Street name from OSM, where it has one. Drawn as a label at high zoom. */
   name?: string;
+  /** Change in peak depth under a what-if, in cm. Negative is an improvement. */
+  deltaCm?: number;
 }
 
 export interface SurchargeNode {
@@ -145,6 +147,11 @@ export interface CityMapProps {
   showDrains?: boolean;
   /** Draw Esri's aerial imagery under everything (section 6.7's basemap slot). */
   showSatellite?: boolean;
+  /** Draw `segments` by their `deltaCm` rather than their depth: the what-if diff layer
+   * (CLAUDE.md 7.7). Blue is improved, red is worse, grey is unchanged. */
+  diffMode?: boolean;
+  /** 0 to 1 left-to-right reveal of the diff layer (motion M13). 1 shows all of it. */
+  diffProgress?: number;
   /** Place names, street names and facility markers (section 6.7's label layer). */
   showLabels?: boolean;
   /** Facilities and chronic junctions to name on the map, beside the street names. */
@@ -198,6 +205,31 @@ const NAIVE_ROUTE: [number, number, number, number] = [100, 116, 139, 235];
 
 /** `--tide` #2DD4BF: the route VARUNA gives you instead. */
 const VARUNA_ROUTE: [number, number, number, number] = [45, 212, 191, 255];
+
+/** The what-if diff ramp (CLAUDE.md 7.7): blue improved, red worse, grey unchanged.
+ *
+ * `--depth-1` #3B82F6 for water removed and `--depth-4` #EF4444 for water added - the same two
+ * ends of the depth ramp an operator already reads, so "blue is better" needs no legend. Grey is
+ * `--depth-dry`, and it is deliberately the *majority* colour: most of a city does not change
+ * when fourteen pipes are cleaned, and a diff layer that lights up everywhere is lying. */
+const DIFF_IMPROVED: [number, number, number] = [59, 130, 246];
+const DIFF_WORSE: [number, number, number] = [239, 68, 68];
+const DIFF_UNCHANGED: [number, number, number, number] = [43, 58, 85, 190];
+
+/** Change below this is not a change: the emulator's own noise floor is larger than half a cm. */
+const DIFF_DEADBAND_CM = 0.5;
+
+/** Change at which the diff colour is fully saturated. Past 20 cm it is "a lot" either way. */
+const DIFF_FULL_CM = 20;
+
+/** A segment's diff colour: opacity carries the size of the change, hue carries its sign. */
+function diffColour(deltaCm: number | undefined): [number, number, number, number] {
+  const delta = deltaCm ?? 0;
+  if (Math.abs(delta) < DIFF_DEADBAND_CM) return DIFF_UNCHANGED;
+  const strength = Math.min(Math.abs(delta) / DIFF_FULL_CM, 1);
+  const [r, g, b] = delta < 0 ? DIFF_IMPROVED : DIFF_WORSE;
+  return [r, g, b, Math.round(90 + 165 * strength)];
+}
 
 /** `--depth-5` #B91C1C: a street the route refused, so the detour has something to be around. */
 const AVOIDED_ROUTE: [number, number, number, number] = [185, 28, 28, 255];
@@ -379,6 +411,8 @@ export function CityMap({
   showHotspots = true,
   showBuildings = true,
   showDrains = false,
+  diffMode = false,
+  diffProgress = 1,
   showSatellite = true,
   showLabels = true,
   labels = [],
@@ -463,6 +497,14 @@ export function CityMap({
       [east, north],
     ] as Bbox;
   }, [routes, baseSegments, segments, drains, hotspots, aoi]);
+
+  // Where the diff wipe has reached, as a longitude. Derived from the drawn extent rather than
+  // from a screen-space mask, so the wipe follows the city and not the window.
+  const wipeLon = useMemo(() => {
+    if (!diffMode || diffProgress >= 1) return Number.POSITIVE_INFINITY;
+    const [[west], [east]] = frame;
+    return west + (east - west) * diffProgress;
+  }, [diffMode, diffProgress, frame]);
 
   const fitted = useMemo<ViewState>(() => {
     if (!size || size.width < 2 || size.height < 2) return INITIAL_VIEW;
@@ -626,18 +668,31 @@ export function CityMap({
           id: "streets-wet",
           data: segments as SegmentPath[],
           getPath: (d) => d.path,
-          getColor: (d) =>
-            passableBelowCm === undefined
+          getColor: (d) => {
+            if (diffMode) {
+              // Motion M13: the diff wipes in left to right. A segment east of the wipe is drawn
+              // unchanged rather than hidden, so the network stays whole while the answer arrives -
+              // hiding it would read as "these streets were deleted".
+              const lon = d.path[0]?.[0] ?? 0;
+              return lon <= wipeLon ? diffColour(d.deltaCm) : DIFF_UNCHANGED;
+            }
+            return passableBelowCm === undefined
               ? depthRgba(d.depthCm[step] ?? 0)
-              : passabilityRgba(d.depthCm[step] ?? 0, passableBelowCm),
-          getWidth: (d) => d.width * 1.15,
+              : passabilityRgba(d.depthCm[step] ?? 0, passableBelowCm);
+          },
+          getWidth: (d) =>
+            // A changed street is drawn thicker, so the answer reads from across a room.
+            diffMode && Math.abs(d.deltaCm ?? 0) >= DIFF_DEADBAND_CM ? d.width * 1.8 : d.width * 1.15,
           widthUnits: "pixels",
           widthMinPixels: 1.6,
           capRounded: true,
           jointRounded: true,
           pickable: false,
           // A scrub changes one thing, so one accessor is re-run.
-          updateTriggers: { getColor: [step, passableBelowCm] },
+          updateTriggers: {
+            getColor: [step, passableBelowCm, diffMode, wipeLon],
+            getWidth: [diffMode],
+          },
         }),
       );
     }
@@ -670,7 +725,7 @@ export function CityMap({
       );
     }
     return built;
-  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm]);
+  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon]);
 
   // Motion M8, rebuilt on every pulse frame and therefore kept on its own so that a pulse
   // re-uploads nothing but the markers.

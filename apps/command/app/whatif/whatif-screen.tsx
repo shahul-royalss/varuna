@@ -1,13 +1,17 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { runWhatIf, type WhatIfResult } from "@/lib/api/whatif";
 
 import { AgreementBar } from "@/components/varuna/agreement-bar";
 import { AppShell } from "@/components/varuna/app-shell";
 import { DeltaTable, type DeltaRow } from "@/components/varuna/delta-table";
+import { CityMap } from "@/components/map/city-map";
 import { MapSlot } from "@/components/varuna/map-slot";
+import { apiUrl } from "@/lib/api/client";
+import { allSegments, type GeoSegment } from "@/lib/api/run-depth";
+import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
@@ -22,6 +26,9 @@ import {
 /** Delta rows arrive from the emulator in Phase 7; until then the table shows its empty state. */
 /** Segments shown in the delta table. More than this and nobody reads to the bottom. */
 const MAX_DELTA_ROWS = 25;
+
+/** Motion M13: the diff layer wipes left to right over 500 ms (CLAUDE.md 8). */
+const WIPE_MS = 500;
 
 /** A Twin run on this city is about three minutes, against the 10 s CLAUDE.md 14 budgets for a
  * physics check. The control says so rather than starting something that would look hung. */
@@ -47,6 +54,20 @@ function scenarioLine(values: WhatIfValues): string {
  */
 export function WhatIfScreen() {
   const [values, setValues] = useState<WhatIfValues>(DEFAULT_WHATIF_VALUES);
+  // The city's own street geometry, so a scenario's per-segment deltas have something to be drawn
+  // on. Loaded once; the scenario only ever changes the numbers attached to these paths.
+  const [streets, setStreets] = useState<GeoSegment[]>([]);
+  const [wipe, setWipe] = useState(1);
+  const reducedMotion = usePrefersReducedMotion();
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(apiUrl("/v1/city/mumbai/layers/segments"), { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : { features: [] }))
+      .then((geojson) => setStreets(allSegments(geojson)))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
   const [result, setResult] = useState<WhatIfResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -65,6 +86,35 @@ export function WhatIfScreen() {
       setRunning(false);
     }
   }, []);
+
+  // The scenario's deltas, joined onto the city's geometry. Only the segments the scenario
+  // actually moved: the rest are already drawn as the dry base layer underneath, and pushing
+  // 21,296 unchanged paths through the diff accessor would cost the frame rate for nothing.
+  const diffSegments = useMemo(() => {
+    if (!result || streets.length === 0) return [];
+    const delta = new Map(result.segments.map((r) => [r.segmentId, r.deltaCm]));
+    return streets
+      .filter((s) => delta.has(s.id))
+      .map((s) => ({ ...s, deltaCm: delta.get(s.id) ?? 0 }));
+  }, [result, streets]);
+
+  // Motion M13: the diff wipes in left to right over 500 ms whenever a result arrives.
+  useEffect(() => {
+    if (!result) return;
+    if (reducedMotion) {
+      const settle = requestAnimationFrame(() => setWipe(1));
+      return () => cancelAnimationFrame(settle);
+    }
+    let frame = 0;
+    const started = performance.now();
+    const tick = () => {
+      const t = Math.min((performance.now() - started) / WIPE_MS, 1);
+      setWipe(t);
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [result, reducedMotion]);
 
   const rows: DeltaRow[] = (result?.segments ?? []).slice(0, MAX_DELTA_ROWS).map((row) => ({
     id: row.segmentId,
@@ -114,8 +164,31 @@ export function WhatIfScreen() {
                   description="Segments coloured by change in depth: improved, worse, unchanged."
                   className="min-w-0"
                 >
-                  <div className="h-[380px] overflow-hidden rounded-control border border-line">
-                    <MapSlot />
+                  <div className="relative h-[380px] overflow-hidden rounded-control border border-line">
+                    {diffSegments.length > 0 ? (
+                      <CityMap
+                        frames={[]}
+                        rasterBounds={null}
+                        baseSegments={streets}
+                        segments={diffSegments}
+                        surcharge={[]}
+                        hotspots={[]}
+                        diffMode
+                        diffProgress={wipe}
+                        showRaster={false}
+                        showSurcharge={false}
+                        showBuildings={false}
+                        showHotspots={false}
+                        step={0}
+                      />
+                    ) : (
+                      <MapSlot
+                        emptyState={{
+                          title: "No scenario run yet",
+                          description: "Set the rain and the pipes, then press Run what-if.",
+                        }}
+                      />
+                    )}
                   </div>
                   <p className="mt-3 type-micro text-text-3">
                     {result
