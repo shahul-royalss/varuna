@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CityMap, type Isochrone, type MapFocus, type SegmentPath } from "./city-map";
+import type { CityMapMode } from "./types";
 import {
   loadBuildings,
   loadDrains,
@@ -52,6 +53,8 @@ export interface FloodMapProps {
   focus?: MapFocus | null;
   /** Reachability bands from the right rail, drawn over the streets (section 6.7). */
   isochrones?: readonly Isochrone[];
+  /** `hero` makes the map read-only for the landing page's scrub loop (motion M1). */
+  mode?: CityMapMode;
   showRaster?: boolean;
   showSegments?: boolean;
   showHotspots?: boolean;
@@ -70,6 +73,7 @@ export function FloodMap({
   showDrains = false,
   focus = null,
   isochrones = [],
+  mode = "console",
   showRaster = true,
   showSegments = true,
   showHotspots = true,
@@ -207,6 +211,7 @@ export function FloodMap({
 
   return (
     <CityMap
+      mode={mode}
       frames={status.run.frames}
       rasterBounds={status.run.bounds}
       baseSegments={status.baseSegments}
