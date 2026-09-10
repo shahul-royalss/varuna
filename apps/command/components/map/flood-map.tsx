@@ -55,6 +55,8 @@ export interface FloodMapProps {
   isochrones?: readonly Isochrone[];
   /** `hero` makes the map read-only for the landing page's scrub loop (motion M1). */
   mode?: CityMapMode;
+  /** Set to draw wet streets in the public map's three colours against this stopping depth. */
+  passableBelowCm?: number;
   showRaster?: boolean;
   showSegments?: boolean;
   showHotspots?: boolean;
@@ -74,6 +76,7 @@ export function FloodMap({
   focus = null,
   isochrones = [],
   mode = "console",
+  passableBelowCm,
   showRaster = true,
   showSegments = true,
   showHotspots = true,
@@ -224,6 +227,7 @@ export function FloodMap({
       showDrains={showDrains}
       hotspots={rings}
       isochrones={isochrones}
+      passableBelowCm={passableBelowCm}
       selectedHotspotId={selectedHotspotId}
       focus={focus}
       step={Math.min(step, status.run.provenance.nSteps - 1)}

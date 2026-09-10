@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Route } from "next";
 import { BookmarkPlus, Trash2, Umbrella } from "lucide-react";
@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/varuna/bottom-sheet";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { LanguageToggle } from "@/components/varuna/language-toggle";
-import { MapSlot } from "@/components/varuna/map-slot";
+import { FloodMap } from "@/components/map/flood-map";
+import type { RunDepth } from "@/lib/api/run-depth";
+import { apiUrl } from "@/lib/api/client";
 import { PublicLegend } from "@/components/varuna/public-legend";
 import { VehicleSelector, type PublicProfile } from "@/components/varuna/vehicle-selector";
 import { Wordmark } from "@/components/varuna/wordmark";
@@ -19,6 +21,19 @@ import { useRunStore } from "@/lib/stores/run";
 
 const REPORT_ROUTE = "/report" as Route;
 const SAVED_KEY = "varuna.map.saved-locations";
+
+/** Depth at which each vehicle stops, in cm. The same numbers `varuna_route.profiles` routes on
+ * and the console's depth ramp colours by, so the public map and the operator's map cannot
+ * disagree about who is stopped. */
+const STOPS_AT_CM: Record<PublicProfile, number> = {
+  "two-wheeler": 15,
+  car: 30,
+  bus: 45,
+  pedestrian: 30,
+};
+
+/** Streets listed in the sheet. More than this and nobody scrolls to the bottom on a phone. */
+const NEARBY_LIMIT = 12;
 
 interface SavedLocation {
   id: string;
@@ -56,6 +71,65 @@ export function MapScreen() {
 
   const currentRun = useRunStore((state) => state.currentRun);
   const runTime = currentRun ? formatIst(currentRun.cycle_ts) : null;
+
+  // The public map does not scrub: a commuter wants now, and "now" is the run's first step. The
+  // "passable until" times below are what carries the forecast instead, which is the form the
+  // question actually takes on a phone ("can I still get home?").
+  const step = 0;
+  const [run, setRun] = useState<RunDepth | null>(null);
+  const [names, setNames] = useState<Map<string, string>>(() => new Map());
+  const onLoaded = useCallback((loaded: RunDepth) => setRun(loaded), []);
+
+  // Street names, from the city's own segment layer. The run carries depths per `segment_id` and
+  // nothing else; a list of ids would be useless to a commuter.
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(apiUrl("/v1/city/mumbai/layers/segments"), { signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : { features: [] }))
+      .then((geojson: { features?: { properties?: Record<string, unknown> }[] }) => {
+        const map = new Map<string, string>();
+        for (const feature of geojson.features ?? []) {
+          const props = feature.properties ?? {};
+          const id = String(props.segment_id ?? "");
+          const name = props.name;
+          if (id && typeof name === "string" && name) map.set(id, name);
+        }
+        setNames(map);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  /** The streets this run wets worst, with the last time each is still passable for the vehicle. */
+  const nearby = useMemo(() => {
+    if (!run) return [];
+    const stops = STOPS_AT_CM[profile];
+    const rows: {
+      id: string;
+      name: string;
+      peakCm: number;
+      passableUntil: string | null;
+    }[] = [];
+    for (const [id, series] of run.depthCm) {
+      const peak = series.length ? Math.max(...series) : 0;
+      // Only streets this vehicle would have to think about: half its stopping depth or more.
+      if (peak < stops * 0.5) continue;
+      const firstOver = series.findIndex((cm) => cm >= stops);
+      rows.push({
+        id,
+        name: names.get(id) ?? "Unnamed road",
+        peakCm: peak,
+        passableUntil:
+          firstOver < 0
+            ? formatIst(run.validTs[run.validTs.length - 1] ?? "")
+            : firstOver === 0
+              ? null
+              : formatIst(run.validTs[firstOver - 1] ?? run.validTs[0] ?? ""),
+      });
+    }
+    rows.sort((a, b) => b.peakCm - a.peakCm);
+    return rows.slice(0, NEARBY_LIMIT);
+  }, [run, profile, names]);
 
   useEffect(() => {
     const node = stageRef.current;
@@ -103,12 +177,16 @@ export function MapScreen() {
       </header>
 
       <div ref={stageRef} className="relative min-h-0 flex-1">
-        <MapSlot
-          audience="public"
-          emptyState={{
-            title: "No forecast yet",
-            description: "Streets are coloured after the next VARUNA run.",
-          }}
+        {/* The same map the console draws, recoloured for a commuter: three states rather than
+            six depth bands, against this vehicle's own stopping depth. */}
+        <FloodMap
+          step={step}
+          onLoaded={onLoaded}
+          passableBelowCm={STOPS_AT_CM[profile]}
+          showRaster={false}
+          showBuildings={false}
+          showSurcharge={false}
+          showHotspots
         />
 
         <Button
@@ -122,13 +200,33 @@ export function MapScreen() {
           Report water
         </Button>
 
-        <BottomSheet containerHeight={sheetHeight} title="Streets near you">
+        <BottomSheet containerHeight={sheetHeight} title="Streets to avoid">
           <div className="flex flex-col gap-5">
-            <EmptyState
-              size="sm"
-              title="No streets scored yet"
-              description="The public map fills after the first run."
-            />
+            {nearby.length === 0 ? (
+              <EmptyState
+                size="sm"
+                title="No streets scored yet"
+                description="The public map fills after the first run."
+              />
+            ) : (
+              <ul className="divide-y divide-line rounded-panel border border-line">
+                {nearby.map((street) => (
+                  <li key={street.id} className="flex items-center justify-between gap-3 px-3 py-3">
+                    <span className="min-w-0">
+                      <span className="block truncate type-small text-text">{street.name}</span>
+                      <span className="num block type-micro text-text-2">
+                        {street.passableUntil
+                          ? `Passable until ${street.passableUntil}`
+                          : "Impassable now"}
+                      </span>
+                    </span>
+                    <span className="num shrink-0 type-small text-text-2">
+                      {street.peakCm.toFixed(0)} cm
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
 
             <section aria-labelledby="saved-locations" className="space-y-2">
               <div className="flex items-center justify-between gap-2">

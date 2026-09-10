@@ -72,7 +72,9 @@ def test_unknown_path_uses_envelope(client: TestClient) -> None:
 
 
 def test_validation_error_uses_envelope(client: TestClient) -> None:
-    res = client.post("/v1/route", json={"origin": "not a point"})
+    # `/v1/onboard` still validates through a Pydantic model; `/v1/route` parses its own body
+    # so that a bad coordinate gets a message about coordinates.
+    res = client.post("/v1/onboard", json={"city": 7})
     assert res.status_code == 422
     err = res.json()["error"]
     assert err["code"] == "validation_error"

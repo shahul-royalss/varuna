@@ -34,6 +34,7 @@ from varuna_api.routers import (
     live,
     nowcast,
     replay,
+    reports,
     route,
     runs,
     stubs,
@@ -240,6 +241,7 @@ def create_app(
     # /v1/nowcast namespace until Phase 5 fills it in.
     app.include_router(depth.router)
     app.include_router(whatif.router)
+    app.include_router(reports.router)
     app.include_router(route.router)
     app.include_router(verify.router)
     app.include_router(nowcast.router)

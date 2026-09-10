@@ -13,7 +13,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query, Response
 from pydantic import Field
-from varuna_schemas.constants import DEFAULT_RISK_TOLERANCE, VehicleProfile
+from varuna_schemas.constants import VehicleProfile
 from varuna_schemas.models import (
     Alert,
     ErrorEnvelope,
@@ -22,11 +22,6 @@ from varuna_schemas.models import (
     PhysicsCheckResponse,
     PumpAssignment,
     PumpPlan,
-    ReachabilityResponse,
-    ReportAck,
-    ReportIn,
-    RouteRequest,
-    RouteResponse,
     SegmentSeries,
     VarunaModel,
 )
@@ -146,52 +141,12 @@ def nowcast_segment_series(segment_id: str, run_id: RunIdQ = None) -> SegmentSer
 
 
 # ---- drains and observations (Phase 7) ----------------------------------------------------
-@router.post(
-    "/reports",
-    tags=["observations"],
-    response_model=ReportAck,
-    status_code=202,
-    summary="Citizen or field observation (depth chips ankle/knee/waist)",
-)
-def create_report(body: ReportIn) -> ReportAck:
-    raise not_implemented("Report ingestion", 7, "P7.2")
+# Report ingestion is no longer a stub: `varuna_api.routers.reports` stores a report and
+# queues it for the next cycle (tasks P7.2, P9.4).
 
 
-# ---- route, reachability, feeds (Phase 8) -------------------------------------------------
-@router.post(
-    "/route",
-    tags=["route"],
-    response_model=RouteResponse,
-    summary="Flood-safe route: naive versus VARUNA, avoided segments, alternates",
-)
-def route(body: RouteRequest) -> RouteResponse:
-    raise not_implemented("Time-dependent routing", 8, "P8.2")
-
-
-@router.get(
-    "/reachability",
-    tags=["route"],
-    response_model=ReachabilityResponse,
-    summary="5/10/15-minute isochrones for a facility with the collapse flag",
-)
-def reachability(
-    facility: Annotated[str, Query(description="Asset id, e.g. kem-hospital")],
-    profile: ProfileQ = "ambulance",
-    t: TimeQ = None,
-    run_id: RunIdQ = None,
-    risk_tolerance: Annotated[float, Query(ge=0, le=1)] = DEFAULT_RISK_TOLERANCE,
-) -> ReachabilityResponse:
-    raise not_implemented("Reachability isochrones", 8, "P8.3")
-
-
-@router.get(
-    "/feeds/road-conditions",
-    tags=["route"],
-    response_model=FeatureCollection,
-    summary="Provider feed: impassable and degraded segments with validity windows",
-)
-def road_conditions(run_id: RunIdQ = None, profile: ProfileQ = "car") -> FeatureCollection:
-    raise not_implemented("The road-conditions feed", 8, "P8.4")
+# Route, reachability and the road-conditions feed are no longer stubs:
+# `varuna_api.routers.route` serves all three (tasks P8.2, P8.3, P8.4).
 
 
 # ---- alerts (Phase 8) ---------------------------------------------------------------------

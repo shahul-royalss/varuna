@@ -23,7 +23,7 @@ import {
   type ReplaySpeed,
 } from "@/lib/stores/replay";
 
-import { ApiError, api, apiUrl, errorMessage } from "./client";
+import { ApiError, api, apiUrl, errorMessage, timeoutFor } from "./client";
 import { useLive } from "./live";
 import { queryKeys, shouldRetry } from "./queries";
 import { RadarPreview, ReplayBundleList, ReplayClock } from "./schemas";
@@ -106,7 +106,7 @@ export function useReplayClock(options: UseReplayClockOptions = {}) {
 
   const query = useQuery<ReplayClock, ApiError>({
     queryKey: queryKeys.replayClock,
-    queryFn: () => api.get("/v1/replay/clock", { schema: ReplayClock, timeoutMs: 4_000 }),
+    queryFn: () => api.get("/v1/replay/clock", { schema: ReplayClock, timeoutMs: timeoutFor(4_000) }),
     staleTime: 5_000,
     refetchOnWindowFocus: false,
     retry: false,
@@ -141,7 +141,7 @@ type ReplayCommand =
   | { kind: "bundle"; bundleId: string };
 
 function request(command: ReplayCommand): Promise<ReplayClock> {
-  const options = { schema: ReplayClock, timeoutMs: 5_000 } as const;
+  const options = { schema: ReplayClock, timeoutMs: timeoutFor(5_000) } as const;
   switch (command.kind) {
     case "play":
       return api.post("/v1/replay/play", {}, options);
