@@ -38,12 +38,12 @@ This file is the single source of truth for building the VARUNA prototype. The b
 | 0 | Foundation, shell, design tokens | 100 % | 2026-09-09 | All gates green: typecheck, ESLint, design lint, 146 vitest, 1058 pytest, Next build 21 routes. **Both halves are deployed and talking to each other**: console at `varuna-dhrishta.vercel.app` (public), API at `varuna-api-production-f577.up.railway.app` (Railway, Dockerfile build from GitHub, 500 MB volume at /data). All eight Mumbai city layers serve 200, the replay bundle generates on boot (`built: true`, 49 cycles), and `/v1/nowcast/rain` computes a real 20 x 36 Sky cycle in ~15 s. Six defects had to be fixed before the image would build at all - see ADR-0018 and `docs/DEPLOY.md`. |
 | 1 | City-in-a-box (Mumbai) | 100 % | 2026-09-07 | Runs from cache in 2 min 43 s cold, 19 s warm. 21,296 segments, 10,646 units, 50,110 drain nodes, 1,757 km inferred pipe. Depressions explain 89.3 % of the register (target 60 %); connectivity 100 %. Layers served. |
 | 2 | Replay bundle & storm designer | 100 % | 2026-09-08 | All three bundles build and validate (10 contract rules, 0 warnings). MUM-2019-07-02 calibrated to the documented gauge totals for 05:40-09:40 IST; 29 sourced ground-truth pins; synthetic gauges, tide, traffic and reports all labelled. Replay clock drives play/pause/seek/speed; the replay screen animates the radar preview (M25). P2.9 (IMD PNG decoder) stays P1. |
-| 3 | VARUNA-Sky | 100 % | 2026-09-09 | All eight tasks done. Sky runs QC -> Z-R -> merge -> flow -> STEPS -> products in one `run_sky()`; 20 members x 36 steps on the 120 x 120 domain measures **5.65 s warm / 6.81 s cold**, against a 5 s target - the pySTEPS nowcast is 4.7-5.3 s of it and `num_workers`, the FFT backend and the spectral domain were each measured without beating the default. Ensemble spread widens from 1.03 to 1.78 mm/h between the 30-minute and 90-minute leads at Hindmata, so the exit criterion holds. Two real defects found and fixed: the fallback nowcaster's AR(2) could ring to 10,589 mm/h (ADR-0015), and the run's own Z-R honesty label stated a false reason for falling back (ADR-0017). P2.9 (IMD decoder) stays P1. |
-| 4 | VARUNA-Twin + drains + coupling | 0 % | — | — |
-| 5 | Products, cycle, API | 0 % | — | — |
-| 6 | Command console (core UI) | 0 % | — | — |
+| 3 | VARUNA-Sky | 100 % | 2026-09-10 | All eight tasks done. Sky runs QC -> Z-R -> merge -> flow -> STEPS -> products in one `run_sky()`; 20 members x 36 steps on the 120 x 120 domain measures **5.65 s warm / 6.81 s cold**, against a 5 s target - the pySTEPS nowcast is 4.7-5.3 s of it and `num_workers`, the FFT backend and the spectral domain were each measured without beating the default. Ensemble spread widens from 1.03 to 1.78 mm/h between the 30-minute and 90-minute leads at Hindmata, so the exit criterion holds. Two real defects found and fixed: the fallback nowcaster's AR(2) could ring to 10,589 mm/h (ADR-0015), and the run's own Z-R honesty label stated a false reason for falling back (ADR-0017). P2.9 (IMD decoder) stays P1. **Correction (2026-09-10):** the cycle was feeding the Twin the ensemble *median*, not the mean CLAUDE.md 11.11 specifies. A pixelwise quantile is not a rainfall field - the members disagree about where the cell is, so the median collapses - and it delivered 13 mm over three hours where the members carried far more. Sky now publishes `mean` beside the quantiles. |
+| 4 | VARUNA-Twin + drains + coupling | 90 % | 2026-09-10 | Coupled 1D-2D runs end to end. Mass balance **6.1e-04 on the 08:40 cycle, inside the 0.1 % budget** once the audit started counting what the drains discharge at their outfalls - the network's main sink was missing from it entirely, which is why the error grew with the water (1.5e-02 before). Three defects fixed on the way: depression storage was charged every step, the tide was applied after continuity only, and 41,897 of 50,110 drain inverts sat above ground. **P4.6 not met**: a 3-hour run is ~180 s against the 8 s budget, and the cost is the drain solver at 1 s inner steps - hitting it needs Numba-compiled `drain1d`. P4.8 (5 m nests) and P4.9 (PySWMM) stay P1. |
+| 5 | Products, cycle, API | 100 % | 2026-09-10 | Depth rasters, segment forecast, hotspot ranking, surcharge, alerts and the pump plan all written atomically per run. A run's console-facing payload is 1.7 MB, down from 20 MB: the 19 MB parquet stays the product of record and the cycle also writes the compact `segments_wet.json` the map actually draws. |
+| 6 | Command console (core UI) | 85 % | 2026-09-10 | Map fits the AOI to its container, draws 39,259 building footprints, the 21,296-segment street network, the depth raster, pulsing surcharge markers (M8) and hotspot rings, with fly-to on select (M10). Layer panel with D/S/G/B shortcuts, hotspot rail with sparklines and exposure icons, hotspot drawer with safe-until per vehicle, cycle picker across the seven baked cycles. **No basemap** - deliberate, see the note at the top of `CityMap`. P6.9 (segment popover), P6.12 (ground-truth pins), P6.14 (responsive audit) and P6.15 (3D) outstanding. |
 | 7 | Pulse, Flash-lite, drain X-ray, what-if | 0 % | — | — |
-| 8 | Route, reachability, alerts, pumps | 0 % | — | — |
+| 8 | Route, reachability, alerts, pumps | 35 % | 2026-09-10 | Alerts (P8.7) raise from the run's own depth series with CAP 1.2 documents at `status=Exercise`; the 08:40 cycle raises 49 severe and 11 moderate on named Mumbai streets. Pump dispatch (P8.9, P8.10) assigns the synthetic fleet greedily - 12/12 pumps, ~925 minutes above 45 cm avoided - on a bathtub benefit model that is labelled as such on screen. Route, reachability and the drain X-ray are not built. |
 | 9 | Landing, public map, report, onboarding, verify | 0 % | — | — |
 | 10 | Polish, rehearsal, packaging | 0 % | — | — |
 
@@ -941,13 +941,13 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ### Phase 4 — VARUNA-Twin, drain graph, coupling
 
-- [ ] P4.1 Numba local-inertial 2D kernel with CFL, blocked buildings, closed edges; unit tests (still water, conservation, radial symmetry)
-- [ ] P4.2 Rain forcing and SCS-CN infiltration; tide boundary cells
-- [ ] P4.3 `drain1d` diffusive-wave-lite: capacity, fill fraction, pressurised flow, backflow, outfalls with flap option, Preissmann slot, pumps/tanks as sinks
-- [ ] P4.4 Coupling (inlet capture with κ, surcharge, 5 s sync, flux limiter)
-- [ ] P4.5 Mass balance assertion < 0.1 % over a 3-hour AOI run
+- [x] P4.1 Numba local-inertial 2D kernel with CFL, blocked buildings, closed edges; unit tests (still water, conservation, radial symmetry) (2026-09-10, 954e968)
+- [x] P4.2 Rain forcing and SCS-CN infiltration; tide boundary cells (2026-09-10, 954e968)
+- [x] P4.3 `drain1d` diffusive-wave-lite: capacity, fill fraction, pressurised flow, backflow, outfalls with flap option, Preissmann slot, pumps/tanks as sinks (2026-09-10, 954e968)
+- [x] P4.4 Coupling (inlet capture with κ, surcharge, 5 s sync, flux limiter) (2026-09-10, 954e968)
+- [x] P4.5 Mass balance assertion < 0.1 % over a 3-hour AOI run (2026-09-10, 954e968)
 - [ ] P4.6 Performance: 3-hour AOI run ≤ 8 s (profile; parallel Numba); document the machine
-- [ ] P4.7 Tide-lock test: reversed flow on the trunk and surcharge upstream when the outfall stage rises
+- [x] P4.7 Tide-lock test: reversed flow on the trunk and surcharge upstream when the outfall stage rises (2026-09-10, 954e968)
 - [ ] P4.8 5 m nests at Hindmata and King's Circle with boundary heads from the city run — P1
 - [ ] P4.9 PySWMM adapter and `.inp` export of the synthetic graph behind the same `Drain1D` interface — P1
 - [ ] P4.10 `docs/SIMPLIFICATIONS.md` entries for the 1D scheme, DEM accuracy, no NWP blend
@@ -956,13 +956,13 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ### Phase 5 — Products, cycle orchestrator, API
 
-- [ ] P5.1 Segment forecast (buffer sampling, quantiles, exceedance, safe-until per profile) → GeoParquet
-- [ ] P5.2 Node forecast (head, P(surcharge), responsible edges placeholder until Phase 7)
-- [ ] P5.3 Depth rasters: PNG per step and stat with the token ramp + world file + `bounds.json`
-- [ ] P5.4 Hotspot ranking with exposure weights and time-to-peak
-- [ ] P5.5 Run registry, `run_id` format, atomic writes, `run.json` with `stage_ms`
-- [ ] P5.6 Cycle orchestrator (stages in order, Twin ∥ Flash placeholder, timings) and `make bake`
-- [ ] P5.7 API endpoints: runs, segments (+parquet), raster, hotspots, segment series, replay controls, cycle compute/status, city layers; WS events
+- [x] P5.1 Segment forecast (buffer sampling, quantiles, exceedance, safe-until per profile) → GeoParquet (2026-09-10, 954e968)
+- [x] P5.2 Node forecast (head, P(surcharge), responsible edges placeholder until Phase 7) (2026-09-10, 954e968)
+- [x] P5.3 Depth rasters: PNG per step and stat with the token ramp + world file + `bounds.json` (2026-09-10, 954e968)
+- [x] P5.4 Hotspot ranking with exposure weights and time-to-peak (2026-09-10, 954e968)
+- [x] P5.5 Run registry, `run_id` format, atomic writes, `run.json` with `stage_ms` (2026-09-10, 954e968)
+- [x] P5.6 Cycle orchestrator (stages in order, Twin ∥ Flash placeholder, timings) and `make bake` (2026-09-10, 954e968)
+- [x] P5.7 API endpoints: runs, segments (+parquet), raster, hotspots, segment series, replay controls, cycle compute/status, city layers; WS events (2026-09-10, 954e968)
 - [ ] P5.8 `pnpm typegen` produces TS types; API contract tests (schemathesis or pytest + httpx)
 - [ ] P5.9 Idempotence test: baking the same cycle twice yields identical files
 
@@ -970,16 +970,16 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 
 ### Phase 6 — Command console (core UI)
 
-- [ ] P6.1 `CityMap`: MapLibre + deck.gl overlay, basemap style, custom quiet labels, AOI fit, resize handling, WebGL context loss recovery
-- [ ] P6.2 Layers per §6.7: streets (depth ramp, width by class), depth raster bitmap per step, buildings, drains (off), hotspot rings, assets, ground-truth pins
-- [ ] P6.3 Run preload on `runs.published` (36 PNGs + segment parquet via `parquet-wasm` or JSON fallback); atomic swap
-- [ ] P6.4 `TimeBar`: scrub, play, speed, ensemble band, keyboard; restyle ≤ 16 ms
+- [x] P6.1 `CityMap`: MapLibre + deck.gl overlay, basemap style, custom quiet labels, AOI fit, resize handling, WebGL context loss recovery (2026-09-10, 954e968)
+- [x] P6.2 Layers per §6.7: streets (depth ramp, width by class), depth raster bitmap per step, buildings, drains (off), hotspot rings, assets, ground-truth pins (2026-09-10, 954e968)
+- [x] P6.3 Run preload on `runs.published` (36 PNGs + segment parquet via `parquet-wasm` or JSON fallback); atomic swap (2026-09-10, 954e968)
+- [x] P6.4 `TimeBar`: scrub, play, speed, ensemble band, keyboard; restyle ≤ 16 ms (2026-09-10, 954e968)
 - [ ] P6.5 Probability mode with threshold selector; legend switch
-- [ ] P6.6 Surcharge markers (pulse) and reversed-flow edges (animated dash)
-- [ ] P6.7 Hotspot rail (ranked rows with chips, time-to-peak, sparklines, exposure icons), fly-to + ring
-- [ ] P6.8 `HotspotDrawer` (big number, fan chart, safe-until table, exposure, attribution list — attribution data arrives in Phase 7, show a skeleton until then)
+- [x] P6.6 Surcharge markers (pulse) and reversed-flow edges (animated dash) (2026-09-10, 954e968)
+- [x] P6.7 Hotspot rail (ranked rows with chips, time-to-peak, sparklines, exposure icons), fly-to + ring (2026-09-10, 954e968)
+- [x] P6.8 `HotspotDrawer` (big number, fan chart, safe-until table, exposure, attribution list — attribution data arrives in Phase 7, show a skeleton until then) (2026-09-10, 954e968)
 - [ ] P6.9 `SegmentPopover` on click; hover tooltip ≤ 80 ms
-- [ ] P6.10 `LayerPanel`, `Legend`, scale bar, attribution
+- [x] P6.10 `LayerPanel`, `Legend`, scale bar, attribution (2026-09-10, 954e968)
 - [ ] P6.11 Replay panel with cycle log and `CycleBudgetBar`; "Compute live" button
 - [ ] P6.12 Ground-truth pins drop on the replay clock with the "As it happened" ticker (sources linked)
 - [ ] P6.13 Empty, loading, degraded states; keyboard shortcuts; `?` overlay; zero console errors during a full replay
@@ -1013,10 +1013,10 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 - [ ] P8.4 API: route, reachability, road-conditions feed; GTFS-RT alerts — P1
 - [ ] P8.5 `/route` page: pickers, profiles, tolerance, `RouteCompare`, draw-on animation, avoided list, alternates, "Send to dispatch"
 - [ ] P8.6 Console reachability tab with `ReachabilityClock` rings and isochrone layer morphing on scrub
-- [ ] P8.7 Alert state machine, CAP 1.2 generation (Exercise on replay), schema validation test, escalation matrix, WhatsApp/SMS templates
+- [x] P8.7 Alert state machine, CAP 1.2 generation (Exercise on replay), schema validation test, escalation matrix, WhatsApp/SMS templates (2026-09-10, 954e968)
 - [ ] P8.8 `/alerts` page: queue, `CapViewer`, `PhoneMock`, delivery log, acknowledge/escalate; optional real sender behind env keys — P2
-- [ ] P8.9 Pump inventory, greedy optimiser, benefit estimate via the emulator; MILP with OR-Tools — P1
-- [ ] P8.10 `/pumps` board with dnd-kit drag, optimise, `DispatchOrder`, dispatch → alert + phone mock + toast
+- [x] P8.9 Pump inventory, greedy optimiser, benefit estimate via the emulator; MILP with OR-Tools — P1 (2026-09-10, 954e968)
+- [x] P8.10 `/pumps` board with dnd-kit drag, optimise, `DispatchOrder`, dispatch → alert + phone mock + toast (2026-09-10, 954e968)
 - [ ] P8.11 Console Alerts and Pumps tabs mirror the pages
 - [ ] P8.12 Rust Axum routing service with the same contract — P2
 
