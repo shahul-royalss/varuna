@@ -125,11 +125,12 @@ def run_cycle(
         mode: ``baked`` when pre-computing, ``live`` when the operator pressed Compute live.
         overwrite: replace an existing run directory of the same id.
     """
-    from varuna_products.alerts import build_alerts, write_alerts
+    from varuna_products.alerts import build_alerts, street_series, write_alerts
     from varuna_products.depth import (
         depth_bounds,
         segment_cell_index,
         segment_forecast,
+        segment_names,
         write_depth_rasters,
         write_wet_segments,
     )
@@ -177,7 +178,15 @@ def run_cycle(
     hotspots = rank_hotspots(
         twin.depth_m, twin.times, city_dir(city), terrain.transform, terrain.crs, run_id, index
     )
-    alerts = build_alerts(hotspots, run_id, cycle_ts, twin.times, mode)
+    # Alerts are about named places, so the per-segment series are collapsed onto street names
+    # first (`street_series`); a segment id in an alert headline is no use to a ward officer.
+    names = segment_names(city_dir(city))
+    street_depths = street_series(
+        {sid: list(depth_cm[:, k]) for k, sid in enumerate(index[0])}, names
+    )
+    alerts = build_alerts(
+        hotspots, run_id, cycle_ts, twin.times, mode, streets=street_depths
+    )
     surcharge = surcharge_product(
         twin.q_surcharge, twin.edge_flow, network, terrain.transform, terrain.crs, run_id
     )

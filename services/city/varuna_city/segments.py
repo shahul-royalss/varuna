@@ -83,6 +83,7 @@ _EXPOSURE_WEIGHTS = (0.50, 0.30, 0.20)
 SEGMENT_COLUMNS = (
     "segment_id",
     "osm_way_id",
+    "name",
     "u",
     "v",
     "key",
@@ -296,6 +297,21 @@ def _wards(segments: gpd.GeoDataFrame, wards: gpd.GeoDataFrame | None) -> list[s
     return [None if pd.isna(v) else str(v) for v in values]
 
 
+def _first_name(value: object) -> str | None:
+    """OSM's ``name`` is sometimes a list where a way carries several; take the first.
+
+    An unnamed way stays ``None`` rather than becoming "Unnamed road": a product that needs a
+    name can then choose its own fallback, and none of them has to guess whether a literal
+    "Unnamed road" came from OSM or from us.
+    """
+    if isinstance(value, list | tuple):
+        value = value[0] if value else None
+    if value is None or (isinstance(value, float) and value != value):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def build_segments(
     graph: Any,
     dem: NDArray[np.floating] | None = None,
@@ -344,6 +360,10 @@ def build_segments(
             "osm_way_id": [
                 _first_way_id(v) for v in edges.get("osmid", pd.Series([0] * len(edges)))
             ],
+            # The street's own name, straight from OSM. Without it every product that has to
+            # say *where* - an alert headline, a map tooltip, a route's avoided list - can only
+            # offer a segment id, which is useless to the ward officer reading it.
+            "name": [_first_name(v) for v in edges.get("name", pd.Series([None] * len(edges)))],
             "class": [
                 classify_highway(v) for v in edges.get("highway", pd.Series([None] * len(edges)))
             ],

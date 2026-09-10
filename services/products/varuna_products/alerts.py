@@ -9,12 +9,17 @@ across cycles; Phase 4 gives one deterministic Twin run, where ``P`` is 0 or 1, 
 cycle is computed independently. Applying the rule as written would make every exceedance an
 instant alert and every dip an instant all-clear - a queue that flickers.
 
-So the same idea is applied along the forecast instead: a level is raised when the hotspot stays
-above its threshold for **two consecutive 5-minute steps**, and the alert clears when it has been
-below for two. That is the same statement - a threshold crossing has to persist to count - made
-with the information a deterministic run actually has. ``persists_cycles`` reports the steps, and
-the alert carries a note saying so, because a jury reading "persists 2 cycles" deserves to know
-which clock that is.
+So the same idea is applied along the forecast instead: a level is raised when the depth stays
+above its threshold for **two consecutive 5-minute steps**. That is the same statement - a
+threshold crossing has to persist to count - made with the information a deterministic run
+actually has. ``persists_cycles`` reports the steps and ``persists_unit`` says so, because a
+jury reading "persists 2 cycles" deserves to know which clock that is.
+
+**Scope.** CLAUDE.md 11.10 puts the state machine "per segment/ward". The chronic register leads
+the queue: those are the named, sourced places a judge recognises. But on a cycle where the
+register stays dry and 226 ordinary streets go over 45 cm, a queue of hotspots alone would report
+an all-clear over a flooding city - so the streets follow, deduplicated by name so one road is one
+alert rather than forty.
 
 **Exercise, not Actual.** Every alert from a replay carries CAP ``status=Exercise`` (CLAUDE.md
 11.10). A replay of 2 July 2019 must never produce a document that could be mistaken for a live
@@ -35,7 +40,15 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 log = structlog.get_logger("varuna.products.alerts")
 
-__all__ = ["LEVELS", "MIN_PERSIST_STEPS", "build_alerts", "cap_xml", "write_alerts"]
+__all__ = [
+    "LEVELS",
+    "MAX_ALERTS",
+    "MIN_PERSIST_STEPS",
+    "build_alerts",
+    "cap_xml",
+    "street_series",
+    "write_alerts",
+]
 
 LEVELS: tuple[tuple[str, int], ...] = (
     ("severe", 45),
@@ -52,6 +65,13 @@ MIN_PERSIST_STEPS = 2
 
 The hysteresis of CLAUDE.md 11.10, read along the forecast rather than across cycles - see the
 module docstring. One step is a single 30 m cell's arithmetic; two is a trend."""
+
+MAX_ALERTS = 60
+"""How many alerts a run's queue carries, worst first.
+
+A heavy cycle puts 226 segments over 45 cm. Deduplicated by street that is a few dozen roads,
+which an operator can read; without a cap a bad hour produces a list nobody scrolls to the
+bottom of, and the alerts that matter are buried in it."""
 
 CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2"
 
@@ -74,79 +94,154 @@ def _runs(above: list[bool], min_steps: int) -> list[tuple[int, int]]:
     return windows
 
 
+def street_series(
+    depth_cm: dict[str, list[float]], names: dict[str, str]
+) -> dict[str, list[float]]:
+    """Collapse per-segment depth series onto street names, keeping the worst step by step.
+
+    A named road is dozens of segments and they flood at different depths; the alert is about the
+    road, so each step takes the deepest segment on it. Unnamed ways are dropped rather than
+    given a placeholder: an alert that cannot say where it is cannot be acted on.
+    """
+    out: dict[str, list[float]] = {}
+    for segment_id, series in depth_cm.items():
+        name = names.get(segment_id)
+        if not name or not series:
+            continue
+        current = out.get(name)
+        if current is None:
+            out[name] = list(series)
+        else:
+            for i, value in enumerate(series[: len(current)]):
+                if value > current[i]:
+                    current[i] = value
+    return out
+
+
+def _alert_from_series(
+    series: list[float],
+    *,
+    key: str,
+    name: str,
+    area: str,
+    run_id: str,
+    cycle_ts: datetime,
+    times: tuple[datetime, ...],
+    mode: str,
+    scope: str,
+    scope_id: str | None,
+    hotspot_id: str | None = None,
+    lon: float | None = None,
+    lat: float | None = None,
+    source_url: str | None = None,
+) -> dict[str, Any] | None:
+    """The worst level a depth series reaches, as one alert, or None if it stays below `watch`.
+
+    Worst level only. A street that goes over 45 cm is also over 30 and over 15, and sending a
+    ward officer three messages about one road is how a queue gets ignored.
+    """
+    for level, threshold in LEVELS:
+        windows = _runs([cm > threshold for cm in series], MIN_PERSIST_STEPS)
+        if not windows:
+            continue
+
+        start, end = max(windows, key=lambda w: w[1] - w[0])
+        peak = max(series[start : end + 1])
+        from_ts = times[start] if start < len(times) else cycle_ts
+        to_ts = times[end] if end < len(times) else cycle_ts
+
+        return {
+            "id": f"VARUNA-{run_id}-{key}-{level}".upper().replace("_", "-"),
+            "run_id": run_id,
+            "scope": scope,
+            "scope_id": scope_id,
+            "hotspot_id": hotspot_id,
+            "level": level,
+            "threshold_cm": threshold,
+            "headline": (
+                f"{name}: depth above {threshold} cm from "
+                f"{from_ts.strftime('%H:%M')} to {to_ts.strftime('%H:%M')}"
+            ),
+            "instruction": (
+                f"Avoid {name} for the window. Peak forecast {peak:.0f} cm. Route emergency "
+                "vehicles around it; see the reachability tab for the affected catchment."
+            ),
+            "area_desc": area,
+            "lon": lon,
+            "lat": lat,
+            # 0 or 1 on a deterministic run. Reported rather than dressed up.
+            "trigger_p": 1.0,
+            "window_from": from_ts.isoformat(),
+            "window_to": to_ts.isoformat(),
+            "peak_cm": round(peak, 1),
+            "raised_ts": cycle_ts.isoformat(),
+            "persists_cycles": end - start + 1,
+            "persists_unit": "forecast steps of 5 minutes",
+            "state": "raised",
+            "channels": ["dashboard"],
+            "source_url": source_url,
+            "cap_status": "Exercise" if mode != "live" else "Actual",
+        }
+    return None
+
+
 def build_alerts(
     hotspots: list[dict[str, Any]],
     run_id: str,
     cycle_ts: datetime,
     times: tuple[datetime, ...],
     mode: str = "baked",
+    streets: dict[str, list[float]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Raise one alert per hotspot per level it crosses, worst level only.
-
-    A junction that goes over 45 cm is also over 30 and 15, and sending an officer three messages
-    about one street is how an alert queue gets ignored. Only the worst level a hotspot reaches is
-    raised, and the card says which lower thresholds it passed on the way.
-    """
+    """The run's alert queue: the chronic register first, then the streets behind it."""
     alerts: list[dict[str, Any]] = []
+
     for hotspot in hotspots:
         series = [float(v) for v in hotspot.get("depth_cm", [])]
         if not series:
             continue
+        name = str(hotspot.get("name"))
+        alert = _alert_from_series(
+            series,
+            key=str(hotspot.get("slug") or hotspot.get("hotspot_id") or "spot"),
+            name=name,
+            area=f"Ward {hotspot['ward']}, {name}" if hotspot.get("ward") else name,
+            run_id=run_id,
+            cycle_ts=cycle_ts,
+            times=times,
+            mode=mode,
+            scope="hotspot",
+            scope_id=hotspot.get("hotspot_id"),
+            hotspot_id=hotspot.get("hotspot_id"),
+            lon=hotspot.get("lon"),
+            lat=hotspot.get("lat"),
+            source_url=hotspot.get("source_url"),
+        )
+        if alert:
+            alerts.append(alert)
 
-        for level, threshold in LEVELS:
-            windows = _runs([cm > threshold for cm in series], MIN_PERSIST_STEPS)
-            if not windows:
-                continue
-
-            start, end = max(windows, key=lambda w: w[1] - w[0])
-            peak = max(series[start : end + 1])
-            slug = hotspot.get("slug") or hotspot.get("hotspot_id") or "spot"
-            from_ts = times[start] if start < len(times) else cycle_ts
-            to_ts = times[end] if end < len(times) else cycle_ts
-
-            alerts.append(
-                {
-                    "id": f"VARUNA-{run_id}-{slug}-{level}".upper().replace("_", "-"),
-                    "run_id": run_id,
-                    "scope": "hotspot",
-                    "scope_id": hotspot.get("hotspot_id"),
-                    "hotspot_id": hotspot.get("hotspot_id"),
-                    "level": level,
-                    "threshold_cm": threshold,
-                    "headline": (
-                        f"{hotspot.get('name')}: depth above {threshold} cm from "
-                        f"{from_ts.strftime('%H:%M')} to {to_ts.strftime('%H:%M')}"
-                    ),
-                    "instruction": (
-                        f"Avoid {hotspot.get('name')} for the window. Peak forecast "
-                        f"{peak:.0f} cm. Route emergency vehicles around it; "
-                        "see the reachability tab for the affected catchment."
-                    ),
-                    "area_desc": (
-                        f"Ward {hotspot['ward']}, {hotspot.get('name')}"
-                        if hotspot.get("ward")
-                        else str(hotspot.get("name"))
-                    ),
-                    "lon": hotspot.get("lon"),
-                    "lat": hotspot.get("lat"),
-                    # 0 or 1 on a deterministic run. Reported rather than dressed up.
-                    "trigger_p": 1.0,
-                    "window_from": from_ts.isoformat(),
-                    "window_to": to_ts.isoformat(),
-                    "peak_cm": round(peak, 1),
-                    "raised_ts": cycle_ts.isoformat(),
-                    "persists_cycles": end - start + 1,
-                    "persists_unit": "forecast steps of 5 minutes",
-                    "state": "raised",
-                    "channels": ["dashboard"],
-                    "source_url": hotspot.get("source_url"),
-                    "cap_status": "Exercise" if mode != "live" else "Actual",
-                }
-            )
-            break  # worst level only
+    for index, (street, series) in enumerate(sorted((streets or {}).items())):
+        alert = _alert_from_series(
+            list(series),
+            key=f"street-{index:04d}",
+            name=street,
+            area=street,
+            run_id=run_id,
+            cycle_ts=cycle_ts,
+            times=times,
+            mode=mode,
+            scope="segment",
+            scope_id=None,
+        )
+        if alert:
+            alerts.append(alert)
 
     order = {level: i for i, (level, _) in enumerate(LEVELS)}
-    alerts.sort(key=lambda a: (order[a["level"]], -a["peak_cm"]))
+    # Hotspots first inside a level: they are the named, sourced places, and a judge scanning the
+    # queue should meet Hindmata before an arterial road they have not heard of.
+    alerts.sort(key=lambda a: (order[a["level"]], a["scope"] != "hotspot", -a["peak_cm"]))
+    alerts = alerts[:MAX_ALERTS]
+
     log.info(
         "products.alerts",
         run_id=run_id,
@@ -154,6 +249,7 @@ def build_alerts(
         severe=sum(1 for a in alerts if a["level"] == "severe"),
         moderate=sum(1 for a in alerts if a["level"] == "moderate"),
         watch=sum(1 for a in alerts if a["level"] == "watch"),
+        hotspot_scoped=sum(1 for a in alerts if a["scope"] == "hotspot"),
     )
     return alerts
 

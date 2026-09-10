@@ -68,6 +68,7 @@ MAP_KEEP_COLUMNS: dict[str, tuple[str, ...]] = {
     "segments": (
         "segment_id",
         "osm_way_id",
+        "name",
         "class",
         "length_m",
         "lanes",

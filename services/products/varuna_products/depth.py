@@ -51,6 +51,7 @@ __all__ = [
     "depth_bounds",
     "segment_cell_index",
     "segment_forecast",
+    "segment_names",
     "write_depth_rasters",
     "write_wet_segments",
 ]
@@ -334,3 +335,19 @@ def write_wet_segments(
     )
     log.info("products.wet_segments", run_id=run_id, wet=len(series), of=len(segment_ids))
     return product
+
+
+def segment_names(city_root: Path) -> dict[str, str]:
+    """Segment id to the street's OSM name, for products that have to say *where*.
+
+    Only named ways. A road with no name in OSM is left out rather than given a placeholder, so
+    nothing downstream has to decide whether "Unnamed road" came from the map or from us.
+    """
+    import pandas as pd
+
+    table = city_root / "segments.parquet"
+    if not table.is_file():
+        return {}
+    frame = pd.read_parquet(table, columns=["segment_id", "name"])
+    named = frame[frame["name"].notna()]
+    return {str(k): str(v) for k, v in zip(named["segment_id"], named["name"], strict=True)}
