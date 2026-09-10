@@ -257,3 +257,18 @@ Five lines each: context, decision, alternatives, consequence, date. Newest at t
 - Alternatives: fail the build on any layer error (one flake on a shared public service kills a ten-minute download); leave it as it was (a silent wrong answer, which is the worst of the three).
 - Consequence: the retry recovered Chennai's waterways from 0 to 54 on the first attempt.
 - Date: 2026-09-10
+
+## ADR-0033 A second city means every "latest run" needs a city
+
+- Context: onboarding Chennai put `CHN-` runs into the same `data/runs/` as Mumbai's. Run ids sort chronologically and `CHN-2026...` sorts above `MUM-2019...`, so every endpoint that resolves "the current run" by taking the newest directory began answering a Mumbai console with Chennai water - the depth raster, the segment forecast, the drain health, the route, and the run stamp in the top bar. Nothing errored and nothing looked wrong; the console simply showed a different city's flood under Mumbai's street names.
+- Decision: one shared helper, `varuna_api.runs_util.latest_run_for(city, requires=...)`, filtering on the run-id prefix, used by the depth products, what-if and the route service; `/v1/runs` defaults to the configured city, with `city=all` as the explicit way to ask for the whole registry.
+- Alternatives: fix the four call sites separately (the fifth would have been written city-blind next week); scope by directory per city (a bigger migration, and run ids already carry the city); read the city out of each `run.json` (an extra file read per candidate, for information the name already has).
+- Consequence: a silent wrong answer became impossible to reproduce by adding a city. The cost is that a caller who genuinely wants "any city" has to say so, which is the right way round.
+- Date: 2026-09-11
+
+## ADR-0034 The map labels itself from two sources
+
+- Context: the satellite basemap gave the console texture - a judge could see a real city - but nothing on it was named, so "which junction is that?" had no answer on screen. CLAUDE.md 6.7 asks for a quiet label layer at z >= 12 and z >= 15.
+- Decision: two layers. Esri's reference tiles carry localities and arterials; VARUNA's own `TextLayer` carries the things this product is *about* - street names from the segment layer, hospitals and fire stations from the asset register, chronic junctions from the hotspot register. Both are drawn **over** the depth ramp, because a street name the water paints over is a name nobody can read. Everything is zoom-gated, and the 260-label cap applies to what is *in view* rather than to the whole city, so zooming in reveals more of the network.
+- Alternatives: basemap labels only (they do not know Hindmata is a chronic spot); our own labels only (no localities, and a city reads by its neighbourhoods); no cap (21,296 street names is a grey smear).
+- Consequence: the label set is derived from a **quantised** camera - a tenth of a zoom level, ~100 m of position. Deriving it from the exact view state recomputed it on every frame of a pan, which rebuilt the layer array sixty times a second and left the tile layers being reconciled instead of drawn; the imagery took twenty-five seconds to appear. One `IconLayer` sprite carries a raw `#fff`, marked with the linter's own escape: `mask: true` makes deck read only the alpha and tint with `getColor`, so the fill is not a colour and a token there would mislead.
