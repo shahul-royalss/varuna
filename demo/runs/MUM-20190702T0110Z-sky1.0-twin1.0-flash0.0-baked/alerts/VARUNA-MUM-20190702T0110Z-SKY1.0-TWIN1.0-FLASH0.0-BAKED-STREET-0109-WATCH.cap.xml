@@ -19,6 +19,7 @@
     <instruction>Avoid Dr Babasaheb Ambedkar Udyan Circle for the window. Peak forecast 20 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dr Babasaheb Ambedkar Udyan Circle</areaDesc>
+      <circle>19.059693158874072,72.90074909176467 0.5</circle>
     </area>
   </info>
 </alert>

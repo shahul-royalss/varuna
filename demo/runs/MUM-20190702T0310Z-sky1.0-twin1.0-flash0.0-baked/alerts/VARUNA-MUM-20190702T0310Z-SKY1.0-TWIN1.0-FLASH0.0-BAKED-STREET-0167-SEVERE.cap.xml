@@ -19,6 +19,7 @@
     <instruction>Avoid Datta Jagdamba Mandir Marg for the window. Peak forecast 72 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Datta Jagdamba Mandir Marg</areaDesc>
+      <circle>19.122466147285124,72.86002079182826 0.5</circle>
     </area>
   </info>
 </alert>

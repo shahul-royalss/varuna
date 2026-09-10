@@ -19,6 +19,7 @@
     <instruction>Avoid Link Road for the window. Peak forecast 27 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Link Road</areaDesc>
+      <circle>19.127125807544243,72.83099384733806 0.5</circle>
     </area>
   </info>
 </alert>

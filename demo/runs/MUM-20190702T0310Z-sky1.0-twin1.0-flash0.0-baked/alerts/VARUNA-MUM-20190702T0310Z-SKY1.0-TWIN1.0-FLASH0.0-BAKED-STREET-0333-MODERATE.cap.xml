@@ -19,6 +19,7 @@
     <instruction>Avoid Krishnalal Marva Marg for the window. Peak forecast 46 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Krishnalal Marva Marg</areaDesc>
+      <circle>19.11854817755163,72.8860946528076 0.5</circle>
     </area>
   </info>
 </alert>

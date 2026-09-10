@@ -19,6 +19,7 @@
     <instruction>Avoid Turbhe Road for the window. Peak forecast 50 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Turbhe Road</areaDesc>
+      <circle>19.1113323,72.90130325 0.5</circle>
     </area>
   </info>
 </alert>

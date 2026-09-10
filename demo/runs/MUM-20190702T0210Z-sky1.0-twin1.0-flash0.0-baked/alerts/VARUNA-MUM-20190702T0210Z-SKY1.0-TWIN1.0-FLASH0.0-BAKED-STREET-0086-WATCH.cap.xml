@@ -19,6 +19,7 @@
     <instruction>Avoid Dr Charat Singh Colony Road for the window. Peak forecast 30 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dr Charat Singh Colony Road</areaDesc>
+      <circle>19.110745951440833,72.86274868498532 0.5</circle>
     </area>
   </info>
 </alert>

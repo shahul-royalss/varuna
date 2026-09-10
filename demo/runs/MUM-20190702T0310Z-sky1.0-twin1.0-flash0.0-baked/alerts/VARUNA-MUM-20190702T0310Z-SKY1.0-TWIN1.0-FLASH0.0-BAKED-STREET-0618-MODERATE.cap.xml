@@ -19,6 +19,7 @@
     <instruction>Avoid Service Road for the window. Peak forecast 44 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Service Road</areaDesc>
+      <circle>19.1152823,72.85479805 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Vasantarao Naik Marg for the window. Peak forecast 25 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Vasantarao Naik Marg</areaDesc>
+      <circle>19.05668849038621,72.88412572695924 0.5</circle>
     </area>
   </info>
 </alert>

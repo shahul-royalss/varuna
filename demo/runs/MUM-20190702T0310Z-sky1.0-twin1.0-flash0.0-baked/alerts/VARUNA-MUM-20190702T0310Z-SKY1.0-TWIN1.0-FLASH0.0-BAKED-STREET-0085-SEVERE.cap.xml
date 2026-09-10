@@ -19,6 +19,7 @@
     <instruction>Avoid Bamandaypada Road for the window. Peak forecast 61 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Bamandaypada Road</areaDesc>
+      <circle>19.123545118621813,72.88746414155888 0.5</circle>
     </area>
   </info>
 </alert>

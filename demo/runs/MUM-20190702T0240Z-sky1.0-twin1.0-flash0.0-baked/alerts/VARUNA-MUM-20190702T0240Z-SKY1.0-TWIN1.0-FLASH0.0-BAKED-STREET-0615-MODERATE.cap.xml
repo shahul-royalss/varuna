@@ -19,6 +19,7 @@
     <instruction>Avoid Veer Jeejamata Bhosle Marg for the window. Peak forecast 46 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Veer Jeejamata Bhosle Marg</areaDesc>
+      <circle>19.12540835,72.85619274999999 0.5</circle>
     </area>
   </info>
 </alert>

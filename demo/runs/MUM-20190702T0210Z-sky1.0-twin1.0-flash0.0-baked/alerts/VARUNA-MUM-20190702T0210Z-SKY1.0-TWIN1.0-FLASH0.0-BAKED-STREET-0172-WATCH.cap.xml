@@ -19,6 +19,7 @@
     <instruction>Avoid Mathuradas Vasanji Road for the window. Peak forecast 22 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Mathuradas Vasanji Road</areaDesc>
+      <circle>19.1164761,72.8551309 0.5</circle>
     </area>
   </info>
 </alert>

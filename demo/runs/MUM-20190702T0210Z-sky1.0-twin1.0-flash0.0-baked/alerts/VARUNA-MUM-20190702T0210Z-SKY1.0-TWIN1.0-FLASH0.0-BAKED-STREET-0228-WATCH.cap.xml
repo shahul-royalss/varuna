@@ -19,6 +19,7 @@
     <instruction>Avoid Road 13 for the window. Peak forecast 27 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Road 13</areaDesc>
+      <circle>19.12106445,72.8705789 0.5</circle>
     </area>
   </info>
 </alert>

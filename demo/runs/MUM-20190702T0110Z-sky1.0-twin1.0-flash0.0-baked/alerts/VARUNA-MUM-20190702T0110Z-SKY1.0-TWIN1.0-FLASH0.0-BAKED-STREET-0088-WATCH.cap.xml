@@ -19,6 +19,7 @@
     <instruction>Avoid D Saraswati Marg (Central Avenue) for the window. Peak forecast 19 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>D Saraswati Marg (Central Avenue)</areaDesc>
+      <circle>19.059427618234086,72.90060871754694 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Fitwala Road for the window. Peak forecast 30 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Fitwala Road</areaDesc>
+      <circle>19.008380849999995,72.83262725 0.5</circle>
     </area>
   </info>
 </alert>

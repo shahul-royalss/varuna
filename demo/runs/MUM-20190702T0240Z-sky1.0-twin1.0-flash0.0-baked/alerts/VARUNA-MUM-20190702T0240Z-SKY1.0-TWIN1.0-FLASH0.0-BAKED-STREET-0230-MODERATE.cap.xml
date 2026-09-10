@@ -19,6 +19,7 @@
     <instruction>Avoid J K Bhasin Marg for the window. Peak forecast 41 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>J K Bhasin Marg</areaDesc>
+      <circle>19.03380875,72.86535725 0.5</circle>
     </area>
   </info>
 </alert>

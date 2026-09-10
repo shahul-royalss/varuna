@@ -19,6 +19,7 @@
     <instruction>Avoid Vaikunthlal Mehta Road for the window. Peak forecast 27 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Vaikunthlal Mehta Road</areaDesc>
+      <circle>19.103230599999996,72.8337424 0.5</circle>
     </area>
   </info>
 </alert>

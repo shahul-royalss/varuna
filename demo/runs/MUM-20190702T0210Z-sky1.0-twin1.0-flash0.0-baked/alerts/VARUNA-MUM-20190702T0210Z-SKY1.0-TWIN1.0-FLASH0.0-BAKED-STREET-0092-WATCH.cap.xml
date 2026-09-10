@@ -19,6 +19,7 @@
     <instruction>Avoid East West Road No 3 for the window. Peak forecast 23 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>East West Road No 3</areaDesc>
+      <circle>19.11092385,72.83125245 0.5</circle>
     </area>
   </info>
 </alert>

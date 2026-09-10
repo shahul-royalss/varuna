@@ -19,6 +19,7 @@
     <instruction>Avoid Dr E Moses Marg for the window. Peak forecast 33 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dr E Moses Marg</areaDesc>
+      <circle>18.998554300000002,72.81748925 0.5</circle>
     </area>
   </info>
 </alert>

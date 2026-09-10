@@ -19,6 +19,7 @@
     <instruction>Avoid Laxmibai Kelkar Marg for the window. Peak forecast 19 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Laxmibai Kelkar Marg</areaDesc>
+      <circle>19.03210562336407,72.85844871296928 0.5</circle>
     </area>
   </info>
 </alert>

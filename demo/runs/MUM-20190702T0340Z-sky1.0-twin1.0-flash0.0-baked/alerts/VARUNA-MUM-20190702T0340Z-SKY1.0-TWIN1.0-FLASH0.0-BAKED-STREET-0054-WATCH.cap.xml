@@ -19,6 +19,7 @@
     <instruction>Avoid Danda Avenue for the window. Peak forecast 25 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Danda Avenue</areaDesc>
+      <circle>19.075221199999998,72.82522285 0.5</circle>
     </area>
   </info>
 </alert>

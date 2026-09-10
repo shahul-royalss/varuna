@@ -19,6 +19,7 @@
     <instruction>Avoid Dr Annie Besant Road for the window. Peak forecast 34 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dr Annie Besant Road</areaDesc>
+      <circle>19.001379025863155,72.81577303411406 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Jai Prakash Road for the window. Peak forecast 34 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Jai Prakash Road</areaDesc>
+      <circle>19.128961949999997,72.82747979999999 0.5</circle>
     </area>
   </info>
 </alert>

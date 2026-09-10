@@ -13,6 +13,7 @@ import { MapSlot } from "@/components/varuna/map-slot";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
 import { ReplayPanel } from "@/components/varuna/replay-panel";
 import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
+import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { LayerPanel, type LayerToggles, type LayerKey } from "@/components/varuna/layer-panel";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
@@ -86,7 +87,7 @@ export function ConsoleScreen() {
   // already know, and setting state from an effect body would cascade a second render for
   // something that never changes afterwards. `window` is guarded because this component is
   // pre-rendered on the server.
-  const [runParam] = useState<string | undefined>(() =>
+  const [runParam, setRunParam] = useState<string | undefined>(() =>
     typeof window === "undefined"
       ? undefined
       : (new URLSearchParams(window.location.search).get("run") ?? undefined),
@@ -159,6 +160,18 @@ export function ConsoleScreen() {
 
   // Selecting a hotspot flies the map to it and rings it (motion M10). The key carries the click
   // count so choosing the same row after panning away flies back rather than doing nothing.
+  // Switching cycle resets the scrub: step 12 of the 06:40 forecast is not step 12 of the 08:40
+  // one, and carrying the index across would silently change what the readout means.
+  const pickCycle = useCallback((runId: string) => {
+    setRunParam(runId);
+    setSelectedHotspotId(null);
+    setStep(0);
+    setPlaying(false);
+    const url = new URL(window.location.href);
+    url.searchParams.set("run", runId);
+    window.history.replaceState(null, "", url);
+  }, []);
+
   const selectHotspot = useCallback((hotspot: Hotspot) => {
     setSelectedHotspotId(hotspot.id);
     setFocus({ lon: hotspot.lon, lat: hotspot.lat, key: `${hotspot.id}-${Date.now()}`, zoom: 14 });
@@ -296,6 +309,7 @@ export function ConsoleScreen() {
             clear the replay panel, and the legend is always visible (CLAUDE.md section 6.7), so the
             rain panel stops short of it and scrolls instead. */}
         <div className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2">
+          <CyclePicker currentRunId={run?.provenance.runId} onPick={pickCycle} />
           <LayerPanel
             value={layers}
             onChange={toggleLayer}

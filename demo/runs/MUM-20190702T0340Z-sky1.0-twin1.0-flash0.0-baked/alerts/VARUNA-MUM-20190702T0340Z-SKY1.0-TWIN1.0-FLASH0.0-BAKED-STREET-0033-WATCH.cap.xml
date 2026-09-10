@@ -19,6 +19,7 @@
     <instruction>Avoid Byramji Jeejeebhoy Road for the window. Peak forecast 38 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Byramji Jeejeebhoy Road</areaDesc>
+      <circle>19.05338686317033,72.82224701626082 0.5</circle>
     </area>
   </info>
 </alert>

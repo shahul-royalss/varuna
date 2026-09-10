@@ -19,6 +19,7 @@
     <instruction>Avoid Daya Kishan Sapru Marg for the window. Peak forecast 38 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Daya Kishan Sapru Marg</areaDesc>
+      <circle>19.134896400000002,72.83762575 0.5</circle>
     </area>
   </info>
 </alert>

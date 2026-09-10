@@ -19,6 +19,7 @@
     <instruction>Avoid Dada Rege Marg for the window. Peak forecast 30 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dada Rege Marg</areaDesc>
+      <circle>19.025170349999996,72.8403864 0.5</circle>
     </area>
   </info>
 </alert>

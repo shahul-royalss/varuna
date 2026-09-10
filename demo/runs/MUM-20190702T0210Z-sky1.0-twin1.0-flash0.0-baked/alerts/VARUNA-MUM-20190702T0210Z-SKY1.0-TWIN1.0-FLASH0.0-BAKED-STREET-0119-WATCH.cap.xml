@@ -19,6 +19,7 @@
     <instruction>Avoid Idgah Lane for the window. Peak forecast 29 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Idgah Lane</areaDesc>
+      <circle>19.1257784,72.83366960000001 0.5</circle>
     </area>
   </info>
 </alert>

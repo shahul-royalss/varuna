@@ -19,6 +19,7 @@
     <instruction>Avoid Dayanand Saraswati Marg (Central Avenue Road) for the window. Peak forecast 16 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dayanand Saraswati Marg (Central Avenue Road)</areaDesc>
+      <circle>19.0521951792699,72.90055428401736 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Mathuradas Vasanji Road (Andheri Kurla Road) for the window. Peak forecast 24 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Mathuradas Vasanji Road (Andheri Kurla Road)</areaDesc>
+      <circle>19.0950275437463,72.88355967843972 0.5</circle>
     </area>
   </info>
 </alert>

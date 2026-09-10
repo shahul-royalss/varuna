@@ -19,6 +19,7 @@
     <instruction>Avoid Gurunanak Marg for the window. Peak forecast 41 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Gurunanak Marg</areaDesc>
+      <circle>19.0594354,72.83648439999999 0.5</circle>
     </area>
   </info>
 </alert>

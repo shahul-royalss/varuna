@@ -19,6 +19,7 @@
     <instruction>Avoid K C Marg for the window. Peak forecast 29 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>K C Marg</areaDesc>
+      <circle>19.05215254836887,72.83593794194549 0.5</circle>
     </area>
   </info>
 </alert>

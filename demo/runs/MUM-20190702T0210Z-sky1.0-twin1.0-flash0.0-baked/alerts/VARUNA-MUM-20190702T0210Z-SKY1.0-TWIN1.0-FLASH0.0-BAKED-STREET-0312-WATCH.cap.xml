@@ -19,6 +19,7 @@
     <instruction>Avoid Vijay Raut Road for the window. Peak forecast 21 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Vijay Raut Road</areaDesc>
+      <circle>19.127690369201463,72.85941838239438 0.5</circle>
     </area>
   </info>
 </alert>

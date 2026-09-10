@@ -19,6 +19,7 @@
     <instruction>Avoid SG Barve Marg for the window. Peak forecast 23 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>SG Barve Marg</areaDesc>
+      <circle>19.05424265,72.88928505000001 0.5</circle>
     </area>
   </info>
 </alert>

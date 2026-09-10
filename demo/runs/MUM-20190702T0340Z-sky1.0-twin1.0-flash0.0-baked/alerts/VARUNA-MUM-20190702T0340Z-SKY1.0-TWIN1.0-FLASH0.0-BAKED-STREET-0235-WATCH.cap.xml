@@ -19,6 +19,7 @@
     <instruction>Avoid Swami Vivekanand Road for the window. Peak forecast 16 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Swami Vivekanand Road</areaDesc>
+      <circle>19.05958525,72.8368452 0.5</circle>
     </area>
   </info>
 </alert>

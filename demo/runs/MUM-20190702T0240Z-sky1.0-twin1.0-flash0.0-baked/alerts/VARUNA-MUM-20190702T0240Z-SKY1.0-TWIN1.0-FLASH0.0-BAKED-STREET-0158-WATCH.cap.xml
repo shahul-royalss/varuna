@@ -19,6 +19,7 @@
     <instruction>Avoid Dr Babasaheb Ambedkar Marg (Vincent Road) for the window. Peak forecast 28 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dr Babasaheb Ambedkar Marg (Vincent Road)</areaDesc>
+      <circle>19.018249207916877,72.84793554324229 0.5</circle>
     </area>
   </info>
 </alert>

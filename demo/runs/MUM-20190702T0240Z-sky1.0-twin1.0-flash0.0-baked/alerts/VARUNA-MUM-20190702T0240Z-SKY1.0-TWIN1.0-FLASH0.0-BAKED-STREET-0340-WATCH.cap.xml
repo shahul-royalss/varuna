@@ -19,6 +19,7 @@
     <instruction>Avoid N C Kelkar Marg for the window. Peak forecast 30 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>N C Kelkar Marg</areaDesc>
+      <circle>19.02512785,72.84052575 0.5</circle>
     </area>
   </info>
 </alert>

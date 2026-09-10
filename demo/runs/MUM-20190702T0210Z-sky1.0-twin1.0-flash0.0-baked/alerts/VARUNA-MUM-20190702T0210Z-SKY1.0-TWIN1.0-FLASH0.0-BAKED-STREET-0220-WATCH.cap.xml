@@ -19,6 +19,7 @@
     <instruction>Avoid Rajmata Jijabai Marg for the window. Peak forecast 28 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Rajmata Jijabai Marg</areaDesc>
+      <circle>19.132127214364168,72.86075407665625 0.5</circle>
     </area>
   </info>
 </alert>

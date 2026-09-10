@@ -19,6 +19,7 @@
     <instruction>Avoid Linking Road for the window. Peak forecast 20 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Linking Road</areaDesc>
+      <circle>19.0895945898443,72.83451424743748 0.5</circle>
     </area>
   </info>
 </alert>

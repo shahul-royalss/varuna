@@ -19,6 +19,7 @@
     <instruction>Avoid J Marg for the window. Peak forecast 40 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>J Marg</areaDesc>
+      <circle>18.99779215,72.8272527 0.5</circle>
     </area>
   </info>
 </alert>

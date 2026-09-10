@@ -19,6 +19,7 @@
     <instruction>Avoid Senapati Bapat Marg for the window. Peak forecast 46 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Senapati Bapat Marg</areaDesc>
+      <circle>19.008281149999995,72.8324748 0.5</circle>
     </area>
   </info>
 </alert>

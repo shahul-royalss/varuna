@@ -19,6 +19,7 @@
     <instruction>Avoid Lokmanya Tilak Nagar for the window. Peak forecast 49 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Lokmanya Tilak Nagar</areaDesc>
+      <circle>19.0999751,72.88791954999999 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Chatrapati Shivaji Road for the window. Peak forecast 31 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Chatrapati Shivaji Road</areaDesc>
+      <circle>19.105844349999998,72.8462717 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid V B Worlikar Marg for the window. Peak forecast 76 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>V B Worlikar Marg</areaDesc>
+      <circle>19.024377854009902,72.816649482779 0.5</circle>
     </area>
   </info>
 </alert>

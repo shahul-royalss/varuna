@@ -19,6 +19,7 @@
     <instruction>Avoid Church Avenue for the window. Peak forecast 35 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Church Avenue</areaDesc>
+      <circle>19.07516055,72.8374981 0.5</circle>
     </area>
   </info>
 </alert>

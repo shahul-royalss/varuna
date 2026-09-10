@@ -19,6 +19,7 @@
     <instruction>Avoid Bhakti Vendanta Swami Marg for the window. Peak forecast 47 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Bhakti Vendanta Swami Marg</areaDesc>
+      <circle>19.116021649999993,72.83066085 0.5</circle>
     </area>
   </info>
 </alert>

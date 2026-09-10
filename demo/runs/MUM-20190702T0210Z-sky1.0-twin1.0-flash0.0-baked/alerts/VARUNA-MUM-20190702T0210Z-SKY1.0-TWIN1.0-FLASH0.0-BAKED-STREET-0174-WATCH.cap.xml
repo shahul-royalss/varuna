@@ -19,6 +19,7 @@
     <instruction>Avoid Military Road for the window. Peak forecast 22 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Military Road</areaDesc>
+      <circle>19.123593005886917,72.88742203399225 0.5</circle>
     </area>
   </info>
 </alert>

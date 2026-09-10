@@ -19,6 +19,7 @@
     <instruction>Avoid Guru Hargovindji Road for the window. Peak forecast 48 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Guru Hargovindji Road</areaDesc>
+      <circle>19.1109212,72.86253235000001 0.5</circle>
     </area>
   </info>
 </alert>

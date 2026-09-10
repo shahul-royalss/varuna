@@ -19,6 +19,7 @@
     <instruction>Avoid Sunder Nagar Road Number 2 for the window. Peak forecast 29 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sunder Nagar Road Number 2</areaDesc>
+      <circle>19.07464880332654,72.86594192713989 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Juhu Tara Road for the window. Peak forecast 20 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Juhu Tara Road</areaDesc>
+      <circle>19.1046515171818,72.82688577641494 0.5</circle>
     </area>
   </info>
 </alert>

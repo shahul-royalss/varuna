@@ -19,6 +19,7 @@
     <instruction>Avoid Takandas H. Kataria Marg for the window. Peak forecast 33 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Takandas H. Kataria Marg</areaDesc>
+      <circle>19.032311649999997,72.83864265 0.5</circle>
     </area>
   </info>
 </alert>

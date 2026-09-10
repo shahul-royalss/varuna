@@ -19,6 +19,7 @@
     <instruction>Avoid Gulmohar Road for the window. Peak forecast 33 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Gulmohar Road</areaDesc>
+      <circle>19.11580793618249,72.8345198944431 0.5</circle>
     </area>
   </info>
 </alert>

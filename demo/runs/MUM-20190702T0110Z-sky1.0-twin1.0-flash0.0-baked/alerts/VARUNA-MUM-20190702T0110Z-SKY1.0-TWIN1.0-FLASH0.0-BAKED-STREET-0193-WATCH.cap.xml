@@ -19,6 +19,7 @@
     <instruction>Avoid L K Mehta Marg for the window. Peak forecast 25 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>L K Mehta Marg</areaDesc>
+      <circle>19.052500449999997,72.83419695 0.5</circle>
     </area>
   </info>
 </alert>

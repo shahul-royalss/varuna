@@ -19,6 +19,7 @@
     <instruction>Avoid sangharsh nagar road for the window. Peak forecast 55 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>sangharsh nagar road</areaDesc>
+      <circle>19.1034148,72.89994915 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid 60 Feet Road for the window. Peak forecast 25 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>60 Feet Road</areaDesc>
+      <circle>19.037972149999998,72.8537892 0.5</circle>
     </area>
   </info>
 </alert>

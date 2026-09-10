@@ -19,6 +19,7 @@
     <instruction>Avoid G Dardi Marg for the window. Peak forecast 58 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>G Dardi Marg</areaDesc>
+      <circle>19.033782249999994,72.86554745000001 0.5</circle>
     </area>
   </info>
 </alert>

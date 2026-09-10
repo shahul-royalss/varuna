@@ -19,6 +19,7 @@
     <instruction>Avoid Station Road for the window. Peak forecast 36 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Station Road</areaDesc>
+      <circle>19.134746200000002,72.84817515 0.5</circle>
     </area>
   </info>
 </alert>
