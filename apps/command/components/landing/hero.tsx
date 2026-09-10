@@ -134,10 +134,12 @@ export function Hero() {
       ) : null}
 
       {/* The copy needs a readable ground without hiding the map: a one-sided wash from the left,
-          which is where the text is, fading to nothing over the middle third. */}
+          which is where the text is, gone by the middle. Stopping it at 60 % rather than letting
+          it run to the right edge is what leaves the aerial imagery visible - a gradient that is
+          80 % ink across the whole width is just a dark rectangle over a photograph. */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-gradient-to-r from-ink via-ink/80 to-transparent lg:to-40%"
+        className="absolute inset-0 bg-gradient-to-r from-ink from-15% via-ink/70 via-40% to-transparent to-60%"
       />
 
       <div className="relative flex min-h-dvh items-center px-6 py-16 sm:px-12 lg:px-24">
