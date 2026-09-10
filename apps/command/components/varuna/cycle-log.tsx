@@ -9,7 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatMs, formatPct } from "@/lib/format";
+import { formatMs, formatMassBalance } from "@/lib/format";
 import { formatIstTime } from "@/lib/stores/time";
 
 export interface CycleLogRow {
@@ -53,7 +53,7 @@ export function CycleLog({ rows }: CycleLogProps) {
               <TableCell className="text-text-2">{row.stages}</TableCell>
               <TableCell className="num text-right">{formatMs(row.ms)}</TableCell>
               <TableCell className="num text-right">
-                {row.massBalance === null ? "—" : formatPct(row.massBalance)}
+                {formatMassBalance(row.massBalance)}
               </TableCell>
             </TableRow>
           ))}
