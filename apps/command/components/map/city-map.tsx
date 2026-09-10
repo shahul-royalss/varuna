@@ -703,7 +703,19 @@ export function CityMap({
         // The scrim. The imagery is already drawn dim; this takes the last of its contrast out of
         // the midtones so the depth ramp has the only saturated colour on the screen. It is
         // `pointer-events-none` because the map underneath still has to be draggable.
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[var(--ink)]/30" />
+        //
+        // Lighter in hero mode: the landing page lays its own wash across the left of this map
+        // for the headline to sit on, and the full scrim on top of that left the imagery
+        // invisible. The hero wants the city to look like somewhere; the console wants it to
+        // stay out of the water's way.
+        <div
+          aria-hidden="true"
+          className={
+            interactive
+              ? "pointer-events-none absolute inset-0 bg-[var(--ink)]/30"
+              : "pointer-events-none absolute inset-0 bg-[var(--ink)]/15"
+          }
+        />
       ) : null}
 
       {/* Esri's imagery is free to use and requires the credit while it is on screen. The console
