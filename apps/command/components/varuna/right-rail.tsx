@@ -1,11 +1,10 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { HotspotRail } from "@/components/varuna/hotspot-rail";
 import { ReachabilityPanel } from "@/components/varuna/reachability-panel";
+import { RailAlerts, RailPumps } from "@/components/varuna/rail-mirrors";
 import type { Hotspot, HotspotSet } from "@/lib/api/hotspots";
 import { RIGHT_RAIL_TABS, useUiStore, type RightRailTab } from "@/lib/stores/ui";
 
@@ -28,6 +27,9 @@ export interface RightRailProps {
   simTime?: string | null;
   /** The console draws the bands this hands back on its own map. */
   onIsochrones?: (rings: { minutes: number; rings: [number, number][][] }[]) => void;
+  /** The run whose alerts and pump plan the rail mirrors. The pages own the full versions of
+   * both; the rail is the operator's glance at them without leaving the map (CLAUDE.md 7.2). */
+  runId?: string | null;
 }
 
 function isRightRailTab(value: unknown): value is RightRailTab {
@@ -38,6 +40,7 @@ function isRightRailTab(value: unknown): value is RightRailTab {
 export function RightRail({
   hotspots = null,
   step = 0,
+  runId = null,
   selectedHotspotId = null,
   onSelectHotspot,
   hotspotsLoading = false,
@@ -76,30 +79,11 @@ export function RightRail({
       </TabsContent>
 
       <TabsContent value="alerts" className="min-h-0 flex-1 overflow-y-auto p-4">
-        <EmptyState
-          title="No alerts yet"
-          description="Alerts raise when a segment stays above its threshold for two cycles."
-        />
+        <RailAlerts runId={runId} />
       </TabsContent>
 
       <TabsContent value="pumps" className="min-h-0 flex-1 overflow-y-auto">
-        <div className="flex h-10 items-center justify-between border-b border-line px-4">
-          <span className="type-small text-text-2">Synthetic pump inventory</span>
-          <Tooltip>
-            <TooltipTrigger render={<span className="inline-flex" />}>
-              <Button variant="outline" size="sm" disabled aria-disabled="true">
-                Optimise
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Available once a run is loaded</TooltipContent>
-          </Tooltip>
-        </div>
-        <div className="p-4">
-          <EmptyState
-            title="No pump plan yet"
-            description="Press Optimise once a run is loaded."
-          />
-        </div>
+        <RailPumps runId={runId} />
       </TabsContent>
 
       <TabsContent value="reachability" className="min-h-0 flex-1 overflow-y-auto p-4">
