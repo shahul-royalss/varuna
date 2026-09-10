@@ -149,6 +149,7 @@ def build_assets(
     out_dir: Path | None = None,
     path: Path | None = None,
     bbox: tuple[float, float, float, float] | None = None,
+    curated: bool = True,
 ) -> Path:
     """Merge curated infrastructure with OSM assets into ``city/<city>/assets.geojson``.
 
@@ -156,8 +157,13 @@ def build_assets(
     feature with ``in_aoi``. Three of the BMC pumping stations sit just outside the
     MUM-CENTRAL box and still matter to an operator, so they are kept and labelled rather
     than silently dropped. OSM assets already come from the AOI query.
+
+    ``curated=False`` skips the hand-curated infrastructure file, for a city onboarded on stage
+    that has never had one written. The OSM hospitals, fire stations and stations still come
+    through - which is what reachability and exposure weights actually read - and the metadata
+    records that the curated half is missing rather than implying it was empty.
     """
-    features = infra_features(city, path=path)
+    features = infra_features(city, path=path) if curated else []
     seen = {(round(f["geometry"]["coordinates"][0], 5), f["properties"]["kind"]) for f in features}
     for feature in _osm_features(osm_assets):
         key = (round(feature["geometry"]["coordinates"][0], 5), feature["properties"]["kind"])
@@ -187,7 +193,13 @@ def build_assets(
                 kind: sum(1 for f in features if f["properties"]["kind"] == kind)
                 for kind in sorted({f["properties"]["kind"] for f in features})
             },
-            "honesty": "Mobile pumps are a synthetic inventory; every one carries synthetic=true.",
+            "curated_infrastructure": curated,
+            "honesty": (
+                "Mobile pumps are a synthetic inventory; every one carries synthetic=true."
+                if curated
+                else "OSM facilities only: no curated infrastructure has been researched for this "
+                "city, so there are no pumping stations, holding tanks or mobile pumps."
+            ),
         },
         "features": features,
     }

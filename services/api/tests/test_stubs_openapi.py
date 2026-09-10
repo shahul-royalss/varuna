@@ -48,9 +48,9 @@ SECTION_12_PATHS = [
 ]
 
 # Endpoints that are still 501. Phase 5 implemented the depth products, Phase 8 the route,
-# reachability and the road-conditions feed, and Phase 9 verification and report ingestion - so
-# each left this list as it landed. The *paths* stay in SECTION_12_PATHS above, which is what
-# asserts the contract in CLAUDE.md 12 is complete either way.
+# reachability and the road-conditions feed, and Phase 9 verification, report ingestion and city
+# onboarding - so each left this list as it landed. The *paths* stay in SECTION_12_PATHS above,
+# which is what asserts the contract in CLAUDE.md 12 is complete either way.
 STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None]] = [
     ("GET", "/v1/nowcast/segments/88213/series", None, None),
     ("POST", "/v1/alerts/ALT-1/ack", {"user": "ward officer"}, None),
@@ -59,8 +59,6 @@ STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None
     ("POST", "/v1/pumps/dispatch", {"plan_id": "plan-1"}, None),
     ("POST", "/v1/whatif/physics-check", sample_json("PhysicsCheckRequest"), None),
     ("POST", "/v1/cycle/compute", sample_json("ComputeRequest"), None),
-    ("POST", "/v1/onboard", {"city": "chennai"}, None),
-    ("GET", "/v1/onboard/job-1", None, None),
 ]
 
 
@@ -94,7 +92,9 @@ def test_openapi_contains_every_section_12_path(client: TestClient) -> None:
     # `varuna_schemas.models.route` keeps it as the pilot contract; see ADR-0027.
     for name in ("ErrorEnvelope", "RunMeta", "RunList", "CycleStatus"):
         assert name in schemas
-    assert "501" in doc["paths"]["/v1/onboard"]["post"]["responses"]
+    # `/v1/onboard` published a 501 while it was a stub; it now starts a real build and answers
+    # 202 with the job (task P9.5), so 202 is what the contract publishes.
+    assert "202" in doc["paths"]["/v1/onboard"]["post"]["responses"]
     assert "404" in doc["paths"]["/v1/runs/{run_id}"]["get"]["responses"]
     assert (
         doc["paths"]["/v1/nowcast/raster"]["get"]["responses"]["200"]["content"].get("image/png")

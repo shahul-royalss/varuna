@@ -75,6 +75,69 @@ class CycleResult:
     notes: tuple[str, ...]
 
 
+def _is_design_storm(bundle: str) -> bool:
+    """Whether this bundle is a design storm rather than a reconstructed event."""
+    from varuna_replay.bundle import load_manifest
+
+    try:
+        return bool(getattr(load_manifest(bundle), "design_storm", None))
+    except Exception:
+        return False
+
+
+def _design_storm_rain(bundle: str, cycle_ts: datetime | None, city: str, n_steps: int):
+    """A design storm's own truth field on the city grid, or None if this is not one.
+
+    Returns the same ``(cube, cycle)`` pair the Sky path does, with ``cycle`` carrying the notes
+    that say the nowcast was bypassed and why.
+    """
+    import zarr
+    from varuna_replay.bundle import bundle_dir, load_manifest
+    from varuna_sky.products import load_aoi_grid, resample_to_aoi
+
+    from varuna_cycle.sky_cycle import run_bundle_cycle
+
+    try:
+        manifest = load_manifest(bundle)
+    except Exception:  # not a loadable bundle; let the Sky path raise its own error
+        return None
+    if not getattr(manifest, "design_storm", None):
+        return None
+
+    truth = bundle_dir(bundle) / "truth" / "rain.zarr"
+    if not truth.is_dir():
+        return None
+
+    store = zarr.open(str(truth), mode="r")
+    names = list(store.array_keys())
+    key = "rain" if "rain" in names else names[0]
+    field = np.asarray(store[key], dtype=np.float64)
+
+    # The truth cube starts at the bundle's t0; a cycle at t reads forward from there.
+    offset = 0
+    if cycle_ts is not None:
+        offset = max(int((cycle_ts - manifest.t0).total_seconds() // (STEP_MIN * 60)), 0)
+    window = field[offset : offset + int(n_steps)]
+    if window.shape[0] == 0:
+        return None
+
+    # Sky still runs, for its grid, its products and its honesty labels; only the *forcing* is
+    # taken from the truth field. Running it also keeps the stage timing and the run's provenance
+    # identical between a design storm and a reconstruction.
+    cycle = run_bundle_cycle(bundle, cycle_ts)
+    aoi = load_aoi_grid(city)
+    cube = np.stack([resample_to_aoi(window[k], cycle.products.grid, aoi) for k in range(window.shape[0])])
+    cube = np.where(np.isfinite(cube), cube, 0.0)
+    log.info(
+        "cycle.design_storm_forcing",
+        bundle=bundle,
+        city=city,
+        steps=int(cube.shape[0]),
+        total_mm=round(float(cube.mean(axis=(1, 2)).sum()) * STEP_MIN / 60.0, 1),
+    )
+    return cube, cycle
+
+
 def _sky_rain_on_city(bundle: str, cycle_ts: datetime | None, city: str, n_steps: int):
     """Run Sky for this cycle and return its **ensemble-mean** rain on the 30 m city grid, mm/h.
 
@@ -89,10 +152,28 @@ def _sky_rain_on_city(bundle: str, cycle_ts: datetime | None, city: str, n_steps
     of the expectations - so the city receives the water the ensemble actually forecasts. It
     smooths the peak, which is a real cost and is why the ensemble goes to Flash-lite whole in
     Phase 7; the run's notes say the spread was discarded.
+
+    **A design storm is not nowcast.** `MUM-IDF-25yr` and `CHN-IDF-25yr` are a stated depth over a
+    stated duration, spatially uniform by construction, and STEPS is the wrong instrument for
+    them: its whole method is advecting and perturbing *spatial structure*, and a featureless field
+    has none, so the twenty members decorrelate into noise and their mean collapses. Measured on
+    `CHN-IDF-25yr`: the members carry the 11.5 mm/h the radar shows, the ensemble mean peaks at
+    3.3 mm/h, and the AOI received 0.1 mm of a 150 mm storm. Issuing at the storm's peak instead
+    made it worse in the other direction - persistence held the 447 mm/h spike for three hours and
+    delivered 609 mm.
+
+    So a design storm forces the Twin from its own truth field, which is exactly what a design
+    storm is *for* (`varuna_replay.design`: the drainage-norm intensity sizing the pipes, held over
+    three hours). The run's notes say so. A reconstructed event still goes through Sky, because
+    there the nowcast is the thing being demonstrated.
     """
     from varuna_sky.products import load_aoi_grid, resample_to_aoi
 
     from varuna_cycle.sky_cycle import run_bundle_cycle
+
+    design = _design_storm_rain(bundle, cycle_ts, city, n_steps)
+    if design is not None:
+        return design
 
     cycle = run_bundle_cycle(bundle, cycle_ts)
     aoi = load_aoi_grid(city)
@@ -233,6 +314,13 @@ def run_cycle(
         *twin.notes,
         *(getattr(sky, "notes", None) or ()),
     ]
+    if getattr(sky, "design_storm_forced", False) or _is_design_storm(bundle):
+        notes.append(
+            "Design storm: the Twin was forced from the bundle's own hyetograph, not from a "
+            "nowcast. A design storm is spatially uniform by construction and STEPS extrapolates "
+            "spatial structure, so nowcasting one says more about the noise model than the storm."
+        )
+
     if tide is not None and "illustrative" in tide.source.lower():
         notes.append(f"Tide series is {tide.source}, not a published tide table (rule 7).")
 
