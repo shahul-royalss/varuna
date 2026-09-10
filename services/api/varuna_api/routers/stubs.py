@@ -29,7 +29,6 @@ from varuna_schemas.models import (
     RouteResponse,
     SegmentSeries,
     VarunaModel,
-    VerificationSummary,
 )
 from varuna_schemas.models.common import BBox, Timestamp
 
@@ -259,16 +258,8 @@ def onboard_job(job_id: str) -> OnboardJob:
     raise not_implemented("City onboarding", 9, "P9.5")
 
 
-@router.get(
-    "/verification",
-    tags=["verification"],
-    response_model=VerificationSummary,
-    summary="Verification scores and chart data for an event",
-)
-def verification(
-    event: Annotated[str, Query(description="Bundle id, e.g. MUM-2019-07-02")] = "MUM-2019-07-02",
-) -> VerificationSummary:
-    raise not_implemented("Verification scores", 9, "P9.7")
+# Verification is no longer a stub: `varuna_api.routers.verify` scores an event against its
+# sourced ground truth (task P9.7).
 
 
 # City layers are no longer a stub: Phase 1 landed, and ``varuna_api.routers.city`` serves

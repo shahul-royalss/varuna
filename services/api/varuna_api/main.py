@@ -37,6 +37,7 @@ from varuna_api.routers import (
     route,
     runs,
     stubs,
+    verify,
     whatif,
 )
 from varuna_api.seed import seed_demo_runs
@@ -240,6 +241,7 @@ def create_app(
     app.include_router(depth.router)
     app.include_router(whatif.router)
     app.include_router(route.router)
+    app.include_router(verify.router)
     app.include_router(nowcast.router)
     app.include_router(stubs.router)
     return app
