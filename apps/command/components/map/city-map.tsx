@@ -33,7 +33,14 @@ import DeckGL from "@deck.gl/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { boundsCentre, cityBounds, type Bbox } from "./basemap";
-import { MAP_ATTRIBUTION, satelliteLayers } from "./satellite";
+import { MAP_ATTRIBUTION, labelLayers, satelliteLayers } from "./satellite";
+import {
+  labelMarkerLayers,
+  labelTextLayers,
+  streetLabels,
+  visibleLabels,
+  type MapLabel,
+} from "./labels";
 import type { CityMapMode } from "./types";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { DUR_MS, FLY_TO_CURVE } from "@/lib/motion";
@@ -47,6 +54,8 @@ export interface SegmentPath {
   depthCm: number[];
   /** Road class, which sets the drawn width (section 6.7: 2-6 px by class). */
   width: number;
+  /** Street name from OSM, where it has one. Drawn as a label at high zoom. */
+  name?: string;
 }
 
 export interface SurchargeNode {
@@ -80,8 +89,9 @@ export interface DrainPath {
 export interface RouteLine {
   id: string;
   path: [number, number][];
-  /** `naive` is the dashed grey comparison; `varuna` the tide-coloured route (section 6.7). */
-  kind: "naive" | "varuna" | "alternate";
+  /** `naive` is the dashed grey comparison; `varuna` the tide-coloured route (section 6.7);
+   * `avoided` is a street the route refused, drawn in the depth ramp's deepest red. */
+  kind: "naive" | "varuna" | "alternate" | "avoided";
 }
 
 /** One reachability band, drawn as a translucent polygon (section 6.2 `--reach-*`). */
@@ -135,6 +145,10 @@ export interface CityMapProps {
   showDrains?: boolean;
   /** Draw Esri's aerial imagery under everything (section 6.7's basemap slot). */
   showSatellite?: boolean;
+  /** Place names, street names and facility markers (section 6.7's label layer). */
+  showLabels?: boolean;
+  /** Facilities and chronic junctions to name on the map, beside the street names. */
+  labels?: readonly MapLabel[];
   /** Draw the map credit. Off where `MapSlot` sits behind this map and draws it already. */
   attribution?: boolean;
 }
@@ -184,6 +198,91 @@ const NAIVE_ROUTE: [number, number, number, number] = [100, 116, 139, 235];
 
 /** `--tide` #2DD4BF: the route VARUNA gives you instead. */
 const VARUNA_ROUTE: [number, number, number, number] = [45, 212, 191, 255];
+
+/** `--depth-5` #B91C1C: a street the route refused, so the detour has something to be around. */
+const AVOIDED_ROUTE: [number, number, number, number] = [185, 28, 28, 255];
+
+/** Every route line's colour, by what the line is. */
+const ROUTE_COLOUR: Record<RouteLine["kind"], [number, number, number, number]> = {
+  naive: NAIVE_ROUTE,
+  varuna: VARUNA_ROUTE,
+  alternate: [45, 212, 191, 150],
+  avoided: AVOIDED_ROUTE,
+};
+
+/**
+ * The first `fraction` of a path, by cumulative length, with the cut edge interpolated.
+ *
+ * Interpolated rather than truncated to the nearest vertex: a route's legs are hundreds of metres
+ * long, so snapping to vertices makes the draw-on jump in visible chunks instead of running
+ * smoothly along the road.
+ */
+function partialPath(path: [number, number][], fraction: number): [number, number][] {
+  if (fraction >= 1 || path.length < 2) return path;
+  if (fraction <= 0) return path.slice(0, 1);
+
+  const lengths: number[] = [];
+  let total = 0;
+  for (let i = 1; i < path.length; i += 1) {
+    const dx = path[i][0] - path[i - 1][0];
+    const dy = path[i][1] - path[i - 1][1];
+    const d = Math.hypot(dx, dy);
+    lengths.push(d);
+    total += d;
+  }
+
+  const target = total * fraction;
+  const out: [number, number][] = [path[0]];
+  let walked = 0;
+  for (let i = 0; i < lengths.length; i += 1) {
+    if (walked + lengths[i] >= target) {
+      const t = lengths[i] > 0 ? (target - walked) / lengths[i] : 0;
+      out.push([
+        path[i][0] + (path[i + 1][0] - path[i][0]) * t,
+        path[i][1] + (path[i + 1][1] - path[i][1]) * t,
+      ]);
+      break;
+    }
+    walked += lengths[i];
+    out.push(path[i + 1]);
+  }
+  return out;
+}
+
+/** Motion M14's duration: the VARUNA route draws itself over 1.2 s (CLAUDE.md 8). */
+const ROUTE_DRAW_MS = 1200;
+
+/**
+ * 0 to 1 over {@link ROUTE_DRAW_MS} whenever the drawn route changes; 1 at once under reduced
+ * motion, where CLAUDE.md 8 asks for both routes shown together rather than drawn.
+ */
+function useRouteDraw(key: string, reducedMotion: boolean): number {
+  const [progress, setProgress] = useState(1);
+
+  useEffect(() => {
+    if (!key || reducedMotion) {
+      // Reduced motion wants the finished route immediately. Setting it on the next frame rather
+      // than synchronously keeps this out of the cascading-render path the lint rule guards, and a
+      // frame is imperceptible for something whose whole point is that it does not animate.
+      const settle = requestAnimationFrame(() => setProgress(1));
+      return () => cancelAnimationFrame(settle);
+    }
+    let frame = 0;
+    const started = performance.now();
+    const tick = () => {
+      const elapsed = performance.now() - started;
+      const t = Math.min(elapsed / ROUTE_DRAW_MS, 1);
+      // The same ease as every other motion in the catalogue (CLAUDE.md 8): fast out of the
+      // origin, settling into the destination.
+      setProgress(1 - (1 - t) ** 3);
+      if (t < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [key, reducedMotion]);
+
+  return progress;
+}
 
 /** `--ink` #0A1020: the casing that lifts the route off whatever it crosses (section 6.7). */
 const ROUTE_CASING: [number, number, number, number] = [10, 16, 32, 235];
@@ -281,10 +380,20 @@ export function CityMap({
   showBuildings = true,
   showDrains = false,
   showSatellite = true,
+  showLabels = true,
+  labels = [],
   attribution = true,
 }: CityMapProps) {
   const interactive = mode !== "hero";
   const reducedMotion = usePrefersReducedMotion();
+
+  // A new route draws itself in (motion M14). Keyed on the drawn geometry, so re-planning the
+  // same trip after a profile change animates again and a scrub does not.
+  const routeKey = useMemo(
+    () => routes.map((r) => `${r.kind}:${r.path.length}:${r.path[0]?.join(",") ?? ""}`).join("|"),
+    [routes],
+  );
+  const drawProgress = useRouteDraw(routeKey, reducedMotion);
   const pulse = useSurchargePulse(showSurcharge && surcharge.length > 0 && !reducedMotion);
 
   // ---- Framing --------------------------------------------------------------------------
@@ -621,7 +730,7 @@ export function CityMap({
       built.push(
         new PathLayer<RouteLine>({
           id: "route-casing",
-          data: routes.filter((r) => r.kind !== "naive") as RouteLine[],
+          data: routes.filter((r) => r.kind === "varuna" || r.kind === "alternate") as RouteLine[],
           getPath: (d) => d.path,
           getColor: ROUTE_CASING,
           getWidth: 7,
@@ -633,19 +742,27 @@ export function CityMap({
         new PathLayer<RouteLine>({
           id: "routes",
           data: routes as RouteLine[],
-          getPath: (d) => d.path,
-          getColor: (d) => (d.kind === "naive" ? NAIVE_ROUTE : VARUNA_ROUTE),
-          getWidth: (d) => (d.kind === "varuna" ? 5 : 3),
+          // Motion M14: the VARUNA route draws itself over 1.2 s. `drawProgress` runs 0 to 1 and
+          // the path is truncated to that fraction of its length, so the line grows from the
+          // origin rather than fading in - which is what makes it read as *a route being found*
+          // instead of a shape appearing.
+          getPath: (d) => (d.kind === "varuna" ? partialPath(d.path, drawProgress) : d.path),
+          getColor: (d) => ROUTE_COLOUR[d.kind],
+          getWidth: (d) => (d.kind === "varuna" ? 5 : d.kind === "avoided" ? 4 : 3),
           widthUnits: "pixels",
           capRounded: true,
           jointRounded: true,
           pickable: false,
-          updateTriggers: { getColor: routes.length, getWidth: routes.length },
+          updateTriggers: {
+            getPath: [routes.length, drawProgress],
+            getColor: routes.length,
+            getWidth: routes.length,
+          },
         }),
       );
     }
     return built;
-  }, [routes, isochrones]);
+  }, [routes, isochrones, drawProgress]);
 
   // The basemap, under everything. Rebuilt only when it is toggled or the raster comes and goes:
   // `TileLayer` keeps its own tile cache, and handing deck a new instance every render would
@@ -653,6 +770,70 @@ export function CityMap({
   const basemapLayers = useMemo(
     () => satelliteLayers({ enabled: showSatellite, dimmed: showRaster }),
     [showSatellite, showRaster],
+  );
+
+  // **Labels are computed from what is on screen, at the zoom that is on screen.** That is why
+  // the camera being controlled matters beyond framing: `viewState` is a React value, so the
+  // label set is an ordinary derivation of it. An uncontrolled camera would have needed deck to
+  // report its zoom back through an event before any of this could be decided.
+  const named = useMemo(
+    () => [...streetLabels(baseSegments), ...streetLabels(segments), ...labels],
+    [baseSegments, segments, labels],
+  );
+
+  // **Quantised, not exact.** `viewState` is a new object on every frame of a pan or a fly-to, and
+  // a label set derived from it recomputes sixty times a second - which rebuilds the layer array
+  // sixty times a second, and the tile layers underneath spend their time being reconciled instead
+  // of drawing. Rounding the camera to a tenth of a zoom level and ~100 m of position gives the
+  // same labels and recomputes only when the view has meaningfully moved.
+  const cameraKey = useMemo(
+    () =>
+      [
+        Math.round(viewState.zoom * 10),
+        Math.round(viewState.longitude * 1000),
+        Math.round(viewState.latitude * 1000),
+      ].join(":"),
+    [viewState.zoom, viewState.longitude, viewState.latitude],
+  );
+
+  const drawnLabels = useMemo(() => {
+    if (!showLabels || named.length === 0) return [];
+    const zoom = viewState.zoom;
+    // The viewport in lon/lat, so only labels the operator can actually see count against the cap.
+    let visibleBounds: Bbox | null = null;
+    if (size) {
+      try {
+        const viewport = new WebMercatorViewport({
+          width: size.width,
+          height: size.height,
+          longitude: viewState.longitude,
+          latitude: viewState.latitude,
+          zoom,
+        });
+        const [[west, south], [east, north]] = viewport.getBounds() as unknown as [
+          [number, number],
+          [number, number],
+        ];
+        visibleBounds = [
+          [west, south],
+          [east, north],
+        ];
+      } catch {
+        visibleBounds = null;
+      }
+    }
+    return visibleLabels({ labels: named, zoom, bounds: visibleBounds });
+    // `cameraKey` is the identity that matters; `viewState` is read for its exact values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showLabels, named, cameraKey, size]);
+
+  const labelDrawLayers = useMemo(
+    () => [
+      ...labelLayers({ enabled: showSatellite && showLabels }),
+      ...labelMarkerLayers(drawnLabels),
+      ...labelTextLayers(drawnLabels),
+    ],
+    [showSatellite, showLabels, drawnLabels],
   );
 
   const layers = useMemo(
@@ -663,8 +844,10 @@ export function CityMap({
       ...runLayers,
       ...(surchargeLayer ? [surchargeLayer] : []),
       ...routeLayers,
+      // Labels last: a street name the depth ramp paints over is a name nobody can read.
+      ...labelDrawLayers,
     ],
-    [basemapLayers, cityLayers, streetLayers, runLayers, surchargeLayer, routeLayers],
+    [basemapLayers, cityLayers, streetLayers, runLayers, surchargeLayer, routeLayers, labelDrawLayers],
   );
 
   return (

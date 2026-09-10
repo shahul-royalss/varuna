@@ -14,6 +14,8 @@ import { apiUrl } from "@/lib/api/client";
 export type BuildingPolygon = [number, number][];
 
 export interface DrainPath {
+  /** Edge id, so a run's learned posterior can be joined onto the full network. */
+  id: string;
   path: [number, number][];
   /** Prior blockage 0-1 from the city pipeline; Pulse replaces it with a posterior in Phase 7. */
   beta: number;
@@ -68,9 +70,58 @@ export async function loadDrains(city: string, signal?: AbortSignal): Promise<Dr
     if (feature.geometry?.type !== "LineString") continue;
     const props = feature.properties ?? {};
     out.push({
+      id: String(props.edge_id ?? props.id ?? ""),
       path: feature.geometry.coordinates as [number, number][],
       beta: Number(props.beta_mean ?? props.beta ?? 0),
       diameter: Number(props.diameter_m ?? props.height_m ?? 0.6),
+    });
+  }
+  return out;
+}
+
+/** A named facility the map labels: hospitals, fire stations and railway stations. */
+export interface FacilityLabel {
+  id: string;
+  text: string;
+  lon: number;
+  lat: number;
+  kind: "hospital" | "fire_station" | "station";
+}
+
+/** Which asset kinds get a name on the map, and how many of each.
+ *
+ * Mumbai's asset layer has 354 hospitals and 242 shelters, and naming all of them would bury the
+ * map in text that says nothing about water. Hospitals and fire stations are what a route and a
+ * reachability clock are *about*; stations are how a commuter locates themselves. Shelters,
+ * depots and pumping stations stay unnamed until a screen asks for them. */
+const LABELLED_KINDS: Record<string, FacilityLabel["kind"]> = {
+  hospital: "hospital",
+  fire_station: "fire_station",
+  station: "station",
+};
+
+/** Named hospitals, fire stations and stations, for the map's label layer. */
+export async function loadFacilityLabels(
+  city: string,
+  signal?: AbortSignal,
+): Promise<FacilityLabel[]> {
+  const features = await layer(city, "assets", signal);
+  const out: FacilityLabel[] = [];
+  for (const feature of features) {
+    const props = feature.properties ?? {};
+    const kind = LABELLED_KINDS[String(props.kind ?? "")];
+    const geometry = feature.geometry;
+    if (!kind || geometry?.type !== "Point") continue;
+    const name = typeof props.name === "string" ? props.name.trim() : "";
+    // An unnamed hospital is a dot with nothing to say; the marker layer already draws the dot.
+    if (!name) continue;
+    const coords = geometry.coordinates as number[];
+    out.push({
+      id: String(props.asset_id ?? name),
+      text: name,
+      lon: Number(coords[0]),
+      lat: Number(coords[1]),
+      kind,
     });
   }
   return out;

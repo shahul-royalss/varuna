@@ -19,8 +19,10 @@ import type { CityMapMode } from "./types";
 import {
   loadBuildings,
   loadDrains,
+  loadFacilityLabels,
   type BuildingPolygon,
   type DrainPath,
+  type FacilityLabel,
 } from "@/lib/api/city-layers";
 import { apiUrl } from "@/lib/api/client";
 import { allSegments, joinSegments, loadRunDepth, type RunDepth } from "@/lib/api/run-depth";
@@ -158,6 +160,39 @@ export function FloodMap({
     return () => controller.abort();
   }, [city, showDrains, drains.length]);
 
+  // Named facilities, for the label layer. Small (a few hundred points) and worth having early:
+  // "KEM Hospital" on the map is what turns a route from two lines into a trip.
+  const [facilities, setFacilities] = useState<readonly FacilityLabel[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    loadFacilityLabels(city, controller.signal)
+      .then(setFacilities)
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [city]);
+
+  // Facilities plus the chronic register: the two sets of places this product is about. Street
+  // names come from the segments themselves, inside `CityMap`.
+  const labels = useMemo(
+    () => [
+      ...facilities.map((f) => ({
+        id: f.id,
+        text: f.text,
+        lon: f.lon,
+        lat: f.lat,
+        kind: f.kind,
+      })),
+      ...ranked.map((h) => ({
+        id: `hotspot-${h.id}`,
+        text: h.name,
+        lon: h.lon,
+        lat: h.lat,
+        kind: "hotspot" as const,
+      })),
+    ],
+    [facilities, ranked],
+  );
+
   // The rings only need a position and an identity; the rail owns everything else about a
   // hotspot, so the map is not re-created when the scrub moves its depth chips.
   const rings = useMemo(
@@ -232,6 +267,7 @@ export function FloodMap({
       showBuildings={showBuildings}
       showDrains={showDrains}
       hotspots={rings}
+      labels={labels}
       isochrones={isochrones}
       passableBelowCm={passableBelowCm}
       showSatellite={showSatellite}

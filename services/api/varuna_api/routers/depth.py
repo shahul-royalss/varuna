@@ -22,8 +22,9 @@ from typing import Annotated, Any, Literal
 
 import structlog
 from fastapi import APIRouter, Query, Response
-from varuna_schemas.paths import run_dir, runs_dir
+from varuna_schemas.paths import run_dir
 
+from varuna_api.runs_util import latest_run_for
 from varuna_api.state import api_error
 
 log = structlog.get_logger("varuna.api.depth")
@@ -36,24 +37,21 @@ BAKE_HINT = (
 )
 
 
-def _latest_run_with_depth() -> Path | None:
-    """The newest run directory that actually has depth rasters in it.
+def _latest_run_with_depth(city: str | None = None) -> Path | None:
+    """The newest run directory for a city that actually has depth rasters in it.
 
     Newest by run id, which sorts chronologically because the id embeds a UTC stamp
     (CLAUDE.md 10.3). A run without a ``depth/`` folder is skipped rather than returned and then
     404'd one request later: a bake in progress leaves earlier complete runs perfectly usable.
+
+    **Filtered by city**, and that is not optional once a second city exists. Onboarding Chennai
+    put `CHN-` runs in the same directory, they sort after `MUM-` for the same date, and every
+    endpoint that means "the current run" started answering a Mumbai console with Chennai water.
     """
-    root = runs_dir()
-    if not root.is_dir():
-        return None
-    candidates = [
-        p for p in sorted(root.iterdir(), reverse=True)
-        if p.is_dir() and not p.name.startswith(".") and (p / "depth" / "bounds.json").is_file()
-    ]
-    return candidates[0] if candidates else None
+    return latest_run_for(city, lambda p: (p / "depth" / "bounds.json").is_file())
 
 
-def _resolve(run_id: str | None) -> Path:
+def _resolve(run_id: str | None, city: str | None = None) -> Path:
     """The run directory to serve, or an error that names the command that makes one."""
     if run_id:
         path = run_dir(run_id)
@@ -65,7 +63,7 @@ def _resolve(run_id: str | None) -> Path:
                 run_id=run_id,
             )
         return path
-    latest = _latest_run_with_depth()
+    latest = _latest_run_with_depth(city)
     if latest is None:
         raise api_error(404, "no_baked_runs", BAKE_HINT)
     return latest

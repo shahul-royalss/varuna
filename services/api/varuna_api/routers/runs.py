@@ -15,11 +15,22 @@ router = APIRouter(prefix="/v1/runs", tags=["runs"])
 @router.get("", response_model=RunList, summary="List runs, newest first")
 def list_runs(
     state: Annotated[AppState, Depends(get_state)],
-    city: Annotated[str | None, Query(description="City slug, e.g. mumbai")] = None,
+    city: Annotated[
+        str | None,
+        Query(description="City slug, e.g. mumbai. Defaults to the configured city; 'all' for every city."),
+    ] = None,
     bundle: Annotated[str | None, Query(description="Replay bundle id")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ) -> RunList:
-    return state.registry.run_list(city=city, bundle=bundle, limit=limit)
+    """Runs for one city, newest first.
+
+    **Defaults to the configured city rather than to every city.** Onboarding Chennai put its runs
+    in the same directory, and since ids sort chronologically `CHN-` came out above `MUM-` - so the
+    console's run stamp, which reads `latest_run_id` from here, began naming a Chennai run over a
+    map of Mumbai. `city=all` is the way to ask for the whole registry.
+    """
+    scope = None if city == "all" else (city or state.settings.varuna_city)
+    return state.registry.run_list(city=scope, bundle=bundle, limit=limit)
 
 
 @router.get(
