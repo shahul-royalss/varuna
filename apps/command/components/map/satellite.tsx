@@ -36,6 +36,17 @@ import { TileLayer } from "@deck.gl/geo-layers";
 export const SATELLITE_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 
+/**
+ * Esri's reference overlay: localities, neighbourhoods and major road names on transparent tiles.
+ *
+ * This is the second half of a hybrid satellite view. Imagery alone shows a judge *texture* -
+ * that is plainly a real city - but it cannot answer "which junction is that?", and the whole
+ * product is about named streets. The reference layer is drawn over the water rather than under
+ * it, because a label the depth ramp paints over is a label nobody can read.
+ */
+export const LABELS_URL =
+  "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}";
+
 /** Attribution the map must carry while the imagery is drawn. */
 export const SATELLITE_ATTRIBUTION =
   "Imagery: Esri, Maxar, Earthstar Geographics and the GIS User Community";
@@ -71,6 +82,44 @@ export interface SatelliteOptions {
   enabled: boolean;
   /** Dimmer still under a depth raster, which is itself a translucent sheet over the city. */
   dimmed?: boolean;
+}
+
+/** How strongly the reference labels read. Bright enough to be legible over dark imagery,
+ * dim enough that they are furniture rather than content. */
+const LABEL_OPACITY = 0.85;
+
+/** Below this the labels are country and state names, which say nothing about a city. */
+const LABEL_MIN_ZOOM = 10;
+
+/** Esri's place labels, drawn *over* the run so water never paints over a street name. */
+export function labelLayers({ enabled }: { enabled: boolean }): unknown[] {
+  if (!enabled) return [];
+  return [
+    new TileLayer({
+      id: "place-labels",
+      data: LABELS_URL,
+      minZoom: LABEL_MIN_ZOOM,
+      maxZoom: MAX_ZOOM,
+      tileSize: TILE_SIZE,
+      maxCacheSize: MAX_CACHE_TILES,
+      refinementStrategy: "best-available",
+      maxRequests: 12,
+      onTileError: () => undefined,
+      pickable: false,
+      opacity: LABEL_OPACITY,
+      renderSubLayers: (props) => {
+        const box = (props.tile as { boundingBox: number[][] }).boundingBox;
+        const [west, south] = box[0] as [number, number];
+        const [east, north] = box[1] as [number, number];
+        return new BitmapLayer({
+          id: props.id,
+          image: props.data as never,
+          bounds: [west, south, east, north],
+          pickable: false,
+        });
+      },
+    }),
+  ];
 }
 
 /** The basemap layers, bottom of the stack. Empty when the basemap is off. */

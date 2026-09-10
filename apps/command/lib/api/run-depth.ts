@@ -164,6 +164,8 @@ export interface GeoSegment {
   path: [number, number][];
   depthCm: number[];
   width: number;
+  /** OSM street name; 10,096 of Mumbai's 21,296 segments have one. */
+  name?: string;
 }
 
 /**
@@ -188,6 +190,7 @@ export function joinSegments(
       path: feature.geometry.coordinates as [number, number][],
       depthCm: series,
       width: CLASS_WIDTH[String(feature.properties?.class ?? "residential")] ?? 2,
+      name: typeof feature.properties?.name === "string" ? feature.properties.name : undefined,
     });
   }
   return out;
@@ -212,6 +215,7 @@ export function allSegments(
       path: feature.geometry.coordinates as [number, number][],
       depthCm: [],
       width: CLASS_WIDTH[String(feature.properties?.class ?? "residential")] ?? 2,
+      name: typeof feature.properties?.name === "string" ? feature.properties.name : undefined,
     });
   }
   return out;

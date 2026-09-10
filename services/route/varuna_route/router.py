@@ -98,6 +98,11 @@ class Avoided:
     depth_cm: float
     probability: float
     at: datetime
+    path: tuple[tuple[float, float], ...] = ()
+    """The street's own geometry, so the map can draw what the detour went around.
+
+    Without it the console can list "Dr Ambedkar Marg, 71 cm" and draw a route bending away from
+    nothing in particular; with it the red segment and the bend are visibly the same place."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,7 +327,7 @@ def plan(
 
     started = perf_counter()
     graph = load_graph(city)
-    depths = load_depths(run_id)
+    depths = load_depths(run_id, city)
     base = profile(vehicle)
     if risk_tolerance is not None:
         base = Profile(
@@ -407,6 +412,7 @@ def plan(
                         depth_cm=leg.depth_cm,
                         probability=_exceedance(leg.depth_cm, base.depth_cm),
                         at=leg.arrive,
+                        path=_segment_path(graph, leg.segment_id),
                     )
                 )
         avoided.sort(key=lambda a: -a.depth_cm)
@@ -487,12 +493,26 @@ def as_dict(result: RouteResult) -> dict[str, Any]:
                 "depth_cm": round(float(a.depth_cm), 1),
                 "probability": a.probability,
                 "at": a.at.isoformat(),
+                "path": [[round(x, 6), round(y, 6)] for x, y in a.path],
             }
             for a in result.avoided
         ],
         "notes": result.notes,
         "ms": round(result.ms, 1),
     }
+
+
+def _segment_path(graph: RoadGraph, segment_id: str) -> tuple[tuple[float, float], ...]:
+    """The endpoints of one segment, from the first out-edge that carries it."""
+    for e, sid in enumerate(graph.edge_segment):
+        if sid == segment_id:
+            tail = int(graph.edge_tail[e])
+            head = int(graph.head[e])
+            return (
+                (float(graph.lon[tail]), float(graph.lat[tail])),
+                (float(graph.lon[head]), float(graph.lat[head])),
+            )
+    return ()
 
 
 def _street_names(route: Route, limit: int = 12) -> list[str]:

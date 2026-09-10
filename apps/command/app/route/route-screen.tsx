@@ -116,6 +116,10 @@ export function RouteScreen() {
   const routes: RouteLine[] = useMemo(() => {
     if (!plan) return [];
     const lines: RouteLine[] = [];
+    // Avoided streets first, so the route and its casing draw over them rather than under.
+    plan.avoided.forEach((a, i) => {
+      if (a.path.length >= 2) lines.push({ id: `avoided-${i}`, path: a.path, kind: "avoided" });
+    });
     if (plan.naive) lines.push({ id: "naive", path: plan.naive.path, kind: "naive" });
     plan.alternates.forEach((alt, i) =>
       lines.push({ id: `alt-${i}`, path: alt.path, kind: "alternate" }),
@@ -132,7 +136,14 @@ export function RouteScreen() {
         distanceM: plan.naive.distanceM,
         maxDepthCm: plan.naive.maxDepthCm,
         safeUntil: plan.naive.safeUntil ?? undefined,
-        avoided: [],
+        // The naive route's own hazard: the streets it walks into. Listing them under the naive
+        // column rather than the VARUNA one is the point - this is what the shortest path costs.
+        avoided: plan.avoided.map((a) => ({
+          segmentId: a.segmentId,
+          name: a.name,
+          probability: a.probability,
+          atTs: a.at,
+        })),
       }
     : null;
 
@@ -197,11 +208,18 @@ export function RouteScreen() {
               </div>
             </PanelErrorBoundary>
 
-            <div className="flex min-h-0 min-w-0 flex-col gap-4">
+            {/*
+             * The right column scrolls. It used to be a plain flex column inside a page that is
+             * `overflow-hidden`, so once a route came back with an avoided list and two alternates
+             * the comparison grew past the viewport and there was no way to reach it - the reported
+             * "I can't even scroll down". The map keeps a definite height rather than `flex-1`, so
+             * it cannot be squeezed to nothing by the panel below it either.
+             */}
+            <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-1">
               <PanelErrorBoundary>
                 <section
                   aria-label="Route map"
-                  className="relative min-h-[300px] flex-1 overflow-hidden rounded-panel border border-line bg-deep"
+                  className="relative h-[clamp(20rem,52vh,40rem)] shrink-0 overflow-hidden rounded-panel border border-line bg-deep"
                 >
                   {streets.length > 0 ? (
                     <CityMap

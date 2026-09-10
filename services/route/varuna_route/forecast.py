@@ -83,15 +83,32 @@ class SegmentDepths:
         return self.times[-1] + timedelta(minutes=STEP_MIN * (step - len(self.times) + 1))
 
 
-def latest_run_dir() -> Path:
-    """The newest run that carries a segment forecast.
+def latest_run_dir(city: str = "mumbai") -> Path:
+    """The newest run **for a city** that carries a segment forecast.
+
+    The city filter is load-bearing. Runs from every city share `data/runs/` and their ids sort
+    chronologically, so once Chennai was onboarded its `CHN-` runs sorted above Mumbai's and the
+    router began planning Mumbai trips against Chennai depths - a wrong answer that looked
+    entirely normal.
 
     Raises:
         FileNotFoundError: nothing is baked. The message carries the command that fixes it.
     """
+    from varuna_schemas.models.run import RunIdError, city_code
+
+    try:
+        prefix = f"{city_code(city)}-"
+    except RunIdError:
+        prefix = ""
     root = runs_dir()
     candidates = (
-        [p for p in sorted(root.iterdir(), reverse=True) if (p / "segments_wet.json").is_file()]
+        [
+            p
+            for p in sorted(root.iterdir(), reverse=True)
+            if p.is_dir()
+            and (not prefix or p.name.startswith(prefix))
+            and (p / "segments_wet.json").is_file()
+        ]
         if root.is_dir()
         else []
     )
@@ -142,9 +159,9 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
     return depths
 
 
-def load_depths(run_id: str | None = None) -> SegmentDepths:
+def load_depths(run_id: str | None = None, city: str = "mumbai") -> SegmentDepths:
     """Load a run's segment depths, cached on the file's mtime."""
-    path = run_dir(run_id) if run_id else latest_run_dir()
+    path = run_dir(run_id) if run_id else latest_run_dir(city)
     wet = path / "segments_wet.json"
     if not wet.is_file():
         msg = f"Run {path.name} has no segment forecast; it cannot be routed against."

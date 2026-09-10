@@ -25,8 +25,9 @@ from typing import Annotated, Any
 import numpy as np
 import structlog
 from fastapi import APIRouter, Body
-from varuna_schemas.paths import repo_root, run_dir, runs_dir
+from varuna_schemas.paths import repo_root, run_dir
 
+from varuna_api.runs_util import latest_run_for
 from varuna_api.state import api_error
 
 log = structlog.get_logger("varuna.api.whatif")
@@ -51,17 +52,16 @@ def _model():
     )
 
 
-def _latest_run() -> Path:
-    root = runs_dir()
-    if not root.is_dir():
-        raise api_error(404, "no_runs", "No baked run to run a what-if against.")
-    runs = [
-        p for p in sorted(root.iterdir(), reverse=True)
-        if p.is_dir() and (p / "segments_wet.json").is_file()
-    ]
-    if not runs:
+def _latest_run(city: str | None = None) -> Path:
+    """The newest run for a city that carries a segment forecast.
+
+    City-filtered: see `varuna_api.runs_util`, where a second city's runs shadowing the first is
+    written up.
+    """
+    found = latest_run_for(city, lambda p: (p / "segments_wet.json").is_file())
+    if found is None:
         raise api_error(404, "no_runs", "No baked run carries a segment forecast yet.")
-    return runs[0]
+    return found
 
 
 @router.post("/whatif", summary="What-if via the emulator, levelled on the run's own physics")

@@ -34,6 +34,8 @@ export interface RouteAvoided {
   depthCm: number;
   probability: number;
   at: string;
+  /** The street's own geometry, so the map can draw what the detour went around. */
+  path: [number, number][];
 }
 
 export interface RoutePlan {
@@ -162,6 +164,7 @@ export async function planRoute(query: RouteQuery, signal?: AbortSignal): Promis
       depthCm: Number(a.depth_cm ?? 0),
       probability: Number(a.probability ?? 0),
       at: String(a.at ?? ""),
+      path: (a.path as [number, number][]) ?? [],
     })),
     notes: (body.notes as string[]) ?? [],
     ms: Number(body.ms ?? 0),

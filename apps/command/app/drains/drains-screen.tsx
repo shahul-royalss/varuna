@@ -4,10 +4,11 @@ import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CityMap, type SegmentPath } from "@/components/map/city-map";
 import { apiUrl } from "@/lib/api/client";
+import { loadDrains, type DrainPath as DrainEdge } from "@/lib/api/city-layers";
 import { allSegments } from "@/lib/api/run-depth";
 import {
   desiltingCsvUrl,
@@ -30,14 +31,16 @@ import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
  * timeline show their empty states, and every control from Phase 7 is present but disabled with
  * the reason it is disabled. Pulse fills these two lists in Phase 7 (CLAUDE.md section 7.3).
  */
-/** Pipes drawn on the X-ray. Enough to read the network, few enough to stay at 60 fps. */
-const MAP_EDGE_LIMIT = 4000;
+/** Learned pipes fetched from the run. The cycle writes the 6,000 worst by blockage; asking for
+ * all of them costs nothing extra and means the table and the map rank over the same set. */
+const MAP_EDGE_LIMIT = 6000;
 
 const EXPORT_REASON = "Available once a run has drain health";
 const TOGGLE_REASON = "Available once Pulse has assimilated an observation";
 
 export function DrainsScreen() {
   const [health, setHealth] = useState<DrainHealth | null>(null);
+  const [network, setNetwork] = useState<DrainEdge[]>([]);
   const [observed, setObserved] = useState<ObservationSet | null>(null);
   const [streets, setStreets] = useState<SegmentPath[]>([]);
   const [showPrior, setShowPrior] = useState(false);
@@ -52,6 +55,16 @@ export function DrainsScreen() {
         setHealth(h);
         setObserved(o);
       })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  // The full inferred graph, from the city layer. 18 MB, so it arrives behind the run's own
+  // ranked pipes rather than in front of them.
+  useEffect(() => {
+    const controller = new AbortController();
+    loadDrains("mumbai", controller.signal)
+      .then(setNetwork)
       .catch(() => undefined);
     return () => controller.abort();
   }, []);
@@ -83,11 +96,35 @@ export function DrainsScreen() {
   // The cross-fade of motion M12: the same pipes drawn at the prior the city pipeline gave them,
   // or at the posterior Pulse learned. Seeing them side by side is the whole point of the screen
   // - it is the only place the learning is visible as a change rather than as a colour.
-  const drains = (health?.edges ?? []).map((edge) => ({
-    path: edge.path,
-    beta: showPrior ? edge.betaPrior : edge.betaMean,
-    diameter: edge.diameterM,
-  }));
+  // **The whole network, not just the learned part.** The run's `drain_health` carries the 6,000
+  // pipes Pulse ranked; the city layer carries all 49,770. Drawing only the first left the X-ray
+  // looking like scattered confetti over an empty city - the reported "add all the pipes". So the
+  // full graph is drawn at its prior and the learned pipes are drawn over it at their posterior,
+  // which is also the honest picture: most of Mumbai's drains have never been observed, and the
+  // ones that have are exactly the ones that stand out.
+  const learned = useMemo(() => {
+    const byId = new Map<string, number>();
+    for (const edge of health?.edges ?? []) {
+      byId.set(edge.id, showPrior ? edge.betaPrior : edge.betaMean);
+    }
+    return byId;
+  }, [health, showPrior]);
+
+  const drains = useMemo(() => {
+    // The city layer is the base: every pipe, at the prior the pipeline gave it.
+    const all = network.map((edge) => ({
+      path: edge.path,
+      beta: learned.get(edge.id) ?? edge.beta,
+      diameter: edge.diameter,
+    }));
+    if (all.length > 0) return all;
+    // Before the city layer arrives, draw whatever the run knows so the panel is never empty.
+    return (health?.edges ?? []).map((edge) => ({
+      path: edge.path,
+      beta: showPrior ? edge.betaPrior : edge.betaMean,
+      diameter: edge.diameterM,
+    }));
+  }, [network, learned, health, showPrior]);
 
   const observations: Observation[] = (observed?.observations ?? []).map((o) => ({
     id: o.id,

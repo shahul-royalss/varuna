@@ -244,7 +244,7 @@ def reachability(
 
     started = perf_counter()
     graph = load_graph(city)
-    depths = load_depths(run_id)
+    depths = load_depths(run_id, city)
     target = facility(asset_id, city)
     vehicle_profile = profile(vehicle)
     when = at or depths.valid_ts
