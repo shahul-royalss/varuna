@@ -1,6 +1,7 @@
 "use client";
 
 import { BellOff, Send } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   Table,
@@ -25,6 +26,7 @@ import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PhoneMock, type PhoneMessage } from "@/components/varuna/phone-mock";
 import { formatIst } from "@/lib/format";
+import { loadAlerts, loadCap, type RunAlert } from "@/lib/api/alerts";
 
 /** One line of the delivery log: which channel carried an alert, whether it landed, and when. */
 export interface DeliveryLogRow {
@@ -54,11 +56,61 @@ const QUEUE_EMPTY_HINT: Record<AlertLevel, string> = {
  * machine, CAP generation and the WhatsApp mock arrive in Phase 8.
  */
 export function AlertsScreen() {
-  // No run has been baked in Phase 0, so nothing has been raised or delivered yet.
-  const alerts: AlertSummary[] = [];
-  const deliveryLog: DeliveryLogRow[] = [];
-  const phoneMessages: PhoneMessage[] = [];
-  const capXml: string | null = null;
+  const [raised, setRaised] = useState<RunAlert[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [capXml, setCapXml] = useState<string | null>(null);
+  const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
+
+  // The queue is the newest baked run's. An alert is a statement about a forecast, so it only
+  // means anything alongside the run that made it.
+  useEffect(() => {
+    const controller = new AbortController();
+    loadAlerts(undefined, controller.signal)
+      .then((set) => setRaised(set?.alerts ?? []))
+      .catch(() => setRaised([]));
+    return () => controller.abort();
+  }, []);
+
+  // The CAP document of whichever alert is selected, defaulting to the worst one raised.
+  const active = selectedId ?? raised[0]?.id ?? null;
+  useEffect(() => {
+    if (!active) return;
+    const controller = new AbortController();
+    loadCap(active, undefined, controller.signal)
+      .then(setCapXml)
+      .catch(() => setCapXml(null));
+    return () => controller.abort();
+  }, [active]);
+
+  const acknowledge = useCallback(
+    (id: string) => setAcknowledged((current) => ({ ...current, [id]: true })),
+    [],
+  );
+
+  const alerts: AlertSummary[] = raised.map((a) => ({
+    id: a.id,
+    level: a.level,
+    headline: a.headline,
+    area: a.areaDesc,
+    triggerProbability: a.triggerP,
+    raisedAt: a.raisedTs,
+    persistsCycles: a.persistsCycles,
+    channels: ["Dashboard", "WhatsApp mock"],
+    acknowledged: Boolean(acknowledged[a.id]),
+  }));
+
+  // Delivery is a dashboard render plus the on-screen phone mock; CLAUDE.md 3.2 keeps a real
+  // WhatsApp sender at P2, so the log says exactly what happened and claims nothing else.
+  const deliveryLog: DeliveryLogRow[] = raised.slice(0, 6).flatMap((a) => [
+    { id: `${a.id}-dash`, channel: "Dashboard", status: "Delivered", time: a.raisedTs },
+    { id: `${a.id}-wa`, channel: "WhatsApp mock", status: "Delivered", time: a.raisedTs },
+  ]);
+
+  const phoneMessages: PhoneMessage[] = raised.slice(0, 4).map((a) => ({
+    id: a.id,
+    time: a.raisedTs,
+    text: a.instruction ? `${a.headline}. ${a.instruction}` : a.headline,
+  }));
 
   return (
     <AppShell>
@@ -99,7 +151,12 @@ export function AlertsScreen() {
                         <ul className="flex flex-col gap-3">
                           {group.map((alert) => (
                             <li key={alert.id}>
-                              <AlertCard alert={alert} />
+                              <AlertCard
+                                alert={alert}
+                                selected={alert.id === active}
+                                onSelect={(id) => setSelectedId(id)}
+                                onAcknowledge={(id) => acknowledge(id)}
+                              />
                             </li>
                           ))}
                         </ul>
@@ -116,7 +173,7 @@ export function AlertsScreen() {
               className="min-w-0"
             >
               <div className="flex min-h-[520px] flex-col">
-                <CapViewer xml={capXml} filename="alert.cap.xml" className="flex-1" />
+                <CapViewer xml={capXml} filename={`${active ?? "alert"}.cap.xml`} className="flex-1" />
               </div>
             </Panel>
 

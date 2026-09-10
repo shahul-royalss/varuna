@@ -232,22 +232,6 @@ def road_conditions(run_id: RunIdQ = None, profile: ProfileQ = "car") -> Feature
 
 
 # ---- alerts (Phase 8) ---------------------------------------------------------------------
-@router.get("/alerts", tags=["alerts"], response_model=list[Alert], summary="Alert feed")
-def alerts(since: TimeQ = None, level: Annotated[str | None, Query()] = None) -> list[Alert]:
-    raise not_implemented("The alert state machine", 8, "P8.7")
-
-
-@router.get(
-    "/alerts/{alert_id}.cap",
-    tags=["alerts"],
-    response_class=Response,
-    responses={**NOT_BUILT, 200: {"content": {"application/xml": {}}, "description": "CAP 1.2"}},
-    summary="CAP 1.2 XML document for one alert",
-)
-def alert_cap(alert_id: str) -> Response:
-    raise not_implemented("CAP 1.2 documents", 8, "P8.7")
-
-
 @router.post("/alerts/{alert_id}/ack", tags=["alerts"], response_model=Alert, summary="Acknowledge")
 def alert_ack(alert_id: str, body: AlertActionRequest) -> Alert:
     raise not_implemented("Alert acknowledgement", 8, "P8.8")

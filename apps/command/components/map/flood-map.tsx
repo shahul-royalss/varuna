@@ -15,6 +15,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CityMap, type MapFocus, type SegmentPath } from "./city-map";
+import {
+  loadBuildings,
+  loadDrains,
+  type BuildingPolygon,
+  type DrainPath,
+} from "@/lib/api/city-layers";
 import { apiUrl } from "@/lib/api/client";
 import { allSegments, joinSegments, loadRunDepth, type RunDepth } from "@/lib/api/run-depth";
 import type { Hotspot } from "@/lib/api/hotspots";
@@ -40,6 +46,8 @@ export interface FloodMapProps {
   /** The run's surcharging manholes; only those active at the current step are drawn. */
   surcharge?: SurchargeSet | null;
   showSurcharge?: boolean;
+  showBuildings?: boolean;
+  showDrains?: boolean;
   /** Camera target from the rail; a new `key` starts a new flight (motion M10). */
   focus?: MapFocus | null;
   showRaster?: boolean;
@@ -56,6 +64,8 @@ export function FloodMap({
   selectedHotspotId = null,
   surcharge: surchargeSet = null,
   showSurcharge = true,
+  showBuildings = true,
+  showDrains = false,
   focus = null,
   showRaster = true,
   showSegments = true,
@@ -105,6 +115,32 @@ export function FloodMap({
   }, [city, runId, attempt, onLoaded]);
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
+
+  // The city's context layers, fetched *after* the run so they never delay the flood. Buildings
+  // are 11 MB and the drain graph is 18 MB; putting either on the critical path would mean
+  // staring at a progress bar before seeing a single street.
+  const [buildings, setBuildings] = useState<readonly BuildingPolygon[]>([]);
+  useEffect(() => {
+    if (!showBuildings || buildings.length > 0) return;
+    const controller = new AbortController();
+    loadBuildings(city, controller.signal)
+      .then(setBuildings)
+      // A map without footprints is still a map. Nothing here is worth an error state.
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [city, showBuildings, buildings.length]);
+
+  // Drains only when asked for: section 6.7 has them off by default, and they are the biggest
+  // layer VARUNA serves.
+  const [drains, setDrains] = useState<readonly DrainPath[]>([]);
+  useEffect(() => {
+    if (!showDrains || drains.length > 0) return;
+    const controller = new AbortController();
+    loadDrains(city, controller.signal)
+      .then(setDrains)
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [city, showDrains, drains.length]);
 
   // The rings only need a position and an identity; the rail owns everything else about a
   // hotspot, so the map is not re-created when the scrub moves its depth chips.
@@ -174,6 +210,10 @@ export function FloodMap({
       segments={status.segments}
       surcharge={surcharge}
       showSurcharge={showSurcharge}
+      buildings={buildings}
+      drains={drains}
+      showBuildings={showBuildings}
+      showDrains={showDrains}
       hotspots={rings}
       selectedHotspotId={selectedHotspotId}
       focus={focus}

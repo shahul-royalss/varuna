@@ -59,8 +59,6 @@ STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None
     ("POST", "/v1/route", sample_json("RouteRequest"), None),
     ("GET", "/v1/reachability", None, {"facility": "kem-hospital"}),
     ("GET", "/v1/feeds/road-conditions", None, None),
-    ("GET", "/v1/alerts", None, None),
-    ("GET", "/v1/alerts/ALT-1.cap", None, None),
     ("POST", "/v1/alerts/ALT-1/ack", {"user": "ward officer"}, None),
     ("POST", "/v1/alerts/ALT-1/escalate", {"user": "ward officer"}, None),
     ("GET", "/v1/pumps", None, None),

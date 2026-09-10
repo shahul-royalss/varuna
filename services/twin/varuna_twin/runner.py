@@ -143,6 +143,12 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     total_rain_in_m3 = 0.0
     total_tide_in_m3 = 0.0
     total_tide_out_m3 = 0.0
+    total_outfall_m3 = 0.0
+    """Net volume the drain network discharged at its outfalls, positive out to sea.
+
+    Without this the audit does not close: water that falls on a street, is captured by an
+    inlet and leaves through a pipe simply disappears from it. The error that hides was small
+    while the Twin ran on a rain field that barely wetted the city, and grew with the water."""
 
     times: list = []
     notes: list[str] = []
@@ -216,7 +222,7 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
 
             # 2c. Advance the 1D drains
             t0 = perf_counter()
-            drain1d.simulate(
+            drain_run = drain1d.simulate(
                 drain_solver,
                 drain_state,
                 duration_s=actual_sync_s,
@@ -227,6 +233,7 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
                 sinks=sinks,
                 sink_state=sink_state,
             )
+            total_outfall_m3 += drain_run.boundary_m3
             t_drain += int((perf_counter() - t0) * 1000)
 
         # 3. Snapshot
@@ -250,8 +257,11 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     surface_stored = surface.volume_m3(kernel_terrain.cell_area_m2)
     drain_stored = drain1d.stored_volume_m3(drain_solver, drain_state.head)
     total_stored = surface_stored + drain_stored
-    total_in = total_rain_in_m3 + total_tide_in_m3
-    total_out = total_tide_out_m3
+    # The sea appears on both sides of the ledger: it floods low coastal cells on the surface,
+    # and at a tide-locked outfall it pushes water back up the trunk - which is a negative
+    # `boundary_m3` and therefore an inflow.
+    total_in = total_rain_in_m3 + total_tide_in_m3 + max(-total_outfall_m3, 0.0)
+    total_out = total_tide_out_m3 + max(total_outfall_m3, 0.0)
 
     if total_in > MASS_BALANCE_MIN_VOLUME_M3:
         error_fraction = abs(total_stored - (total_in - total_out)) / total_in
@@ -284,6 +294,7 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         mass_balance_error=round(error_fraction, 6),
         surface_stored_m3=round(surface_stored, 1),
         drain_stored_m3=round(drain_stored, 1),
+        outfall_m3=round(total_outfall_m3, 1),
         peak_depth_m=round(float(np.max(depth_out)), 3),
         **stage_ms,
     )

@@ -13,9 +13,11 @@ import { MapSlot } from "@/components/varuna/map-slot";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
 import { ReplayPanel } from "@/components/varuna/replay-panel";
 import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
+import { LayerPanel, type LayerToggles, type LayerKey } from "@/components/varuna/layer-panel";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
 import { TimeBar } from "@/components/varuna/time-bar";
+import { useRunStore } from "@/lib/stores/run";
 import { useUiStore } from "@/lib/stores/ui";
 
 /**
@@ -48,6 +50,34 @@ export function ConsoleScreen() {
   const replayPanelOpen = useUiStore((s) => s.replayPanelOpen);
   const [skyPanelOpen, setSkyPanelOpen] = useState(false);
   const [run, setRun] = useState<RunDepth | null>(null);
+  // Stable identity: `FloodMap` keys its load effect on this, so an inline arrow here re-ran
+  // the whole run + city-layer fetch on every render of the console.
+  const setReplayPanelOpen = useUiStore((s) => s.setReplayPanelOpen);
+  const setStoreRun = useRunStore((s) => s.setRun);
+  const handleLoaded = useCallback(
+    (loaded: RunDepth) => {
+      setRun(loaded);
+      // The chrome - mode banner, run stamp, verification chip - reads the run store, so a run
+      // the map has loaded has to land there too or the top bar goes on saying "No runs yet"
+      // over a console that is plainly showing one.
+      const p = loaded.provenance;
+      setStoreRun({
+        run_id: p.runId,
+        city: "mumbai",
+        cycle_ts: p.cycleTs ?? "",
+        mode: p.mode === "live" ? "live" : "replay",
+        replay_mode: p.mode === "live" ? "live" : "baked",
+        ensemble_n: p.ensembleN,
+        mass_balance_err: p.massBalanceErr,
+        bundle: p.bundle,
+      });
+      // The replay panel is open on an empty console because it holds the command that fixes
+      // that (P0.12). Once a run has landed the map is the screen, so the panel gets out of its
+      // way; the icon rail brings it back.
+      setReplayPanelOpen(false);
+    },
+    [setReplayPanelOpen, setStoreRun],
+  );
   // `?run=<id>` pins the console to one baked run. The demo script (CLAUDE.md 15) opens the
   // console on a specific cycle, and without this the map always shows the newest run - which,
   // once the storm has passed, is the calm one.
@@ -75,6 +105,19 @@ export function ConsoleScreen() {
   );
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
   const [focus, setFocus] = useState<MapFocus | null>(null);
+  const [layers, setLayers] = useState<LayerToggles>({
+    raster: true,
+    segments: true,
+    surcharge: true,
+    // Off by default (CLAUDE.md 6.7); it is also the largest layer VARUNA serves.
+    drains: false,
+    buildings: true,
+    hotspots: true,
+  });
+  const toggleLayer = useCallback(
+    (key: LayerKey, next: boolean) => setLayers((current) => ({ ...current, [key]: next })),
+    [],
+  );
 
   // The rail loads once the map has told us which run it settled on, so the two can never be
   // describing different cycles. `?run=` may be absent, in which case the API picks the newest
@@ -152,6 +195,13 @@ export function ConsoleScreen() {
       } else if (event.key === "ArrowRight") {
         setPlaying(false);
         setStep((s) => Math.min(run.provenance.nSteps - 1, s + 1));
+      } else if (/^[dsgb]$/i.test(event.key)) {
+        // CLAUDE.md 7.2's layer shortcuts. The map is the screen, so these are the fastest way
+        // to change what it shows without reaching for the panel.
+        const key = { d: "drains", s: "surcharge", g: "hotspots", b: "buildings" }[
+          event.key.toLowerCase()
+        ] as LayerKey;
+        setLayers((current) => ({ ...current, [key]: !current[key] }));
       }
     };
     window.addEventListener("keydown", onKey);
@@ -189,11 +239,17 @@ export function ConsoleScreen() {
         <FloodMap
           runId={runParam}
           step={step}
-          onLoaded={(loaded) => setRun(loaded)}
+          onLoaded={handleLoaded}
           hotspots={hotspots?.hotspots ?? []}
           selectedHotspotId={selectedHotspotId}
           surcharge={surcharge?.runId === loadedRunId ? surcharge?.set : null}
           focus={focus}
+          showRaster={layers.raster}
+          showSegments={layers.segments}
+          showSurcharge={layers.surcharge}
+          showDrains={layers.drains}
+          showBuildings={layers.buildings}
+          showHotspots={layers.hotspots}
         />
 
         {/* The scrub. Owned here so the map, the readout and the keyboard share one step. */}
@@ -240,6 +296,14 @@ export function ConsoleScreen() {
             clear the replay panel, and the legend is always visible (CLAUDE.md section 6.7), so the
             rain panel stops short of it and scrolls instead. */}
         <div className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2">
+          <LayerPanel
+            value={layers}
+            onChange={toggleLayer}
+            counts={{
+              surcharge: surcharge?.set?.nodes.length,
+              hotspots: hotspots?.hotspots.length,
+            }}
+          />
           <Button size="sm" variant="outline" onClick={() => setSkyPanelOpen((open) => !open)}>
             {skyPanelOpen ? "Hide the rain nowcast" : "Show the rain nowcast"}
           </Button>
