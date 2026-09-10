@@ -4,6 +4,16 @@ import { Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { useEffect, useState } from "react";
+
+import { CityMap } from "@/components/map/city-map";
+import {
+  desiltingCsvUrl,
+  loadDrainHealth,
+  loadObservations,
+  type DrainHealth,
+  type ObservationSet,
+} from "@/lib/api/drains";
 import { DrainHealthTable, type DrainHealthRow } from "@/components/varuna/drain-health-table";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { MapSlot } from "@/components/varuna/map-slot";
@@ -18,13 +28,60 @@ import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
  * timeline show their empty states, and every control from Phase 7 is present but disabled with
  * the reason it is disabled. Pulse fills these two lists in Phase 7 (CLAUDE.md section 7.3).
  */
-const ROWS: DrainHealthRow[] = [];
-const OBSERVATIONS: Observation[] = [];
+/** Pipes drawn on the X-ray. Enough to read the network, few enough to stay at 60 fps. */
+const MAP_EDGE_LIMIT = 4000;
 
 const EXPORT_REASON = "Available once a run has drain health";
 const TOGGLE_REASON = "Available once Pulse has assimilated an observation";
 
 export function DrainsScreen() {
+  const [health, setHealth] = useState<DrainHealth | null>(null);
+  const [observed, setObserved] = useState<ObservationSet | null>(null);
+  const [showPrior, setShowPrior] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([
+      loadDrainHealth(undefined, controller.signal, MAP_EDGE_LIMIT),
+      loadObservations(undefined, controller.signal),
+    ])
+      .then(([h, o]) => {
+        setHealth(h);
+        setObserved(o);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, []);
+
+  const rows: DrainHealthRow[] = (health?.edges ?? []).slice(0, 25).map((edge) => ({
+    id: edge.id,
+    street: edge.street ?? "Unnamed way",
+    betaMean: edge.betaMean,
+    betaSd: edge.betaSd,
+    capacityReduction: edge.capacityReductionPct / 100,
+    hotspotsExplained: edge.explains,
+    observations: edge.observations,
+    lastUpdated: edge.lastUpdate ?? "",
+  }));
+
+  // The cross-fade of motion M12: the same pipes drawn at the prior the city pipeline gave them,
+  // or at the posterior Pulse learned. Seeing them side by side is the whole point of the screen
+  // - it is the only place the learning is visible as a change rather than as a colour.
+  const drains = (health?.edges ?? []).map((edge) => ({
+    path: edge.path,
+    beta: showPrior ? edge.betaPrior : edge.betaMean,
+    diameter: edge.diameterM,
+  }));
+
+  const observations: Observation[] = (observed?.observations ?? []).map((o) => ({
+    id: o.id,
+    kind: o.kind,
+    ts: o.ts,
+    place: o.place,
+    inferredDepthCm: o.depthCm,
+    pipeId: o.edgeId ?? undefined,
+  }));
+
   return (
     <AppShell>
       <div className="h-full min-h-0 overflow-y-auto">
@@ -51,13 +108,18 @@ export function DrainsScreen() {
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-1">
-                    <ToggleGroup aria-label="Drain state" aria-describedby="drain-toggle-help">
+                    <ToggleGroup
+                      aria-label="Drain state"
+                      aria-describedby="drain-toggle-help"
+                      value={showPrior ? ["before"] : ["after"]}
+                      onValueChange={(value) => setShowPrior(value.includes("before"))}
+                    >
                       <ToggleGroupItem
                         value="before"
                         variant="outline"
                         size="sm"
-                        disabled
-                        title={TOGGLE_REASON}
+                        disabled={!health}
+                        title={health ? "The prior every pipe started with" : TOGGLE_REASON}
                       >
                         Before
                       </ToggleGroupItem>
@@ -65,19 +127,39 @@ export function DrainsScreen() {
                         value="after"
                         variant="outline"
                         size="sm"
-                        disabled
-                        title={TOGGLE_REASON}
+                        disabled={!health}
+                        title={health ? "The posterior Pulse learned" : TOGGLE_REASON}
                       >
                         After
                       </ToggleGroupItem>
                     </ToggleGroup>
                     <p id="drain-toggle-help" className="type-micro text-text-3">
-                      {TOGGLE_REASON}
+                      {health
+                        ? `${health.nUpdated.toLocaleString("en-IN")} of ${health.nEdges.toLocaleString("en-IN")} pipes moved this cycle`
+                        : TOGGLE_REASON}
                     </p>
                   </div>
                 </header>
-                <div className="min-h-0 flex-1">
-                  <MapSlot />
+                <div className="relative min-h-0 flex-1">
+                  {drains.length > 0 ? (
+                    <CityMap
+                      frames={[]}
+                      rasterBounds={null}
+                      baseSegments={[]}
+                      segments={[]}
+                      surcharge={[]}
+                      hotspots={[]}
+                      drains={drains}
+                      showDrains
+                      showRaster={false}
+                      showSegments={false}
+                      showSurcharge={false}
+                      showBuildings={false}
+                      step={0}
+                    />
+                  ) : (
+                    <MapSlot />
+                  )}
                 </div>
               </section>
             </PanelErrorBoundary>
@@ -88,7 +170,7 @@ export function DrainsScreen() {
                   title="Drain health"
                   description="Top pipes by posterior blockage, worst first."
                 >
-                  <DrainHealthTable rows={ROWS} />
+                  <DrainHealthTable rows={rows} />
                 </Panel>
               </PanelErrorBoundary>
 
@@ -97,7 +179,7 @@ export function DrainsScreen() {
                   title="Assimilation timeline"
                   description="Every observation Pulse used this cycle, and the blockage it moved."
                 >
-                  {OBSERVATIONS.length === 0 ? (
+                  {observations.length === 0 ? (
                     <EmptyState
                       size="sm"
                       title="No observations assimilated yet"
@@ -105,7 +187,7 @@ export function DrainsScreen() {
                     />
                   ) : (
                     <ol className="flex flex-col gap-2">
-                      {OBSERVATIONS.map((obs) => (
+                      {observations.map((obs) => (
                         <li key={obs.id}>
                           <ObservationCard obs={obs} />
                         </li>
@@ -119,15 +201,20 @@ export function DrainsScreen() {
                 <Button
                   variant="outline"
                   className="w-full"
-                  disabled
-                  title={EXPORT_REASON}
+                  disabled={!health}
+                  title={health ? "Download the ranked desilting list" : EXPORT_REASON}
                   aria-describedby="drain-export-help"
+                  onClick={() => {
+                    if (health) window.open(desiltingCsvUrl(health.runId), "_blank");
+                  }}
                 >
                   <Download size={16} strokeWidth={1.75} aria-hidden="true" />
                   Export desilting priority (CSV)
                 </Button>
                 <p id="drain-export-help" className="type-micro text-text-3">
-                  {EXPORT_REASON}
+                  {health
+                    ? "Rank, pipe, street, blockage, spread and capacity lost - worst first."
+                    : EXPORT_REASON}
                 </p>
               </div>
             </div>

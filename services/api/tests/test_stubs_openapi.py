@@ -52,9 +52,6 @@ SECTION_12_PATHS = [
 # which is what asserts the contract in CLAUDE.md 12 is complete either way.
 STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None]] = [
     ("GET", "/v1/nowcast/segments/88213/series", None, None),
-    ("GET", "/v1/drains/health", None, None),
-    ("GET", "/v1/drains/health.csv", None, None),
-    ("GET", "/v1/observations", None, None),
     ("POST", "/v1/reports", sample_json("ReportIn"), None),
     ("POST", "/v1/route", sample_json("RouteRequest"), None),
     ("GET", "/v1/reachability", None, {"facility": "kem-hospital"}),
@@ -63,7 +60,6 @@ STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None
     ("POST", "/v1/alerts/ALT-1/escalate", {"user": "ward officer"}, None),
     ("POST", "/v1/pumps/optimise", {}, None),
     ("POST", "/v1/pumps/dispatch", {"plan_id": "plan-1"}, None),
-    ("POST", "/v1/whatif", sample_json("WhatIfRequest"), None),
     ("POST", "/v1/whatif/physics-check", sample_json("PhysicsCheckRequest"), None),
     ("POST", "/v1/cycle/compute", sample_json("ComputeRequest"), None),
     ("POST", "/v1/onboard", {"city": "chennai"}, None),

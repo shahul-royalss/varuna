@@ -339,3 +339,82 @@ def pumps(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
     meta = _meta(path)
     log.info("api.pumps", run_id=path.name, assigned=len(plan.get("assignments", [])))
     return {**plan, "cycle_ts": meta.get("cycle_ts"), "notes": meta.get("notes", [])}
+
+
+@router.get("/drains/health", tags=["drains"], summary="The drain map Pulse learned")
+def drains_health(
+    run_id: Annotated[str | None, Query()] = None,
+    min_beta: Annotated[float, Query(ge=0.0, le=1.0)] = 0.0,
+    limit: Annotated[int, Query(ge=1, le=50_000)] = 4_000,
+) -> dict[str, Any]:
+    """Every pipe with its posterior blockage, its spread and what moved it (CLAUDE.md 11.6).
+
+    Mumbai's inferred graph has 49,770 edges and the drain X-ray draws the ones that matter, so
+    the response is capped and ordered worst-first. `n_edges` is the true total; the cap is what
+    was sent. Each feature carries `confidence: "inferred"`, which is why the map draws them
+    dashed - the geometry is a synthesis from roads and terrain, not a municipal record.
+    """
+    path = _resolve(run_id)
+    record = path / "drain_health.geojson"
+    if not record.is_file():
+        raise api_error(
+            404,
+            "no_drain_health",
+            f"Run {path.name} has no drain-health product. {BAKE_HINT}",
+            run_id=path.name,
+        )
+
+    health = json.loads(record.read_text(encoding="utf-8"))
+    features = health.get("features", [])
+    if min_beta > 0.0:
+        features = [f for f in features if float(f["properties"].get("beta_mean", 0)) >= min_beta]
+    features = sorted(
+        features, key=lambda f: -float(f["properties"].get("beta_mean", 0.0))
+    )[:limit]
+
+    log.info("api.drain_health", run_id=path.name, sent=len(features), of=health.get("n_edges"))
+    return {**health, "features": features, "n_sent": len(features)}
+
+
+@router.get(
+    "/drains/health.csv",
+    tags=["drains"],
+    response_class=Response,
+    responses={200: {"content": {"text/csv": {}}, "description": "Desilting priority"}},
+    summary="Desilting priority list as CSV",
+)
+def drains_health_csv(run_id: Annotated[str | None, Query()] = None) -> Response:
+    """The ranked desilting list a ward engineer can hand to a jetting crew (CLAUDE.md 7.3)."""
+    path = _resolve(run_id)
+    csv_path = path / "desilting.csv"
+    if not csv_path.is_file():
+        raise api_error(
+            404, "no_desilting_csv", f"Run {path.name} has no desilting list. {BAKE_HINT}",
+            run_id=path.name,
+        )
+    return Response(
+        content=csv_path.read_text(encoding="utf-8"),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="desilting-{path.name}.csv"'},
+    )
+
+
+@router.get("/observations", tags=["observations"], summary="What Pulse assimilated this cycle")
+def observations(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+    """The traffic anomalies and citizen reports that moved the drain map (CLAUDE.md 7.3).
+
+    This is the assimilation timeline on the drain X-ray: each observation with its time, place,
+    the depth it implied and the pipe it was about. Synthetic observations are flagged, because
+    the replay's traffic and report streams are synthetic and the screen must say so (rule 7).
+    """
+    path = _resolve(run_id)
+    record = path / "observations.json"
+    if not record.is_file():
+        raise api_error(
+            404, "no_observations", f"Run {path.name} assimilated nothing. {BAKE_HINT}",
+            run_id=path.name,
+        )
+    body = json.loads(record.read_text(encoding="utf-8"))
+    meta = _meta(path)
+    log.info("api.observations", run_id=path.name, n=len(body.get("observations", [])))
+    return {**body, "cycle_ts": meta.get("cycle_ts")}

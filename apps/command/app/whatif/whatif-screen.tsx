@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
+
+import { runWhatIf, type WhatIfResult } from "@/lib/api/whatif";
 
 import { AgreementBar } from "@/components/varuna/agreement-bar";
 import { AppShell } from "@/components/varuna/app-shell";
@@ -18,10 +20,14 @@ import {
 } from "@/components/varuna/whatif-controls";
 
 /** Delta rows arrive from the emulator in Phase 7; until then the table shows its empty state. */
-const NO_DELTAS: DeltaRow[] = [];
+/** Segments shown in the delta table. More than this and nobody reads to the bottom. */
+const MAX_DELTA_ROWS = 25;
 
-const RUN_DISABLED_REASON = "The emulator lands in Phase 7";
-const PHYSICS_DISABLED_REASON = "Runs the Twin on the same scenario once Phase 7 lands";
+/** A Twin run on this city is about three minutes, against the 10 s CLAUDE.md 14 budgets for a
+ * physics check. The control says so rather than starting something that would look hung. */
+const PHYSICS_DISABLED_REASON =
+  "Runs the Twin on the same scenario; a Mumbai run is about three minutes, so it is not wired " +
+  "to this button yet";
 
 /** The scenario as one line of copy, so the controls and the result panel agree. */
 function scenarioLine(values: WhatIfValues): string {
@@ -41,6 +47,35 @@ function scenarioLine(values: WhatIfValues): string {
  */
 export function WhatIfScreen() {
   const [values, setValues] = useState<WhatIfValues>(DEFAULT_WHATIF_VALUES);
+  const [result, setResult] = useState<WhatIfResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+
+  const run = useCallback(async (scenario: WhatIfValues) => {
+    setRunning(true);
+    setError(null);
+    try {
+      setResult(await runWhatIf(scenario));
+    } catch (failure) {
+      // The API's own words: a refused tide scenario explains itself better than any string
+      // this file could invent (CLAUDE.md 6.8 - errors say what happened and the fix).
+      setError(failure instanceof Error ? failure.message : String(failure));
+      setResult(null);
+    } finally {
+      setRunning(false);
+    }
+  }, []);
+
+  const rows: DeltaRow[] = (result?.segments ?? []).slice(0, MAX_DELTA_ROWS).map((row) => ({
+    id: row.segmentId,
+    hotspot: row.segmentId,
+    beforeCm: row.beforeCm,
+    afterCm: row.afterCm,
+    // The endpoint reports peak depth, not a duration; claiming minutes here would be inventing
+    // a number, so the columns stay at zero and the panel description says what is shown.
+    minutesImpassableBefore: 0,
+    minutesImpassableAfter: 0,
+  }));
 
   return (
     <AppShell>
@@ -62,9 +97,13 @@ export function WhatIfScreen() {
                 <WhatIfControls
                   initial={DEFAULT_WHATIF_VALUES}
                   onChange={setValues}
-                  runDisabledReason={RUN_DISABLED_REASON}
+                  onRun={(scenario) => void run(scenario)}
                   physicsDisabledReason={PHYSICS_DISABLED_REASON}
                 />
+                {running ? (
+                  <p className="mt-3 type-small text-text-3">Running the scenario...</p>
+                ) : null}
+                {error ? <p className="mt-3 type-small text-text-2">{error}</p> : null}
               </Panel>
             </PanelErrorBoundary>
 
@@ -79,8 +118,18 @@ export function WhatIfScreen() {
                     <MapSlot />
                   </div>
                   <p className="mt-3 type-micro text-text-3">
-                    Scenario ready to run: {scenarioLine(values)}.
+                    {result
+                      ? `${result.nWorse.toLocaleString("en-IN")} segments deeper, ${result.nImproved.toLocaleString("en-IN")} shallower, in ${Math.round(result.ms)} ms.`
+                      : `Scenario ready to run: ${scenarioLine(values)}.`}
                   </p>
+                  {result ? (
+                    <p className="mt-1 type-micro text-text-3">
+                      Level from the Twin&rsquo;s own forecast for this run; the emulator supplies
+                      only the difference. Emulator skill on held-out storms: RMSE{" "}
+                      {result.emulator.rmseCm.toFixed(1)} cm, CSI{" "}
+                      {result.emulator.csi30cm.toFixed(2)} at 30 cm.
+                    </p>
+                  ) : null}
                 </Panel>
               </PanelErrorBoundary>
 
@@ -90,7 +139,7 @@ export function WhatIfScreen() {
                   description="Before and after per hotspot, with the minutes each stays impassable."
                   className="min-w-0"
                 >
-                  <DeltaTable rows={NO_DELTAS} />
+                  <DeltaTable rows={rows} />
                 </Panel>
               </PanelErrorBoundary>
 

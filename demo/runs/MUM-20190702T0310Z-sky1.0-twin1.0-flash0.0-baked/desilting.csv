@@ -1,0 +1,26 @@
+rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E035757,Mount Mary Road,0.6834,0.158,85.3,0,,inferred
+2,MUM-E011792,Swami Vivekanand Road,0.6326,0.2254,81.2,0,,inferred
+3,MUM-E020507,,0.5666,0.099,75.2,0,,inferred
+4,MUM-E011795,Swami Vivekanand Road,0.5343,0.2306,72.0,0,,inferred
+5,MUM-E005209,D S Babrekar Marg,0.5081,0.1701,69.4,0,,inferred
+6,MUM-E041744,Pereira Road,0.4888,0.192,67.3,0,,inferred
+7,MUM-E000424,Sion Bandra Link Road,0.4806,0.2154,66.4,0,,inferred
+8,MUM-E012242,M Ambedkar Marg,0.4741,0.2219,65.7,0,,inferred
+9,MUM-E018761,,0.455,0.1774,63.6,0,,inferred
+10,MUM-E040776,Mahakali Caves Road,0.452,0.2277,63.3,0,,inferred
+11,MUM-E005533,Sion Bandra Link Road,0.4444,0.2315,62.5,0,,inferred
+12,MUM-E022906,,0.4423,0.2202,62.2,0,,inferred
+13,MUM-E008543,,0.4364,0.0752,61.5,0,,inferred
+14,MUM-E015918,MTHL - Messant Road Ramp,0.4338,0.224,61.2,0,,inferred
+15,MUM-E028839,King's Circle Flyover,0.4156,0.2034,59.1,1,,inferred
+16,MUM-E020505,,0.4131,0.1362,58.9,0,,inferred
+17,MUM-E015505,Sant Gadge Maharaj Marg,0.4048,0.2399,57.9,0,,inferred
+18,MUM-E005881,Road No 24,0.4024,0.1792,57.6,0,,inferred
+19,MUM-E016886,,0.4011,0.1501,57.5,0,,inferred
+20,MUM-E023095,,0.3945,0.1817,56.7,0,,inferred
+21,MUM-E012246,Laxmibai Kelkar Marg,0.3918,0.1342,56.3,1,,inferred
+22,MUM-E017285,,0.385,0.1314,55.5,0,,inferred
+23,MUM-E008026,,0.3844,0.1444,55.4,0,,inferred
+24,MUM-E020504,,0.3841,0.0842,55.4,0,,inferred
+25,MUM-E016855,,0.3832,0.1538,55.3,0,,inferred

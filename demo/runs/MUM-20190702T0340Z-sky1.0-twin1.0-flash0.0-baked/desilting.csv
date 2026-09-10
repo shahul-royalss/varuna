@@ -1,0 +1,26 @@
+rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E035757,Mount Mary Road,0.6834,0.158,85.3,0,,inferred
+2,MUM-E011792,Swami Vivekanand Road,0.6326,0.2254,81.2,0,,inferred
+3,MUM-E020507,,0.6021,0.0882,78.5,0,,inferred
+4,MUM-E000424,Sion Bandra Link Road,0.5547,0.2031,74.0,0,,inferred
+5,MUM-E011795,Swami Vivekanand Road,0.5343,0.2306,72.0,0,,inferred
+6,MUM-E005533,Sion Bandra Link Road,0.5095,0.2143,69.5,0,,inferred
+7,MUM-E005209,D S Babrekar Marg,0.5081,0.1701,69.4,0,,inferred
+8,MUM-E041744,Pereira Road,0.4888,0.192,67.3,0,,inferred
+9,MUM-E028839,King's Circle Flyover,0.4838,0.1927,66.8,1,,inferred
+10,MUM-E012242,M Ambedkar Marg,0.4741,0.2219,65.7,0,,inferred
+11,MUM-E040776,Mahakali Caves Road,0.4681,0.1964,65.1,0,,inferred
+12,MUM-E018761,,0.455,0.1774,63.6,0,,inferred
+13,MUM-E008543,,0.4524,0.0597,63.4,0,,inferred
+14,MUM-E022906,,0.4423,0.2202,62.2,0,,inferred
+15,MUM-E015918,MTHL - Messant Road Ramp,0.4338,0.224,61.2,0,,inferred
+16,MUM-E033719,Sion Panvel Highway,0.4295,0.2129,60.8,0,,inferred
+17,MUM-E012246,Laxmibai Kelkar Marg,0.426,0.1163,60.4,1,,inferred
+18,MUM-E015505,Sant Gadge Maharaj Marg,0.425,0.2192,60.2,1,,inferred
+19,MUM-E020505,,0.4244,0.1332,60.2,0,,inferred
+20,MUM-E005881,Road No 24,0.4024,0.1792,57.6,0,,inferred
+21,MUM-E016886,,0.4011,0.1501,57.5,0,,inferred
+22,MUM-E029851,Tilak Bridge,0.401,0.2347,57.4,0,,inferred
+23,MUM-E001716,Dr Babasaheb Ambedkar Marg,0.3978,0.158,57.1,0,,inferred
+24,MUM-E031097,Jawaharlal Nehru Road,0.3959,0.2048,56.8,0,,inferred
+25,MUM-E023095,,0.3945,0.1817,56.7,0,,inferred

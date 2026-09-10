@@ -36,6 +36,7 @@ from varuna_api.routers import (
     replay,
     runs,
     stubs,
+    whatif,
 )
 from varuna_api.seed import seed_demo_runs
 from varuna_api.state import AppState
@@ -236,6 +237,7 @@ def create_app(
     # Before the stubs: the rain routes are real, and the stub router owns the rest of the
     # /v1/nowcast namespace until Phase 5 fills it in.
     app.include_router(depth.router)
+    app.include_router(whatif.router)
     app.include_router(nowcast.router)
     app.include_router(stubs.router)
     return app
