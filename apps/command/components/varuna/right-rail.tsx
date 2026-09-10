@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { HotspotRail } from "@/components/varuna/hotspot-rail";
+import { ReachabilityPanel } from "@/components/varuna/reachability-panel";
 import type { Hotspot, HotspotSet } from "@/lib/api/hotspots";
 import { RIGHT_RAIL_TABS, useUiStore, type RightRailTab } from "@/lib/stores/ui";
 
@@ -23,6 +24,10 @@ export interface RightRailProps {
   selectedHotspotId?: string | null;
   onSelectHotspot?: (hotspot: Hotspot) => void;
   hotspotsLoading?: boolean;
+  /** The scrub time the catchment is measured at; the tab is empty without one. */
+  simTime?: string | null;
+  /** The console draws the bands this hands back on its own map. */
+  onIsochrones?: (rings: { minutes: number; rings: [number, number][][] }[]) => void;
 }
 
 function isRightRailTab(value: unknown): value is RightRailTab {
@@ -36,6 +41,8 @@ export function RightRail({
   selectedHotspotId = null,
   onSelectHotspot,
   hotspotsLoading = false,
+  simTime = null,
+  onIsochrones,
 }: RightRailProps = {}) {
   const tab = useUiStore((s) => s.rightRailTab);
   const setTab = useUiStore((s) => s.setRightRailTab);
@@ -96,10 +103,14 @@ export function RightRail({
       </TabsContent>
 
       <TabsContent value="reachability" className="min-h-0 flex-1 overflow-y-auto p-4">
-        <EmptyState
-          title="No reachability clocks yet"
-          description="Reachability clocks appear with the first run."
-        />
+        {simTime ? (
+          <ReachabilityPanel at={simTime} onIsochrones={onIsochrones} />
+        ) : (
+          <EmptyState
+            title="No reachability clocks yet"
+            description="Reachability clocks appear with the first run."
+          />
+        )}
       </TabsContent>
     </Tabs>
   );

@@ -75,6 +75,20 @@ export interface DrainPath {
   diameter: number;
 }
 
+/** One drawn route: the naive shortest path, the VARUNA route, or an alternate. */
+export interface RouteLine {
+  id: string;
+  path: [number, number][];
+  /** `naive` is the dashed grey comparison; `varuna` the tide-coloured route (section 6.7). */
+  kind: "naive" | "varuna" | "alternate";
+}
+
+/** One reachability band, drawn as a translucent polygon (section 6.2 `--reach-*`). */
+export interface Isochrone {
+  minutes: number;
+  rings: [number, number][][];
+}
+
 /** Where to fly. `key` changes on every request, so clicking the same row twice flies again. */
 export interface MapFocus {
   lon: number;
@@ -98,6 +112,10 @@ export interface CityMapProps {
   buildings?: readonly BuildingPolygon[];
   /** The inferred drain graph, off by default (section 6.7). */
   drains?: readonly DrainPath[];
+  /** Routes to draw over everything else (section 6.7's layer order). */
+  routes?: readonly RouteLine[];
+  /** Reachability bands, under the routes and over the streets. */
+  isochrones?: readonly Isochrone[];
   /** The hotspot the rail has selected; drawn as a second, brighter ring (motion M10). */
   selectedHotspotId?: string | null;
   /** Fly the camera here when `key` changes. */
@@ -131,6 +149,22 @@ const DRY_STREET: [number, number, number, number] = [43, 58, 85, 235];
 
 /** `--deep` #111A2E, the panel colour: buildings are the ground the streets are cut into. */
 const BUILDING_FILL: [number, number, number, number] = [17, 26, 46, 235];
+
+/** `--naive` #64748B: the shortest path a navigation app would give you today. */
+const NAIVE_ROUTE: [number, number, number, number] = [100, 116, 139, 235];
+
+/** `--tide` #2DD4BF: the route VARUNA gives you instead. */
+const VARUNA_ROUTE: [number, number, number, number] = [45, 212, 191, 255];
+
+/** `--ink` #0A1020: the casing that lifts the route off whatever it crosses (section 6.7). */
+const ROUTE_CASING: [number, number, number, number] = [10, 16, 32, 235];
+
+/** `--tide` at the section 6.2 opacities for the 5, 10 and 15-minute bands. */
+const REACH_FILL: Record<number, [number, number, number, number]> = {
+  5: [45, 212, 191, 115],
+  10: [45, 212, 191, 71],
+  15: [45, 212, 191, 36],
+};
 
 /** `--line` #24314F: a hairline so a block reads as blocks rather than one grey mass. */
 const BUILDING_LINE: [number, number, number, number] = [36, 49, 79, 170];
@@ -204,6 +238,8 @@ export function CityMap({
   hotspots,
   buildings = [],
   drains = [],
+  routes = [],
+  isochrones = [],
   selectedHotspotId = null,
   focus = null,
   step,
@@ -231,10 +267,13 @@ export function CityMap({
   // camera once somebody moves it. Everything else is computed during render, which is what makes
   // a resize or a data load re-frame on its own - no effect, no stale copy of the view.
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  // Set by `onViewStateChange`, so it is null until the operator (or a flight) moves the camera.
-  // While it is null the fit owns the view; once it is set the camera is theirs and a resize or
-  // new data must not yank it back.
   const [camera, setCamera] = useState<ViewState | null>(null);
+  // Whether the operator has taken the camera. deck reports *every* view-state change through
+  // `onViewStateChange`, including ones it makes itself when the canvas is resized, so "camera is
+  // not null" is not the same question as "somebody moved it" - treating them as the same left
+  // `/route` framed on the whole city after a resize instead of on the trip it had just drawn.
+  // Only a drag, a zoom, a rotate or a fly-to sets this; until then the fit owns the view.
+  const [owned, setOwned] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const aoi = bounds ?? cityBounds("mumbai");
 
@@ -253,7 +292,20 @@ export function CityMap({
       if (lat < south) south = lat;
       if (lat > north) north = lat;
     };
-    // Streets first: when the city layer is loaded it is the widest thing on the map, and it is
+    // A drawn route wins: on `/route` the whole city is loaded for context, but the answer on
+    // screen is one trip and the camera should be on it.
+    for (const line of routes) for (const [lon, lat] of line.path) eat(lon, lat);
+    if (Number.isFinite(west)) {
+      // A little air around a route, which is a thin thing in a wide panel.
+      const padLon = Math.max((east - west) * 0.35, 0.004);
+      const padLat = Math.max((north - south) * 0.35, 0.004);
+      return [
+        [west - padLon, south - padLat],
+        [east + padLon, north + padLat],
+      ] as Bbox;
+    }
+
+    // Streets next: when the city layer is loaded it is the widest thing on the map, and it is
     // the extent the console should sit at.
     for (const segment of baseSegments) for (const [lon, lat] of segment.path) eat(lon, lat);
     if (!Number.isFinite(west)) {
@@ -269,7 +321,7 @@ export function CityMap({
       [west, south],
       [east, north],
     ] as Bbox;
-  }, [baseSegments, segments, drains, hotspots, aoi]);
+  }, [routes, baseSegments, segments, drains, hotspots, aoi]);
 
   const fitted = useMemo<ViewState>(() => {
     if (!size || size.width < 2 || size.height < 2) return INITIAL_VIEW;
@@ -326,6 +378,7 @@ export function CityMap({
     // external system it commands. Deriving it instead would pin the camera to the focus and the
     // operator could never pan away from a selected hotspot. One render per click is the cost.
     // eslint-disable-next-line react-hooks/set-state-in-effect
+    setOwned(true);
     setCamera((current) => ({
       ...(current ?? INITIAL_VIEW),
       longitude: focus.lon,
@@ -340,7 +393,7 @@ export function CityMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusKey, reducedMotion]);
 
-  const viewState = camera ?? fitted;
+  const viewState = owned ? (camera ?? fitted) : fitted;
 
   // ---- Layers ---------------------------------------------------------------------------
   // Everything that does not change with the scrub, memoised apart from the things that do, so
@@ -502,9 +555,72 @@ export function CityMap({
     });
   }, [showSurcharge, surcharge, pulse]);
 
+  // Reachability under the routes, routes over everything (section 6.7's order). Both are small -
+  // three polygons and four paths - so they rebuild on every change without a memo of their own
+  // costing less than it saves.
+  const routeLayers = useMemo(() => {
+    const built: unknown[] = [];
+
+    if (isochrones.length > 0) {
+      built.push(
+        new PolygonLayer<Isochrone>({
+          id: "isochrones",
+          // Largest band first, so the 5-minute core reads as the darkest patch rather than
+          // being painted over by the 15-minute one.
+          data: [...isochrones].sort((a, b) => b.minutes - a.minutes) as Isochrone[],
+          getPolygon: (d) => d.rings[0] ?? [],
+          getFillColor: (d) => REACH_FILL[d.minutes] ?? REACH_FILL[15],
+          getLineColor: [45, 212, 191, 140],
+          getLineWidth: 1,
+          lineWidthUnits: "pixels",
+          stroked: true,
+          filled: true,
+          pickable: false,
+        }),
+      );
+    }
+
+    if (routes.length > 0) {
+      // The casing is a wider, darker path drawn first: without it the route disappears wherever
+      // it crosses a street of a similar tone, which on this map is most of them.
+      built.push(
+        new PathLayer<RouteLine>({
+          id: "route-casing",
+          data: routes.filter((r) => r.kind !== "naive") as RouteLine[],
+          getPath: (d) => d.path,
+          getColor: ROUTE_CASING,
+          getWidth: 7,
+          widthUnits: "pixels",
+          capRounded: true,
+          jointRounded: true,
+          pickable: false,
+        }),
+        new PathLayer<RouteLine>({
+          id: "routes",
+          data: routes as RouteLine[],
+          getPath: (d) => d.path,
+          getColor: (d) => (d.kind === "naive" ? NAIVE_ROUTE : VARUNA_ROUTE),
+          getWidth: (d) => (d.kind === "varuna" ? 5 : 3),
+          widthUnits: "pixels",
+          capRounded: true,
+          jointRounded: true,
+          pickable: false,
+          updateTriggers: { getColor: routes.length, getWidth: routes.length },
+        }),
+      );
+    }
+    return built;
+  }, [routes, isochrones]);
+
   const layers = useMemo(
-    () => [...cityLayers, ...streetLayers, ...runLayers, ...(surchargeLayer ? [surchargeLayer] : [])],
-    [cityLayers, streetLayers, runLayers, surchargeLayer],
+    () => [
+      ...cityLayers,
+      ...streetLayers,
+      ...runLayers,
+      ...(surchargeLayer ? [surchargeLayer] : []),
+      ...routeLayers,
+    ],
+    [cityLayers, streetLayers, runLayers, surchargeLayer, routeLayers],
   );
 
   return (
@@ -513,9 +629,26 @@ export function CityMap({
         viewState={viewState as never}
         onViewStateChange={
           interactive
-            ? // deck reports every camera change here, the operator's drags and the frames of a
-              // fly-to alike, and a controlled view only moves because this writes it back.
-              (({ viewState: next }: { viewState: ViewState }) => setCamera(next)) as never
+            ? // deck reports every camera change here, and a controlled view only moves because
+              // this writes it back. `interactionState` is what separates the operator's own
+              // drags and zooms from deck's internal adjustments; only the former take the camera.
+              ((({
+                viewState: next,
+                interactionState: how,
+              }: {
+                viewState: ViewState;
+                interactionState?: {
+                  isDragging?: boolean;
+                  isPanning?: boolean;
+                  isZooming?: boolean;
+                  isRotating?: boolean;
+                };
+              }) => {
+                if (how?.isDragging || how?.isPanning || how?.isZooming || how?.isRotating) {
+                  setOwned(true);
+                }
+                setCamera(next);
+              }) as never)
             : undefined
         }
         controller={interactive}
