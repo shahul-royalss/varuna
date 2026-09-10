@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<alert xmlns="urn:oasis:names:tc:emergency:cap:1.2">
+  <identifier>VARUNA-MUM-20190702T0340Z-SKY1.0-TWIN1.0-FLASH0.0-BAKED-STREET-0235-WATCH</identifier>
+  <sender>varuna@sih2026.example</sender>
+  <sent>2019-07-02T09:10:00+05:30</sent>
+  <status>Exercise</status>
+  <msgType>Alert</msgType>
+  <scope>Public</scope>
+  <info>
+    <category>Met</category>
+    <event>Street flooding</event>
+    <urgency>Expected</urgency>
+    <severity>Minor</severity>
+    <certainty>Likely</certainty>
+    <onset>2019-07-02T12:00:00+05:30</onset>
+    <expires>2019-07-02T12:05:00+05:30</expires>
+    <headline>Swami Vivekanand Road: depth above 15 cm from 12:00 to 12:05</headline>
+    <description>VARUNA nowcast run MUM-20190702T0340Z-sky1.0-twin1.0-flash0.0-baked.</description>
+    <instruction>Avoid Swami Vivekanand Road for the window. Peak forecast 16 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
+    <area>
+      <areaDesc>Swami Vivekanand Road</areaDesc>
+    </area>
+  </info>
+</alert>

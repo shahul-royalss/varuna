@@ -1,0 +1,64 @@
+{
+  "run_id": "MUM-20190702T0110Z-sky1.0-twin1.0-flash0.0-baked",
+  "city": "mumbai",
+  "cycle_ts": "2019-07-02T06:40:00+05:30",
+  "radar_frame_ts": "2019-07-02T06:45:00+05:30",
+  "versions": {
+    "sky": "1.0",
+    "twin": "1.0",
+    "flash": "0.0",
+    "pulse": "0.0",
+    "products": "1.0"
+  },
+  "mode": "baked",
+  "replay_mode": "replay",
+  "ensemble_n": 1,
+  "stage_ms": {
+    "sky": 9329,
+    "twin": 174376,
+    "twin_hydrology_ms": 732,
+    "twin_surface_ms": 15996,
+    "twin_drain_ms": 124250,
+    "twin_coupling_ms": 29119,
+    "twin_total_ms": 173776,
+    "products": 6673
+  },
+  "mass_balance_err": 0.0018350911994827258,
+  "bundle": "MUM-2019-07-02",
+  "created_at": "2026-09-10T06:34:20.261671+05:30",
+  "grid": {
+    "dx_m": 30.0,
+    "nx": 323,
+    "ny": 522,
+    "crs": "EPSG:32643",
+    "bounds": {
+      "min_lon": 72.81494200390888,
+      "min_lat": 18.993714160631313,
+      "max_lon": 72.90516441969598,
+      "max_lat": 19.13621219704481
+    },
+    "transform": [
+      30.0,
+      0.0,
+      269970.0,
+      0.0,
+      -30.0,
+      2117220.0
+    ]
+  },
+  "degraded_feeds": [],
+  "step_min": 5,
+  "n_steps": 36,
+  "notes": [
+    "Drain graph inferred from roads and terrain, not a municipal SWD model (CLAUDE.md 10.1 step 7); every pipe carries a learned blockage.",
+    "One deterministic Twin run, so p10 = p50 = p90 and every exceedance is 0 or 1. The 50-member street ensemble arrives with Flash-lite in Phase 7.",
+    "Coupled mass balance error 0.184% exceeds the 0.1% budget (in 3113619.5 m3, stored 3071298.9 m3, out 48034.4 m3)",
+    "NWP blend disabled: no NWP field in P0 (CLAUDE.md 11.1, Appendix A).",
+    "Z-R fitted this cycle: a=138, b=1.41 from 20 pairs.",
+    "Gauge merge: bias 0.81 over 10 gauges, inverse-distance residuals, gauges honoured to 0.0 %.",
+    "Attenuation shadow behind cores above 50 dBZ is severe; the shadow is flagged, not corrected.",
+    "Tide series is illustrative, not a published tide table (rule 7)."
+  ],
+  "total_ms": 534251,
+  "lead_max_min": 180
+}

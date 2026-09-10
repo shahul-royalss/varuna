@@ -1,0 +1,63 @@
+{
+  "run_id": "MUM-20190702T0240Z-sky1.0-twin1.0-flash0.0-baked",
+  "city": "mumbai",
+  "cycle_ts": "2019-07-02T08:10:00+05:30",
+  "radar_frame_ts": "2019-07-02T08:15:00+05:30",
+  "versions": {
+    "sky": "1.0",
+    "twin": "1.0",
+    "flash": "0.0",
+    "pulse": "0.0",
+    "products": "1.0"
+  },
+  "mode": "baked",
+  "replay_mode": "replay",
+  "ensemble_n": 1,
+  "stage_ms": {
+    "sky": 5685,
+    "twin": 138483,
+    "twin_hydrology_ms": 606,
+    "twin_surface_ms": 17685,
+    "twin_drain_ms": 92226,
+    "twin_coupling_ms": 24117,
+    "twin_total_ms": 138284,
+    "products": 6652
+  },
+  "mass_balance_err": 0.0008413305303343073,
+  "bundle": "MUM-2019-07-02",
+  "created_at": "2026-09-10T06:42:03.487413+05:30",
+  "grid": {
+    "dx_m": 30.0,
+    "nx": 323,
+    "ny": 522,
+    "crs": "EPSG:32643",
+    "bounds": {
+      "min_lon": 72.81494200390888,
+      "min_lat": 18.993714160631313,
+      "max_lon": 72.90516441969598,
+      "max_lat": 19.13621219704481
+    },
+    "transform": [
+      30.0,
+      0.0,
+      269970.0,
+      0.0,
+      -30.0,
+      2117220.0
+    ]
+  },
+  "degraded_feeds": [],
+  "step_min": 5,
+  "n_steps": 36,
+  "notes": [
+    "Drain graph inferred from roads and terrain, not a municipal SWD model (CLAUDE.md 10.1 step 7); every pipe carries a learned blockage.",
+    "One deterministic Twin run, so p10 = p50 = p90 and every exceedance is 0 or 1. The 50-member street ensemble arrives with Flash-lite in Phase 7.",
+    "NWP blend disabled: no NWP field in P0 (CLAUDE.md 11.1, Appendix A).",
+    "Z-R fitted this cycle: a=100, b=1.77 from 20 pairs, clamped to the allowed range.",
+    "Gauge merge: bias 1.05 over 10 gauges, inverse-distance residuals, gauges honoured to 0.0 %.",
+    "Attenuation shadow behind cores above 50 dBZ is partial; the shadow is flagged, not corrected.",
+    "Tide series is illustrative, not a published tide table (rule 7)."
+  ],
+  "total_ms": 423738,
+  "lead_max_min": 180
+}
