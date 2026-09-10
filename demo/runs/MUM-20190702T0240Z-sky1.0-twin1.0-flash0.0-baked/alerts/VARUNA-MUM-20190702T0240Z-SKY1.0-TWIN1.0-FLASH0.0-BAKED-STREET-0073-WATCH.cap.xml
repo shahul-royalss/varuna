@@ -19,6 +19,7 @@
     <instruction>Avoid Bandra Kurla Complex Road for the window. Peak forecast 29 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Bandra Kurla Complex Road</areaDesc>
+      <circle>19.062492399999996,72.85958744999999 0.5</circle>
     </area>
   </info>
 </alert>

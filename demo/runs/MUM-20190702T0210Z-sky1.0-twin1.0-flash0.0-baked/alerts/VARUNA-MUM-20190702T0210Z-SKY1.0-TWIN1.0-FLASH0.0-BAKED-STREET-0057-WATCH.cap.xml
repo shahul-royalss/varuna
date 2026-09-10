@@ -19,6 +19,7 @@
     <instruction>Avoid Comrade Shamrao Parulekar Marg for the window. Peak forecast 20 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Comrade Shamrao Parulekar Marg</areaDesc>
+      <circle>19.108575729062203,72.8267606766384 0.5</circle>
     </area>
   </info>
 </alert>

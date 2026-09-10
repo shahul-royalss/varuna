@@ -19,6 +19,7 @@
     <instruction>Avoid Danda Boulevard for the window. Peak forecast 37 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Danda Boulevard</areaDesc>
+      <circle>19.075163449999998,72.82537740000001 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Mahul Road for the window. Peak forecast 46 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Mahul Road</areaDesc>
+      <circle>19.01762582050665,72.87303138068843 0.5</circle>
     </area>
   </info>
 </alert>

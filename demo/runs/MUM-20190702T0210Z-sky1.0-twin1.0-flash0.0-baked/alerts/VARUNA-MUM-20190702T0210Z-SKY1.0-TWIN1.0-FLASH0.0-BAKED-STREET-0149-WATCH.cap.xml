@@ -19,6 +19,7 @@
     <instruction>Avoid Krantiveer Lakhuji Salve Marg for the window. Peak forecast 30 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Krantiveer Lakhuji Salve Marg</areaDesc>
+      <circle>19.117897098486193,72.86329994409861 0.5</circle>
     </area>
   </info>
 </alert>

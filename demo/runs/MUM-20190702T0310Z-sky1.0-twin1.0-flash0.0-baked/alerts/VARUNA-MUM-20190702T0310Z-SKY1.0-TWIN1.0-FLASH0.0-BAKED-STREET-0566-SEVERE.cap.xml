@@ -19,6 +19,7 @@
     <instruction>Avoid S G Barve Marg (C S T Road) for the window. Peak forecast 49 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>S G Barve Marg (C S T Road)</areaDesc>
+      <circle>19.054313099999998,72.8891041 0.5</circle>
     </area>
   </info>
 </alert>

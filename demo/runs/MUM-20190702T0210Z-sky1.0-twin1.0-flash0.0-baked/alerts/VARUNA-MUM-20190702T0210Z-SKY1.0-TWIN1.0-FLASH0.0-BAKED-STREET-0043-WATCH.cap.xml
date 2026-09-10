@@ -19,6 +19,7 @@
     <instruction>Avoid Bhardawadi road for the window. Peak forecast 20 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Bhardawadi road</areaDesc>
+      <circle>19.126214043316,72.84598295413073 0.5</circle>
     </area>
   </info>
 </alert>

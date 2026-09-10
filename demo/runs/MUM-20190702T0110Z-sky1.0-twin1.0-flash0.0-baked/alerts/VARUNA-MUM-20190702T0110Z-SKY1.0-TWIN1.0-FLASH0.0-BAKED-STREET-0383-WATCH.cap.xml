@@ -19,6 +19,7 @@
     <instruction>Avoid Street 7 for the window. Peak forecast 18 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Street 7</areaDesc>
+      <circle>19.06722005,72.86533735 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Sion Panvel Highway for the window. Peak forecast 22 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sion Panvel Highway</areaDesc>
+      <circle>19.05212695,72.9004736 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Dattaji Salvi Marg for the window. Peak forecast 21 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dattaji Salvi Marg</areaDesc>
+      <circle>19.131670049999997,72.83759549999999 0.5</circle>
     </area>
   </info>
 </alert>

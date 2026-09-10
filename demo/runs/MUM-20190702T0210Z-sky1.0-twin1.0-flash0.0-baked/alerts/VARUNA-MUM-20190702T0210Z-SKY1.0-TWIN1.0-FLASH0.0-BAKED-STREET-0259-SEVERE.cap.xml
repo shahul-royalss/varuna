@@ -19,6 +19,7 @@
     <instruction>Avoid Sant Shitolebaba Maharaj Marg for the window. Peak forecast 59 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sant Shitolebaba Maharaj Marg</areaDesc>
+      <circle>19.099272549999995,72.8920214 0.5</circle>
     </area>
   </info>
 </alert>

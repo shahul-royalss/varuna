@@ -19,6 +19,7 @@
     <instruction>Avoid Road No. 4 for the window. Peak forecast 42 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Road No. 4</areaDesc>
+      <circle>19.0709411,72.90139220000002 0.5</circle>
     </area>
   </info>
 </alert>

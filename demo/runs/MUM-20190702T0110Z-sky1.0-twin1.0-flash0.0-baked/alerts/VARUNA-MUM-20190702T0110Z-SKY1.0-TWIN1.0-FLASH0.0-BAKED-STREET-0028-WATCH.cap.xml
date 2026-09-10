@@ -19,6 +19,7 @@
     <instruction>Avoid Aloysius Soares Marg for the window. Peak forecast 21 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Aloysius Soares Marg</areaDesc>
+      <circle>19.052226250000004,72.90044165 0.5</circle>
     </area>
   </info>
 </alert>

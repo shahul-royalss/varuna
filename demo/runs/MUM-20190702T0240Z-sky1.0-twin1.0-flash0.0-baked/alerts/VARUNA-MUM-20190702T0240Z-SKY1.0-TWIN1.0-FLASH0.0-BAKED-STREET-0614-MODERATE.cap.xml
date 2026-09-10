@@ -19,6 +19,7 @@
     <instruction>Avoid Vashinaka Road for the window. Peak forecast 31 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Vashinaka Road</areaDesc>
+      <circle>19.033244772627388,72.89805621854518 0.5</circle>
     </area>
   </info>
 </alert>

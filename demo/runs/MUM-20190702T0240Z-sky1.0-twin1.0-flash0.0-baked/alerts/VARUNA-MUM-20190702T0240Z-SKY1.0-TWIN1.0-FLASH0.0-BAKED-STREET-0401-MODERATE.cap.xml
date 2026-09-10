@@ -19,6 +19,7 @@
     <instruction>Avoid Pipeline Road for the window. Peak forecast 34 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Pipeline Road</areaDesc>
+      <circle>19.088119899999995,72.88422845 0.5</circle>
     </area>
   </info>
 </alert>

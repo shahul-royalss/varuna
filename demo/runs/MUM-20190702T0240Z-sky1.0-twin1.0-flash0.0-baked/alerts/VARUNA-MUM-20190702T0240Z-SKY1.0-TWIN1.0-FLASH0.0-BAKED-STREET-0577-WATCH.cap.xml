@@ -19,6 +19,7 @@
     <instruction>Avoid Sulochana Shetty Marg for the window. Peak forecast 29 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sulochana Shetty Marg</areaDesc>
+      <circle>19.038034949999997,72.8538265 0.5</circle>
     </area>
   </info>
 </alert>

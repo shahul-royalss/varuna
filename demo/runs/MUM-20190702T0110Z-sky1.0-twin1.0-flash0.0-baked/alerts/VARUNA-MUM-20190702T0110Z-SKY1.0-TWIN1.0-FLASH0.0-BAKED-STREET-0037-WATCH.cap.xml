@@ -19,6 +19,7 @@
     <instruction>Avoid Avenue 3 for the window. Peak forecast 22 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Avenue 3</areaDesc>
+      <circle>19.06247885,72.86782339999999 0.5</circle>
     </area>
   </info>
 </alert>

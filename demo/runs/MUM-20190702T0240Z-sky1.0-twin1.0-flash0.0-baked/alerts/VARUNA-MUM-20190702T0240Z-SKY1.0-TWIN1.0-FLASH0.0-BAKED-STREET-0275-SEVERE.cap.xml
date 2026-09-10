@@ -19,6 +19,7 @@
     <instruction>Avoid Khodadad Circle for the window. Peak forecast 56 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Khodadad Circle</areaDesc>
+      <circle>19.0180387195162,72.84748029163035 0.5</circle>
     </area>
   </info>
 </alert>

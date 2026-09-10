@@ -19,6 +19,7 @@
     <instruction>Avoid Baji Pasalkar Marg (Saki Vihar Road) for the window. Peak forecast 20 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Baji Pasalkar Marg (Saki Vihar Road)</areaDesc>
+      <circle>19.124976498751423,72.89315375294746 0.5</circle>
     </area>
   </info>
 </alert>

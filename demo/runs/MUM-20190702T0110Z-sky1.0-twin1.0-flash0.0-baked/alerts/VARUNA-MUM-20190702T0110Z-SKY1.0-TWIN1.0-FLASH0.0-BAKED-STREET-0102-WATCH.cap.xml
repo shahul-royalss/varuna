@@ -19,6 +19,7 @@
     <instruction>Avoid Dharavi Depot Road for the window. Peak forecast 21 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Dharavi Depot Road</areaDesc>
+      <circle>19.048206850000003,72.85634694999999 0.5</circle>
     </area>
   </info>
 </alert>

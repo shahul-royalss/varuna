@@ -19,6 +19,7 @@
     <instruction>Avoid Vithalbhai Patel Marg for the window. Peak forecast 22 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Vithalbhai Patel Marg</areaDesc>
+      <circle>19.118798149786688,72.84139935510542 0.5</circle>
     </area>
   </info>
 </alert>

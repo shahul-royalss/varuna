@@ -19,6 +19,7 @@
     <instruction>Avoid Parsi Wada Road for the window. Peak forecast 30 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Parsi Wada Road</areaDesc>
+      <circle>19.1088861,72.8554165 0.5</circle>
     </area>
   </info>
 </alert>

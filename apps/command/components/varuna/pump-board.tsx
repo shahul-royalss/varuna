@@ -31,7 +31,8 @@ export const DEFAULT_PUMP_COLUMNS: readonly PumpColumn[] = [
 ];
 
 /** The one sentence every disabled control on this board carries. */
-export const PUMP_ACTIONS_HELPER = "Pump dispatch lands in Phase 8.";
+export const PUMP_ACTIONS_HELPER =
+  "The plan is the greedy optimiser's; drag-to-assign arrives with the emulator.";
 
 /** Placeholder line where the excess-inflow sparkline will be drawn. */
 export const SPARKLINE_PLACEHOLDER = "Excess inflow appears with the first run";
@@ -56,7 +57,8 @@ function benefitLine(column: PumpColumn): string {
 /**
  * The dispatch board (CLAUDE.md section 7.6): an "Available pumps" column beside one column per
  * chronic hotspot, each showing the predicted excess inflow and the minutes above 45 cm the plan
- * would save. Drag-to-assign, the greedy optimiser and the benefit estimate arrive in Phase 8;
+ * would save. The greedy optimiser and the benefit estimate are live (P8.9); drag-to-assign
+ * needs a benefit the board can recompute per drop, which is the emulator's job in Phase 7;
  * the column props are already shaped for the dnd-kit droppables.
  */
 export function PumpBoard({

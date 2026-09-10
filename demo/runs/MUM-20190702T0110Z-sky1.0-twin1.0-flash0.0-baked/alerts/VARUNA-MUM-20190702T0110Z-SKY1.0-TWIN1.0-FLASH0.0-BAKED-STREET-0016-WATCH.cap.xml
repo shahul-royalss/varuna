@@ -19,6 +19,7 @@
     <instruction>Avoid 90 Feet Road for the window. Peak forecast 27 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>90 Feet Road</areaDesc>
+      <circle>19.042482049999997,72.8566547 0.5</circle>
     </area>
   </info>
 </alert>

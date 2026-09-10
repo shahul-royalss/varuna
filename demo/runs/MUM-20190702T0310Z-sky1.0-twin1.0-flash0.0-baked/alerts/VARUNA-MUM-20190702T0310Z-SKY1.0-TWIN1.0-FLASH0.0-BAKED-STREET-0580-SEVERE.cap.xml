@@ -19,6 +19,7 @@
     <instruction>Avoid SL Raheja Hospital Marg for the window. Peak forecast 56 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>SL Raheja Hospital Marg</areaDesc>
+      <circle>19.0447698,72.8392958 0.5</circle>
     </area>
   </info>
 </alert>

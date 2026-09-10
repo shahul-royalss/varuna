@@ -19,6 +19,7 @@
     <instruction>Avoid Sai Mandir Marg for the window. Peak forecast 52 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sai Mandir Marg</areaDesc>
+      <circle>19.11025867975628,72.84682177493234 0.5</circle>
     </area>
   </info>
 </alert>

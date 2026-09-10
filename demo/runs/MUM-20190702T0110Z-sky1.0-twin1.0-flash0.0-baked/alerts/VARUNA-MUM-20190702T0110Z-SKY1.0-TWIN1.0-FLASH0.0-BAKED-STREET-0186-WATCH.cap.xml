@@ -19,6 +19,7 @@
     <instruction>Avoid Kherwadi Road for the window. Peak forecast 19 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Kherwadi Road</areaDesc>
+      <circle>19.06187975,72.8440976 0.5</circle>
     </area>
   </info>
 </alert>

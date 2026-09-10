@@ -19,6 +19,7 @@
     <instruction>Avoid Currey Road Bridge for the window. Peak forecast 37 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Currey Road Bridge</areaDesc>
+      <circle>18.995079977952376,72.83302729039424 0.5</circle>
     </area>
   </info>
 </alert>

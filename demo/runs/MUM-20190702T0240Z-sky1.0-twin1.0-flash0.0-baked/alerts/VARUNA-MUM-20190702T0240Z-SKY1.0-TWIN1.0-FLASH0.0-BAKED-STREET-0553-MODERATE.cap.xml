@@ -19,6 +19,7 @@
     <instruction>Avoid St Anthony Road for the window. Peak forecast 38 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>St Anthony Road</areaDesc>
+      <circle>19.080818899999997,72.8559478 0.5</circle>
     </area>
   </info>
 </alert>

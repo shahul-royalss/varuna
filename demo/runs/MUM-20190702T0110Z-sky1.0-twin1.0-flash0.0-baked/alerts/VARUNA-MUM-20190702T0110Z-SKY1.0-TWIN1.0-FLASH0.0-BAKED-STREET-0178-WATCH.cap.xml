@@ -19,6 +19,7 @@
     <instruction>Avoid Kabutarkhana for the window. Peak forecast 25 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Kabutarkhana</areaDesc>
+      <circle>19.01901031079258,72.84043112428871 0.5</circle>
     </area>
   </info>
 </alert>

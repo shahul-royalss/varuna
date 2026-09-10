@@ -19,6 +19,7 @@
     <instruction>Avoid HMA Faqir Street for the window. Peak forecast 28 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>HMA Faqir Street</areaDesc>
+      <circle>19.041069502491883,72.83889217195825 0.5</circle>
     </area>
   </info>
 </alert>

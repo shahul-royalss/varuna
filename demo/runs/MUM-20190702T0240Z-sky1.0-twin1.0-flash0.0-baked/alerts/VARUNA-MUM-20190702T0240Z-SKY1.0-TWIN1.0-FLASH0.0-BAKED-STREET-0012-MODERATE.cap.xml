@@ -19,6 +19,7 @@
     <instruction>Avoid 33rd Road for the window. Peak forecast 36 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>33rd Road</areaDesc>
+      <circle>19.065484178366354,72.83135934883362 0.5</circle>
     </area>
   </info>
 </alert>

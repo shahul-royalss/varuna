@@ -19,6 +19,7 @@
     <instruction>Avoid Lady Jamshedji Road for the window. Peak forecast 56 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Lady Jamshedji Road</areaDesc>
+      <circle>19.044661650000002,72.839279 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid N.M. Kale Marg for the window. Peak forecast 32 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>N.M. Kale Marg</areaDesc>
+      <circle>19.01984901199662,72.83225035929408 0.5</circle>
     </area>
   </info>
 </alert>

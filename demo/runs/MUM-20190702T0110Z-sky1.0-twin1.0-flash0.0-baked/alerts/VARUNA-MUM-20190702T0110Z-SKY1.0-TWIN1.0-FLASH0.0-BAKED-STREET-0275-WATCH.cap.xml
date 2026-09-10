@@ -19,6 +19,7 @@
     <instruction>Avoid RK Patkar Marg (Waterfield Road) for the window. Peak forecast 20 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>RK Patkar Marg (Waterfield Road)</areaDesc>
+      <circle>19.05939765,72.8341647 0.5</circle>
     </area>
   </info>
 </alert>

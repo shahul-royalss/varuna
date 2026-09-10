@@ -19,6 +19,7 @@
     <instruction>Avoid Everest Road for the window. Peak forecast 28 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Everest Road</areaDesc>
+      <circle>19.128069399999994,72.8454269 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid New Dadabhai Nagar for the window. Peak forecast 53 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>New Dadabhai Nagar</areaDesc>
+      <circle>19.124310050645573,72.84127492541957 0.5</circle>
     </area>
   </info>
 </alert>

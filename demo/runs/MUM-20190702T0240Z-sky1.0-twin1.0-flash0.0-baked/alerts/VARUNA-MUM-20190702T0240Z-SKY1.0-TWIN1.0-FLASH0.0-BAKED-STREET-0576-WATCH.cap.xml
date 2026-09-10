@@ -19,6 +19,7 @@
     <instruction>Avoid Sufras Street for the window. Peak forecast 29 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sufras Street</areaDesc>
+      <circle>19.066556849999998,72.8239245 0.5</circle>
     </area>
   </info>
 </alert>

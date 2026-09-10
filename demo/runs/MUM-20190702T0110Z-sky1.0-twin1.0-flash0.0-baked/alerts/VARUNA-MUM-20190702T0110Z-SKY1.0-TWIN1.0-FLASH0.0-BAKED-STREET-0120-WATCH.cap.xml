@@ -19,6 +19,7 @@
     <instruction>Avoid Eastern Express Highway for the window. Peak forecast 25 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Eastern Express Highway</areaDesc>
+      <circle>19.059274000000002,72.89075639999999 0.5</circle>
     </area>
   </info>
 </alert>

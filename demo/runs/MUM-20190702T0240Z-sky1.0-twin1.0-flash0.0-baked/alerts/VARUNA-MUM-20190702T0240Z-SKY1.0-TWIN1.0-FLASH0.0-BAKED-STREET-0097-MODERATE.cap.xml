@@ -19,6 +19,7 @@
     <instruction>Avoid CD Barfiwala Road for the window. Peak forecast 33 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>CD Barfiwala Road</areaDesc>
+      <circle>19.11582815,72.83427714999999 0.5</circle>
     </area>
   </info>
 </alert>

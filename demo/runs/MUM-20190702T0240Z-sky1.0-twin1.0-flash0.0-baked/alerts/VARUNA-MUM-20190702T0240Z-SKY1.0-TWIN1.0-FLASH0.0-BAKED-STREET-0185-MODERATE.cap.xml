@@ -19,6 +19,7 @@
     <instruction>Avoid G M Bhosle Marg for the window. Peak forecast 33 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>G M Bhosle Marg</areaDesc>
+      <circle>18.998840599999994,72.8174237 0.5</circle>
     </area>
   </info>
 </alert>

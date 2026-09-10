@@ -19,6 +19,7 @@
     <instruction>Avoid Veera Desai Road for the window. Peak forecast 40 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Veera Desai Road</areaDesc>
+      <circle>19.133326500129307,72.83765504027247 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid Sudhir Tamse Marg for the window. Peak forecast 33 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sudhir Tamse Marg</areaDesc>
+      <circle>19.110655996990694,72.84726342412982 0.5</circle>
     </area>
   </info>
 </alert>

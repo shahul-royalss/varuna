@@ -19,6 +19,7 @@
     <instruction>Avoid Acharya Donde Marg for the window. Peak forecast 40 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Acharya Donde Marg</areaDesc>
+      <circle>19.006353849999996,72.83807045 0.5</circle>
     </area>
   </info>
 </alert>

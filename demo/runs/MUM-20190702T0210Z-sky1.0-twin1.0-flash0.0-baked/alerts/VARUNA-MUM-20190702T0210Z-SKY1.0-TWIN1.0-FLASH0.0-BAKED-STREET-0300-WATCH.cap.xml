@@ -19,6 +19,7 @@
     <instruction>Avoid V K Krishna Marg for the window. Peak forecast 26 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>V K Krishna Marg</areaDesc>
+      <circle>19.108890199999998,72.85527985 0.5</circle>
     </area>
   </info>
 </alert>

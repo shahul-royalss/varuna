@@ -19,6 +19,7 @@
     <instruction>Avoid Mahatma Gandhi Road for the window. Peak forecast 34 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Mahatma Gandhi Road</areaDesc>
+      <circle>19.077064,72.9037388 0.5</circle>
     </area>
   </info>
 </alert>

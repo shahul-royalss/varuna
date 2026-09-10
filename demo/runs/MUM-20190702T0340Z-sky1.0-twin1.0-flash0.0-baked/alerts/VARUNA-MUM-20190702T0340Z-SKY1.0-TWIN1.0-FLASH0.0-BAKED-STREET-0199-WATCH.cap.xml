@@ -19,6 +19,7 @@
     <instruction>Avoid Sahar Road for the window. Peak forecast 16 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sahar Road</areaDesc>
+      <circle>19.111260349999995,72.85009285000001 0.5</circle>
     </area>
   </info>
 </alert>

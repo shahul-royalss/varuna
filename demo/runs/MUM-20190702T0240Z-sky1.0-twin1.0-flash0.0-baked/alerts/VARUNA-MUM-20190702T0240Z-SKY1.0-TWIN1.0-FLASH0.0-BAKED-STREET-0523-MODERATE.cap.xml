@@ -19,6 +19,7 @@
     <instruction>Avoid Shahaji raje marg for the window. Peak forecast 39 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Shahaji raje marg</areaDesc>
+      <circle>19.105811049999993,72.84627645 0.5</circle>
     </area>
   </info>
 </alert>

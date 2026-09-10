@@ -19,6 +19,7 @@
     <instruction>Avoid Ramakrishna Chemburkar Marg for the window. Peak forecast 18 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Ramakrishna Chemburkar Marg</areaDesc>
+      <circle>19.05315567363621,72.89447429854768 0.5</circle>
     </area>
   </info>
 </alert>

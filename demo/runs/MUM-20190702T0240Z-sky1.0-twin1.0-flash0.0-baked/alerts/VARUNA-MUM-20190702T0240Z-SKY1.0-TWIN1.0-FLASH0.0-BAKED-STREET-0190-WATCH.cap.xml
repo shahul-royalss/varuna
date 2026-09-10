@@ -19,6 +19,7 @@
     <instruction>Avoid Ganapatrao Kadam Marg for the window. Peak forecast 29 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Ganapatrao Kadam Marg</areaDesc>
+      <circle>18.998418029898964,72.8222128040415 0.5</circle>
     </area>
   </info>
 </alert>

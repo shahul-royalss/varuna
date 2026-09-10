@@ -19,6 +19,7 @@
     <instruction>Avoid Jijamata Road for the window. Peak forecast 51 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Jijamata Road</areaDesc>
+      <circle>19.1255616,72.85648245 0.5</circle>
     </area>
   </info>
 </alert>

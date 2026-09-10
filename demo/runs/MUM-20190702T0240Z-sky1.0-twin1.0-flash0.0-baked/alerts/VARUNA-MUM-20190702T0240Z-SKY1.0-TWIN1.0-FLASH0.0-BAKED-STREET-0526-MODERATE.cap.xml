@@ -19,6 +19,7 @@
     <instruction>Avoid Shankar Rao Naram Path (Gowalia Chawl Lane) for the window. Peak forecast 45 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Shankar Rao Naram Path (Gowalia Chawl Lane)</areaDesc>
+      <circle>19.00307076812243,72.82444503570332 0.5</circle>
     </area>
   </info>
 </alert>

@@ -19,6 +19,7 @@
     <instruction>Avoid D'Monte Road for the window. Peak forecast 37 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>D'Monte Road</areaDesc>
+      <circle>19.059654349999995,72.82580325 0.5</circle>
     </area>
   </info>
 </alert>

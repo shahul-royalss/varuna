@@ -19,6 +19,7 @@
     <instruction>Avoid S Radahakrishnan Road (Nagardas Road) for the window. Peak forecast 30 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>S Radahakrishnan Road (Nagardas Road)</areaDesc>
+      <circle>19.12371925,72.85431695 0.5</circle>
     </area>
   </info>
 </alert>

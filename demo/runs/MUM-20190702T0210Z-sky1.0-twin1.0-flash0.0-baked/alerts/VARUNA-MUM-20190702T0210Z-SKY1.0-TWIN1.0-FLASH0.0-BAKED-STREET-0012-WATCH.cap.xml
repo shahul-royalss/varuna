@@ -19,6 +19,7 @@
     <instruction>Avoid Achutrao Patwardhan Marg for the window. Peak forecast 21 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Achutrao Patwardhan Marg</areaDesc>
+      <circle>19.134500299999996,72.82567115 0.5</circle>
     </area>
   </info>
 </alert>
