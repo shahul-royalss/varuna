@@ -126,16 +126,50 @@ Every stage records its milliseconds in `run.json`; the console's cycle budget b
 - Prefer Git Bash for the commands above; the Makefile also works from cmd.exe and PowerShell
   because every recipe is a plain `uv run varuna ...` line.
 
+## What it measures
+
+Every number here comes from the artifacts in this repository, not from an estimate. The ones that
+are bad are here anyway; [`docs/QA.md`](docs/QA.md) says why for each.
+
+| | | |
+|---|---|---|
+| Mass balance, coupled run | **6.1 x 10<sup>-4</sup>** | budget 1 x 10<sup>-3</sup> (CLAUDE.md 11.3) |
+| Three-hour city run | **74 s** | budget 8 s - missed, see ADR-0035 |
+| Route, KEM to Sion | **85 ms** | budget 300 ms |
+| What-if scenario | **62 ms** | budget 1 s |
+| Chennai from cache, end to end | **36 s** | budget 5 min |
+| CSI at 15 cm, 2 July 2019 | **0.22** | 17 sourced pins in the window |
+| Median lead time | **31 min** | over 6 pins found before they were logged |
+| Flash-lite held-out skill | **RMSE 5.7 cm, CSI 0.085** | fitted on 8 runs, not the 200 asked for |
+| Inferred drain network | **49,770 edges, 1,716 km** | 100 % reach an outfall; all marked inferred |
+| Depressions explaining the register | **89.3 %** | target 60 % |
+
+## Offline
+
+```sh
+make pack              # dist/varuna-offline: runs, city layers, bundles, open-data cache
+```
+
+830 MB, and the finale runs from it with the venue's Wi-Fi off. The basemap imagery is *not* in it
+- Esri's tiles are not redistributable - so with no network the map draws the city's own GIS: the
+39,259 building footprints and 21,296 street segments VARUNA derived. That is what it was built to
+do, and the package says so when it finishes.
+
 ## Checks
 
 ```sh
 make test              # pnpm lint + typecheck + test + lint:design, then pytest --cov
-make e2e               # Playwright smoke and demo script (Chromium, 1440 x 900)
+make e2e               # Playwright: the smoke test, the demo script, and the accessibility scan
 VARUNA_OFFLINE=1 uv run pytest tests   # the offline guard blocks non-loopback sockets
 pre-commit run --all-files
 ```
 
 CI (`.github/workflows/ci.yml`) runs the same four lanes: web, python, e2e and Lighthouse on `/`.
+
+`make e2e` covers three things: that the shell renders, that **every beat of the demo script works**
+(`tests/e2e/demo.spec.ts`, one test per moment of CLAUDE.md 15, asserting the numbers exist rather
+than their values), and that **thirteen screens have no WCAG 2.1 AA violations**
+(`tests/e2e/a11y.spec.ts`, axe plus two keyboard tests).
 
 ## Documentation
 

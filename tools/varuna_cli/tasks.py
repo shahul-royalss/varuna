@@ -431,9 +431,100 @@ def train() -> None:
     not_implemented("train")
 
 
+# ---- the offline package (task P10.6) ---------------------------------------------------
+
+PACK_DIR = "dist/varuna-offline"
+"""Where `make pack` writes. Gitignored: it is a build output, and it is hundreds of megabytes."""
+
+
+def _dir_size(path: Path) -> int:
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())
+
+
+def _mb(n: int) -> str:
+    return f"{n / 1024 / 1024:.0f} MB"
+
+
 def pack() -> None:
-    """Build the offline package (Phase 10)."""
-    not_implemented("pack")
+    """Build the offline package: everything the finale needs with the venue's network off.
+
+    CLAUDE.md 17 lists "no network at the venue" as a risk whose fallback is this target, and
+    CLAUDE.md 10.4 wants Chennai reachable from cache. What actually has to travel:
+
+    * **the baked runs** - the whole demo reads them, and a live cycle is 74 s of CPU;
+    * **the city layers** for Mumbai and Chennai, which are what the map draws;
+    * **the replay bundles**, including the radar the preview animates;
+    * **the open-data cache**, so the onboarding wizard rebuilds Chennai without Overpass;
+    * **the fitted emulator** and the committed verification numbers the landing falls back to.
+
+    Not the basemap imagery. Esri's tiles are not redistributable, and the map is built to work
+    without them - the note at the top of `CityMap` says why the city's own GIS is the ground
+    truth here rather than a photograph. The package prints that plainly rather than leaving
+    somebody to discover it on stage.
+
+    Copies rather than archives: the finale runs *from* this directory, and a zip would only add a
+    step to do under pressure.
+    """
+    import shutil
+
+    root = repo_root()
+    target = root / PACK_DIR
+    console.print(f"[bold]Packing VARUNA for offline use[/] -> {target}")
+
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True)
+
+    # (source, destination, what it is, whether the demo fails without it)
+    parts: list[tuple[Path, str, str, bool]] = [
+        (root / "data" / "runs", "data/runs", "baked runs", True),
+        (root / "city", "city", "city layers and the open-data cache", True),
+        (root / "bundles", "bundles", "replay bundles", True),
+        (root / "demo", "demo", "seed runs and the fitted emulator", False),
+        (root / "docs" / "research", "docs/research", "sourced registers and ground truth", True),
+        (root / "docs" / "verification", "docs/verification", "measured skill", False),
+    ]
+
+    missing: list[str] = []
+    table = Table(show_edge=False)
+    table.add_column("part")
+    table.add_column("size", justify="right")
+    table.add_column("status")
+
+    for source, relative, label, required in parts:
+        destination = target / relative
+        if not source.exists():
+            missing.append(f"{label} ({source.relative_to(root)})" if required else "")
+            table.add_row(label, "-", "[yellow]missing[/]" if required else "[dim]absent[/]")
+            continue
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source, destination, dirs_exist_ok=True)
+        table.add_row(label, _mb(_dir_size(destination)), "[green]packed[/]")
+
+    console.print(table)
+
+    total = _dir_size(target)
+    console.print(f"\n[bold]{_mb(total)}[/] at {target}")
+    console.print(
+        "\nThe basemap imagery is [bold]not[/] in this package: Esri's tiles are not "
+        "redistributable. With the network off the map draws the city's own GIS - 39,259 building "
+        "footprints and the 21,296-segment street network - which is what it was built to do."
+    )
+    console.print(
+        "Verify it: turn the Wi-Fi off, then `make demo`. The console, the drain X-ray, the route "
+        "planner and the onboarding wizard all read from here."
+    )
+
+    blocking = [m for m in missing if m]
+    if blocking:
+        console.print("\n[yellow]Not packed, and the demo needs it:[/]")
+        for item in blocking:
+            console.print(f"  - {item}")
+        console.print(
+            "Run `make city CITY=mumbai`, `make bundle BUNDLE=MUM-2019-07-02` and "
+            "`make bake BUNDLE=MUM-2019-07-02`, then pack again."
+        )
+        raise SystemExit(1)
 
 
 def demo_video() -> None:
