@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { CityMap, type Isochrone, type RouteLine, type SegmentPath } from "@/components/map/city-map";
 import { AppShell } from "@/components/varuna/app-shell";
 import { EmptyState } from "@/components/varuna/empty-state";
+import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
@@ -39,6 +40,15 @@ export function RouteScreen() {
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  // The run the trip is costed against; undefined means the newest for this city.
+  const [runId, setRunId] = useState<string | undefined>(undefined);
+
+  // A different cycle is a different answer, so the last one stops being shown with it.
+  const pickCycle = useCallback((next: string) => {
+    setRunId(next);
+    setPlan(null);
+    setError(null);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -99,6 +109,7 @@ export function RouteScreen() {
             departAt: next.departAt,
             profile: next.profile,
             riskTolerance: next.riskTolerance,
+            runId,
           }),
         );
       } catch (failure) {
@@ -108,7 +119,7 @@ export function RouteScreen() {
         setRunning(false);
       }
     },
-    [places],
+    [places, runId],
   );
 
   // Motion M14: the naive route in dashed grey, the VARUNA route over it in `--tide`. Both are
@@ -176,6 +187,11 @@ export function RouteScreen() {
             title="Route planner"
             description="Prediction turned into an ambulance route."
           />
+
+          {/* The cycle the route is costed against. Without it the planner always answered for the
+              newest run - 09:10 IST, after the storm - where an ambulance's corridor is dry and
+              the comparison is two identical columns. The cycle is the question. */}
+          <CyclePicker currentRunId={plan?.runId ?? runId} onPick={pickCycle} />
 
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[30fr_70fr]">
             <PanelErrorBoundary>
