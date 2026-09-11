@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 
 import { apiUrl } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-import { formatIstTime } from "@/lib/stores/time";
+import { formatIstDate, formatIstTime } from "@/lib/stores/time";
 
 export interface BakedCycle {
   runId: string;
@@ -69,8 +69,12 @@ export function CyclePicker({ currentRunId, onPick, className }: CyclePickerProp
             key={cycle.runId}
             type="button"
             aria-current={selected ? "true" : undefined}
+            // The visible label is a time, which tells a screen reader nothing about what the
+            // control does. The date comes from the cycle rather than a literal: this row is on
+            // the Chennai design storm too, and "2 July 2019" was wrong there (CLAUDE.md 6.10).
+            aria-label={`Forecast from ${formatIstTime(cycle.cycleTs)} IST, ${formatIstDate(cycle.cycleTs)}`}
             onClick={() => onPick?.(cycle.runId)}
-            title={`Forecast from ${formatIstTime(cycle.cycleTs)} IST, 2 July 2019`}
+            title={`Forecast from ${formatIstTime(cycle.cycleTs)} IST, ${formatIstDate(cycle.cycleTs)}`}
             className={cn(
               "num rounded-chip border px-2 py-0.5 type-micro transition-colors",
               selected
