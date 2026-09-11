@@ -133,7 +133,13 @@ function TypeSample({
         <span className="type-small font-medium text-text">{label}</span>
         <Meta>{meta}</Meta>
       </div>
-      <div className="min-w-0 overflow-x-auto text-text">{children}</div>
+      {/* The type specimens scroll and hold no controls (WCAG 2.1.1). */}
+      <div
+        tabIndex={0}
+        className="min-w-0 overflow-x-auto text-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
+      >
+        {children}
+      </div>
       {note ? <span className="type-micro text-text-2">{note}</span> : null}
     </div>
   );

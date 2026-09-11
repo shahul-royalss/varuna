@@ -275,7 +275,7 @@ Base (dark, always):
 | `--line-strong` | `#33436A` | focused/emphasised borders |
 | `--text` | `#E3EAF6` | primary text |
 | `--text-2` | `#A7B4CC` | secondary text |
-| `--text-3` | `#6E7E9E` | muted text, placeholders |
+| `--text-3` | `#7E8DA9` | muted text, placeholders (was `#6E7E9E`, which failed 6.10's 4.5:1 floor on `--deep` and `--well`; ADR-0036) |
 | `--tide` | `#2DD4BF` | brand accent: primary buttons, links, safe routes, "VARUNA" route, focus rings |
 | `--tide-soft` | `#0F3A3A` | accent backgrounds |
 
@@ -630,7 +630,7 @@ v0 (v0.app, or the v0 MCP server added to Claude Code) generates shadcn + Tailwi
 ```
 Stack: Next.js App Router, TypeScript, Tailwind v4, shadcn/ui, motion (framer-motion). Dark UI only.
 Use ONLY these CSS variables for colour (no raw hex): --ink #0A1020 (background), --deep #111A2E (panels),
---well #17233B (inputs/hover), --line #24314F (borders), --text #E3EAF6, --text-2 #A7B4CC, --text-3 #6E7E9E,
+--well #17233B (inputs/hover), --line #24314F (borders), --text #E3EAF6, --text-2 #A7B4CC, --text-3 #7E8DA9,
 --tide #2DD4BF (primary accent), depth ramp --depth-1 #3B82F6 (5–15 cm), --depth-2 #F59E0B (15–30),
 --depth-3 #F97316 (30–45), --depth-4 #EF4444 (45–60), --depth-5 #B91C1C (>60), --danger #F87171.
 Fonts: font-display (Bricolage Grotesque) for headings, font-sans (Geist) for UI, tabular numbers on all figures.

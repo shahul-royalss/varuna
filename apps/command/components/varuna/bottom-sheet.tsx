@@ -99,7 +99,14 @@ export function BottomSheet({
         <span aria-hidden="true" className="h-1 w-10 rounded-chip bg-line-strong" />
         <span className="w-full text-left type-small font-medium text-text">{title}</span>
       </button>
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">{children}</div>
+      {/* Focusable: the sheet scrolls, and on the public map its contents are street names
+          rather than controls, so there is nothing inside to tab to (WCAG 2.1.1). */}
+      <div
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
+      >
+        {children}
+      </div>
     </motion.div>
   );
 }

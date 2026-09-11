@@ -7,7 +7,10 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      // Focusable: a table of numbers holds no controls, so without this a keyboard user can
+      // read the first columns of a wide table and never reach the rest (WCAG 2.1.1).
+      tabIndex={0}
+      className="relative w-full overflow-x-auto focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
     >
       <table
         data-slot="table"

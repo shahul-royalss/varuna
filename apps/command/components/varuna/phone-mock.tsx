@@ -68,7 +68,13 @@ export function PhoneMock({ messages, simTime, className }: PhoneMockProps) {
           </div>
         </div>
 
-        <ol className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3" aria-label="Messages">
+        {/* Focusable: the message list scrolls and the cards in it are not controls, so a
+            keyboard user could otherwise see the first message and no others (WCAG 2.1.1). */}
+        <ol
+          tabIndex={0}
+          className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-3 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
+          aria-label="Messages"
+        >
           {messages.length === 0 ? (
             <li className="self-center rounded-control bg-well px-3 py-2 text-center type-micro text-text-2">
               {DEFAULT_PHONE_MESSAGE}

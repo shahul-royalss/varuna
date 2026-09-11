@@ -209,7 +209,7 @@ export function HotspotRail({
                       href={pin.sourceUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-tide underline-offset-2 hover:underline"
+                      className="text-tide underline underline-offset-2"
                     >
                       source
                     </a>

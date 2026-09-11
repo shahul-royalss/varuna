@@ -273,7 +273,7 @@ function SkyPanelBody({ series, band, chartHeight, requestedTs }: SkyPanelBodyPr
                   href={point.source_url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-tide underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-tide focus-visible:outline-none"
+                  className="text-tide underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-tide focus-visible:outline-none"
                 >
                   coordinate source
                 </a>

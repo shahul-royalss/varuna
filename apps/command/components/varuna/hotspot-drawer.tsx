@@ -218,7 +218,7 @@ export function HotspotDrawer({
               href={hotspot.sourceUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 type-micro text-tide hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tide"
+              className="inline-flex items-center gap-1 type-micro text-tide underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tide"
             >
               Chronic-spot source
               <ExternalLink size={12} strokeWidth={1.75} />

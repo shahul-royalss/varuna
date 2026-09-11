@@ -52,7 +52,7 @@ export function RailAlerts({ runId }: { runId?: string | null }) {
     <div className="flex flex-col gap-3">
       <p className="type-micro text-text-3">
         {alerts.length.toLocaleString("en-IN")} raised on this cycle.{" "}
-        <Link href="/alerts" className="text-tide underline-offset-2 hover:underline">
+        <Link href="/alerts" className="text-tide underline underline-offset-2">
           Open the alert centre
         </Link>{" "}
         for the CAP documents and the delivery log.
@@ -138,7 +138,7 @@ export function RailPumps({ runId }: { runId?: string | null }) {
         ))}
       </ol>
       <p className="type-micro text-text-3">
-        <Link href="/pumps" className="text-tide underline-offset-2 hover:underline">
+        <Link href="/pumps" className="text-tide underline underline-offset-2">
           Open the dispatch board
         </Link>{" "}
         to move a pump or send the order.
