@@ -319,9 +319,7 @@ def write_wet_segments(
     """
     peak = np.asarray(depth_cm).max(axis=0)
     wet = np.flatnonzero(peak >= WET_THRESHOLD_CM)
-    series = {
-        str(segment_ids[k]): [round(float(v), 1) for v in depth_cm[:, k]] for k in wet
-    }
+    series = {str(segment_ids[k]): [round(float(v), 1) for v in depth_cm[:, k]] for k in wet}
     product = {
         "run_id": run_id,
         "valid_ts": [t.isoformat() for t in times],

@@ -93,7 +93,10 @@ def raster_bounds(run_id: Annotated[str | None, Query()] = None) -> dict[str, An
         "mass_balance_err": meta.get("mass_balance_err"),
         "stage_ms": meta.get("stage_ms", {}),
         "notes": meta.get("notes", []),
-        "frames": [f"/v1/nowcast/raster?run_id={meta.get('run_id', path.name)}&step={i}" for i in range(len(steps))],
+        "frames": [
+            f"/v1/nowcast/raster?run_id={meta.get('run_id', path.name)}&step={i}"
+            for i in range(len(steps))
+        ],
     }
 
 
@@ -182,7 +185,9 @@ def segments(
         if isinstance(first.get("safe_until"), str):
             safe_until[str(seg_id)] = json.loads(first["safe_until"])
 
-    log.info("api.segments", run_id=path.name, wet=len(series), of=int(frame["segment_id"].nunique()))
+    log.info(
+        "api.segments", run_id=path.name, wet=len(series), of=int(frame["segment_id"].nunique())
+    )
     return {
         "run_id": meta.get("run_id", path.name),
         "valid_ts": times,
@@ -280,8 +285,9 @@ def alerts(
     path = _resolve(run_id)
     record = path / "alerts.json"
     if not record.is_file():
-        raise api_error(404, "no_alerts", f"Run {path.name} has no alert product. {BAKE_HINT}",
-                        run_id=path.name)
+        raise api_error(
+            404, "no_alerts", f"Run {path.name} has no alert product. {BAKE_HINT}", run_id=path.name
+        )
 
     body = json.loads(record.read_text(encoding="utf-8"))
     queue = body.get("alerts", [])
@@ -366,9 +372,7 @@ def drains_health(
     features = health.get("features", [])
     if min_beta > 0.0:
         features = [f for f in features if float(f["properties"].get("beta_mean", 0)) >= min_beta]
-    features = sorted(
-        features, key=lambda f: -float(f["properties"].get("beta_mean", 0.0))
-    )[:limit]
+    features = sorted(features, key=lambda f: -float(f["properties"].get("beta_mean", 0.0)))[:limit]
 
     log.info("api.drain_health", run_id=path.name, sent=len(features), of=health.get("n_edges"))
     return {**health, "features": features, "n_sent": len(features)}
@@ -387,7 +391,9 @@ def drains_health_csv(run_id: Annotated[str | None, Query()] = None) -> Response
     csv_path = path / "desilting.csv"
     if not csv_path.is_file():
         raise api_error(
-            404, "no_desilting_csv", f"Run {path.name} has no desilting list. {BAKE_HINT}",
+            404,
+            "no_desilting_csv",
+            f"Run {path.name} has no desilting list. {BAKE_HINT}",
             run_id=path.name,
         )
     return Response(
@@ -409,7 +415,9 @@ def observations(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any
     record = path / "observations.json"
     if not record.is_file():
         raise api_error(
-            404, "no_observations", f"Run {path.name} assimilated nothing. {BAKE_HINT}",
+            404,
+            "no_observations",
+            f"Run {path.name} assimilated nothing. {BAKE_HINT}",
             run_id=path.name,
         )
     body = json.loads(record.read_text(encoding="utf-8"))

@@ -464,6 +464,7 @@ def condition_dem(
     culverts: Any = None,
     bridges: Any = None,
     sinks: Any = None,
+    register: Any = None,
     seed: int = 0,
     building_burn_m: float = BUILDING_BURN_M,
     road_carve_m: float = ROAD_CARVE_M,
@@ -481,7 +482,13 @@ def condition_dem(
         roads: road centrelines - rasterised one cell wide.
         culverts: ``tunnel=culvert`` ways to breach.
         bridges: ``bridge=yes`` ways to breach (same treatment as culverts).
-        sinks: points that must stay pits - OSM underpasses/subways plus the hotspot register.
+        sinks: points that must stay pits - OSM underpasses/subways plus the register points
+            flagged ``is_sink``. These override the pit-area rule.
+        register: every chronic-waterlogging point, sink-flagged or not. These are cleared from
+            the building mask but do not override the pit-area rule: being a known flood point
+            is evidence that water pools there, which is incompatible with the cell being an
+            impermeable obstacle, but it is not on its own evidence of a topographic sink.
+            Defaults to ``sinks``.
         seed: tie-breaking seed for the pure-Python least-cost breach; two runs with the
             same seed and inputs produce byte-identical output.
 
@@ -496,16 +503,35 @@ def condition_dem(
     buildings_mask = rasterize_mask(buildings, transform, shape, crs=crs, all_touched=False)
     roads_mask = rasterize_mask(roads, transform, shape, crs=crs, all_touched=False)
 
+    # The sinks are resolved *before* the burn, because a protected sink must not be treated as
+    # a building. CLAUDE.md 10.1 step 4 says to "keep underpasses/subways as sinks (OSM
+    # tunnel/layer<0 + the hotspot register)", and a cell cannot be both a place water is known
+    # to pool and an impermeable obstacle. Two sourced chronic points - Khar Subway and Parel /
+    # Bharat Mata Cinema - sit under an OSM building footprint, so burning first raised them
+    # 5 m and, because `buildings_mask` is also what roughness turns into the solver's blocked
+    # mask, left them with no flux at all: the Twin could never put water on two of the ten
+    # hotspots section 3.3 names. Clearing them from the mask fixes both at once.
+    sink_cells = _point_cells(sinks, transform, shape, crs=crs)
+    sink_mask = np.zeros(shape, dtype=bool)
+    for row, col in sink_cells:
+        sink_mask[row, col] = True
+
+    # Pit protection is about topography, so it stays on the sink-flagged points. Building
+    # clearing is about evidence, so it covers the whole register: Parel / Bharat Mata Cinema
+    # is a sourced chronic point that is not a subway, and it sits on a footprint.
+    no_build_mask = sink_mask.copy()
+    for row, col in _point_cells(
+        sinks if register is None else register, transform, shape, crs=crs
+    ):
+        no_build_mask[row, col] = True
+    sinks_on_buildings = int((buildings_mask & no_build_mask).sum())
+    buildings_mask = buildings_mask & ~no_build_mask
+
     out = burn_buildings(work, buildings_mask, height_m=building_burn_m)
     out = carve_roads(out, roads_mask, depth_m=road_carve_m)
 
     culvert_geoms = _geometries(culverts, crs) + _geometries(bridges, crs)
     out, culvert_stats = breach_culverts(out, transform, culvert_geoms, crs=None)
-
-    sink_cells = _point_cells(sinks, transform, shape, crs=crs)
-    sink_mask = np.zeros(shape, dtype=bool)
-    for row, col in sink_cells:
-        sink_mask[row, col] = True
 
     out, pit_stats = breach_spurious_pits(
         out,
@@ -524,6 +550,7 @@ def condition_dem(
         "cells_carved": int(roads_mask.sum()),
         "road_carve_m": road_carve_m,
         "sinks_protected": len(sink_cells),
+        "sinks_cleared_of_building": sinks_on_buildings,
         "min_pit_area_m2": min_pit_area_m2,
         "seed": seed,
         "stage_ms": stage_ms,

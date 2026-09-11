@@ -130,7 +130,7 @@ where a bare-earth model would not, and it cannot see a 40 m underpass dip or a 
 
 So we claim pattern and timing, not absolute level, and the scores above are consistent with that.
 Chronic sinks are registered in their own right rather than discovered by the DEM, and
-**depressions explain 89.3 % of the chronic register** against a 60 % target. LiDAR and the 5 m
+**depressions explain 82.1 % of the chronic register** against a 60 % target. LiDAR and the 5 m
 nests are budgeted in the pilot.
 
 ## "How is this different from IFLOWS-Mumbai?"

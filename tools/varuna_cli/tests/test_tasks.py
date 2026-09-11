@@ -144,7 +144,9 @@ def test_register_skips_names_taken_by_an_engine() -> None:
 
 @pytest.mark.parametrize(
     ("target", "phase"),
-    [("city", 1), ("bundle", 2), ("bake", 5), ("train", 7), ("pack", 10), ("demo-video", 10)],
+    # `pack` is deliberately absent: P10.6 implemented it, so invoking it here no longer refuses -
+    # it builds the real 830 MB offline package, which is not something a unit test should do.
+    [("city", 1), ("bundle", 2), ("bake", 5), ("train", 7), ("demo-video", 10)],
 )
 def test_phase_gate_exits_with_two_and_no_traceback(
     app: typer.Typer, target: str, phase: int

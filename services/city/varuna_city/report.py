@@ -440,15 +440,27 @@ def write_report(
                 f"{_fmt(condition.get('culvert_cells_breached'))} cells",
             ),
             ("Sinks protected (underpasses, register)", _fmt(condition.get("sinks_protected"))),
-            ("Pits found after burning and carving", _fmt(condition.get("pits_before"))),
             (
-                "Pits kept (area >= the spurious threshold or protected)",
+                "Sinks cleared of a building footprint",
+                _fmt(condition.get("sinks_cleared_of_building")),
+            ),
+            ("Pits found after burning and carving", _fmt(condition.get("pits_before"))),
+            # Two rows, not one. ADR-0019 split these counters because merging them is what
+            # hid the off-by-one: every pit was reported as "protected" and 4,004 protected
+            # pits read plausible enough that nobody checked. A single row here would print
+            # `pits_protected` alone and report 0 kept on a build that keeps 2,493.
+            (
+                "Pits kept because they are larger than one cell",
+                _fmt(condition.get("pits_large")),
+            ),
+            (
+                "Pits kept because they are protected (underpasses, register)",
                 _fmt(condition.get("pits_protected")),
             ),
             (
                 "Spurious pits breached",
                 f"{_fmt(condition.get('pits_breached'))} "
-                f"(rule: area < {_fmt(condition.get('min_pit_area_m2'), 0)} m2, "
+                f"(rule: area <= {_fmt(condition.get('min_pit_area_m2'), 0)} m2, "
                 f"method {condition.get('breach_method', 'not recorded')})",
             ),
             ("Blocked cells (buildings)", _fmt(stats.get("roughness", {}).get("blocked_cells"))),

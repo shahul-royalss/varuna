@@ -126,7 +126,9 @@ def _design_storm_rain(bundle: str, cycle_ts: datetime | None, city: str, n_step
     # identical between a design storm and a reconstruction.
     cycle = run_bundle_cycle(bundle, cycle_ts)
     aoi = load_aoi_grid(city)
-    cube = np.stack([resample_to_aoi(window[k], cycle.products.grid, aoi) for k in range(window.shape[0])])
+    cube = np.stack(
+        [resample_to_aoi(window[k], cycle.products.grid, aoi) for k in range(window.shape[0])]
+    )
     cube = np.where(np.isfinite(cube), cube, 0.0)
     log.info(
         "cycle.design_storm_forcing",

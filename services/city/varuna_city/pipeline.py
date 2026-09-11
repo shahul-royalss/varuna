@@ -505,6 +505,23 @@ def _load_assets(ctx: Ctx) -> dict[str, Any]:
 # ---- step 6: hydro-conditioning ---------------------------------------------------------
 
 
+def _register_points(ctx: Ctx) -> Any:
+    """Every chronic-waterlogging point, whatever its ``is_sink`` flag.
+
+    `_sink_points` deliberately narrows to the sink-flagged subways, because overriding the
+    pit-area rule is a claim about topography. Clearing a building footprint is a different
+    claim - that a curated, sourced flood point cannot also be an impermeable obstacle - and it
+    holds for the whole register. Only 5 of Mumbai's 28 points are sink-flagged, and Parel /
+    Bharat Mata Cinema is not one of them.
+    """
+    hotspots = ctx.get("hotspots")
+    if hotspots is None or not len(hotspots):
+        return None
+    import geopandas as gpd
+
+    return gpd.GeoDataFrame(geometry=hotspots.geometry, crs=hotspots.crs)
+
+
 def _sink_points(ctx: Ctx) -> Any:
     """Underpasses and subways that must stay pits: OSM tunnels plus register sinks."""
     import geopandas as gpd
@@ -557,6 +574,7 @@ def _step_condition(ctx: Ctx) -> dict[str, Any]:
         culverts=culverts,
         bridges=bridges,
         sinks=_sink_points(ctx),
+        register=_register_points(ctx),
         seed=ctx.seed,
         building_burn_m=float(ctx.config.building_burn_m),
         road_carve_m=float(ctx.config.road_carve_m),

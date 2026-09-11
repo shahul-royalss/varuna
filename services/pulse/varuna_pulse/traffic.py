@@ -219,7 +219,9 @@ def _z_scores(window: pd.DataFrame) -> np.ndarray:
         dtype=np.float64
     )
     sigma = window.groupby("segment_id")["kmh"].transform("std").to_numpy(dtype=np.float64)
-    sigma = np.where(np.isfinite(sigma) & (sigma > 1.0), sigma, np.maximum(
-        window["baseline_kmh"].to_numpy(dtype=np.float64) * 0.2, 3.0
-    ))
+    sigma = np.where(
+        np.isfinite(sigma) & (sigma > 1.0),
+        sigma,
+        np.maximum(window["baseline_kmh"].to_numpy(dtype=np.float64) * 0.2, 3.0),
+    )
     return deviation / sigma

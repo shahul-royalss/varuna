@@ -3,6 +3,7 @@ name = "varuna"
 version = "0.1.0"
 description = "VARUNA - street-level urban flood nowcasting digital twin (SIH 2026, PS SIH26085, MoES)"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.12,<3.13"
 dependencies = [
   "varuna-schemas",

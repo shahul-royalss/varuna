@@ -23,6 +23,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import structlog
@@ -86,6 +87,8 @@ class OnboardState:
     error: str | None = None
     steps_done: int = 0
     steps_total: int = 14
+    failed_step: str | None = None
+    """The pipeline step that broke first, once one has. Freezes `step` and `progress` there."""
 
     lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
@@ -154,10 +157,22 @@ class _Tap:
             if k not in {"event", "level", "timestamp", "logger"} and v is not None
         )
         state.note(f"{message} {extras}".strip())
-        if event.get("step"):
+        if event.get("step") and state.failed_step is None:
             mapped = STEP_OF.get(str(event["step"]))
             if mapped:
                 state.step = mapped
+        if message == "city.step_failed" and state.failed_step is None:
+            # Stop the screen on the step that actually broke, having just mapped `step` to it.
+            #
+            # `run_city` does not stop at a failed step: it records the failure and runs the
+            # remaining thirteen, each of which fails for want of an output the first one never
+            # wrote. Without this freeze the bar walks on to 83 % and the wizard names the *last*
+            # step it saw, so a judge watches the build die at "Build graph" when what is missing
+            # is the open data at step one. The deployed wizard reported exactly that.
+            state.failed_step = str(event.get("step") or "")
+            return event
+        if state.failed_step is not None:
+            return event
         if message == "city.step":
             state.steps_done += 1
             # The build is five sixths of the job; the design-storm cycle is the last sixth.
@@ -181,6 +196,145 @@ def install_tap() -> None:
     sl.configure(processors=processors)
 
 
+MIN_FREE_BYTES = 160 * 1024**2
+"""Free space demanded before fetching tiles, sized on the two cities this project ships.
+
+Measured, not guessed: Chennai's three tiles are 138.6 MB and Mumbai's are 143.1 MB (two
+Copernicus GLO-30 degrees plus one 3-degree ESA WorldCover each, and the WorldCover tile is
+~120 MB of that on its own). 160 MB covers either with room to spare.
+
+The city folder is not counted because a rebuild overwrites it in place rather than adding to
+it, and the tiles are dropped again straight after a fetch - see `_drop_fetched_tiles`. The
+Railway volume is 500 MB with 311 MB already resident, so a floor much above this would refuse
+a download that in fact fits.
+"""
+
+
+def _drop_fetched_tiles(state: OnboardState, tiles: list[Path]) -> None:
+    """Delete the tiles this job downloaded, once the city they built is on disk.
+
+    Only ever the files `_warm_cache` fetched in this run. A warm cache fetches nothing and so
+    drops nothing, which is what protects the demo laptop: `tools/prefetch_city_cache.py` put
+    those tiles there deliberately and CLAUDE.md 7.9 needs them for the offline rehearsal.
+
+    This mirrors the Railway entrypoint's `drop_download_cache` and for the same reason - the
+    500 MB volume already holds 311 MB, so 139 MB of tiles is affordable during a build and dead
+    weight after one. The cost is honest: onboarding the same city again re-downloads.
+    """
+    freed = 0
+    for tile in tiles:
+        try:
+            if tile.is_file():
+                freed += tile.stat().st_size
+                tile.unlink()
+        except OSError as error:  # a tile we cannot remove is wasted space, not a failed build
+            log.warning("onboard.tile_not_dropped", path=str(tile), error=str(error))
+    if freed:
+        state.note(
+            f"Released {freed / 1e6:.0f} MB of downloaded tiles; the built city is what persists."
+        )
+
+
+def _warm_cache(state: OnboardState) -> list[Path]:
+    """Put this city's open-data tiles on disk before the build asks for them.
+
+    The pipeline never downloads. Its first step verifies `city/cache/` against the manifest and
+    raises if a tile is missing (`varuna_city.cache`: "Phase 1 never downloads"). That is right on
+    the demo laptop, where `tools/prefetch_city_cache.py` has already run and CLAUDE.md 7.9 wants
+    the wizard to work with the venue's network off.
+
+    It was wrong everywhere else, and that is why city-in-a-box did not work on the deployed site.
+    The Railway entrypoint *deletes* the tiles after the first build - `drop_download_cache`, on
+    purpose, because the 500 MB volume cannot hold both the 339 MB cache and the city it produces -
+    so the wizard demanded a cache the deployment had removed by design. Every run failed at the
+    `cache` step, and, before the freeze above, reported it as "Build graph" at 83 %.
+
+    Three outcomes, each named in the log:
+
+    * cache already warm -> return without touching the network (the stage path)
+    * cache cold, downloading refused -> raise, naming the command that fills it
+    * cache cold, downloading allowed -> fetch this city's tiles only, then build
+
+    Returns the tiles it downloaded, so the caller can release them once the build has consumed
+    them. Empty when the cache was already warm, which is what keeps a laptop's prefetched tiles
+    untouched.
+    """
+    import os
+    import shutil
+    import subprocess
+    import sys
+
+    from varuna_city.cache import cache_root, verify_cache
+    from varuna_city.config import load_city_config
+    from varuna_schemas.paths import repo_root
+
+    rows = verify_cache(load_city_config(state.city), strict=False)
+    missing = [row for row in rows if not row.ok]
+    if not missing:
+        state.note(f"Open data already cached: {len(rows)} tiles present. Nothing to download.")
+        return []
+
+    names = ", ".join(row.key for row in missing)
+    offline = state.from_cache_only or os.environ.get("VARUNA_OFFLINE") == "1"
+    if offline:
+        msg = (
+            f"{len(missing)} of {len(rows)} open-data tiles are not cached ({names}), and this "
+            f"job was asked not to download. Fill the cache with "
+            f"`uv run python tools/prefetch_city_cache.py --city {state.city}`, or start the job "
+            f"with from_cache_only=false to let it fetch them."
+        )
+        raise RuntimeError(msg)
+
+    root = cache_root()
+    root.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(root).free
+    if free < MIN_FREE_BYTES:
+        msg = (
+            f"Not enough room to cache {state.city}'s open data: {free / 1e6:.0f} MB free at "
+            f"{root}, and the tiles plus the city they build need about "
+            f"{MIN_FREE_BYTES / 1e6:.0f} MB. Free space on the volume and start the job again."
+        )
+        raise RuntimeError(msg)
+
+    script = repo_root() / "tools" / "prefetch_city_cache.py"
+    if not script.is_file():
+        msg = f"The prefetch tool is not in this image ({script}), so the tiles cannot be fetched."
+        raise RuntimeError(msg)
+
+    state.note(
+        f"{len(missing)} tiles are not cached ({names}). Fetching them once from Copernicus and "
+        f"ESA; {free / 1e6:.0f} MB free."
+    )
+    # Streamed rather than captured: CLAUDE.md 7.9's acceptance criterion is that every line the
+    # wizard shows comes from the pipeline, and a download that takes a minute should say so while
+    # it happens rather than in one block when it is over.
+    # Fixed argv, no shell, script path derived from the repo root - not user input.
+    process = subprocess.Popen(
+        [sys.executable, str(script), "--city", state.city],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=str(repo_root()),
+    )
+    assert process.stdout is not None
+    for line in process.stdout:
+        if line.strip():
+            state.note(line.rstrip())
+    if process.wait() != 0:
+        msg = (
+            f"Fetching {state.city}'s open data failed (prefetch exited {process.returncode}). "
+            f"The log above is the downloader's own output."
+        )
+        raise RuntimeError(msg)
+
+    still_missing = [row.key for row in verify_cache(load_city_config(state.city)) if not row.ok]
+    if still_missing:
+        msg = f"Tiles are still missing after the fetch: {', '.join(still_missing)}."
+        raise RuntimeError(msg)
+    state.note(f"Open data cached. Building {state.city}.")
+    return [Path(row.path) for row in missing]
+
+
 def _run(state: OnboardState) -> None:
     from varuna_city.pipeline import STEPS, run_city
 
@@ -190,12 +344,16 @@ def _run(state: OnboardState) -> None:
     try:
         state.step = "fetch_open_data"
         state.note(f"Building {state.city} from {'cache' if state.from_cache_only else 'source'}.")
+        fetched = _warm_cache(state)
         result = run_city(state.city)
         failed = [s for s in result.steps if s.status not in {"ok", "cached"}]
         if failed:
             names = ", ".join(s.name for s in failed)
             msg = f"The {state.city} build failed at: {names}."
             raise RuntimeError(msg)
+        # Only after the build succeeded: a failed one is retried from what is already on disk,
+        # and deleting the tiles first would make the retry re-download them.
+        _drop_fetched_tiles(state, fetched)
 
         state.step = "first_forecast"
         state.progress = 0.85
