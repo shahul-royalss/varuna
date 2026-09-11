@@ -8,7 +8,9 @@ const API_URL = process.env.PLAYWRIGHT_API_URL ?? "http://localhost:8000";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  timeout: 60_000,
+  // The demo test walks eleven screens, each of which may be compiled by Turbopack on first
+  // visit and served by an API waking from sleep.
+  timeout: 120_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
