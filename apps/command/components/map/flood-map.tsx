@@ -14,7 +14,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { CityMap, type Isochrone, type MapFocus, type SegmentPath } from "./city-map";
+import {
+  CityMap,
+  type Isochrone,
+  type MapFocus,
+  type SegmentPath,
+  type SegmentPick,
+  type TruthPin,
+} from "./city-map";
 import type { CityMapMode } from "./types";
 import {
   loadBuildings,
@@ -63,6 +70,10 @@ export interface FloodMapProps {
   showSatellite?: boolean;
   /** Probability mode's threshold in cm; unset draws ordinary depth (task P6.5). */
   probabilityThresholdCm?: number;
+  /** Sourced ground-truth pins to drop on the map (task P6.12, motion M18). */
+  truthPins?: readonly TruthPin[];
+  /** A wet street was clicked (task P6.9); absent leaves the streets unpickable. */
+  onSegmentPick?: (pick: SegmentPick | null) => void;
   /** Off where `MapSlot` sits behind this map and draws the credit already. */
   attribution?: boolean;
   showRaster?: boolean;
@@ -86,6 +97,8 @@ export function FloodMap({
   mode = "console",
   passableBelowCm,
   probabilityThresholdCm,
+  truthPins,
+  onSegmentPick,
   showSatellite = true,
   attribution = true,
   showRaster = true,
@@ -274,6 +287,8 @@ export function FloodMap({
       isochrones={isochrones}
       passableBelowCm={passableBelowCm}
       probabilityThresholdCm={probabilityThresholdCm}
+      truthPins={truthPins}
+      onSegmentPick={onSegmentPick}
       showSatellite={showSatellite}
       attribution={attribution}
       selectedHotspotId={selectedHotspotId}

@@ -17,6 +17,9 @@ import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
 import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { LayerPanel, type LayerToggles, type LayerKey } from "@/components/varuna/layer-panel";
 import { ProbabilityLegend } from "@/components/varuna/probability-legend";
+import { SegmentPopover } from "@/components/varuna/segment-popover";
+import type { SegmentPick } from "@/components/map/city-map";
+import { useTruthPins } from "@/lib/hooks/use-truth-pins";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
 import { TimeBar } from "@/components/varuna/time-bar";
@@ -131,6 +134,19 @@ export function ConsoleScreen() {
   // The exceedance the probability layer asks about. CLAUDE.md 7.2's four: the depth at which
   // each class of vehicle stops, so the question is always "who is stopped here?".
   const [probabilityThresholdCm, setProbabilityThresholdCm] = useState(30);
+
+  // The event's sourced pins, dropping as the clock reaches each one (task P6.12, motion M18).
+  // The only observations on this screen that VARUNA did not compute.
+  // Keyed on the run's own bundle and its current step, so the ticker follows the scrub the
+  // map is showing rather than a clock somewhere else on the page.
+  // The street the operator last clicked (task P6.9). Cleared by clicking empty map, by Escape,
+  // and by a new run - a popover about a segment of a run that is no longer on screen is a lie.
+  const [pick, setPick] = useState<SegmentPick | null>(null);
+
+  const truth = useTruthPins(
+    run?.provenance.bundle ?? undefined,
+    run?.validTs[step] ?? null,
+  );
 
   const toggleLayer = useCallback(
     (key: LayerKey, next: boolean) => setLayers((current) => ({ ...current, [key]: next })),
@@ -259,7 +275,8 @@ export function ConsoleScreen() {
         ) : (
           <RightRail
             hotspots={hotspots}
-          runId={run?.provenance.runId ?? null}
+            runId={run?.provenance.runId ?? null}
+            truthPins={truth.passed}
             step={step}
             selectedHotspotId={selectedHotspotId}
             onSelectHotspot={selectHotspot}
@@ -292,6 +309,8 @@ export function ConsoleScreen() {
           showHotspots={layers.hotspots}
           showSatellite={layers.satellite}
           probabilityThresholdCm={layers.probability ? probabilityThresholdCm : undefined}
+          truthPins={layers.hotspots ? truth.dropping : undefined}
+          onSegmentPick={setPick}
           attribution={false}
         />
 
@@ -340,6 +359,14 @@ export function ConsoleScreen() {
             rain panel stops short of it and scrolls instead. */}
         <div className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2">
           <CyclePicker currentRunId={run?.provenance.runId} onPick={pickCycle} />
+          {pick && run ? (
+            <SegmentPopover
+              pick={pick}
+              step={step}
+              validTs={run.validTs}
+              onClose={() => setPick(null)}
+            />
+          ) : null}
           {layers.probability ? (
             <ProbabilityLegend
               thresholdCm={probabilityThresholdCm}

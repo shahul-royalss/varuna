@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { Flame, Hospital, TrainFront, Warehouse } from "lucide-react";
 
+import type { GroundTruthPin } from "@/lib/api/ground-truth";
 import type { FacilityKind, Hotspot } from "@/lib/api/hotspots";
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { EmptyState } from "@/components/varuna/empty-state";
@@ -11,6 +12,9 @@ import { formatIstTime } from "@/lib/stores/time";
 import { cn } from "@/lib/utils";
 
 export interface HotspotRailProps {
+  /** Sourced pins the replay clock has passed, newest first (task P6.12). Each carries the URL
+   * it was read from, which is the whole point of showing them. */
+  truthPins?: readonly GroundTruthPin[];
   hotspots: readonly Hotspot[];
   /** Current step on the time bar; the chip shows the depth *now*, not at the peak. */
   step: number;
@@ -63,6 +67,7 @@ export function HotspotRail({
   onSelect,
   ranking,
   impassableThresholdCm = 30,
+  truthPins = [],
   loading = false,
 }: HotspotRailProps) {
   const listRef = useRef<HTMLOListElement>(null);
@@ -185,11 +190,35 @@ export function HotspotRail({
         )}
       </div>
 
-      <section aria-label="As it happened" className="shrink-0 border-t border-line p-4">
+      <section aria-label="As it happened" className="max-h-[14rem] shrink-0 overflow-y-auto border-t border-line p-4">
         <h3 className="type-small font-medium text-text">As it happened</h3>
-        <p className="mt-2 type-micro text-text-3">
-          Ground-truth pins appear as the replay clock passes them.
-        </p>
+        {truthPins.length === 0 ? (
+          <p className="mt-2 type-micro text-text-3">
+            Ground-truth pins appear as the replay clock passes them.
+          </p>
+        ) : (
+          <ol className="mt-2 space-y-2">
+            {truthPins.slice(0, 8).map((pin) => (
+              <li key={pin.id} className="type-micro text-text-2">
+                <span className="num text-text">{formatIstTime(pin.ts)}</span> · {pin.name}
+                {pin.depthPhrase ? ` · ${pin.depthPhrase}` : ""}
+                {pin.sourceUrl ? (
+                  <>
+                    {" · "}
+                    <a
+                      href={pin.sourceUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-tide underline-offset-2 hover:underline"
+                    >
+                      source
+                    </a>
+                  </>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        )}
       </section>
     </div>
   );

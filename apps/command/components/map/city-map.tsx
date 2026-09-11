@@ -102,6 +102,23 @@ export interface Isochrone {
   rings: [number, number][][];
 }
 
+/** A street the operator pointed at: the segment, and where on screen to anchor a panel. */
+export interface SegmentPick {
+  segment: SegmentPath;
+  x: number;
+  y: number;
+}
+
+/** One sourced ground-truth pin, drawn where a civic log said the water was (task P6.12). */
+export interface TruthPin {
+  id: string;
+  lon: number;
+  lat: number;
+  name: string;
+  /** 0 to 1: how far through its drop animation this pin is (motion M18). */
+  age: number;
+}
+
 /** Where to fly. `key` changes on every request, so clicking the same row twice flies again. */
 export interface MapFocus {
   lon: number;
@@ -129,6 +146,11 @@ export interface CityMapProps {
   routes?: readonly RouteLine[];
   /** Reachability bands, under the routes and over the streets. */
   isochrones?: readonly Isochrone[];
+  /** Sourced ground-truth pins the replay clock has reached (CLAUDE.md 7.2's 2:40 moment). */
+  truthPins?: readonly TruthPin[];
+  /** Called when a wet street is clicked, with the segment and where on screen it was (P6.9).
+   * Absent leaves the streets unpickable, which is what the hero and the public map want. */
+  onSegmentPick?: (pick: SegmentPick | null) => void;
   /** Depth in cm at which the audience's vehicle stops. Set it and the wet streets are drawn in
    * the public map's three colours instead of the operator's depth ramp (CLAUDE.md 7.11). */
   passableBelowCm?: number;
@@ -233,6 +255,17 @@ function diffColour(deltaCm: number | undefined): [number, number, number, numbe
   const [r, g, b] = delta < 0 ? DIFF_IMPROVED : DIFF_WORSE;
   return [r, g, b, Math.round(90 + 165 * strength)];
 }
+
+/** `--truth` #FFFFFF with a `--tide` ring: the sourced pins, and the only white on this map.
+ *
+ * White because they are the one thing here that is not a model output. Everything else on screen
+ * is something VARUNA computed; these are what the city wrote down. */
+const TRUTH_FILL: [number, number, number, number] = [255, 255, 255, 255];
+const TRUTH_RING: [number, number, number, number] = [45, 212, 191, 255];
+
+/** Pin radius in metres at full drop, and the ripple it expands to (motion M18). */
+const TRUTH_RADIUS_M = 70;
+const RIPPLE_RADIUS_M = 320;
 
 /** `--depth-5` #B91C1C: a street the route refused, so the detour has something to be around. */
 const AVOIDED_ROUTE: [number, number, number, number] = [185, 28, 28, 255];
@@ -403,6 +436,8 @@ export function CityMap({
   drains = [],
   routes = [],
   isochrones = [],
+  truthPins = [],
+  onSegmentPick,
   passableBelowCm,
   selectedHotspotId = null,
   focus = null,
@@ -699,7 +734,13 @@ export function CityMap({
           widthMinPixels: 1.6,
           capRounded: true,
           jointRounded: true,
-          pickable: false,
+          // Only when someone is listening: picking costs a second render pass, and the hero map
+          // and the public map have nothing to do with a pick.
+          pickable: Boolean(onSegmentPick),
+          // A line a few pixels wide is hard to hit; a 6 px tolerance is the difference between
+          // "click the street" and "click exactly the street".
+          autoHighlight: Boolean(onSegmentPick),
+          highlightColor: [227, 234, 246, 90],
           // A scrub changes one thing, so one accessor is re-run.
           updateTriggers: {
             getColor: [step, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm],
@@ -737,7 +778,7 @@ export function CityMap({
       );
     }
     return built;
-  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm]);
+  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm, onSegmentPick]);
 
   // Motion M8, rebuilt on every pulse frame and therefore kept on its own so that a pulse
   // re-uploads nothing but the markers.
@@ -828,8 +869,52 @@ export function CityMap({
         }),
       );
     }
+    if (truthPins.length > 0) {
+      // Motion M18: the pin drops - scale 0 to 1 on a spring - trailing a ripple that expands and
+      // fades over its first 600 ms. Drawn above everything, because a pin under a street is a
+      // pin nobody sees, and these are the point of the whole replay.
+      const rippling = truthPins.filter((p) => p.age < 1);
+      if (rippling.length > 0) {
+        built.push(
+          new ScatterplotLayer<TruthPin>({
+            id: "truth-ripples",
+            data: rippling as TruthPin[],
+            getPosition: (d) => [d.lon, d.lat],
+            getRadius: (d) => TRUTH_RADIUS_M + (RIPPLE_RADIUS_M - TRUTH_RADIUS_M) * d.age,
+            radiusUnits: "meters",
+            stroked: true,
+            filled: false,
+            getLineColor: (d) => [TRUTH_RING[0], TRUTH_RING[1], TRUTH_RING[2], Math.round(220 * (1 - d.age))],
+            getLineWidth: 2,
+            lineWidthUnits: "pixels",
+            pickable: false,
+            updateTriggers: { getRadius: rippling.map((p) => p.age), getLineColor: rippling.map((p) => p.age) },
+          }),
+        );
+      }
+      built.push(
+        new ScatterplotLayer<TruthPin>({
+          id: "truth-pins",
+          data: truthPins as TruthPin[],
+          getPosition: (d) => [d.lon, d.lat],
+          // Springs past its final size and settles, which is what makes a drop read as a drop.
+          getRadius: (d) => TRUTH_RADIUS_M * Math.min(1, 0.4 + 0.75 * d.age),
+          radiusUnits: "meters",
+          radiusMinPixels: 4,
+          stroked: true,
+          filled: true,
+          getFillColor: TRUTH_FILL,
+          getLineColor: TRUTH_RING,
+          getLineWidth: 2,
+          lineWidthUnits: "pixels",
+          pickable: false,
+          updateTriggers: { getRadius: truthPins.map((p) => p.age) },
+        }),
+      );
+    }
+
     return built;
-  }, [routes, isochrones, drawProgress]);
+  }, [routes, isochrones, drawProgress, truthPins]);
 
   // The basemap, under everything. Rebuilt only when it is toggled or the raster comes and goes:
   // `TileLayer` keeps its own tile cache, and handing deck a new instance every render would
@@ -947,6 +1032,37 @@ export function CityMap({
         }
         controller={interactive}
         layers={layers as never}
+        pickingRadius={6}
+        getTooltip={
+          onSegmentPick
+            ? // deck's own tooltip, which is one DOM node it owns rather than a React portal
+              // chasing the cursor. 80 ms is the budget (CLAUDE.md 7.2) and this has no render
+              // in its path at all.
+              (({ object }: { object?: SegmentPath }) => {
+                if (!object) return null;
+                const depth = object.depthCm[step] ?? 0;
+                return {
+                  text: `${object.name || "Unnamed road"}\n${depth.toFixed(1)} cm`,
+                  style: {
+                    backgroundColor: "var(--deep)",
+                    color: "var(--text)",
+                    border: "1px solid var(--line)",
+                    borderRadius: "8px",
+                    fontSize: "12px",
+                    padding: "6px 8px",
+                    whiteSpace: "pre-line",
+                  },
+                };
+              }) as never
+            : undefined
+        }
+        onClick={
+          onSegmentPick
+            ? (({ object, x, y }: { object?: SegmentPath; x: number; y: number }) => {
+                onSegmentPick(object ? { segment: object, x, y } : null);
+              }) as never
+            : undefined
+        }
       />
 
       {showSatellite ? (

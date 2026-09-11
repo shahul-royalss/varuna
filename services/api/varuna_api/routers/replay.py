@@ -21,11 +21,12 @@ replay at it.
 
 from __future__ import annotations
 
+import json
 import math
 from datetime import timedelta
 from functools import lru_cache
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi import Path as PathParam
@@ -387,3 +388,64 @@ def replay_radar_frame(
 
 
 __all__ = ["ReplayBundleRequest", "design_storm_blocks", "router", "storm_cell_rows"]
+
+
+@router.get(
+    "/ground-truth",
+    summary="The event's sourced ground-truth pins (CLAUDE.md 10.2, task P6.12)",
+)
+def replay_ground_truth(bundle: BundleQ = None) -> dict[str, Any]:
+    """The curated, sourced pins for a bundle, oldest first.
+
+    **Every pin carries the URL it was read from** (rule 7). These are the only observations in
+    the replay that are not synthetic, which is what makes them worth dropping onto the map as the
+    clock passes them: the claim is not "VARUNA says this street flooded", it is "a civic log said
+    so, at this time, and here is the link".
+
+    Pins outside the AOI are returned with `inside_aoi` false rather than dropped - the console
+    shows them in the ticker and not on the map, because a report from a street the model does not
+    cover is still part of the record of the morning.
+    """
+    from varuna_replay.bundle import bundle_dir
+    from varuna_schemas.settings import get_settings
+
+    bundle_id = bundle or get_settings().varuna_bundle
+    path = bundle_dir(bundle_id) / "ground_truth.geojson"
+    if not path.is_file():
+        raise api_error(
+            404,
+            "no_ground_truth",
+            f"No ground_truth.geojson in {bundle_id}. Run `make bundle BUNDLE={bundle_id}`.",
+        )
+
+    data = json.loads(path.read_text(encoding="utf-8"))
+    pins: list[dict[str, Any]] = []
+    for feature in data.get("features", []):
+        props = feature.get("properties") or {}
+        pins.append(
+            {
+                "id": props.get("id"),
+                "ts": props.get("ts"),
+                "ts_uncertainty_min": props.get("ts_uncertainty_min"),
+                "name": props.get("name"),
+                "lon": props.get("lon"),
+                "lat": props.get("lat"),
+                "depth_cm": props.get("depth_cm"),
+                "depth_phrase": props.get("depth_phrase"),
+                "kind": props.get("kind"),
+                "text": props.get("text"),
+                "source_url": props.get("source_url"),
+                "source_title": props.get("source_title"),
+                "inside_aoi": bool(props.get("inside_aoi", True)),
+            }
+        )
+    pins.sort(key=lambda p: str(p.get("ts") or ""))
+    return {
+        "bundle": bundle_id,
+        "count": len(pins),
+        "pins": pins,
+        "notes": [
+            "Sourced ground truth: every pin carries the URL it was read from. Nothing here is "
+            "generated, unlike the gauges, traffic and citizen reports in the same bundle.",
+        ],
+    }

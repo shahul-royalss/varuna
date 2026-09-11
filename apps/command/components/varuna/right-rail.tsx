@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/varuna/empty-state";
 import { HotspotRail } from "@/components/varuna/hotspot-rail";
 import { ReachabilityPanel } from "@/components/varuna/reachability-panel";
 import { RailAlerts, RailPumps } from "@/components/varuna/rail-mirrors";
+import type { GroundTruthPin } from "@/lib/api/ground-truth";
 import type { Hotspot, HotspotSet } from "@/lib/api/hotspots";
 import { RIGHT_RAIL_TABS, useUiStore, type RightRailTab } from "@/lib/stores/ui";
 
@@ -27,6 +28,8 @@ export interface RightRailProps {
   simTime?: string | null;
   /** The console draws the bands this hands back on its own map. */
   onIsochrones?: (rings: { minutes: number; rings: [number, number][][] }[]) => void;
+  /** Sourced ground-truth pins the replay clock has passed, for the "As it happened" ticker. */
+  truthPins?: readonly GroundTruthPin[];
   /** The run whose alerts and pump plan the rail mirrors. The pages own the full versions of
    * both; the rail is the operator's glance at them without leaving the map (CLAUDE.md 7.2). */
   runId?: string | null;
@@ -41,6 +44,7 @@ export function RightRail({
   hotspots = null,
   step = 0,
   runId = null,
+  truthPins = [],
   selectedHotspotId = null,
   onSelectHotspot,
   hotspotsLoading = false,
@@ -73,6 +77,7 @@ export function RightRail({
           selectedId={selectedHotspotId}
           onSelect={onSelectHotspot}
           ranking={hotspots?.ranking}
+          truthPins={truthPins}
           impassableThresholdCm={hotspots?.impassableThresholdCm}
           loading={hotspotsLoading}
         />
