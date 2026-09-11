@@ -44,7 +44,7 @@ import {
 import type { CityMapMode } from "./types";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { DUR_MS, FLY_TO_CURVE } from "@/lib/motion";
-import { depthRgba } from "@/lib/ramps";
+import { depthRgba, probabilityRgba } from "@/lib/ramps";
 
 /** One segment's geometry plus the depth series the run gave it. */
 export interface SegmentPath {
@@ -147,6 +147,9 @@ export interface CityMapProps {
   showDrains?: boolean;
   /** Draw Esri's aerial imagery under everything (section 6.7's basemap slot). */
   showSatellite?: boolean;
+  /** Probability mode (CLAUDE.md 6.2, task P6.5): the depth-ramp colour at the p50 depth, with
+   * opacity set by P(depth > this threshold in cm). Unset draws ordinary depth. */
+  probabilityThresholdCm?: number;
   /** Draw `segments` by their `deltaCm` rather than their depth: the what-if diff layer
    * (CLAUDE.md 7.7). Blue is improved, red is worse, grey is unchanged. */
   diffMode?: boolean;
@@ -411,6 +414,7 @@ export function CityMap({
   showHotspots = true,
   showBuildings = true,
   showDrains = false,
+  probabilityThresholdCm,
   diffMode = false,
   diffProgress = 1,
   showSatellite = true,
@@ -676,9 +680,17 @@ export function CityMap({
               const lon = d.path[0]?.[0] ?? 0;
               return lon <= wipeLon ? diffColour(d.deltaCm) : DIFF_UNCHANGED;
             }
+            const depth = d.depthCm[step] ?? 0;
+            if (probabilityThresholdCm !== undefined) {
+              // **P is 0 or 1 on a one-member run**, and that is not an approximation: a
+              // deterministic forecast either puts the street over the threshold or it does not.
+              // The 15 % floor of CLAUDE.md 6.2 keeps a below-threshold street visible rather
+              // than vanishing, and the legend says which kind of run this is.
+              return probabilityRgba(depth, depth > probabilityThresholdCm ? 1 : 0);
+            }
             return passableBelowCm === undefined
-              ? depthRgba(d.depthCm[step] ?? 0)
-              : passabilityRgba(d.depthCm[step] ?? 0, passableBelowCm);
+              ? depthRgba(depth)
+              : passabilityRgba(depth, passableBelowCm);
           },
           getWidth: (d) =>
             // A changed street is drawn thicker, so the answer reads from across a room.
@@ -690,7 +702,7 @@ export function CityMap({
           pickable: false,
           // A scrub changes one thing, so one accessor is re-run.
           updateTriggers: {
-            getColor: [step, passableBelowCm, diffMode, wipeLon],
+            getColor: [step, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm],
             getWidth: [diffMode],
           },
         }),
@@ -725,7 +737,7 @@ export function CityMap({
       );
     }
     return built;
-  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon]);
+  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm]);
 
   // Motion M8, rebuilt on every pulse frame and therefore kept on its own so that a pulse
   // re-uploads nothing but the markers.

@@ -208,14 +208,23 @@ def sink_draw(
     solver: DrainSolver,
     head: NDArray[np.floating],
     dt_s: float,
+    out: NDArray[np.floating] | None = None,
 ) -> NDArray[np.floating]:
     """Withdrawal rate per **node** in m3/s, before the supply check.
 
     The loop is over units, not nodes: the prototype's inventory is twelve mobile pumps and a
     pair of holding tanks (CLAUDE.md 3.3), so a Python loop over units costs nothing next to
     the per-edge work, and each unit gets its own ``np.interp`` on its own curve.
+
+    ``out`` is written in place and returned. Without it this allocated a fresh 50,110-element
+    array on every one of a cycle's 10,800 inner steps - half a gigabyte, to carry fourteen
+    non-zero numbers - and the caller then copied it again.
     """
-    draw = np.zeros(solver.n_nodes, dtype=np.float64)
+    draw = np.zeros(solver.n_nodes, dtype=np.float64) if out is None else out
+    if out is not None:
+        # Only the unit nodes can be non-zero, so clearing those is enough and costs fourteen
+        # writes rather than fifty thousand.
+        draw[sinks.node] = 0.0
     if sinks.n_units == 0:
         return draw
     depth = head[sinks.node] - solver.network.z_invert[sinks.node]
@@ -633,6 +642,85 @@ class DrainRunReport:
         )
 
 
+@dataclass(slots=True)
+class _Scratch:
+    """Buffers the compiled kernel reuses, so a step allocates nothing.
+
+    Cached on the solver: rebuilding it - which VARUNA-Pulse does once per cycle when the
+    posterior moves - gets fresh buffers with it.
+    """
+
+    q: NDArray[np.floating]
+    q_out: NDArray[np.floating]
+    scale: NDArray[np.floating]
+    net_edge: NDArray[np.floating]
+    applied_surch: NDArray[np.floating]
+    applied_draw: NDArray[np.floating]
+    draw: NDArray[np.floating]
+    tide: NDArray[np.floating]
+    from_node: NDArray[np.integer]
+    to_node: NDArray[np.integer]
+    length: NDArray[np.floating]
+    flap_gate: NDArray[np.bool_]
+    boundary: NDArray[np.integer]
+
+
+_SCRATCH: dict[int, _Scratch] = {}
+
+_STORED: dict[int, tuple[NDArray[np.floating], float]] = {}
+"""The stored volume each drain state ended its last compiled run at.
+
+Keyed on the state's id, and validated against the *identity of its head array*: `id()` is reused
+after a collection, and a stale hit here would report a mass balance against another run's water.
+`simulate` mutates `head` in place, so the array object is the same one from call to call and a
+different state means a different array."""
+
+
+def _stored_start(solver: DrainSolver, state: DrainState) -> float:
+    """The water in the network now, reusing the last compiled run's end value when it applies."""
+    found = _STORED.get(id(state))
+    if found is not None and found[0] is state.head:
+        return found[1]
+    return stored_volume_m3(solver, state.head)
+
+
+def _scratch(solver: DrainSolver) -> _Scratch:
+    """The kernel's reusable buffers for one solver, built once."""
+    # Both lengths checked, not just the id: CPython reuses `id()` after a collection, and the
+    # kernel indexes these without bounds checks. See `coupling._node_arrays` for the crash this
+    # class of cache caused there.
+    key = id(solver)
+    found = _SCRATCH.get(key)
+    if (
+        found is not None
+        and found.q.shape[0] == solver.n_edges
+        and found.q_out.shape[0] == solver.n_nodes
+    ):
+        return found
+    net = solver.network
+    n_nodes = solver.n_nodes
+    made = _Scratch(
+        q=np.zeros(solver.n_edges),
+        q_out=np.zeros(n_nodes),
+        scale=np.ones(n_nodes),
+        net_edge=np.zeros(n_nodes),
+        applied_surch=np.zeros(n_nodes),
+        applied_draw=np.zeros(n_nodes),
+        draw=np.zeros(n_nodes),
+        tide=np.zeros(n_nodes),
+        from_node=np.ascontiguousarray(net.from_node, dtype=np.int64),
+        to_node=np.ascontiguousarray(net.to_node, dtype=np.int64),
+        length=np.ascontiguousarray(net.length, dtype=np.float64),
+        flap_gate=np.ascontiguousarray(net.flap_gate, dtype=np.bool_),
+        boundary=np.ascontiguousarray(net.boundary, dtype=np.int64),
+    )
+    # One solver is live at a time, so clearing keeps a long bake from holding the buffers of
+    # every solver it has ever built.
+    _SCRATCH.clear()
+    _SCRATCH[key] = made
+    return made
+
+
 def simulate(
     solver: DrainSolver,
     state: DrainState,
@@ -644,17 +732,42 @@ def simulate(
     tide_stage_m: float | NDArray[np.floating] | None = None,
     sinks: ControlledSink | None = None,
     sink_state: SinkState | None = None,
+    compiled: bool = True,
 ) -> DrainRunReport:
     """Run the drain solver over one sync interval with the forcing held constant.
 
     CLAUDE.md 11.5 freezes the exchange fluxes over ``sync_s`` (5 s) and CLAUDE.md 11.4 fixes
     the inner step at ``inner_dt_s`` (1 s), so a call here is normally five steps. The tide is
     frozen with them; it moves on a scale of hours.
+
+    ``compiled`` runs the Numba kernel in :mod:`varuna_twin.drain_kernel` - the same arithmetic
+    with no temporaries (task P4.6). ``compiled=False`` runs the NumPy path, which is the readable
+    specification and what the kernel is tested against.
     """
     n_steps = max(round(duration_s / dt_s), 0)
-    started = stored_volume_m3(solver, state.head)
+    # **Carried between calls, not recomputed.** `stored_volume_m3` is a full NumPy pass over
+    # 50,110 nodes with several temporaries, and the runner calls `simulate` 2,160 times per
+    # cycle - so this was several seconds of work to learn a number the previous call already
+    # ended holding. The cached value is keyed on the state object's identity *and* its head
+    # array, so anything that touched the heads in between falls back to the real computation.
+    started = _stored_start(solver, state)
     inlet = surch = sink = boundary = 0.0
     limited = 0
+
+    if compiled and n_steps > 0:
+        return _simulate_compiled(
+            solver,
+            state,
+            n_steps=n_steps,
+            dt_s=dt_s,
+            q_inlet=q_inlet,
+            q_surcharge=q_surcharge,
+            tide_stage_m=tide_stage_m,
+            sinks=sinks,
+            sink_state=sink_state,
+            started=started,
+        )
+
     for _ in range(n_steps):
         report = step(
             solver,
@@ -679,5 +792,112 @@ def simulate(
         boundary_m3=boundary,
         stored_start_m3=started,
         stored_end_m3=stored_volume_m3(solver, state.head),
+        limited_edges=limited,
+    )
+
+
+def _simulate_compiled(
+    solver: DrainSolver,
+    state: DrainState,
+    *,
+    n_steps: int,
+    dt_s: float,
+    q_inlet: NDArray[np.floating] | None,
+    q_surcharge: NDArray[np.floating] | None,
+    tide_stage_m: float | NDArray[np.floating] | None,
+    sinks: ControlledSink | None,
+    sink_state: SinkState | None,
+    started: float,
+) -> DrainRunReport:
+    """:func:`simulate` through the compiled kernel. Same arithmetic, no temporaries."""
+    from varuna_twin.drain_kernel import step_kernel
+
+    scratch = _scratch(solver)
+    n_nodes = solver.n_nodes
+    head = state.head
+
+    inlet = (
+        np.zeros(n_nodes) if q_inlet is None else np.ascontiguousarray(q_inlet, dtype=np.float64)
+    )
+    surch = (
+        np.zeros(n_nodes)
+        if q_surcharge is None
+        else np.ascontiguousarray(q_surcharge, dtype=np.float64)
+    )
+
+    have_tide = tide_stage_m is not None
+    if have_tide:
+        stage = np.asarray(tide_stage_m, dtype=np.float64)
+        scratch.tide[:] = stage if stage.ndim else float(stage)
+
+    totals = np.zeros(5)
+    limited = 0
+    # **Allocated once, not per step.** With no sinks this used to build a fresh 50,110-element
+    # array of zeros on every one of the 10,800 inner steps - half a gigabyte of allocation for a
+    # value that never changes, and enough to show up beside the kernel it was feeding.
+    has_sinks = sinks is not None and sink_state is not None
+    draw = scratch.draw
+    if not has_sinks:
+        draw[:] = 0.0
+
+    for _ in range(n_steps):
+        # Sinks draw on the *current* head, so they are recomputed per step exactly as the NumPy
+        # path does. `n_units` is a handful of tanks and pumps; NumPy is the right tool for it.
+        if has_sinks:
+            sink_draw(sinks, sink_state, solver, head, dt_s, out=draw)
+        report = step_kernel(
+            scratch.from_node,
+            scratch.to_node,
+            scratch.length,
+            solver.conveyance,
+            solver.q_cap,
+            solver.inv_diameter,
+            solver.network.z_invert,
+            solver.storage_base,
+            solver.slot_area,
+            solver.crown_depth,
+            solver.fixed_head,
+            scratch.flap_gate,
+            scratch.boundary,
+            head,
+            state.flow,
+            inlet,
+            surch,
+            draw,
+            float(dt_s),
+            scratch.tide,
+            have_tide,
+            MIN_HEAD_GRADIENT_M,
+            MIN_FLOW_DEPTH_M,
+            BOUNDARY_FREE,
+            BOUNDARY_TIDAL,
+            scratch.q,
+            scratch.q_out,
+            scratch.scale,
+            scratch.net_edge,
+            scratch.applied_surch,
+            scratch.applied_draw,
+        )
+        # Element-wise rather than a slice add, which would allocate a temporary per step.
+        totals[0] += report[0]
+        totals[1] += report[1]
+        totals[2] += report[2]
+        totals[3] += report[3]
+        totals[4] = report[4]
+        limited += int(report[5])
+
+        if sinks is not None and sink_state is not None and sinks.n_units > 0:
+            sink_state.filled_m3 += dt_s * scratch.applied_draw[sinks.node]
+
+    stored_end = float(totals[4])
+    _STORED[id(state)] = (state.head, stored_end)
+    return DrainRunReport(
+        n_steps=n_steps,
+        inlet_m3=float(totals[0]),
+        surcharge_m3=float(totals[1]),
+        sink_m3=float(totals[2]),
+        boundary_m3=float(totals[3]),
+        stored_start_m3=started,
+        stored_end_m3=stored_end,
         limited_edges=limited,
     )

@@ -111,6 +111,78 @@ class ExchangeResult:
         )
 
 
+DRY_STREET_M = 1.0e-4
+"""Depth below which a street is dry enough that no inlet captures from it.
+
+Was an inline `1e-4` in the NumPy path; named here so the compiled kernel can be handed the same
+number rather than a copy of it."""
+
+
+@dataclass(slots=True)
+class ExchangeBuffers:
+    """Reusable output arrays for :func:`compute_exchange`.
+
+    **Owned by the caller, deliberately.** A module-level cache here was the obvious way to stop
+    2,160 calls allocating four arrays each - two of them the full 323 x 522 grid - and it is
+    wrong: :class:`ExchangeResult` holds *references*, so two results computed from the same
+    buffers are the same arrays, and the second call silently overwrites the first. A test that
+    compared a clean inlet with a clogged one caught it; in the run loop it would never have
+    shown, because each result is consumed before the next sync.
+
+    So the caller passes these in when it knows the result is consumed immediately - which the
+    runner does, once per sync - and omits them anywhere the result has to outlive the next call.
+    """
+
+    q_inlet: NDArray[np.floating]
+    q_surcharge: NDArray[np.floating]
+    q_inlet_cell: NDArray[np.floating]
+    q_surcharge_cell: NDArray[np.floating]
+
+    @classmethod
+    def allocate(cls, n_nodes: int, grid_shape: tuple[int, int]) -> ExchangeBuffers:
+        return cls(
+            q_inlet=np.zeros(n_nodes, dtype=np.float64),
+            q_surcharge=np.zeros(n_nodes, dtype=np.float64),
+            q_inlet_cell=np.zeros(grid_shape, dtype=np.float64),
+            q_surcharge_cell=np.zeros(grid_shape, dtype=np.float64),
+        )
+
+
+_NODE_CACHE: dict[int, dict[str, object]] = {}
+
+
+def _node_arrays(network: DrainNetwork) -> dict[str, object]:
+    """The per-node constants the kernel needs, in its dtypes, built once per network.
+
+    **The length is checked, not just the id.** CPython reuses `id()` once an object is collected,
+    so a freed network's arrays were being handed back for a different network that happened to
+    land at the same address - and since the new one had more nodes, the kernel read past the end
+    of `row` and `col` and scattered into whatever integer it found. Numba does not bounds-check,
+    so that surfaced as a Windows access violation in an unrelated test rather than an IndexError
+    at the line that caused it.
+    """
+    key = id(network)
+    found = _NODE_CACHE.get(key)
+    if found is not None and len(found["row"]) == network.n_nodes:  # type: ignore[arg-type]
+        return found
+    made: dict[str, object] = {
+        "row": np.ascontiguousarray(network.cell_row, dtype=np.int64),
+        "col": np.ascontiguousarray(network.cell_col, dtype=np.int64),
+        "z_ground": np.ascontiguousarray(network.z_ground, dtype=np.float64),
+        "kappa": np.clip(np.asarray(network.kappa, dtype=np.float64), 0.0, 1.0),
+        "inlet_length": np.maximum(
+            np.asarray(network.inlet_length, dtype=np.float64), 0.0
+        ),
+        "inlet_area": np.maximum(np.asarray(network.inlet_area, dtype=np.float64), 0.0),
+        "storage_area": np.maximum(
+            np.asarray(network.storage_area, dtype=np.float64), 0.01
+        ),
+    }
+    _NODE_CACHE.clear()
+    _NODE_CACHE[key] = made
+    return made
+
+
 def compute_exchange(
     surface_h: NDArray[np.floating],
     surface_z: NDArray[np.floating],
@@ -119,6 +191,8 @@ def compute_exchange(
     solver: DrainSolver,
     cell_area_m2: float,
     sync_s: float = 5.0,
+    compiled: bool = True,
+    out: ExchangeBuffers | None = None,
 ) -> ExchangeResult:
     """Compute the inlet capture and surcharge fluxes for one sync interval.
 
@@ -140,6 +214,11 @@ def compute_exchange(
     """
     n_nodes = network.n_nodes
     grid_shape = surface_h.shape
+
+    if compiled:
+        return _compute_exchange_compiled(
+            surface_h, surface_z, drain_head, network, solver, cell_area_m2, sync_s, out
+        )
 
     # Gather the 2D depth and elevation at each node's cell
     row = np.asarray(network.cell_row, dtype=np.intp)
@@ -188,7 +267,7 @@ def compute_exchange(
     # No capture where the node has no 2D cell
     q_inlet[~has_cell] = 0.0
     # No capture when the street is dry
-    q_inlet[h_positive < 1e-4] = 0.0
+    q_inlet[h_positive < DRY_STREET_M] = 0.0
 
     # ---- Surcharge (Appendix A) -----------------------------------------------
     # Q_surch = 0.6 * A_m * sqrt(2 g (H - z_g - h)) when H > z_g + h
@@ -279,3 +358,52 @@ def coupling_to_drain_rates(
 ) -> tuple[NDArray[np.floating], NDArray[np.floating]]:
     """Extract the rates the 1D solver needs: ``(q_inlet, q_surcharge)`` per node in m3/s."""
     return exchange.q_inlet_node, exchange.q_surcharge_node
+
+
+def _compute_exchange_compiled(
+    surface_h: NDArray[np.floating],
+    surface_z: NDArray[np.floating],
+    drain_head: NDArray[np.floating],
+    network: DrainNetwork,
+    solver: DrainSolver,
+    cell_area_m2: float,
+    sync_s: float,
+    out: ExchangeBuffers | None,
+) -> ExchangeResult:
+    """:func:`compute_exchange` through the compiled kernel (task P4.6)."""
+    from varuna_twin.coupling_kernel import exchange_kernel
+
+    nodes = _node_arrays(network)
+    # Fresh buffers unless the caller supplied its own; see `ExchangeBuffers`.
+    buffers = out or ExchangeBuffers.allocate(network.n_nodes, surface_h.shape)
+
+    exchange_kernel(
+        nodes["row"],
+        nodes["col"],
+        nodes["z_ground"],
+        nodes["kappa"],
+        nodes["inlet_length"],
+        nodes["inlet_area"],
+        nodes["storage_area"],
+        np.ascontiguousarray(solver.fixed_head),
+        np.ascontiguousarray(surface_h, dtype=np.float64),
+        np.ascontiguousarray(surface_z, dtype=np.float64),
+        np.ascontiguousarray(drain_head, dtype=np.float64),
+        float(cell_area_m2),
+        max(float(sync_s), 1e-9),
+        GRAVITY,
+        WEIR_CD,
+        ORIFICE_CD,
+        SURCHARGE_CD,
+        DRY_STREET_M,
+        buffers.q_inlet,
+        buffers.q_surcharge,
+        buffers.q_inlet_cell,
+        buffers.q_surcharge_cell,
+    )
+    return ExchangeResult(
+        q_inlet_node=buffers.q_inlet,
+        q_surcharge_node=buffers.q_surcharge,
+        q_inlet_cell=buffers.q_inlet_cell,
+        q_surcharge_cell=buffers.q_surcharge_cell,
+    )
