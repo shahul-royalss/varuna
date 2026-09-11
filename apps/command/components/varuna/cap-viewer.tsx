@@ -143,7 +143,11 @@ export function CapViewer({ xml, filename = "alert.cap.xml", className }: CapVie
 
       {hasXml ? (
         <pre
-          className="min-h-0 flex-1 overflow-auto rounded-control border border-line bg-ink p-4 type-mono text-text"
+          // Focusable because it scrolls and holds nothing focusable: without this a keyboard
+          // user can see the CAP document and never reach the rest of it (WCAG 2.1.1).
+          tabIndex={0}
+          role="region"
+          className="min-h-0 flex-1 overflow-auto rounded-control border border-line bg-ink p-4 type-mono text-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
           aria-label="CAP 1.2 document"
         >
           <code>
