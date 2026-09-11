@@ -9,6 +9,8 @@ import { cn } from "@/lib/utils";
 /** The layers the console can actually draw today. */
 export interface LayerToggles {
   satellite: boolean;
+  /** Probability mode: opacity carries P(> threshold) rather than the depth alone. */
+  probability: boolean;
   raster: boolean;
   segments: boolean;
   surcharge: boolean;
@@ -37,6 +39,12 @@ const ROWS: readonly {
     label: "Satellite",
     hint: "Esri aerial imagery, dimmed so the water reads",
     shortcut: "V",
+  },
+  {
+    key: "probability",
+    label: "Probability",
+    hint: "Opacity carries P(above the threshold)",
+    shortcut: "P",
   },
   { key: "raster", label: "Depth raster", hint: "30 m surface depth from the Twin" },
   { key: "segments", label: "Streets (depth)", hint: "Road segments coloured by depth" },

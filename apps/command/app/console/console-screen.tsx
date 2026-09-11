@@ -16,6 +16,7 @@ import { ReplayPanel } from "@/components/varuna/replay-panel";
 import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
 import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { LayerPanel, type LayerToggles, type LayerKey } from "@/components/varuna/layer-panel";
+import { ProbabilityLegend } from "@/components/varuna/probability-legend";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
 import { TimeBar } from "@/components/varuna/time-bar";
@@ -113,6 +114,9 @@ export function ConsoleScreen() {
   const [isochrones, setIsochrones] = useState<Isochrone[]>([]);
   const [layers, setLayers] = useState<LayerToggles>({
     satellite: true,
+    // Off by default: the depth ramp is what an operator reads first, and probability is the
+    // question they ask second (CLAUDE.md 7.2 puts it behind a toggle, not in front of one).
+    probability: false,
     raster: true,
     segments: true,
     surcharge: true,
@@ -124,6 +128,10 @@ export function ConsoleScreen() {
     buildings: false,
     hotspots: true,
   });
+  // The exceedance the probability layer asks about. CLAUDE.md 7.2's four: the depth at which
+  // each class of vehicle stops, so the question is always "who is stopped here?".
+  const [probabilityThresholdCm, setProbabilityThresholdCm] = useState(30);
+
   const toggleLayer = useCallback(
     (key: LayerKey, next: boolean) => setLayers((current) => ({ ...current, [key]: next })),
     [],
@@ -217,7 +225,7 @@ export function ConsoleScreen() {
       } else if (event.key === "ArrowRight") {
         setPlaying(false);
         setStep((s) => Math.min(run.provenance.nSteps - 1, s + 1));
-      } else if (/^[dsgbv]$/i.test(event.key)) {
+      } else if (/^[dsgbvp]$/i.test(event.key)) {
         // CLAUDE.md 7.2's layer shortcuts. The map is the screen, so these are the fastest way
         // to change what it shows without reaching for the panel. V is the satellite basemap -
         // S is already surcharge, and V for "view" is the nearest free key.
@@ -227,6 +235,7 @@ export function ConsoleScreen() {
           g: "hotspots",
           b: "buildings",
           v: "satellite",
+          p: "probability",
         }[event.key.toLowerCase()] as LayerKey;
         setLayers((current) => ({ ...current, [key]: !current[key] }));
       }
@@ -282,6 +291,7 @@ export function ConsoleScreen() {
           showBuildings={layers.buildings}
           showHotspots={layers.hotspots}
           showSatellite={layers.satellite}
+          probabilityThresholdCm={layers.probability ? probabilityThresholdCm : undefined}
           attribution={false}
         />
 
@@ -330,6 +340,13 @@ export function ConsoleScreen() {
             rain panel stops short of it and scrolls instead. */}
         <div className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2">
           <CyclePicker currentRunId={run?.provenance.runId} onPick={pickCycle} />
+          {layers.probability ? (
+            <ProbabilityLegend
+              thresholdCm={probabilityThresholdCm}
+              onThresholdChange={setProbabilityThresholdCm}
+              deterministic={(run?.provenance.ensembleN ?? 1) <= 1}
+            />
+          ) : null}
           <LayerPanel
             value={layers}
             onChange={toggleLayer}

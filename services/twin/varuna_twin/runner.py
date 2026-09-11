@@ -53,7 +53,7 @@ import numpy as np
 import structlog
 
 from varuna_twin import drain1d, swe2d
-from varuna_twin.coupling import compute_exchange
+from varuna_twin.coupling import ExchangeBuffers, compute_exchange
 from varuna_twin.hydrology import HydrologyState, effective_rain
 from varuna_twin.types import (
     DrainState,
@@ -117,6 +117,10 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     # ---- Prepare the solvers ------------------------------------------------
     kernel_terrain = swe2d.prepare_terrain(terrain)
     surface = swe2d.dry_state(kernel_terrain)
+    # Sized from the *kernel's* grid, which is the one the exchange scatters onto. Sizing it
+    # from `terrain.z` instead wrote past the end of the buffer - `prepare_terrain` can pad -
+    # and Numba does not bounds-check, so it was an access violation rather than an IndexError.
+    exchange_buffers = ExchangeBuffers.allocate(network.n_nodes, kernel_terrain.z.shape)
     hydro_state = HydrologyState.for_terrain(terrain)
     drain_solver = drain1d.prepare(network)
 
@@ -129,6 +133,7 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
 
     # Sea boundary mask for the 2D solver
     sea_mask = _build_sea_mask(terrain, network)
+
     # `_tide_at` needs to know whether the domain has a sea at all, so it can hold it at mean sea
     # level when the bundle has no tide series rather than leaving the solver without a level.
     has_sea = sea_mask is not None and bool(sea_mask.any())
@@ -199,6 +204,9 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
                 solver=drain_solver,
                 cell_area_m2=kernel_terrain.cell_area_m2,
                 sync_s=actual_sync_s,
+                # The result is read and applied before the next sync computes another, so one
+                # set of buffers serves the whole run rather than four allocations per sync.
+                out=exchange_buffers,
             )
             t_coupling += int((perf_counter() - t0) * 1000)
 

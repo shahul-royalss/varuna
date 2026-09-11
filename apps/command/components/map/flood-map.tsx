@@ -61,6 +61,8 @@ export interface FloodMapProps {
   passableBelowCm?: number;
   /** Aerial imagery under everything. On by default, as it is on `CityMap`. */
   showSatellite?: boolean;
+  /** Probability mode's threshold in cm; unset draws ordinary depth (task P6.5). */
+  probabilityThresholdCm?: number;
   /** Off where `MapSlot` sits behind this map and draws the credit already. */
   attribution?: boolean;
   showRaster?: boolean;
@@ -83,6 +85,7 @@ export function FloodMap({
   isochrones = [],
   mode = "console",
   passableBelowCm,
+  probabilityThresholdCm,
   showSatellite = true,
   attribution = true,
   showRaster = true,
@@ -270,6 +273,7 @@ export function FloodMap({
       labels={labels}
       isochrones={isochrones}
       passableBelowCm={passableBelowCm}
+      probabilityThresholdCm={probabilityThresholdCm}
       showSatellite={showSatellite}
       attribution={attribution}
       selectedHotspotId={selectedHotspotId}
