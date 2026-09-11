@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "VARUNA - street-level urban flood nowcasting digital twin (SIH 2026, PS SIH26085)",
+  "license": "MIT",
   "packageManager": "pnpm@11.24.0",
   "engines": {
     "node": ">=22"

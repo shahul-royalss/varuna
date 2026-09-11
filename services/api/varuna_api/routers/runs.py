@@ -17,7 +17,9 @@ def list_runs(
     state: Annotated[AppState, Depends(get_state)],
     city: Annotated[
         str | None,
-        Query(description="City slug, e.g. mumbai. Defaults to the configured city; 'all' for every city."),
+        Query(
+            description="City slug, e.g. mumbai. Defaults to the configured city; 'all' for every city."
+        ),
     ] = None,
     bundle: Annotated[str | None, Query(description="Replay bundle id")] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 50,

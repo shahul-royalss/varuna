@@ -243,6 +243,36 @@ def test_a_one_cell_pit_is_spurious_at_the_grid_resolution() -> None:
     assert result.changes["pits_large"] == 0
 
 
+def test_a_registered_sink_on_a_building_is_not_burned_or_blocked() -> None:
+    """Khar Subway and Parel sit under an OSM building footprint.
+
+    Burning the footprint before resolving the sinks raised both 5 m and, because
+    ``buildings_mask`` is also what roughness turns into the solver's blocked mask, left two of
+    the ten hotspots CLAUDE.md 3.3 names with no flux at all. The register has to win over the
+    footprint: a cell cannot be both a place water is known to pool and an obstacle.
+    """
+    dem, transform = _dem_with_a_one_cell_pit_at_thirty_metres()
+    sink_xy = cell_center(transform, 10, 10)
+    footprint = Point(*sink_xy).buffer(45.0)  # covers the sink cell and its neighbours
+    before = float(dem[10, 10])
+
+    result = condition_dem(
+        dem,
+        transform,
+        CRS,
+        buildings=[footprint],
+        sinks=[Point(*sink_xy)],
+        min_pit_area_m2=900.0,
+        use_whitebox=False,
+    )
+
+    assert not result.buildings_mask[10, 10], "a registered sink must not stay a building cell"
+    assert result.dem[10, 10] == pytest.approx(before), "the sink must not be burned upward"
+    assert result.changes["sinks_cleared_of_building"] == 1
+    # The footprint around it is still burned: only the sink cell is cleared.
+    assert result.buildings_mask.sum() > 0
+
+
 def test_a_protected_one_cell_pit_survives_at_thirty_metres() -> None:
     """Andheri and Milan subways are one cell across; the sink list is what keeps them."""
     dem, transform = _dem_with_a_one_cell_pit_at_thirty_metres()

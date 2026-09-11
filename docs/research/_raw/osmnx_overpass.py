@@ -1,3 +1,16 @@
+# ---------------------------------------------------------------------------------------------
+# VENDORED THIRD-PARTY SOURCE - NOT WRITTEN BY THE VARUNA TEAM.
+#
+# This is a verbatim copy of `osmnx/_overpass.py` from OSMnx 2.1.1.
+#   Project:   OSMnx - https://github.com/gboeing/osmnx
+#   Copyright: (c) Geoff Boeing
+#   Licence:   MIT
+#
+# It is kept as evidence for the Overpass diagnosis recorded in `docs/research/data_sources.md`.
+# Nothing in VARUNA imports it: the build depends on the published `osmnx` package declared in
+# `pyproject.toml`. See THIRD_PARTY_NOTICES.md at the repository root.
+# ---------------------------------------------------------------------------------------------
+
 """Tools to work with the Overpass API."""
 
 from __future__ import annotations

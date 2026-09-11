@@ -200,9 +200,7 @@ Weighting each step by ``1 + depth/5`` makes a 50 cm step count eleven dry ones.
 anticipates exactly this for the GNN, whose loss carries an "exceedance-weighted term"."""
 
 
-def _ponding(
-    response: NDArray[np.floating], gain: float, drain: float
-) -> NDArray[np.floating]:
+def _ponding(response: NDArray[np.floating], gain: float, drain: float) -> NDArray[np.floating]:
     """The depth series the emulator would actually produce, floor and all.
 
     The same recursion :func:`simulate` runs. The fit used to score a closed form instead -
@@ -327,9 +325,7 @@ def fit(
         # memorising a single hyetograph. Each run contributes this segment's own rain, so the
         # gain being fitted is a property of the catchment rather than of where the storm sat.
         target = np.concatenate([d[:, index] for d in deviations])
-        rain = np.concatenate(
-            [(r[:, index] if r.ndim == 2 else r) for _, r, _ in fit_runs]
-        )
+        rain = np.concatenate([(r[:, index] if r.ndim == 2 else r) for _, r, _ in fit_runs])
         k[index], gain[index], drain[index] = _fit_one(target, rain)
 
     model = FlashModel(

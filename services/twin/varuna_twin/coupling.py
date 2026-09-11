@@ -170,13 +170,9 @@ def _node_arrays(network: DrainNetwork) -> dict[str, object]:
         "col": np.ascontiguousarray(network.cell_col, dtype=np.int64),
         "z_ground": np.ascontiguousarray(network.z_ground, dtype=np.float64),
         "kappa": np.clip(np.asarray(network.kappa, dtype=np.float64), 0.0, 1.0),
-        "inlet_length": np.maximum(
-            np.asarray(network.inlet_length, dtype=np.float64), 0.0
-        ),
+        "inlet_length": np.maximum(np.asarray(network.inlet_length, dtype=np.float64), 0.0),
         "inlet_area": np.maximum(np.asarray(network.inlet_area, dtype=np.float64), 0.0),
-        "storage_area": np.maximum(
-            np.asarray(network.storage_area, dtype=np.float64), 0.01
-        ),
+        "storage_area": np.maximum(np.asarray(network.storage_area, dtype=np.float64), 0.01),
     }
     _NODE_CACHE.clear()
     _NODE_CACHE[key] = made

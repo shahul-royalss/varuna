@@ -69,7 +69,13 @@ class OnboardRequest(VarunaModel):
     city: str = Field(description="City slug with a config under services/city/configs.")
     bbox: BBox | None = Field(default=None, description="Override the config's AOI.")
     design_storm: str = Field(default="CHN-IDF-25yr", description="Bundle for the first forecast.")
-    from_cache_only: bool = Field(default=True, description="Never touch the network.")
+    from_cache_only: bool = Field(
+        default=True,
+        description=(
+            "Fail rather than download when the city's open-data tiles are not cached. "
+            "False lets the job fetch them once. VARUNA_OFFLINE=1 refuses the network either way."
+        ),
+    )
 
 
 OnboardStep = Literal[

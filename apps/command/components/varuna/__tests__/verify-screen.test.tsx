@@ -1,14 +1,26 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { VerifyScreen } from "@/app/verify/verify-screen";
 import { LIMITATIONS } from "@/components/varuna/limitations-list";
-import { HEADLINE_SCORE_TILES } from "@/components/varuna/verification-grid";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/verify",
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+}));
+
+/**
+ * The screen fetches its scores. Before P9.7 it did not - every tile read "Not scored yet" from
+ * a literal - and these tests asserted that empty grid rendered synchronously. P9.7 made the
+ * scores real and the tests were never moved, so they had been failing since 2026-09-10 against
+ * markup that no longer exists. `loadVerification` is mocked here so the states under test are
+ * the ones the component actually has: loading, failed, and scored.
+ */
+const loadVerification = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/api/verification", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/api/verification")>()),
+  loadVerification,
 }));
 
 function renderVerify() {
@@ -20,23 +32,24 @@ function renderVerify() {
 }
 
 describe("VerifyScreen", () => {
-  it("renders every headline score as not scored yet, with its unit", () => {
+  it("names the event and waits, rather than showing zeros it has not computed", () => {
+    loadVerification.mockReturnValue(new Promise(() => {}));
     renderVerify();
-    const grid = screen.getByRole("list", { name: "Verification scores" });
-    const scores = within(grid);
-    expect(scores.getAllByRole("listitem")).toHaveLength(HEADLINE_SCORE_TILES.length);
+    expect(screen.getByLabelText("Event")).toHaveTextContent("MUM-2019-07-02");
+    // CLAUDE.md 6.9 bans spinners; the loading state is a skeleton, and CLAUDE.md 6 forbids
+    // standing in a number until one has been computed.
+    expect(screen.getByText("Scores appear once the event is baked.")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Verification scores" })).toBeNull();
+  });
 
-    for (const tile of HEADLINE_SCORE_TILES) {
-      expect(scores.getByText(tile.label)).toBeInTheDocument();
-      expect(scores.getAllByText(tile.unit).length).toBeGreaterThan(0);
-    }
-    expect(scores.getAllByText("Not scored yet")).toHaveLength(HEADLINE_SCORE_TILES.length);
-    expect(
-      screen.getByText(/Ground-truth pins: none scored yet/),
-    ).toBeInTheDocument();
+  it("shows why scoring failed instead of a blank panel", async () => {
+    loadVerification.mockRejectedValue(new Error("No baked runs for MUM-2019-07-02."));
+    renderVerify();
+    expect(await screen.findByText("No baked runs for MUM-2019-07-02.")).toBeInTheDocument();
   });
 
   it("anchors the limitations so the landing footnote can deep-link to them", () => {
+    loadVerification.mockReturnValue(new Promise(() => {}));
     const { container } = renderVerify();
     const section = container.querySelector("#limitations");
     expect(section).not.toBeNull();
@@ -44,14 +57,5 @@ describe("VerifyScreen", () => {
     for (const limitation of LIMITATIONS) {
       expect(screen.getByText(limitation)).toBeInTheDocument();
     }
-  });
-
-  it("names the event under verification and the empty charts", () => {
-    renderVerify();
-    expect(screen.getByLabelText("Event")).toHaveTextContent("MUM-2019-07-02");
-    expect(
-      screen.getByText("Rain CSI at 20 and 40 mm/h against lead time in minutes, 0 to 180."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("No missed pins yet")).toBeInTheDocument();
   });
 });

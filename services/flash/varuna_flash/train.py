@@ -84,9 +84,7 @@ def train_from_runs(
         raise ValueError(msg)
 
     terrain = load_terrain(city)
-    index = segment_cell_index(
-        city_dir(city), terrain.transform, terrain.shape, terrain.crs
-    )
+    index = segment_cell_index(city_dir(city), terrain.transform, terrain.shape, terrain.crs)
     segment_ids = index[0]
 
     training: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
@@ -118,9 +116,7 @@ def train_from_runs(
     # to hold out in. A model that only saw drizzle should be judged on a downpour.
     training.sort(key=lambda run: float(run[0].max()))
 
-    model = fit(
-        training, segment_ids, beta_ref=beta_ref, holdout=holdout
-    )
+    model = fit(training, segment_ids, beta_ref=beta_ref, holdout=holdout)
 
     model_path = out_model or (train_dir / "flash_lite.npz")
     save(model, model_path)

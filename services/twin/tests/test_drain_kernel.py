@@ -15,7 +15,13 @@ import numpy as np
 import pytest
 
 # The same linear network the rest of the drain tests use, with the knobs this file needs.
-from tests.test_drain1d import _init_state, _simple_network  # type: ignore[import-not-found]
+#
+# Imported bare rather than as `tests.test_drain1d`: there is no `__init__.py` here, so pytest
+# prepends this directory to `sys.path` and the module is top-level. The qualified form only
+# worked when pytest was pointed at `services/twin`; from the repository root `tests` resolves to
+# the repo's own `tests/` package instead, and `uv run pytest` - the CLAUDE.md 14 gate - died on
+# a collection error before running a single test.
+from test_drain1d import _init_state, _simple_network  # type: ignore[import-not-found]
 from varuna_twin.drain1d import (
     DrainNetwork,
     DrainState,
@@ -28,7 +34,9 @@ TOLERANCE_M = 1e-9
 the only difference should be whether an intermediate stayed in a register."""
 
 
-def _both_paths(network: DrainNetwork, **kwargs: object) -> tuple[DrainState, DrainState, object, object]:
+def _both_paths(
+    network: DrainNetwork, **kwargs: object
+) -> tuple[DrainState, DrainState, object, object]:
     """Run `simulate` twice over the same inputs: NumPy, then the kernel."""
     numpy_state = _init_state(network)
     kernel_state = _init_state(network)
@@ -40,7 +48,9 @@ def _both_paths(network: DrainNetwork, **kwargs: object) -> tuple[DrainState, Dr
     return numpy_state, kernel_state, numpy_report, kernel_report
 
 
-def _assert_same(numpy_state: DrainState, kernel_state: DrainState, numpy_report, kernel_report) -> None:
+def _assert_same(
+    numpy_state: DrainState, kernel_state: DrainState, numpy_report, kernel_report
+) -> None:
     np.testing.assert_allclose(kernel_state.head, numpy_state.head, atol=TOLERANCE_M, rtol=0)
     np.testing.assert_allclose(kernel_state.flow, numpy_state.flow, atol=TOLERANCE_M, rtol=0)
     for field in ("inlet_m3", "surcharge_m3", "sink_m3", "boundary_m3", "stored_end_m3"):

@@ -167,9 +167,7 @@ def read_reports(bundle_dir: Path, *, until: datetime) -> list[ReportObservation
     if not path.is_file():
         return []
     rows = [
-        json.loads(line)
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
     ]
     return observations_from(rows, until=until)
 

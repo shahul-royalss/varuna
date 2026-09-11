@@ -107,11 +107,13 @@ def run_pulse(
     import pandas as pd
 
     beta_prior = (
-        np.asarray(network.beta, dtype=np.float64) if prior_mean is None
+        np.asarray(network.beta, dtype=np.float64)
+        if prior_mean is None
         else np.asarray(prior_mean, dtype=np.float64)
     )
     sd_prior = (
-        np.full(beta_prior.shape, 0.15) if prior_sd is None
+        np.full(beta_prior.shape, 0.15)
+        if prior_sd is None
         else np.asarray(prior_sd, dtype=np.float64)
     )
 
@@ -125,9 +127,7 @@ def run_pulse(
     reports = read_reports(bundle_dir, until=cycle_ts)
 
     # ---- locate each observation on the graph -----------------------------------------
-    nodes = pd.read_parquet(
-        city_root / "drain_nodes.parquet", columns=["node_id", "segment_id"]
-    )
+    nodes = pd.read_parquet(city_root / "drain_nodes.parquet", columns=["node_id", "segment_id"])
     node_index = {str(nid): i for i, nid in enumerate(network.node_ids)}
     segment_to_node = {
         str(seg): node_index[str(nid)]
@@ -203,9 +203,7 @@ def run_pulse(
     # ---- assimilate -------------------------------------------------------------------
     if observed_edges:
         edges = np.asarray(observed_edges, dtype=np.int64)
-        hops = hop_distances(
-            np.asarray(network.from_node), np.asarray(network.to_node), edges
-        )
+        hops = hop_distances(np.asarray(network.from_node), np.asarray(network.to_node), edges)
         rain = np.array(
             [float((rain_mm_h_at or {}).get(r.get("segment_id", ""), 60.0)) for r in records]
         )
@@ -318,9 +316,7 @@ def _contributing_area(city_root: Path, network) -> NDArray[np.floating]:
         return fallback
     frame = pd.read_parquet(path, columns=["edge_id", "contributing_area_m2"])
     by_id = dict(zip(frame["edge_id"].astype(str), frame["contributing_area_m2"], strict=True))
-    return np.array(
-        [float(by_id.get(str(eid), 30_000.0) or 30_000.0) for eid in network.edge_ids]
-    )
+    return np.array([float(by_id.get(str(eid), 30_000.0) or 30_000.0) for eid in network.edge_ids])
 
 
 def _node_positions(

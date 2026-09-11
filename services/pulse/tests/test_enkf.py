@@ -65,8 +65,11 @@ def _setup(n_obs: int = 20, seed: int = 7):
     q_full = np.full(n_obs, 0.35)
 
     operator = capacity_operator(
-        edge_of_observation, contributing, rain,
-        ponding_area_m2=ponding, q_full_m3s=q_full,
+        edge_of_observation,
+        contributing,
+        rain,
+        ponding_area_m2=ponding,
+        q_full_m3s=q_full,
     )
 
     # The measurements the synthetic city produces, plus observation noise.
@@ -79,8 +82,7 @@ def _setup(n_obs: int = 20, seed: int = 7):
     return operator, y, sd, hops, edge_of_observation
 
 
-def test_the_posterior_finds_the_blocked_pipes(
-) -> None:
+def test_the_posterior_finds_the_blocked_pipes() -> None:
     operator, y, sd, hops, _edges = _setup()
 
     prior_mean = np.full(N_EDGES, 0.20)
@@ -129,8 +131,11 @@ def test_an_empty_batch_leaves_the_posterior_exactly_as_it_was() -> None:
         np.zeros(0),
         np.zeros(0),
         capacity_operator(
-            np.zeros(0, dtype=np.int64), np.zeros(0), np.zeros(0),
-            ponding_area_m2=np.zeros(0), q_full_m3s=np.zeros(0),
+            np.zeros(0, dtype=np.int64),
+            np.zeros(0),
+            np.zeros(0),
+            ponding_area_m2=np.zeros(0),
+            q_full_m3s=np.zeros(0),
         ),
         np.zeros((0, N_EDGES), dtype=np.int32),
     )

@@ -251,9 +251,7 @@ def assimilate(
     # observation reaches keeps the prior it came in with, exactly.
     reachable = (taper > 0.0).any(axis=0)
     beta_mean = np.where(reachable, beta_posterior.mean(axis=0), beta_prior_mean)
-    beta_sd = np.where(
-        reachable, np.maximum(beta_posterior.std(axis=0), MIN_SD), beta_prior_sd
-    )
+    beta_sd = np.where(reachable, np.maximum(beta_posterior.std(axis=0), MIN_SD), beta_prior_sd)
 
     touched = np.flatnonzero(np.abs(beta_mean - beta_prior_mean) > 1e-4)
     innovation = y - predicted.mean(axis=0)

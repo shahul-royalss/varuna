@@ -74,9 +74,7 @@ def _minutes_above(series: list[float], threshold: float, step_min: int) -> int:
     return sum(step_min for value in series if value > threshold)
 
 
-def _drawn_down(
-    series: list[float], rate_cm_per_step: float, from_step: int
-) -> list[float]:
+def _drawn_down(series: list[float], rate_cm_per_step: float, from_step: int) -> list[float]:
     """The depth series with a pump running from ``from_step``.
 
     The drawdown accumulates - a pump that has been running for an hour has removed an hour of
@@ -195,9 +193,7 @@ def build_pump_plan(
                 continue  # arrives after the forecast ends; it cannot help in this window
 
             # m3/h over the disc, as cm of depth per 5-minute step.
-            rate_cm_per_step = (
-                pump["capacity_m3_per_h"] / area_m2 * 100.0 * (step_min / 60.0)
-            )
+            rate_cm_per_step = pump["capacity_m3_per_h"] / area_m2 * 100.0 * (step_min / 60.0)
             after = _minutes_above(
                 _drawn_down(candidate["series"], rate_cm_per_step, arrive_step),
                 PUMP_THRESHOLD_CM,

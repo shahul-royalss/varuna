@@ -73,3 +73,6 @@ skills/
 
 # Reports arrive at runtime; the inbox is a runtime artifact, not source.
 data/reports/
+
+# Lighthouse CI output (generated; the HTML report embeds Google's own report template)
+.lighthouseci/

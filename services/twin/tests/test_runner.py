@@ -252,9 +252,7 @@ class TestMassBalance:
         network = _make_network(terrain, n_nodes=10)
         rain = _make_rain_cube(n_steps=4, shape=(15, 15), peak_mm_h=50.0)
 
-        result = run_twin(
-            TwinInputs(terrain=terrain, network=network, rain_mm_h=rain, t0=T0)
-        )
+        result = run_twin(TwinInputs(terrain=terrain, network=network, rain_mm_h=rain, t0=T0))
 
         mb = result.mass_balance
         stored = mb.volume_stored_m3

@@ -64,12 +64,21 @@ async function call(path: string, init?: RequestInit): Promise<OnboardJob> {
   return parse(body);
 }
 
-/** Start a build, or rejoin the one already running for this city. */
+/**
+ * Start a build, or rejoin the one already running for this city.
+ *
+ * `from_cache_only: false` lets the API fetch the city's open data when it is not already
+ * cached. That is not a retreat from CLAUDE.md 7.9's offline requirement: on the demo laptop
+ * `tools/prefetch_city_cache.py` has already run, so the API finds every tile present and
+ * downloads nothing, and `VARUNA_OFFLINE=1` refuses the network whatever this flag says. It
+ * only changes what happens on a cold cache - a hosted deployment, or a fresh clone - where
+ * the alternative is not "offline", it is "fails".
+ */
 export function startOnboard(city: string, designStorm = "CHN-IDF-25yr"): Promise<OnboardJob> {
   return call("/v1/onboard", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ city, design_storm: designStorm, from_cache_only: true }),
+    body: JSON.stringify({ city, design_storm: designStorm, from_cache_only: false }),
   });
 }
 

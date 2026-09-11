@@ -76,7 +76,10 @@ PLACEHOLDER_PHASES: dict[str, tuple[int, str]] = {
     "bundle": (2, "Replay bundle and storm designer"),
     "bake": (5, "Products, cycle orchestrator, API"),
     "train": (7, "Pulse, Flash-lite, drain X-ray, what-if"),
-    "pack": (10, "Polish, rehearsal, packaging"),
+    # `pack` was here until P10.6 implemented it (2026-09-11). Leaving it behind did not change
+    # what the CLI does - the real command wins - but the phase-gate test drove every entry in
+    # this dict expecting a refusal, so it invoked the real target and wrote an 830 MB package
+    # on every full test run before failing on the exit code.
     "demo-video": (10, "Polish, rehearsal, packaging"),
 }
 
