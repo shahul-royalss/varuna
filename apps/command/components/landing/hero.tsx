@@ -15,11 +15,25 @@
  */
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion } from "motion/react";
 
 import { GlobeIntro } from "@/components/landing/globe-intro";
-import { FloodMap } from "@/components/map/flood-map";
+// **Loaded on demand, not in the landing page's first bundle.** `FloodMap` pulls in all of
+// deck.gl, and the hero's opening seconds are an SVG globe that needs none of it - so shipping it
+// up front cost the landing page its Largest Contentful Paint (3.5 s against a 2.5 s budget) and
+// a Lighthouse performance score of 0.41. The import starts when the globe does, so the map is
+// usually ready by the time the morph wants to hand over to it, and the handover already waits
+// for both halves.
+const FloodMap = dynamic(
+  () => import("@/components/map/flood-map").then((m) => ({ default: m.FloodMap })),
+  {
+    ssr: false,
+    // No placeholder: the globe is on screen underneath until the handover.
+    loading: () => null,
+  },
+);
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/varuna/wordmark";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
