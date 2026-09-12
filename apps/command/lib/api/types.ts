@@ -28,7 +28,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Alert feed */
+        /**
+         * Alerts raised by a run
+         * @description The alert queue for a run, worst level first (CLAUDE.md 11.10, P8.7).
+         *
+         *     Computed once when the cycle ran, so the queue, the map and the hotspot rail are all reading
+         *     the same forecast. Every alert on a replay carries CAP ``status=Exercise``.
+         */
         get: operations["alerts_v1_alerts_get"];
         put?: never;
         post?: never;
@@ -45,7 +51,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** CAP 1.2 XML document for one alert */
+        /**
+         * CAP 1.2 XML document for one alert
+         * @description One alert as a CAP 1.2 document, exactly as it was written into the run directory.
+         */
         get: operations["alert_cap_v1_alerts__alert_id__cap_get"];
         put?: never;
         post?: never;
@@ -153,7 +162,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Drain-health product (posterior blockage per pipe) */
+        /**
+         * The drain map Pulse learned
+         * @description Every pipe with its posterior blockage, its spread and what moved it (CLAUDE.md 11.6).
+         *
+         *     Mumbai's inferred graph has 49,770 edges and the drain X-ray draws the ones that matter, so
+         *     the response is capped and ordered worst-first. `n_edges` is the true total; the cap is what
+         *     was sent. Each feature carries `confidence: "inferred"`, which is why the map draws them
+         *     dashed - the geometry is a synthesis from roads and terrain, not a municipal record.
+         */
         get: operations["drains_health_v1_drains_health_get"];
         put?: never;
         post?: never;
@@ -170,7 +187,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Desilting priority list as CSV */
+        /**
+         * Desilting priority list as CSV
+         * @description The ranked desilting list a ward engineer can hand to a jetting crew (CLAUDE.md 7.3).
+         */
         get: operations["drains_health_csv_v1_drains_health_csv_get"];
         put?: never;
         post?: never;
@@ -187,7 +207,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Provider feed: impassable and degraded segments with validity windows */
+        /**
+         * Impassable and degraded roads, as GeoJSON
+         * @description The provider feed: every segment this run predicts will stop the given vehicle.
+         *
+         *     One feature per segment, with the window it is impassable for. A navigation app does not want
+         *     a depth in centimetres, it wants "closed from 08:20 to 10:05", so that is what this carries -
+         *     with the depth beside it for anyone who does.
+         */
         get: operations["road_conditions_v1_feeds_road_conditions_get"];
         put?: never;
         post?: never;
@@ -204,8 +231,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Ranked hotspots with attribution */
-        get: operations["nowcast_hotspots_v1_nowcast_hotspots_get"];
+        /**
+         * Ranked hotspots for the rail
+         * @description The run's ranked chronic spots, deepest first (CLAUDE.md 11.8, P5.4).
+         *
+         *     Read straight off the run directory: ``hotspots.json`` was computed once when the cycle ran,
+         *     and re-deriving it per request would let the rail and the map disagree about the same run.
+         *
+         *     Every entry carries the register's ``source_url``, so the claim "this junction floods" stays
+         *     traceable to the report it was verified against (rule 7). ``ranking`` says out loud which
+         *     score ordered the list, because on a deterministic run it is **not** the spec's
+         *     ``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash
+         *     brings a real ensemble in Phase 7.
+         */
+        get: operations["hotspots_v1_nowcast_hotspots_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -272,6 +311,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/nowcast/raster/bounds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where a run's depth rasters sit, and what they are
+         * @description The lon/lat corners for the BitmapLayer, the step count, and the run's provenance.
+         */
+        get: operations["raster_bounds_v1_nowcast_raster_bounds_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/nowcast/segments": {
         parameters: {
             query?: never;
@@ -306,6 +365,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/nowcast/surcharge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Manholes surcharging and pipes running backwards
+         * @description The run's surcharging manholes and reversed edges (CLAUDE.md 11.4, 11.5; P6.6).
+         *
+         *     This is the demo's 1:40 moment made drawable: red markers where the drain is pushing water
+         *     back up into the street, and the edges where the sea is holding a trunk shut. Only the nodes
+         *     that actually surcharge are stored, so this stays a small file over a 49,897-node graph.
+         */
+        get: operations["surcharge_v1_nowcast_surcharge_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/observations": {
         parameters: {
             query?: never;
@@ -313,7 +396,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Observations assimilated in a run, with their effects */
+        /**
+         * What Pulse assimilated this cycle
+         * @description The traffic anomalies and citizen reports that moved the drain map (CLAUDE.md 7.3).
+         *
+         *     This is the assimilation timeline on the drain X-ray: each observation with its time, place,
+         *     the depth it implied and the pipe it was about. Synthetic observations are flagged, because
+         *     the replay's traffic and report streams are synthetic and the screen must say so (rule 7).
+         */
         get: operations["observations_v1_observations_get"];
         put?: never;
         post?: never;
@@ -332,8 +422,41 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Start a city-in-a-box job */
+        /**
+         * Start a city-in-a-box job
+         * @description Build a city and run its first forecast.
+         *
+         *     Validated through `OnboardRequest`, the documented shape (CLAUDE.md 12), so a malformed body
+         *     gets the 422 envelope rather than a message about the city not existing.
+         *
+         *     Answers 202 with the job straight away: the build is minutes of work and holding the request
+         *     open for it would time out behind any proxy, and the wizard wants to render its first step
+         *     immediately anyway.
+         *
+         *     A request for a city that is already building returns that job rather than starting a second
+         *     one - on stage, a double-click on "Start" must not raise a dialog.
+         */
         post: operations["onboard_v1_onboard_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/onboard/city/{city}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The most recent job for a city
+         * @description What the wizard asks on load, so a reopened tab rejoins a build already running.
+         */
+        get: operations["onboard_latest_v1_onboard_city__city__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -347,7 +470,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Job status */
+        /**
+         * Job status, with the pipeline's own log tail
+         * @description Poll one job. ``latest`` in place of an id returns the most recent job for a city.
+         */
         get: operations["onboard_job_v1_onboard__job_id__get"];
         put?: never;
         post?: never;
@@ -364,7 +490,14 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Pump inventory */
+        /**
+         * The run's pump inventory and dispatch plan
+         * @description The greedy assignment of the synthetic pump fleet to the hotspots that flood.
+         *
+         *     The inventory is synthetic and the response says so in `inventory`; the benefit is a
+         *     documented reduced model, labelled in `benefit_label` and printed beside every number the
+         *     board shows (CLAUDE.md rule 6, 11.10).
+         */
         get: operations["pumps_v1_pumps_get"];
         put?: never;
         post?: never;
@@ -415,7 +548,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** 5/10/15-minute isochrones for a facility with the collapse flag */
+        /**
+         * One facility's 5/10/15-minute catchment, against dry
+         * @description Isochrones and the collapse flag.
+         */
         get: operations["reachability_v1_reachability_get"];
         put?: never;
         post?: never;
@@ -542,6 +678,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/replay/ground-truth": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The event's sourced ground-truth pins (CLAUDE.md 10.2, task P6.12)
+         * @description The curated, sourced pins for a bundle, oldest first.
+         *
+         *     **Every pin carries the URL it was read from** (rule 7). These are the only observations in
+         *     the replay that are not synthetic, which is what makes them worth dropping onto the map as the
+         *     clock passes them: the claim is not "VARUNA says this street flooded", it is "a civic log said
+         *     so, at this time, and here is the link".
+         *
+         *     Pins outside the AOI are returned with `inside_aoi` false rather than dropped - the console
+         *     shows them in the ticker and not on the map, because a report from a street the model does not
+         *     cover is still part of the record of the morning.
+         */
+        get: operations["replay_ground_truth_v1_replay_ground_truth_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/replay/pause": {
         parameters: {
             query?: never;
@@ -620,9 +785,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Reports received since the service started
+         * @description The inbox, newest first. What the drain X-ray's timeline reads before a cycle has run.
+         */
+        get: operations["list_reports_v1_reports_get"];
         put?: never;
-        /** Citizen or field observation (depth chips ankle/knee/waist) */
+        /**
+         * Citizen or field observation (depth chips ankle/knee/waist)
+         * @description Accept one report and queue it for the next cycle's assimilation.
+         */
         post: operations["create_report_v1_reports_post"];
         delete?: never;
         options?: never;
@@ -639,8 +811,36 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Flood-safe route: naive versus VARUNA, avoided segments, alternates */
+        /**
+         * Route around the forecast water, beside what a naive router does
+         * @description Plan one trip.
+         *
+         *     Body: ``{origin, destination, depart_at?, profile?, risk_tolerance?, run_id?}``.
+         *
+         *     Returns both routes, because the comparison is the product: a dispatcher who only sees the
+         *     safe route has no way to judge whether the detour was worth it.
+         */
         post: operations["route_v1_route_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/route/facilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Hospitals and fire stations the isochrones can start at
+         * @description The pickable facilities, from the city's own asset layer.
+         */
+        get: operations["route_facilities_v1_route_facilities_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -654,7 +854,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List runs, newest first */
+        /**
+         * List runs, newest first
+         * @description Runs for one city, newest first.
+         *
+         *     **Defaults to the configured city rather than to every city.** Onboarding Chennai put its runs
+         *     in the same directory, and since ids sort chronologically `CHN-` came out above `MUM-` - so the
+         *     console's run stamp, which reads `latest_run_id` from here, began naming a Chennai run over a
+         *     map of Mumbai. `city=all` is the way to ask for the whole registry.
+         */
         get: operations["list_runs_v1_runs_get"];
         put?: never;
         post?: never;
@@ -688,7 +896,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Verification scores and chart data for an event */
+        /**
+         * Scores for an event against its sourced ground truth
+         * @description Detection, timing and the threshold sweep, plus what could not be scored and why.
+         */
         get: operations["verification_v1_verification_get"];
         put?: never;
         post?: never;
@@ -707,7 +918,16 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** What-if via the emulator */
+        /**
+         * What-if via the emulator, levelled on the run's own physics
+         * @description Scale the rain, clean pipes or run pumps, and report what changes.
+         *
+         *     Body: ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}``.
+         *
+         *     A tide offset is refused: the emulator is a perturbation around a base state measured at one
+         *     tide series, so it has no representation of a different sea level, and returning a number
+         *     anyway would be inventing one.
+         */
         post: operations["whatif_v1_whatif_post"];
         delete?: never;
         options?: never;
@@ -895,62 +1115,6 @@ export interface components {
             user: string;
         };
         /**
-         * AttributionItem
-         * @description One responsible pipe from the finite-difference cleaning sensitivity (CLAUDE.md 11.7).
-         */
-        AttributionItem: {
-            /**
-             * Beta
-             * @description Posterior mean blockage of the pipe.
-             */
-            beta: number;
-            /**
-             * Depth Explained Cm
-             * @description Peak-depth reduction at the hotspot if this pipe alone were cleaned.
-             */
-            depth_explained_cm: number;
-            /** Edge Id */
-            edge_id: string;
-            /** Rank */
-            rank: number;
-            /**
-             * Street
-             * @description Street the pipe runs under.
-             */
-            street?: string | null;
-        };
-        /**
-         * AvoidedSegment
-         * @description A segment the naive route uses that VARUNA avoids, with why.
-         */
-        AvoidedSegment: {
-            /** Depth P50 Cm */
-            depth_p50_cm?: number | null;
-            /**
-             * Name
-             * @description e.g. Hindmata junction
-             */
-            name: string;
-            /**
-             * P Exceed
-             * @description P(depth > threshold) at reached_ts.
-             */
-            p_exceed: number;
-            /**
-             * Reached Ts
-             * Format: date-time
-             * @description When the naive route would have reached it (IST).
-             */
-            reached_ts: string;
-            /** Segment Id */
-            segment_id: string;
-            /**
-             * Threshold Cm
-             * @description Profile threshold applied.
-             */
-            threshold_cm: number;
-        };
-        /**
          * BBox
          * @description A WGS84 bounding box. Accepts ``[min_lon, min_lat, max_lon, max_lat]`` as well as an object.
          */
@@ -988,29 +1152,6 @@ export interface components {
             used_for?: string | null;
         };
         /**
-         * CleanTopNEffect
-         * @description Combined effect of cleaning the top N pipes by attribution (the demo's 'clean 14').
-         */
-        CleanTopNEffect: {
-            /** Delta Cm */
-            readonly delta_cm: number;
-            /** Depth After Cm */
-            depth_after_cm: number;
-            /** Depth Before Cm */
-            depth_before_cm: number;
-            /** Edge Ids */
-            edge_ids?: string[];
-            /** Minutes Impassable After */
-            minutes_impassable_after: number;
-            /**
-             * Minutes Impassable Before
-             * @description Minutes above the car threshold.
-             */
-            minutes_impassable_before: number;
-            /** N */
-            n: number;
-        };
-        /**
          * ComputeRequest
          * @description Body of ``POST /v1/cycle/compute`` ('Compute live').
          */
@@ -1031,42 +1172,6 @@ export interface components {
              * @default false
              */
             force: boolean;
-        };
-        /**
-         * ContingencyTable
-         * @description Hits / misses / false alarms / correct negatives for one threshold.
-         */
-        ContingencyTable: {
-            /** Correct Negatives */
-            correct_negatives: number;
-            /**
-             * Csi
-             * @description Critical success index = hits / (hits + misses + false alarms).
-             */
-            readonly csi: number | null;
-            /** False Alarms */
-            false_alarms: number;
-            /**
-             * Far
-             * @description False-alarm ratio = false alarms / (hits + false alarms).
-             */
-            readonly far: number | null;
-            /** Hits */
-            hits: number;
-            /** Misses */
-            misses: number;
-            /** N */
-            readonly n: number;
-            /**
-             * Pod
-             * @description Probability of detection = hits / (hits + misses).
-             */
-            readonly pod: number | null;
-            /**
-             * Threshold Cm
-             * @default 30
-             */
-            threshold_cm: number;
         };
         /**
          * CycleStatus
@@ -1164,99 +1269,6 @@ export interface components {
             total_depth_mm: number;
         };
         /**
-         * DrainEdgeHealth
-         * @description Posterior blockage state of one pipe (feature properties of ``drain_health.geojson``).
-         */
-        DrainEdgeHealth: {
-            /**
-             * Beta Mean
-             * @description Posterior mean blockage.
-             */
-            beta_mean: number;
-            /**
-             * Beta Prior Mean
-             * @description Prior mean, for before/after.
-             */
-            beta_prior_mean?: number | null;
-            /**
-             * Beta Sd
-             * @description Posterior standard deviation of beta.
-             */
-            beta_sd: number;
-            /**
-             * Blocked
-             * @description True in the top band of the drain ramp (beta >= 0.75).
-             */
-            readonly blocked: boolean;
-            /**
-             * Capacity Reduction Pct
-             * @description 100 x (1 - effective capacity / full capacity).
-             */
-            capacity_reduction_pct: number;
-            /**
-             * Confidence
-             * @default inferred
-             * @enum {string}
-             */
-            confidence: "inferred" | "surveyed";
-            /** Diameter Mm */
-            diameter_mm?: number | null;
-            /** Edge Id */
-            edge_id: string;
-            /**
-             * Explains
-             * @description Hotspot ids this pipe helps explain.
-             */
-            explains?: string[];
-            /**
-             * Kappa
-             * @description Inlet clogging at the upstream inlet.
-             */
-            kappa?: number | null;
-            /**
-             * Last Update
-             * Format: date-time
-             * @description Cycle time of the last posterior update (IST).
-             */
-            last_update: string;
-            /**
-             * Observations N
-             * @description Observations that touched this pipe.
-             * @default 0
-             */
-            observations_n: number;
-            /** Q Full M3S */
-            q_full_m3s?: number | null;
-            /** Street */
-            street?: string | null;
-        };
-        /**
-         * DrainHealthProduct
-         * @description Drain-health product for one run in list form (the GeoJSON adds geometry per edge).
-         */
-        DrainHealthProduct: {
-            /** Edges */
-            edges?: components["schemas"]["DrainEdgeHealth"][];
-            /**
-             * Label
-             * @description Honesty label for the panel.
-             * @default Drain graph inferred from roads and terrain
-             */
-            label: string;
-            /**
-             * Prior Run Id
-             * @description Run whose posterior is the 'before' state, if any.
-             */
-            prior_run_id?: string | null;
-            /** Run Id */
-            run_id: string;
-            /**
-             * Valid Ts
-             * Format: date-time
-             */
-            valid_ts: string;
-        };
-        /**
          * EngineVersions
          * @description Engine versions that produced a run; the first three appear in the run id.
          */
@@ -1352,25 +1364,6 @@ export interface components {
             type: "FeatureCollection";
         };
         /**
-         * FlashLiteScore
-         * @description Emulator skill versus held-out Twin runs (``docs/verification/flash_lite.json``).
-         */
-        FlashLiteScore: {
-            /**
-             * Csi 30
-             * @description CSI at 30 cm versus Twin.
-             */
-            csi_30: number;
-            /** Fitted At */
-            fitted_at?: string | null;
-            /** N Heldout Runs */
-            n_heldout_runs: number;
-            /** N Train Runs */
-            n_train_runs: number;
-            /** Rmse Cm */
-            rmse_cm: number;
-        };
-        /**
          * GridSpec
          * @description The computational grid of the 2D solver (CLAUDE.md 3.3).
          */
@@ -1464,199 +1457,6 @@ export interface components {
             version: string;
         };
         /**
-         * Hotspot
-         * @description One ranked hotspot at a selected valid time.
-         */
-        Hotspot: {
-            /**
-             * Attribution
-             * @description Responsible pipes, best first.
-             */
-            attribution?: components["schemas"]["AttributionItem"][];
-            clean_top_n_effect?: components["schemas"]["CleanTopNEffect"] | null;
-            /**
-             * Depth P50 Cm
-             * @description Median depth at the selected time in cm.
-             */
-            depth_p50_cm: number;
-            /**
-             * Expected Impact
-             * @description P(impassable at peak) times exposure weight (ranking key).
-             */
-            expected_impact: number;
-            exposure: components["schemas"]["HotspotExposure"];
-            /**
-             * Id
-             * @description Hotspot register id, e.g. hindmata.
-             */
-            id: string;
-            /**
-             * Impassable Threshold Cm
-             * @default 30
-             */
-            impassable_threshold_cm: number;
-            /** Lat */
-            lat: number;
-            /** Lon */
-            lon: number;
-            /**
-             * Minutes Impassable
-             * @description Minutes above the threshold over the horizon.
-             * @default 0
-             */
-            minutes_impassable: number;
-            /**
-             * Name
-             * @description e.g. Hindmata junction.
-             */
-            name: string;
-            /**
-             * P Impassable
-             * @description P(depth > car threshold) at the peak.
-             */
-            p_impassable: number;
-            /**
-             * Peak Depth Cm
-             * @description Peak median depth over the horizon in cm.
-             */
-            peak_depth_cm: number;
-            /** Rank */
-            rank: number;
-            /**
-             * Segment Ids
-             * @description Segments forming the hotspot.
-             */
-            segment_ids?: string[];
-            /**
-             * Selected Ts
-             * @description Valid time the p50 depth refers to (None = peak).
-             */
-            selected_ts?: string | null;
-            /**
-             * Source Url
-             * @description Register source for the chronic-spot location.
-             */
-            source_url?: string | null;
-            /**
-             * Sparkline
-             * @description 3-hour p10/p50/p90 series for the hotspot row.
-             */
-            sparkline?: components["schemas"]["SeriesPoint"][];
-            /**
-             * Surcharging Nodes
-             * @description Manholes predicted to surcharge at this hotspot.
-             */
-            surcharging_nodes?: string[];
-            /**
-             * Time To Peak
-             * Format: date-time
-             * @description When the peak is reached (IST).
-             */
-            time_to_peak: string;
-        };
-        /**
-         * HotspotDelta
-         * @description One row of the delta table: before -> after at a hotspot.
-         */
-        HotspotDelta: {
-            /**
-             * Delta Cm
-             * @description after - before (negative = improved).
-             */
-            readonly delta_cm: number;
-            /**
-             * Depth After Cm
-             * @description Peak p50 depth under the scenario.
-             */
-            depth_after_cm: number;
-            /**
-             * Depth Before Cm
-             * @description Peak p50 depth in the base run.
-             */
-            depth_before_cm: number;
-            /** Hotspot Id */
-            hotspot_id: string;
-            /** Minutes Impassable After */
-            minutes_impassable_after: number;
-            /**
-             * Minutes Impassable Before
-             * @description Minutes above the car threshold.
-             */
-            minutes_impassable_before: number;
-            /**
-             * Name
-             * @description e.g. Hindmata junction
-             */
-            name: string;
-            /** Peak Ts After */
-            peak_ts_after?: string | null;
-            /** Peak Ts Before */
-            peak_ts_before?: string | null;
-        };
-        /**
-         * HotspotExposure
-         * @description What is at stake around a hotspot (blueprint 6.8: traffic, hospitals, transit, population).
-         */
-        HotspotExposure: {
-            /**
-             * Facilities
-             * @description Icon set shown on the hotspot row.
-             */
-            facilities?: ("hospital" | "fire_station" | "station" | "transit" | "school" | "shelter")[];
-            /**
-             * Nearest Hospital
-             * @description e.g. KEM Hospital, Parel.
-             */
-            nearest_hospital?: string | null;
-            /** Nearest Hospital M */
-            nearest_hospital_m?: number | null;
-            /**
-             * Nearest Station
-             * @description e.g. Dadar station.
-             */
-            nearest_station?: string | null;
-            /** Nearest Station M */
-            nearest_station_m?: number | null;
-            /** Population 300M */
-            population_300m?: number | null;
-            /**
-             * Traffic Volume Proxy
-             * @description Relative traffic volume proxy by road class.
-             */
-            traffic_volume_proxy?: number | null;
-            /**
-             * Transit Lines
-             * @description Bus and rail lines affected.
-             */
-            transit_lines?: string[];
-            /**
-             * Weight
-             * @description Exposure weight from the city pipeline (dimensionless).
-             */
-            weight: number;
-        };
-        /**
-         * HotspotList
-         * @description ``hotspots.json``: ranked hotspots for one run.
-         */
-        HotspotList: {
-            /**
-             * Attribution Label
-             * @description Honesty label for the attribution method.
-             * @default Reduced-order emulator calibrated to VARUNA-Twin
-             */
-            attribution_label: string;
-            /** Hotspots */
-            hotspots?: components["schemas"]["Hotspot"][];
-            /** Run Id */
-            run_id: string;
-            /**
-             * Valid Ts
-             * Format: date-time
-             */
-            valid_ts: string;
-        };
-        /**
          * HotspotPumpBenefit
          * @description Per-hotspot outcome of a plan: minutes above 45 cm before and after.
          */
@@ -1677,57 +1477,6 @@ export interface components {
             /** Minutes Above 45 Before */
             minutes_above_45_before: number;
         };
-        /**
-         * HotspotScore
-         * @description Scores at one chronic spot.
-         */
-        HotspotScore: {
-            contingency: components["schemas"]["ContingencyTable"];
-            /** Hotspot Id */
-            hotspot_id: string;
-            /**
-             * Lead Time Gained Min
-             * @description Minutes between the first alert and the first observed report.
-             */
-            lead_time_gained_min?: number | null;
-            /**
-             * Mae Cm
-             * @description Depth MAE where pins carry depth.
-             */
-            mae_cm?: number | null;
-            /**
-             * N Pins
-             * @default 0
-             */
-            n_pins: number;
-            /** Name */
-            name: string;
-            /**
-             * Timing Err Min
-             * @description Forecast peak minus observed onset in minutes (signed).
-             */
-            timing_err_min?: number | null;
-        };
-        /**
-         * Isochrone
-         * @description Area reachable from a facility within ``minutes`` under the forecast.
-         */
-        Isochrone: {
-            /** Area Km2 */
-            area_km2: number;
-            /**
-             * Minutes
-             * @enum {integer}
-             */
-            minutes: 5 | 10 | 15;
-            /**
-             * Polygon
-             * @description Concave hull of reached nodes; None when nothing is reachable.
-             */
-            polygon?: components["schemas"]["Polygon"] | components["schemas"]["MultiPolygon"] | null;
-            /** Reachable Nodes */
-            reachable_nodes?: number | null;
-        };
         /** LineString */
         LineString: {
             /** Coordinates */
@@ -1745,34 +1494,6 @@ export interface components {
              * @constant
              */
             type: "LineString";
-        };
-        /**
-         * MissedPin
-         * @description A ground-truth pin the model missed, with the likely reason ('Where we are wrong').
-         */
-        MissedPin: {
-            /** Forecast P50 Cm */
-            forecast_p50_cm: number;
-            /** Forecast P Gt 30 */
-            forecast_p_gt_30: number;
-            /** Name */
-            name: string;
-            /** Observed Depth Cm */
-            observed_depth_cm?: number | null;
-            /** Pin Id */
-            pin_id: string;
-            /**
-             * Reason
-             * @description e.g. 'Drain outfall not in the inferred graph'.
-             */
-            reason: string;
-            /** Source Url */
-            source_url: string;
-            /**
-             * Ts
-             * Format: date-time
-             */
-            ts: string;
         };
         /** MultiLineString */
         MultiLineString: {
@@ -1811,155 +1532,6 @@ export interface components {
             type: "MultiPolygon";
         };
         /**
-         * Observation
-         * @description A single depth observation (``observations.parquet``, ``GET /v1/observations``).
-         */
-        Observation: {
-            /** @description Filled once assimilated; None while pending. */
-            effect?: components["schemas"]["ObservationEffect"] | null;
-            /** Id */
-            id: string;
-            /** Lat */
-            lat: number;
-            /** Lon */
-            lon: number;
-            /**
-             * Quality
-             * @default medium
-             * @enum {string}
-             */
-            quality: "high" | "medium" | "low" | "rejected";
-            /**
-             * Sd Cm
-             * @description Standard deviation of the depth in cm.
-             */
-            sd_cm: number;
-            /**
-             * Segment Id
-             * @description Nearest road segment, if snapped.
-             */
-            segment_id?: string | null;
-            /**
-             * Source
-             * @description Feed or reporter, e.g. 'synthetic traffic' or 'BMC log'.
-             */
-            source: string;
-            /**
-             * Source Url
-             * @description Mandatory for real ground truth; None for synthetic.
-             */
-            source_url?: string | null;
-            /**
-             * Synthetic
-             * @description True for generated streams; the UI labels these.
-             */
-            synthetic: boolean;
-            /**
-             * Text
-             * @description Free text from a report or a log line.
-             */
-            text?: string | null;
-            /**
-             * Ts
-             * Format: date-time
-             */
-            ts: string;
-            /**
-             * Type
-             * @enum {string}
-             */
-            type: "traffic" | "report" | "sensor" | "cctv" | "sar";
-            /**
-             * Value Cm
-             * @description Inferred water depth in cm.
-             */
-            value_cm: number;
-            /**
-             * Weight
-             * @description Reporter trust weight.
-             * @default 1
-             */
-            weight: number;
-        };
-        /**
-         * ObservationEffect
-         * @description What assimilating one observation changed. Extra keys are allowed so Pulse can add detail.
-         */
-        ObservationEffect: {
-            /**
-             * Assimilated Run Id
-             * @description Run in which the observation was assimilated.
-             */
-            assimilated_run_id?: string | null;
-            /**
-             * Beta Changes
-             * @description edge_id -> change in posterior mean beta.
-             */
-            beta_changes?: {
-                [key: string]: number;
-            };
-            /**
-             * Hotspot Depth Deltas Cm
-             * @description hotspot_id -> change in peak p50 depth in cm.
-             */
-            hotspot_depth_deltas_cm?: {
-                [key: string]: number;
-            };
-            /**
-             * Innovation Cm
-             * @description Observation minus model depth before the update, in cm.
-             */
-            innovation_cm?: number | null;
-            /**
-             * Segments Changed
-             * @description Segments whose p50 moved by more than 3 cm.
-             * @default 0
-             */
-            segments_changed: number;
-        } & {
-            [key: string]: unknown;
-        };
-        /**
-         * OnboardJob
-         * @description ``GET /v1/onboard/{job_id}``; progress also streams on ``onboard.progress``.
-         */
-        OnboardJob: {
-            /** City */
-            city: string;
-            /** Elapsed S */
-            elapsed_s: number;
-            /** Error */
-            error?: string | null;
-            /** Finished At */
-            finished_at?: string | null;
-            /** First Run Id */
-            first_run_id?: string | null;
-            /** Job Id */
-            job_id: string;
-            /**
-             * Log Tail
-             * @description Last real pipeline log lines.
-             */
-            log_tail?: string[];
-            /** Progress */
-            progress: number;
-            /**
-             * Started At
-             * Format: date-time
-             */
-            started_at: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "queued" | "running" | "finished" | "failed";
-            /**
-             * Step
-             * @enum {string}
-             */
-            step: "choose_area" | "fetch_open_data" | "condition_terrain" | "infer_drains" | "build_graph" | "first_forecast";
-        };
-        /**
          * OnboardRequest
          * @description Body of ``POST /v1/onboard`` (city-in-a-box, CLAUDE.md 7.9).
          */
@@ -1979,7 +1551,7 @@ export interface components {
             design_storm: string;
             /**
              * From Cache Only
-             * @description Never touch the network.
+             * @description Fail rather than download when the city's open-data tiles are not cached. False lets the job fetch them once. VARUNA_OFFLINE=1 refuses the network either way.
              * @default true
              */
             from_cache_only: boolean;
@@ -2087,54 +1659,6 @@ export interface components {
              * @constant
              */
             type: "Polygon";
-        };
-        /**
-         * Pump
-         * @description A mobile pump (``GET /v1/pumps``). The prototype inventory is synthetic and labelled.
-         */
-        Pump: {
-            /** Assigned Hotspot Id */
-            assigned_hotspot_id?: string | null;
-            /**
-             * Capacity M3H
-             * @description Rated discharge in m^3/h.
-             */
-            capacity_m3h: number;
-            /**
-             * Depot
-             * @description Depot name, e.g. 'Parel depot'.
-             */
-            depot: string;
-            /**
-             * Eta Min
-             * @description Travel time to the selected hotspot in minutes.
-             */
-            eta_min?: number | null;
-            /**
-             * Id
-             * @description e.g. P-12
-             */
-            id: string;
-            /** Lat */
-            lat: number;
-            /** Lon */
-            lon: number;
-            /**
-             * Name
-             * @description Display name, e.g. 'Pump P-12'.
-             */
-            name: string;
-            /**
-             * Status
-             * @default available
-             * @enum {string}
-             */
-            status: "available" | "assigned" | "en_route" | "pumping" | "maintenance";
-            /**
-             * Synthetic
-             * @description True for the prototype's synthetic inventory.
-             */
-            synthetic: boolean;
         };
         /**
          * PumpAssignment
@@ -2724,80 +2248,6 @@ export interface components {
             valid_ts: string;
         };
         /**
-         * ReachabilityResponse
-         * @description ``GET /v1/reachability`` and one feature group of ``reachability.geojson``.
-         */
-        ReachabilityResponse: {
-            /**
-             * Catchment Ratio
-             * @description 15-min area divided by the dry baseline (the ring gauge).
-             */
-            readonly catchment_ratio: number | null;
-            /**
-             * Collapse
-             * @description True when the 15-min catchment is below 40 % of the dry baseline.
-             */
-            readonly collapse: boolean;
-            /**
-             * Dry Area 15 Km2
-             * @description 15-min catchment area with no flooding.
-             */
-            dry_area_15_km2: number;
-            /** Facility Id */
-            facility_id: string;
-            /**
-             * Facility Kind
-             * @enum {string}
-             */
-            facility_kind: "hospital" | "fire_station" | "station" | "transit" | "school" | "shelter";
-            /**
-             * Facility Name
-             * @description e.g. KEM Hospital, Parel
-             */
-            facility_name: string;
-            /** Isochrones */
-            isochrones?: components["schemas"]["Isochrone"][];
-            /** Lat */
-            lat: number;
-            /** Lon */
-            lon: number;
-            /**
-             * Profile
-             * @enum {string}
-             */
-            profile: "ambulance" | "fire_tender" | "bus" | "car" | "two_wheeler" | "pedestrian";
-            /** Run Id */
-            run_id: string;
-            /**
-             * T
-             * Format: date-time
-             * @description Forecast slice the isochrones are computed for (IST).
-             */
-            t: string;
-            /**
-             * Valid Ts
-             * Format: date-time
-             * @description Cycle time of the run (IST).
-             */
-            valid_ts: string;
-        };
-        /**
-         * ReliabilityBin
-         * @description One bin of the reliability diagram for P(> 30 cm).
-         */
-        ReliabilityBin: {
-            /** Forecast P Mean */
-            forecast_p_mean: number;
-            /** N */
-            n: number;
-            /** Observed Freq */
-            observed_freq: number;
-            /** P Hi */
-            p_hi: number;
-            /** P Lo */
-            p_lo: number;
-        };
-        /**
          * ReplayBundleRequest
          * @description Body of ``POST /v1/replay/bundle``: which bundle the clock should walk.
          */
@@ -2973,235 +2423,6 @@ export interface components {
             speed: number;
         };
         /**
-         * ReportAck
-         * @description Response to ``POST /v1/reports``. The feedback count arrives after the next cycle.
-         */
-        ReportAck: {
-            /**
-             * Duplicate Of
-             * @description Existing observation within 50 m and 10 min, if any.
-             */
-            duplicate_of?: string | null;
-            /**
-             * Id
-             * @description Observation id assigned to the report.
-             */
-            id: string;
-            /**
-             * Improved Segments
-             * @description Segments whose forecast changed by more than 3 cm; None until assimilated.
-             */
-            improved_segments?: number | null;
-            /**
-             * Message
-             * @description Plain-language status, e.g. 'Thanks. Your report is queued for the next cycle.'
-             */
-            message: string;
-            /**
-             * Queued For Run
-             * @description Run id it will enter, if known.
-             */
-            queued_for_run?: string | null;
-            /**
-             * Received Ts
-             * Format: date-time
-             */
-            received_ts: string;
-            /**
-             * Status
-             * @default queued
-             * @enum {string}
-             */
-            status: "queued" | "assimilated" | "duplicate" | "rejected";
-        };
-        /**
-         * ReportIn
-         * @description Body of ``POST /v1/reports`` from the citizen report flow.
-         */
-        ReportIn: {
-            /**
-             * Depth Hint
-             * @description ankle (~10 cm), knee (~45 cm) or waist (~90 cm).
-             * @enum {string}
-             */
-            depth_hint: "ankle" | "knee" | "waist";
-            /** Lat */
-            lat: number;
-            /** Lon */
-            lon: number;
-            /**
-             * Photo B64
-             * @description Optional JPEG/PNG as base64 (no data: prefix).
-             */
-            photo_b64?: string | null;
-            /**
-             * Reporter Id
-             * @description Anonymous device token for de-duplication; never a name.
-             */
-            reporter_id?: string | null;
-            /**
-             * Text
-             * @description Optional description.
-             * @default
-             */
-            text: string;
-            /**
-             * Ts
-             * @description Observation time; None = now (server clock or replay clock).
-             */
-            ts?: string | null;
-        };
-        /**
-         * RouteRequest
-         * @description Body of ``POST /v1/route``.
-         */
-        RouteRequest: {
-            /**
-             * Alternates
-             * @description Number of alternates to return.
-             * @default 2
-             */
-            alternates: number;
-            /**
-             * Depart At
-             * @description Departure (IST); None = the console's scrub time.
-             */
-            depart_at?: string | null;
-            /**
-             * Destination
-             * @description [lon, lat], e.g. Sion Hospital [72.8628, 19.0176].
-             */
-            destination: [
-                number,
-                number
-            ];
-            /** Destination Name */
-            destination_name?: string | null;
-            /**
-             * Origin
-             * @description [lon, lat], e.g. KEM Hospital [72.8419, 19.0035].
-             */
-            origin: [
-                number,
-                number
-            ];
-            /** Origin Name */
-            origin_name?: string | null;
-            /**
-             * Profile
-             * @default car
-             * @enum {string}
-             */
-            profile: "ambulance" | "fire_tender" | "bus" | "car" | "two_wheeler" | "pedestrian";
-            /**
-             * Risk Tolerance
-             * @description Max P(impassable) accepted per segment; None = profile default.
-             */
-            risk_tolerance?: number | null;
-            /**
-             * Run Id
-             * @description None = the latest published run.
-             */
-            run_id?: string | null;
-        };
-        /**
-         * RouteResponse
-         * @description Response of ``POST /v1/route`` (blueprint 9.3 shape, with the naive route for comparison).
-         */
-        RouteResponse: {
-            /** Alternates */
-            alternates?: components["schemas"]["RouteResult"][];
-            /** Avoided */
-            avoided?: components["schemas"]["AvoidedSegment"][];
-            /**
-             * Compute Ms
-             * @description Routing wall-clock (budget 300 ms).
-             */
-            compute_ms: number;
-            /**
-             * Confidence
-             * @enum {string}
-             */
-            confidence: "high" | "medium" | "low";
-            /**
-             * Confidence Note
-             * @description e.g. 'high (lead 30 min)'.
-             */
-            confidence_note: string;
-            /**
-             * Depart At
-             * Format: date-time
-             */
-            depart_at: string;
-            /**
-             * Eta Delta Min
-             * @description Extra minutes versus the naive route (positive = VARUNA is slower but safer).
-             */
-            readonly eta_delta_min: number | null;
-            /**
-             * Explanation
-             * @description Plain language, e.g. 'Avoids Hindmata (82 % above 45 cm at 18:10) via Bharatmata'.
-             */
-            explanation?: string | null;
-            /** @description Shortest route ignoring the forecast. */
-            naive?: components["schemas"]["RouteResult"] | null;
-            /**
-             * Profile
-             * @enum {string}
-             */
-            profile: "ambulance" | "fire_tender" | "bus" | "car" | "two_wheeler" | "pedestrian";
-            /** Risk Tolerance */
-            risk_tolerance: number;
-            route: components["schemas"]["RouteResult"];
-            /** Run Id */
-            run_id: string;
-            /**
-             * Valid Ts
-             * Format: date-time
-             * @description Cycle time of the run used (IST).
-             */
-            valid_ts: string;
-        };
-        /**
-         * RouteResult
-         * @description One route with its forecast-aware summary.
-         */
-        RouteResult: {
-            /** Arrival Ts */
-            arrival_ts?: string | null;
-            /** Distance Km */
-            distance_km: number;
-            /**
-             * Eta Min
-             * @description Travel time in minutes under the forecast.
-             */
-            eta_min: number;
-            geometry: components["schemas"]["LineString"];
-            /**
-             * Label
-             * @default VARUNA
-             * @enum {string}
-             */
-            label: "VARUNA" | "Naive (shortest)" | "Alternate";
-            /**
-             * Max Expected Depth Cm
-             * @description Max p50 depth met along the route.
-             */
-            max_expected_depth_cm: number;
-            /**
-             * Max P Exceed
-             * @description Highest P(impassable) on any segment of the route.
-             */
-            max_p_exceed?: number | null;
-            /**
-             * Safe Until
-             * @description Latest departure for which the route stays passable; None = horizon.
-             */
-            safe_until?: string | null;
-            /** Segment Ids */
-            segment_ids?: string[];
-        };
-        /**
          * RunList
          * @description ``GET /v1/runs``.
          */
@@ -3283,6 +2504,11 @@ export interface components {
              * @description Timestamp of the latest radar frame used, if any.
              */
             radar_frame_ts?: string | null;
+            /**
+             * Rain Aoi Mm H
+             * @description AOI-mean rain rate in mm/h at each forecast step: the storm this run was given. What-if scales it, so a run without it can only answer 'what if' about pipes.
+             */
+            rain_aoi_mm_h?: number[];
             /**
              * Replay Mode
              * @description Ingestion mode of the cycle.
@@ -3371,24 +2597,6 @@ export interface components {
             threshold_cm: number;
         };
         /**
-         * SegmentDelta
-         * @description Per-segment change of peak p50 depth for the diff layer.
-         */
-        SegmentDelta: {
-            /**
-             * Change
-             * @enum {string}
-             */
-            readonly change: "improved" | "worse" | "unchanged";
-            /**
-             * Delta P50 Cm
-             * @description after - before in cm (negative = improved).
-             */
-            delta_p50_cm: number;
-            /** Segment Id */
-            segment_id: string;
-        };
-        /**
          * SegmentSeries
          * @description Fan-chart series and safe-until table for one segment (or hotspot).
          */
@@ -3444,31 +2652,6 @@ export interface components {
              * Format: date-time
              */
             valid_ts: string;
-        };
-        /**
-         * SkillByLead
-         * @description Rain CSI at one lead time and threshold (the 'confidence decays after 90 min' chart).
-         */
-        SkillByLead: {
-            /** Csi */
-            csi?: number | null;
-            /** Far */
-            far?: number | null;
-            /** Lead Min */
-            lead_min: number;
-            /**
-             * N
-             * @description Pixels or gauge-times scored.
-             * @default 0
-             */
-            n: number;
-            /** Pod */
-            pod?: number | null;
-            /**
-             * Threshold Mm H
-             * @enum {integer}
-             */
-            threshold_mm_h: 20 | 40;
         };
         /**
          * StormCellRow
@@ -3533,107 +2716,6 @@ export interface components {
             type: string;
         };
         /**
-         * VerificationSummary
-         * @description Headline scores for one event.
-         */
-        VerificationSummary: {
-            /**
-             * Bias Cm
-             * @description Mean forecast minus observed depth.
-             */
-            bias_cm?: number | null;
-            /**
-             * Brier
-             * @description Brier score for P(> 30 cm).
-             */
-            brier?: number | null;
-            /**
-             * Computed At
-             * Format: date-time
-             */
-            computed_at: string;
-            contingency?: components["schemas"]["ContingencyTable"] | null;
-            /** Csi */
-            csi?: number | null;
-            /**
-             * Event
-             * @description Bundle id, e.g. MUM-2019-07-02.
-             */
-            event: string;
-            /** Far */
-            far?: number | null;
-            flash_lite?: components["schemas"]["FlashLiteScore"] | null;
-            /**
-             * Label
-             * @description Footnote shown next to the numbers.
-             * @default Computed on a reconstructed replay with sourced ground truth
-             */
-            label: string;
-            /**
-             * Latency S
-             * @description Frame-to-product latency.
-             */
-            latency_s?: number | null;
-            /**
-             * Lead Time Gained Min
-             * @description Median minutes between first alert and first observed report.
-             */
-            lead_time_gained_min?: number | null;
-            /**
-             * Limitations
-             * @description Blueprint 15.1 limitations in prototype terms.
-             */
-            limitations?: string[];
-            /**
-             * Mae Cm
-             * @description Depth MAE at pins with depth.
-             */
-            mae_cm?: number | null;
-            /** Missed */
-            missed?: components["schemas"]["MissedPin"][];
-            /**
-             * N Ground Truth
-             * @description Sourced pins inside the AOI.
-             */
-            n_ground_truth: number;
-            /**
-             * N Pins With Depth
-             * @default 0
-             */
-            n_pins_with_depth: number;
-            /** Per Hotspot */
-            per_hotspot?: components["schemas"]["HotspotScore"][];
-            /** Pod */
-            pod?: number | null;
-            /** Reliability */
-            reliability?: components["schemas"]["ReliabilityBin"][];
-            /** Roc Auc */
-            roc_auc?: number | null;
-            /**
-             * Routing Value
-             * @description Share of naive emergency trips crossing an observed-impassable segment that VARUNA routes avoid.
-             */
-            routing_value?: number | null;
-            /**
-             * Run Ids
-             * @description Runs scored (one per cycle).
-             */
-            run_ids?: string[];
-            /** Skill By Lead */
-            skill_by_lead?: components["schemas"]["SkillByLead"][];
-            /**
-             * Threshold Cm
-             * @description Depth threshold for CSI/POD/FAR.
-             * @default 30
-             */
-            threshold_cm: number;
-            /**
-             * Timing Err Min
-             * @description Median timing error at spots.
-             */
-            timing_err_min?: number | null;
-        };
-        /**
          * WhatIfRequest
          * @description Body of ``POST /v1/whatif``.
          */
@@ -3671,71 +2753,6 @@ export interface components {
              * @default 0
              */
             tide_offset_m: number;
-        };
-        /**
-         * WhatIfResponse
-         * @description Response of ``POST /v1/whatif`` (emulator, under a second).
-         */
-        WhatIfResponse: {
-            /**
-             * Cleaned Edges
-             * @description Pipes actually cleaned (resolved from clean_top_n).
-             */
-            cleaned_edges?: string[];
-            /**
-             * Diff Raster Path
-             * @description Relative path of the Δdepth PNG inside the run directory.
-             */
-            diff_raster_path?: string | null;
-            /**
-             * Emulator Ms
-             * @description Emulator wall-clock (budget 1000 ms).
-             */
-            emulator_ms: number;
-            /** Hotspots */
-            hotspots?: components["schemas"]["HotspotDelta"][];
-            /**
-             * Label
-             * @description Honesty badge for the panel.
-             * @default Reduced-order emulator calibrated to VARUNA-Twin
-             */
-            label: string;
-            request: components["schemas"]["WhatIfRequest"];
-            /**
-             * Run Id
-             * @description Base run the scenario was applied to.
-             */
-            run_id: string;
-            /**
-             * Segment Deltas
-             * @description Optional per-segment deltas (large; omitted by default).
-             */
-            segment_deltas?: components["schemas"]["SegmentDelta"][];
-            /**
-             * Segments Improved
-             * @default 0
-             */
-            segments_improved: number;
-            /**
-             * Segments Unchanged
-             * @default 0
-             */
-            segments_unchanged: number;
-            /**
-             * Segments Worse
-             * @default 0
-             */
-            segments_worse: number;
-            /**
-             * Valid Ts
-             * Format: date-time
-             */
-            valid_ts: string;
-            /**
-             * Whatif Id
-             * @description Handle for the physics check and the diff raster.
-             */
-            whatif_id: string;
         };
         /**
          * ZRRelation
@@ -3796,9 +2813,8 @@ export interface operations {
     alerts_v1_alerts_get: {
         parameters: {
             query?: {
-                /** @description Valid time (ISO 8601 +05:30); default = now */
-                since?: string | null;
-                level?: string | null;
+                run_id?: string | null;
+                level?: ("severe" | "moderate" | "watch") | null;
             };
             header?: never;
             path?: never;
@@ -3812,7 +2828,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Alert"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -3824,20 +2842,13 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
         };
     };
     alert_cap_v1_alerts__alert_id__cap_get: {
         parameters: {
-            query?: never;
+            query?: {
+                run_id?: string | null;
+            };
             header?: never;
             path: {
                 alert_id: string;
@@ -3862,15 +2873,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -4072,10 +3074,9 @@ export interface operations {
     drains_health_v1_drains_health_get: {
         parameters: {
             query?: {
-                /** @description Run id; default = latest published run */
                 run_id?: string | null;
-                /** @description minlon,minlat,maxlon,maxlat (WGS84) */
-                bbox?: string | null;
+                min_beta?: number;
+                limit?: number;
             };
             header?: never;
             path?: never;
@@ -4089,7 +3090,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DrainHealthProduct"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4101,21 +3104,11 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
         };
     };
     drains_health_csv_v1_drains_health_csv_get: {
         parameters: {
             query?: {
-                /** @description Run id; default = latest published run */
                 run_id?: string | null;
             };
             header?: never;
@@ -4124,7 +3117,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Desilting CSV */
+            /** @description Desilting priority */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4142,24 +3135,14 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
         };
     };
     road_conditions_v1_feeds_road_conditions_get: {
         parameters: {
             query?: {
-                /** @description Run id; default = latest published run */
+                profile?: string;
                 run_id?: string | null;
-                /** @description Vehicle profile for safe-until */
-                profile?: "ambulance" | "fire_tender" | "bus" | "car" | "two_wheeler" | "pedestrian";
+                city?: string;
             };
             header?: never;
             path?: never;
@@ -4173,7 +3156,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FeatureCollection"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4185,21 +3170,11 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
         };
     };
-    nowcast_hotspots_v1_nowcast_hotspots_get: {
+    hotspots_v1_nowcast_hotspots_get: {
         parameters: {
             query?: {
-                /** @description Run id; default = latest published run */
                 run_id?: string | null;
                 limit?: number;
             };
@@ -4215,7 +3190,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HotspotList"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4225,15 +3202,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -4382,6 +3350,39 @@ export interface operations {
             };
         };
     };
+    raster_bounds_v1_nowcast_raster_bounds_get: {
+        parameters: {
+            query?: {
+                run_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     nowcast_segments_v1_nowcast_segments_get: {
         parameters: {
             query?: {
@@ -4473,10 +3474,9 @@ export interface operations {
             };
         };
     };
-    observations_v1_observations_get: {
+    surcharge_v1_nowcast_surcharge_get: {
         parameters: {
             query?: {
-                /** @description Run id; default = latest published run */
                 run_id?: string | null;
             };
             header?: never;
@@ -4491,7 +3491,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Observation"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4503,13 +3505,37 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
+        };
+    };
+    observations_v1_observations_get: {
+        parameters: {
+            query?: {
+                run_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4533,7 +3559,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OnboardJob"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4545,13 +3573,37 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
+        };
+    };
+    onboard_latest_v1_onboard_city__city__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                city: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4573,7 +3625,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["OnboardJob"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4585,20 +3639,13 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
         };
     };
     pumps_v1_pumps_get: {
         parameters: {
-            query?: never;
+            query?: {
+                run_id?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4611,16 +3658,18 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Pump"][];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4712,15 +3761,13 @@ export interface operations {
     reachability_v1_reachability_get: {
         parameters: {
             query: {
-                /** @description Asset id, e.g. kem-hospital */
+                /** @description asset_id or exact name from /v1/route/facilities */
                 facility: string;
-                /** @description Vehicle profile for safe-until */
-                profile?: "ambulance" | "fire_tender" | "bus" | "car" | "two_wheeler" | "pedestrian";
-                /** @description Valid time (ISO 8601 +05:30); default = now */
+                /** @description Instant to measure at, ISO 8601. */
                 t?: string | null;
-                /** @description Run id; default = latest published run */
+                profile?: string;
+                city?: string;
                 run_id?: string | null;
-                risk_tolerance?: number;
             };
             header?: never;
             path?: never;
@@ -4734,7 +3781,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReachabilityResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4744,15 +3793,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -5008,6 +4048,49 @@ export interface operations {
             };
         };
     };
+    replay_ground_truth_v1_replay_ground_truth_get: {
+        parameters: {
+            query?: {
+                /** @description Bundle id; default = VARUNA_BUNDLE, or the bundle already open. */
+                bundle?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description No such bundle under bundles/ */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     replay_pause_v1_replay_pause_post: {
         parameters: {
             query?: {
@@ -5180,26 +4263,26 @@ export interface operations {
             };
         };
     };
-    create_report_v1_reports_post: {
+    list_reports_v1_reports_get: {
         parameters: {
-            query?: never;
+            query?: {
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ReportIn"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
-            202: {
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ReportAck"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -5211,13 +4294,41 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
+        };
+    };
+    create_report_v1_reports_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5231,7 +4342,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RouteRequest"];
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
@@ -5241,7 +4354,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RouteResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -5253,13 +4368,37 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
+        };
+    };
+    route_facilities_v1_route_facilities_get: {
+        parameters: {
+            query?: {
+                city?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -5267,7 +4406,7 @@ export interface operations {
     list_runs_v1_runs_get: {
         parameters: {
             query?: {
-                /** @description City slug, e.g. mumbai */
+                /** @description City slug, e.g. mumbai. Defaults to the configured city; 'all' for every city. */
                 city?: string | null;
                 /** @description Replay bundle id */
                 bundle?: string | null;
@@ -5357,7 +4496,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VerificationSummary"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -5367,15 +4508,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -5389,7 +4521,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["WhatIfRequest"];
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
@@ -5399,7 +4533,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["WhatIfResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -5409,15 +4545,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
