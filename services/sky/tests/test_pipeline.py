@@ -26,6 +26,10 @@ MP = ZRParams(a=200.0, b=1.6, source="marshall_palmer", n_pairs=0)
 SKY_PX = 120
 """The production Sky grid: 60 km at 500 m (CLAUDE.md 3.3)."""
 
+MID_STORM_FRAME = 12
+"""The last of the three frames a mid-storm cycle sees: 120 min into the replay window, the
+same place the measurement on `bundles/MUM-2019-07-02/radar/frames.zarr` was taken."""
+
 SKY_RES_M = 500.0
 LEFT, TOP = 280_000.0, 2_140_000.0
 """A UTM 43N origin placing the domain over the Mumbai AOI; only the georeference matters."""
@@ -51,6 +55,53 @@ def aoi_grid(sky: RadarGrid, *, res_m: float = 30.0, width: int = 64, height: in
         height=height,
         transform=(res_m, 0.0, left, 0.0, -res_m, top),
     )
+
+
+def designed_frames(
+    grid: RadarGrid, *, n_frames: int = 3, seed: int = 2019
+) -> tuple[RadarFrames, np.ndarray]:
+    """Three frames from the storm designer that builds the demo bundle, rendered as it is.
+
+    :func:`storm_frames` is one Gaussian on a *uniform* background. That is a good fixture for
+    pairing, projection and units, and a degenerate one for a nowcaster: pySTEPS decomposes
+    into a scale cascade and fits AR(2) per level from the lag correlations of the
+    advection-corrected frames, and over a constant background those correlations come out of
+    numerical noise. On the 120 px domain it measures a **negative** lag-1 correlation at the
+    largest scale, phi_0 goes to ~0.99, and the forecast is almost pure noise - the cell
+    flattens from 36 mm/h to 12 mm/h at the first 5-minute step.
+
+    Writing a prettier synthetic field does not fix that; a hand-rolled multi-scale field
+    measured 28 % away. So this uses `varuna_replay.storm` - the same seeded generator that
+    writes `bundles/MUM-2019-07-02/radar/frames.zarr`, through the same Marshall-Palmer
+    inverse and 5 dBZ quantisation - so the test measures Sky on the field Sky is actually
+    given. The bundle's own cube is gitignored (it is generated), so it is regenerated here
+    rather than read, which keeps the test working from a clean clone.
+    """
+    from varuna_replay.domain import StormDomain, step_times_min
+    from varuna_replay.storm import RadarRender, radar_dbz, rain_field, random_storm
+
+    domain = StormDomain(
+        crs=int(grid.crs.split(":")[-1]),
+        res_m=grid.res_m,
+        n_px=grid.n_px,
+        left=grid.left,
+        top=grid.top,
+    )
+    # The full replay window, then the frames a mid-storm cycle actually sees. At the storm's
+    # birth the cells are still growing, so a nowcast built on advection plus persistence
+    # under-forecasts by construction (measured 20.5 % at t=0..20 min against 6.7 % mid-storm
+    # on the bundle's own cube) - and a cycle at 06:40 is not what the demo runs on anyway.
+    window_min = 240.0
+    design = random_storm(domain, seed=seed, window_min=window_min)
+    times = step_times_min(0.0, window_min, 10.0)
+    rain_stack = rain_field(design, domain, times)
+    dbz = radar_dbz(rain_stack, domain, RadarRender(seed=seed))
+    first = MID_STORM_FRAME - n_frames + 1
+    rain_stack = rain_stack[first : MID_STORM_FRAME + 1]
+    dbz = dbz[first : MID_STORM_FRAME + 1]
+    t0 = datetime(2019, 7, 2, 6, 40, tzinfo=IST)
+    stamps = tuple(t0 + timedelta(minutes=10 * (first + k)) for k in range(n_frames))
+    return RadarFrames(dbz=dbz, times=stamps, grid=grid), rain_stack
 
 
 def storm_frames(
@@ -352,31 +403,42 @@ def test_the_full_configuration_does_not_regress_past_twice_its_budget() -> None
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "Measured 16.9 % against the 15 % CLAUDE.md 11.1 allows (ADR-0040). Every member "
-        "loses the mass individually, so it is the nowcast step and not the averaging. "
+        "Real defect, measured properly: median 21.7 % low across five storm draws "
+        "(range 6.1-27.3 %) against the 15 % CLAUDE.md 11.1 allows. Every member loses it "
+        "individually, so it is the nowcast step, not the averaging. probmatching='mean' "
+        "would pass this test (+13.2 %) and is NOT the fix - it inflates the 99.9th "
+        "percentile by 52 %, which is a phantom cloudburst in a flood nowcaster. ADR-0040. "
         "strict=True so this turns red the day it starts passing and the number gets read."
     ),
 )
-def test_the_ensemble_mean_is_near_persistence_at_the_first_lead(
-    small_cycle: tuple[SkyInputs, AoiGrid],
-) -> None:
+def test_the_ensemble_mean_is_near_persistence_at_the_first_lead() -> None:
     """CLAUDE.md 11.1: "total rain of the ensemble mean over the domain is within 15 % of
     persistence at lead 0".
 
-    The first forecast step is five minutes after the analysis, so before advection has moved
-    anything far and before the stochastic cascade has had room to diverge, the ensemble mean
-    should still carry essentially the field the merge just produced. It is the cheapest
-    statement that the nowcast is anchored to the observation rather than generating weather
-    of its own, and it was the one test of the three in 11.1 that had never been written.
+    Five minutes after the analysis, before advection has moved anything far and before the
+    stochastic cascade has had room to diverge, the ensemble mean should still carry
+    essentially the field the merge produced. It is the cheapest statement that the nowcast is
+    anchored to the observation rather than generating weather of its own, and it was the one
+    test of the three in 11.1 that had never been written.
+
+    It runs on :func:`designed_frames`, not the single-Gaussian fixture: over a uniform
+    background pySTEPS' cascade correlations are estimated from numerical noise and the
+    forecast degenerates, which measures the fixture rather than Sky (ADR-0040).
     """
-    inputs, aoi = small_cycle
-    result = run_sky(inputs, aoi)
+    grid = sky_grid(n_px=120)
+    frames, rain = designed_frames(grid)
+    inputs = cycle_inputs(frames, gauges_from(frames, rain), n_members=8, n_steps=6)
+    result = run_sky(inputs, aoi_grid(grid))
 
     persistence = float(np.nansum(result.merge.rain_mm_h))
     first_lead = float(np.nansum(np.nanmean(result.ensemble.rain_mm_h[:, 0], axis=0)))
 
     assert persistence > 0.0, "the fixture storm must be wet, or this proves nothing"
     relative = abs(first_lead - persistence) / persistence
+    print(
+        f"\nlead-0 total: {first_lead:.1f} against persistence {persistence:.1f} "
+        f"({relative * 100:.1f} % away; 11.1 allows 15 %)"
+    )
     assert relative <= 0.15, (
         f"the ensemble mean holds {first_lead:.1f} mm/h against persistence "
         f"{persistence:.1f} mm/h at lead 0, {relative * 100:.1f} % away; 11.1 allows 15 %"
