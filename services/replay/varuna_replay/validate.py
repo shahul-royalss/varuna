@@ -16,6 +16,9 @@ B7    streams.flagged       every synthetic stream says so, in the data and in t
 B8    sources.cited         a reconstruction cites the public sources it was built from
 B9    honesty.basis         calibrated or design storms carry their labelled assumption
 B10   groundtruth.count     ``ground_truth_n`` matches the pins inside the area of interest
+B11   columns.present       every stream carries the columns CLAUDE.md 10.2 fixes for it
+B12   cubes.units           the radar cube is dBZ and the truth cube is mm/h
+B13   groundtruth.floor     a reconstruction carries the ten sourced in-AOI pins 10.2 demands
 ===== ===================== =====================================================================
 
 Findings are errors, warnings or notes. Errors fail the bundle; warnings are things a human
@@ -37,16 +40,21 @@ import numpy as np
 import structlog
 from pydantic import ValidationError
 from varuna_schemas.models.bundle import BundleManifest, GroundTruthPin
+from varuna_schemas.settings import get_settings
 
 from varuna_replay.bundle import (
+    GAUGES_COLUMNS,
     GAUGES_CSV,
     GROUND_TRUTH_EXTRA_KEYS,
     GROUND_TRUTH_GEOJSON,
     MANIFEST_NAME,
     RADAR_VARIABLE,
     RADAR_ZARR,
+    REPORT_REQUIRED_KEYS,
     REPORTS_JSONL,
+    TIDE_COLUMNS,
     TIDE_CSV,
+    TRAFFIC_COLUMNS,
     TRAFFIC_PARQUET,
     TRUTH_VARIABLE,
     TRUTH_ZARR,
@@ -59,6 +67,9 @@ log = structlog.get_logger("varuna.replay.validate")
 
 Level = Literal["error", "warning", "note"]
 
+GROUND_TRUTH_FLOOR = 10
+"""Sourced pins a reconstruction must carry inside its AOI (CLAUDE.md 10.2)."""
+
 RULES: dict[str, str] = {
     "B1": "manifest.present",
     "B2": "manifest.valid",
@@ -70,6 +81,9 @@ RULES: dict[str, str] = {
     "B8": "sources.cited",
     "B9": "honesty.basis",
     "B10": "groundtruth.count",
+    "B11": "columns.present",
+    "B12": "cubes.units",
+    "B13": "groundtruth.floor",
 }
 
 REQUIRED_MEMBERS: dict[str, tuple[str, ...]] = {
@@ -316,6 +330,7 @@ def _check_members(report: ValidationReport, layout: BundleLayout, label: str) -
 def _check_cubes(report: ValidationReport, layout: BundleLayout, manifest: BundleManifest) -> None:
     report.ran("B4")
     report.ran("B5")
+    report.ran("B12")
     infos = {}
     for member, path, variable, cadence_key in (
         (TRUTH_ZARR, layout.truth, TRUTH_VARIABLE, "truth"),
@@ -331,6 +346,19 @@ def _check_cubes(report: ValidationReport, layout: BundleLayout, manifest: Bundl
         infos[member] = info
         for problem in _cube_problems(info, manifest, cadence_key):
             report.add("B4", "error", member, problem)
+        # B12. CLAUDE.md 10.2 fixes the physical quantity of each cube - dBZ for the radar
+        # frames, mm/h for the truth field. `write_cube` records it in the attributes and
+        # nothing read it back, so a cube written with the wrong units validated clean and
+        # any consumer trusting the attribute would convert twice or not at all.
+        expected_units = "dBZ" if member == RADAR_ZARR else "mm/h"
+        if info.units.strip().lower() != expected_units.lower():
+            report.add(
+                "B12",
+                "error",
+                member,
+                f"declares units {info.units!r}; CLAUDE.md 10.2 fixes {expected_units!r} "
+                "for this cube",
+            )
 
     if len(infos) == 2:
         truth, radar = infos[TRUTH_ZARR], infos[RADAR_ZARR]
@@ -383,6 +411,7 @@ def _check_streams(
             cadence_key="gauges",
             flag_column="synthetic",
             reader="csv",
+            columns=GAUGES_COLUMNS,
         )
     if layout.traffic.exists():
         _check_table(
@@ -393,11 +422,35 @@ def _check_streams(
             cadence_key="traffic",
             flag_column="synthetic",
             reader="parquet",
+            columns=TRAFFIC_COLUMNS,
         )
     if layout.tide.exists():
         _check_tide(report, layout, manifest)
     if layout.reports.exists():
         _check_reports(report, layout, manifest)
+
+
+def _check_columns(
+    report: ValidationReport, member: str, present: Sequence[str], expected: Sequence[str]
+) -> None:
+    """Rule B11 - the columns CLAUDE.md 10.2 fixes for this member are all there.
+
+    The bundle layout in 10.2 is a contract, not a suggestion: a consumer written against
+    ``mm_5min`` or ``baseline_kmh`` breaks on a bundle that renamed or dropped it. The column
+    tuples live in ``bundle.py`` beside the writers, so the writer and the check cannot drift.
+    """
+    report.ran("B11")
+    if not expected:
+        return
+    missing = [name for name in expected if name not in set(present)]
+    if missing:
+        report.add(
+            "B11",
+            "error",
+            member,
+            f"is missing the column(s) {', '.join(missing)} that CLAUDE.md 10.2 fixes for it "
+            f"(found {', '.join(map(str, present))})",
+        )
 
 
 def _check_table(
@@ -409,6 +462,7 @@ def _check_table(
     cadence_key: str,
     flag_column: str,
     reader: str,
+    columns: tuple[str, ...] = (),
 ) -> None:
     import pandas as pd
 
@@ -420,6 +474,7 @@ def _check_table(
     if frame.empty:
         report.add("B4", "error", member, "is empty")
         return
+    _check_columns(report, member, list(frame.columns), columns)
     if flag_column not in frame.columns:
         report.add(
             "B7",
@@ -468,6 +523,7 @@ def _check_tide(report: ValidationReport, layout: BundleLayout, manifest: Bundle
     except (OSError, ValueError) as exc:
         report.add("B4", "error", TIDE_CSV, f"cannot be read: {exc}")
         return
+    _check_columns(report, TIDE_CSV, list(frame.columns), TIDE_COLUMNS)
     if "source" not in frame.columns:
         report.add(
             "B7",
@@ -503,6 +559,18 @@ def _check_reports(
             rows.append(json.loads(line))
         except json.JSONDecodeError as exc:
             report.add("B4", "error", REPORTS_JSONL, f"line {number} is not JSON: {exc.msg}")
+    report.ran("B11")
+    for number, row in enumerate(rows, start=1):
+        absent = [key for key in REPORT_REQUIRED_KEYS if key not in row]
+        if absent:
+            report.add(
+                "B11",
+                "error",
+                REPORTS_JSONL,
+                f"line {number} is missing the key(s) {', '.join(absent)} that CLAUDE.md 10.2 "
+                "fixes for a report",
+            )
+            break
     for number, row in enumerate(rows, start=1):
         if "synthetic" not in row:
             report.add(
@@ -591,6 +659,33 @@ def _check_ground_truth(
             MANIFEST_NAME,
             f"ground_truth_n is {manifest.ground_truth_n} but {inside} pin(s) fall inside the "
             "declared area of interest",
+        )
+
+    # B13. CLAUDE.md 10.2 sets a floor on the *demo* bundle's evidence: "a minimum of 10 pins
+    # inside the AOI for MUM-2019-07-02; if the event does not yield 10, switch the demo bundle
+    # to another Mumbai event and document the choice". B10 only checks that the manifest's
+    # count is honest, so a bundle that lost its pins would agree with itself and pass. The
+    # floor is what makes the verification scores of 11.12 mean anything.
+    #
+    # It is an error for the bundle the demo ships and a note for any other reconstruction,
+    # because the spec scopes the number to that bundle. Miniatures exist and are legitimate:
+    # the reconstruction tests build a 20 km, six-pin bundle on purpose, and holding it to a
+    # figure the spec sets for the demo would be inventing a requirement.
+    report.ran("B13")
+    if manifest.is_reconstructed and inside < GROUND_TRUTH_FLOOR:
+        is_demo = manifest.id == get_settings().varuna_bundle
+        report.add(
+            "B13",
+            "error" if is_demo else "note",
+            GROUND_TRUTH_GEOJSON,
+            f"carries {inside} sourced pin(s) inside the area of interest, below the "
+            f"{GROUND_TRUTH_FLOOR} CLAUDE.md 10.2 sets for the demo bundle"
+            + (
+                ". Either curate more, or switch the demo bundle to another Mumbai event and "
+                "record the choice in an ADR"
+                if is_demo
+                else " - a note, because the floor is scoped to the demo bundle"
+            ),
         )
 
 

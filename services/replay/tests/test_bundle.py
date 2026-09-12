@@ -19,6 +19,7 @@ from varuna_replay.bundle import (
     write_cube,
 )
 from varuna_replay.domain import StormDomain, step_times_min
+from varuna_replay.validate import GROUND_TRUTH_FLOOR
 
 
 # --------------------------------------------------------------------------- layout
@@ -226,4 +227,4 @@ def test_a_full_bundle_loads_every_member(full_bundle: Path) -> None:
     assert truth.grid_key() == radar.grid_key()
     assert truth.n_times == 13 and radar.n_times == 7  # 60 min at 5 and 10 minutes
     assert bundle.read_truth().shape == truth.shape
-    assert len(bundle.read_ground_truth()["features"]) == 1
+    assert len(bundle.read_ground_truth()["features"]) == GROUND_TRUTH_FLOOR
