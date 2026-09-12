@@ -415,6 +415,27 @@ def fit_storm_to_pins(
     )
 
 
+def _observatory_accumulations(
+    accumulation: np.ndarray, domain: StormDomain, sites: list[streams.GaugeSite]
+) -> dict[str, float]:
+    """Accumulation at the two IMD observatories, by the same pixel sampling the pins use.
+
+    Only the two IMD observatories are named, because the calibration target is a share of
+    Santacruz's own 24-hour total; the municipal gauges are sited at their host facility's
+    OpenStreetMap position and make no claim about a published total.
+    """
+    wanted = {"santacruz": "santacruz", "colaba": "colaba"}
+    found: dict[str, float] = {}
+    for site in sites:
+        key = next((k for k in wanted if k in site.name.lower()), None)
+        if key is None or key in found or site.lon is None or site.lat is None:
+            continue
+        x, y = streams.project([float(site.lon)], [float(site.lat)], domain.crs)
+        row, col = streams.pixel_index(domain, x, y)
+        found[key] = float(accumulation[row, col][0])
+    return found
+
+
 def _pin_accumulation_ratio(
     accumulation: np.ndarray, domain: StormDomain, pins: list[dict[str, Any]], mask: np.ndarray
 ) -> float:
@@ -485,6 +506,18 @@ def build_reconstruction_bundle(
     frames = radar_dbz(rain_field(design, domain, radar_times), domain, render)
     accumulation = accumulation_mm(truth, TRUTH_CADENCE_MIN)
     pin_ratio = _pin_accumulation_ratio(accumulation, domain, inputs.pins, mask)
+
+    # Where the window crosses the 08:30 edge of the 24-hour total it is a share of. The
+    # index is found rather than assumed, so a different window or cadence still splits at
+    # the right step.
+    minutes_to_boundary = int((evidence.SANTACRUZ_24H_ENDS_IST - start).total_seconds() // 60)
+    boundary_step = int(np.argmin(np.abs(np.asarray(truth_times) - float(minutes_to_boundary))))
+    before = accumulation_mm(truth[: boundary_step + 1], TRUTH_CADENCE_MIN)
+    after = accumulation_mm(truth[boundary_step:], TRUTH_CADENCE_MIN)
+    boundary = _boundary_split(
+        float(before[mask].mean()), float(after[mask].mean()), minutes_to_boundary
+    )
+    stations = _station_pixels(_observatory_accumulations(accumulation, domain, inputs.gauge_sites))
 
     gauges = streams.gauge_rows(inputs.gauge_sites, truth, truth_times, domain, start, seed=seed)
     tide = streams.tide_rows(
@@ -612,7 +645,13 @@ def build_reconstruction_bundle(
         description=evidence.DESCRIPTION,
         tide_source="illustrative",
         ground_truth_n=len(features),
-        calibration=_calibration_numbers(calibration, pin_ratio=pin_ratio, pins=len(inputs.pins)),
+        calibration=_calibration_numbers(
+            calibration,
+            pin_ratio=pin_ratio,
+            pins=len(inputs.pins),
+            boundary=boundary,
+            stations=stations,
+        ),
         calibration_basis="\n\n".join(
             [
                 evidence.calibration_basis(
@@ -621,6 +660,13 @@ def build_reconstruction_bundle(
                     pin_ratio=pin_ratio,
                     clusters=PIN_CLUSTERS,
                     pins=len(inputs.pins),
+                    minutes_inside=int(boundary["window_minutes_inside_24h_total"]),
+                    before_mm=boundary["accumulation_before_0830_mm"],
+                    after_mm=boundary["accumulation_after_0830_mm"],
+                    santacruz_pixel_mm=stations.get(
+                        "santacruz_pixel_accumulation_mm", float("nan")
+                    ),
+                    colaba_pixel_mm=stations.get("colaba_pixel_accumulation_mm", float("nan")),
                 ),
                 f"TIDE. {evidence.TIDE_BASIS}",
                 *([f"NOTE. {note}" for note in calibration.notes]),
@@ -654,11 +700,47 @@ def build_reconstruction_bundle(
     return result
 
 
+def _boundary_split(
+    accumulation_before: float, accumulation_after: float, minutes_inside: int
+) -> dict[str, float]:
+    """How the window sits across the 08:30 edge of the 24-hour total it is a share of.
+
+    The 375.2 mm Santacruz figure covers 08:30 to 08:30, and the replay window runs
+    05:40-09:40, so only 170 of its 240 minutes are inside the total the target is derived
+    from. The remaining 70 fall in the *next* day's total, for which no primary figure was
+    sourced. Publishing the share without publishing the overlap invites the reader to assume
+    the window sits inside the number it is a fraction of, which it does not.
+    """
+    return {
+        "window_minutes_inside_24h_total": float(minutes_inside),
+        "accumulation_before_0830_mm": round(accumulation_before, 3),
+        "accumulation_after_0830_mm": round(accumulation_after, 3),
+    }
+
+
+def _station_pixels(values: dict[str, float]) -> dict[str, float]:
+    """What the designed field accumulates at the observatories the target is named after.
+
+    A gauge total is a point value and this one is imposed as an area mean over MUM-CENTRAL,
+    so the station the calibration is named after does not read the target. Publishing both
+    is the difference between a stated simplification and a number that quietly disagrees
+    with its own provenance.
+    """
+    return {f"{name}_pixel_accumulation_mm": round(value, 3) for name, value in values.items()}
+
+
 def _calibration_numbers(
-    calibration: CalibrationResult, *, pin_ratio: float, pins: int
+    calibration: CalibrationResult,
+    *,
+    pin_ratio: float,
+    pins: int,
+    boundary: dict[str, float] | None = None,
+    stations: dict[str, float] | None = None,
 ) -> dict[str, float]:
     """The manifest's ``calibration`` block: every number the basis text argues about."""
     return {
+        **(boundary or {}),
+        **(stations or {}),
         "santacruz_24h_total_mm": evidence.SANTACRUZ_24H_MM,
         "santacruz_24h_mean_mm_h": evidence.daily_mean_mm_h(),
         "window_share_of_daily_total": evidence.WINDOW_SHARE_OF_DAILY,
