@@ -24,6 +24,7 @@ from varuna_replay import bundle as members
 from varuna_replay.build import RADAR_CADENCE_MIN, TRUTH_CADENCE_MIN
 from varuna_replay.domain import StormDomain, step_times_min
 from varuna_replay.storm import RadarRender, radar_dbz, rain_field, random_storm
+from varuna_replay.validate import GROUND_TRUTH_FLOOR
 from varuna_schemas.constants import IST
 from varuna_schemas.models.bundle import BundleManifest, BundleSource
 from varuna_schemas.models.city import RadarDomain
@@ -179,7 +180,15 @@ def _write_full_bundle(
             }
         ],
     )
-    pins = ground_truth if ground_truth is not None else [_pin()]
+    # CLAUDE.md 10.2 sets a floor of ten sourced in-AOI pins on a reconstruction, and rule B13
+    # enforces it, so the default fixture has to clear the floor to be a valid reconstruction
+    # at all. A single pin made every test that asserts `report.ok` depend on the floor never
+    # being checked. Ids differ so a rule keyed on them can still tell them apart.
+    pins = (
+        ground_truth
+        if ground_truth is not None
+        else [_pin(id=f"MUM19-{n:02d}") for n in range(1, GROUND_TRUTH_FLOOR + 1)]
+    )
     members.write_ground_truth(
         layout.ground_truth,
         pins,

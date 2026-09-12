@@ -50,9 +50,18 @@ PIN_SITES: tuple[tuple[str, float, float, str], ...] = (
     ("MUM19-10", 72.8428330, 19.0904503, "2019-07-02T08:47:00+05:30"),
     ("MUM19-18", 72.8577375, 19.0316822, "2019-07-02T09:10:00+05:30"),
     ("MUM19-24", 72.8470336, 19.1192749, "2019-07-02T12:09:00+05:30"),
+    ("MUM19-02", 72.8501467, 19.0274356, "2019-07-01T10:41:00+05:30"),
+    ("MUM19-03", 72.8634910, 19.0427327, "2019-07-01T11:23:00+05:30"),
+    ("MUM19-11", 72.8469019, 19.0531775, "2019-07-02T08:47:00+05:30"),
+    ("MUM19-15", 72.8469300, 19.0803926, "2019-07-02T08:31:00+05:30"),
 )
-"""Six of the curated pins, keeping their real coordinates and times: two south, two middle,
-two north, so the three-cluster fit has something to fit."""
+"""Ten of the curated pins, keeping their real coordinates and times, spread south to north so
+the three-cluster fit has something to fit.
+
+Ten and not six because rule B13 holds the demo bundle to the floor CLAUDE.md 10.2 sets, and
+this fixture builds under the demo bundle's own id. Every entry is a real curated pin copied
+from `bundles/MUM-2019-07-02/ground_truth.geojson` - rule 7 applies to fixtures too, so none of
+these coordinates is invented to pad a count."""
 
 
 def small_config() -> CityConfig:
