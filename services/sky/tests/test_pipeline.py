@@ -310,7 +310,17 @@ CI_SLACK = 4.0 if os.environ.get("CI") else 2.0
 
 
 @pytest.mark.slow
-def test_the_full_configuration_meets_the_five_second_budget() -> None:
+def test_the_full_configuration_does_not_regress_past_twice_its_budget() -> None:
+    """The name says what the assertion does, because the two are not the same thing.
+
+    This was called ``..._meets_the_five_second_budget`` while asserting
+    ``SKY_BUDGET_S * CI_SLACK`` - 10 s locally, 20 s under CI. The comment above the
+    constants has always said it is a regression guard rather than the budget, but a green
+    test read from a CI log or a test list says whatever its name says, and this one said
+    the section 14 budget was met when the measured number is over it. Rule 13 makes that
+    budget an acceptance criterion, so the miss belongs on the STATUS BOARD (it is there),
+    not hidden behind a test name that reports success.
+    """
     grid = sky_grid()
     frames, rain = storm_frames(grid)
     inputs = cycle_inputs(
@@ -326,9 +336,48 @@ def test_the_full_configuration_meets_the_five_second_budget() -> None:
     elapsed = perf_counter() - start
 
     stages = " ".join(f"{name}={result.stage_ms[name]}ms" for name in STAGES)
-    print(f"\nSky at 20 x 36 on {grid.n_px}x{grid.n_px}: {elapsed:.2f} s total; {stages}")
+    verdict = "within" if elapsed <= SKY_BUDGET_S else "OVER"
+    print(
+        f"\nSky at 20 x 36 on {grid.n_px}x{grid.n_px}: {elapsed:.2f} s total "
+        f"({verdict} the {SKY_BUDGET_S:.0f} s budget of CLAUDE.md 14); {stages}"
+    )
 
     assert result.ensemble.rain_mm_h.shape == (20, 36, grid.n_px, grid.n_px)
     assert elapsed < SKY_BUDGET_S * CI_SLACK, (
-        f"Sky took {elapsed:.2f} s against a {SKY_BUDGET_S} s budget; stages: {stages}"
+        f"Sky took {elapsed:.2f} s, past the {SKY_BUDGET_S * CI_SLACK:.0f} s regression "
+        f"guard ({SKY_BUDGET_S:.0f} s budget x {CI_SLACK:.0f} slack); stages: {stages}"
+    )
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Measured 16.9 % against the 15 % CLAUDE.md 11.1 allows (ADR-0040). Every member "
+        "loses the mass individually, so it is the nowcast step and not the averaging. "
+        "strict=True so this turns red the day it starts passing and the number gets read."
+    ),
+)
+def test_the_ensemble_mean_is_near_persistence_at_the_first_lead(
+    small_cycle: tuple[SkyInputs, AoiGrid],
+) -> None:
+    """CLAUDE.md 11.1: "total rain of the ensemble mean over the domain is within 15 % of
+    persistence at lead 0".
+
+    The first forecast step is five minutes after the analysis, so before advection has moved
+    anything far and before the stochastic cascade has had room to diverge, the ensemble mean
+    should still carry essentially the field the merge just produced. It is the cheapest
+    statement that the nowcast is anchored to the observation rather than generating weather
+    of its own, and it was the one test of the three in 11.1 that had never been written.
+    """
+    inputs, aoi = small_cycle
+    result = run_sky(inputs, aoi)
+
+    persistence = float(np.nansum(result.merge.rain_mm_h))
+    first_lead = float(np.nansum(np.nanmean(result.ensemble.rain_mm_h[:, 0], axis=0)))
+
+    assert persistence > 0.0, "the fixture storm must be wet, or this proves nothing"
+    relative = abs(first_lead - persistence) / persistence
+    assert relative <= 0.15, (
+        f"the ensemble mean holds {first_lead:.1f} mm/h against persistence "
+        f"{persistence:.1f} mm/h at lead 0, {relative * 100:.1f} % away; 11.1 allows 15 %"
     )
