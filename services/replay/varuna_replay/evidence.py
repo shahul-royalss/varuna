@@ -59,6 +59,13 @@ SANTACRUZ_24H_MM = 375.2
 in docs/research/REVIEW.md re-opened the cached PNG and read the 2019 bar and its day label."""
 
 SANTACRUZ_24H_WINDOW = "24 hours ending 08:30 IST on 2 July 2019"
+
+SANTACRUZ_24H_ENDS_IST = datetime(2019, 7, 2, 8, 30, tzinfo=IST)
+"""The instant the 24-hour total closes, per the chart's own footnote.
+
+The replay window (05:40-09:40) crosses it, so only 170 of its 240 minutes lie inside the
+total the calibration target is a share of. `build.py` splits the truth cube here so the
+manifest can publish the overlap instead of implying there is none."""
 IMD_SANTACRUZ_CHART_URL = "https://mausam.imd.gov.in/mumbai/mcdata/Highest_Scz_July.gif"
 IMD_SANTACRUZ_CHART_CACHE = "docs/research/_raw/imd_Highest_Scz_July.png"
 
@@ -177,6 +184,13 @@ CALIBRATION_BASIS = (
     "four-hour window, {fraction:.2f} x {santacruz:.1f} = {target:.1f} mm. The arithmetic "
     "behind that share, so it can be argued with: the window is 4 of the 24 hours, so a "
     "uniform rate would give 16.7 % = {uniform:.1f} mm ({daily_rate:.1f} mm/h); "
+    "OVERLAP, because the share is applied to a window that does not sit inside the total "
+    "it is a fraction of: the 24-hour total closes at 08:30 and the window runs to 09:40, so "
+    "{inside_min:.0f} of its 240 minutes are inside that total and the last 70 fall in the "
+    "next day's, for which the only figures in hand are the Chief Minister's 12-hour range "
+    "and the ward averages. Of the designed field, {before:.1f} mm lands before 08:30 and "
+    "{after:.1f} mm after, so {inside_share:.1f} % of the {santacruz:.1f} mm is actually "
+    "placed inside the window that number describes. "
     "extrapolating the last documented sub-daily rate anywhere in the event, {skymet:.0f} mm "
     "/ {skymet_h:.0f} h = {skymet_rate:.1f} mm/h from the night before, "
     "would give {persistence:.1f} mm ({persistence_share:.0f} % of the day); the heaviest "
@@ -189,7 +203,15 @@ CALIBRATION_BASIS = (
     "night's rate - while the 24-hour total leaves no room for the burst to repeat. "
     "ACHIEVED: the designed area-mean accumulation over MUM-CENTRAL is {achieved:.1f} mm "
     "against the {target:.1f} mm target, {error:.1f} % away, inside the stated "
-    "{tolerance:.0f} % tolerance. PLACEMENT: fitted to the record rather than to a radar "
+    "{tolerance:.0f} % tolerance - met by construction, not by an independent check: the "
+    "intensity multiplier is solved from the same area-mean integral the verification "
+    "re-runs, so the tolerance catches a rounding residual and nothing else. POINT VERSUS "
+    "AREA: the target is a share of a point total at one observatory (Santacruz, 19.089 N, "
+    "72.868 E) but is imposed as a mean over the whole area of interest, so the station the "
+    "calibration is named after does not read it - the same field accumulates "
+    "{santacruz_pixel:.1f} mm at that observatory's own pixel and {colaba_pixel:.1f} mm at "
+    "Colaba's, and gauges.csv publishes a synthetic Santacruz series sampled from it. "
+    "PLACEMENT: fitted to the record rather than to a radar "
     "image - the cell tracks are aimed at the {clusters} latitudinal clusters of the "
     "{pins} sourced ground-truth pins inside the area of interest, in proportion to the "
     "pins in each, so the heaviest rain falls over the catchments feeding the streets where "
@@ -202,10 +224,31 @@ CALIBRATION_BASIS = (
 
 
 def calibration_basis(
-    *, achieved_mm: float, error_frac: float, pin_ratio: float, clusters: int, pins: int
+    *,
+    achieved_mm: float,
+    error_frac: float,
+    pin_ratio: float,
+    clusters: int,
+    pins: int,
+    minutes_inside: int,
+    before_mm: float,
+    after_mm: float,
+    santacruz_pixel_mm: float,
+    colaba_pixel_mm: float,
 ) -> str:
-    """The calibration story with this build's achieved numbers substituted in."""
+    """The calibration story with this build's achieved numbers substituted in.
+
+    The overlap and point-versus-area numbers are measured off the cube this build just
+    wrote, not constants: they are the two places the reasoning could otherwise read as
+    stronger than it is.
+    """
     return CALIBRATION_BASIS.format(
+        inside_min=minutes_inside,
+        before=before_mm,
+        after=after_mm,
+        inside_share=before_mm / SANTACRUZ_24H_MM * 100,
+        santacruz_pixel=santacruz_pixel_mm,
+        colaba_pixel=colaba_pixel_mm,
         window=WINDOW_LABEL,
         santacruz=SANTACRUZ_24H_MM,
         santacruz_window=SANTACRUZ_24H_WINDOW,
