@@ -16,6 +16,7 @@ import { ReplayPanel } from "@/components/varuna/replay-panel";
 import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
 import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { LayerPanel, type LayerToggles, type LayerKey } from "@/components/varuna/layer-panel";
+import { registerLayerShortcut, type LayerKey as ShortcutLayerKey } from "@/lib/shortcuts";
 import { ProbabilityLegend } from "@/components/varuna/probability-legend";
 import { SegmentPopover } from "@/components/varuna/segment-popover";
 import type { SegmentPick } from "@/components/map/city-map";
@@ -241,23 +242,32 @@ export function ConsoleScreen() {
       } else if (event.key === "ArrowRight") {
         setPlaying(false);
         setStep((s) => Math.min(run.provenance.nSteps - 1, s + 1));
-      } else if (/^[dsgbvp]$/i.test(event.key)) {
-        // CLAUDE.md 7.2's layer shortcuts. The map is the screen, so these are the fastest way
-        // to change what it shows without reaching for the panel. V is the satellite basemap -
-        // S is already surcharge, and V for "view" is the nearest free key.
-        const key = {
-          d: "drains",
-          s: "surcharge",
-          g: "hotspots",
-          b: "buildings",
-          v: "satellite",
-          p: "probability",
-        }[event.key.toLowerCase()] as LayerKey;
-        setLayers((current) => ({ ...current, [key]: !current[key] }));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, [run]);
+
+  // CLAUDE.md 7.2's layer shortcuts, registered rather than handled locally. The registry in
+  // lib/shortcuts.ts exists so the `?` overlay can ask which keys actually do something: it
+  // was built and never used, so the overlay listed ten layer shortcuts while the console
+  // handled six, and R, I, 3 and W were dead keys advertised as working. Registering here
+  // makes the overlay's answer true by construction, and section 17's "never a dead control"
+  // applies to a key the same way it applies to a button.
+  useEffect(() => {
+    if (!run) return;
+    const toggles: Partial<Record<ShortcutLayerKey, LayerKey>> = {
+      p: "probability",
+      d: "drains",
+      s: "surcharge",
+      g: "hotspots",
+    };
+    const unsubscribes = Object.entries(toggles).map(([key, layer]) =>
+      registerLayerShortcut(key as ShortcutLayerKey, () =>
+        setLayers((current) => ({ ...current, [layer]: !current[layer] })),
+      ),
+    );
+    return () => unsubscribes.forEach((off) => off());
   }, [run]);
 
   return (

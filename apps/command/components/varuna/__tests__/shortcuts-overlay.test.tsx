@@ -33,11 +33,19 @@ describe("ShortcutsOverlay", () => {
     }
   });
 
-  it("marks run-only shortcuts as available once a run is loaded", () => {
+  it("says of every run-only shortcut either that it needs a run or that it is not built", () => {
     render(<ShortcutsOverlay />);
     const runOnly = SHORTCUTS.filter((s) => s.availability === "run").length;
     expect(runOnly).toBeGreaterThan(0);
-    expect(screen.getAllByText("Available once a run is loaded")).toHaveLength(runOnly);
+
+    // Each run-only row carries exactly one note, and which note it is matters: the console
+    // wires four of these keys and does not wire the other four. Listing an unwired key with
+    // no qualifier is section 17's dead control - the operator presses it, nothing happens,
+    // and there is nothing on screen to explain why. So the two notes must partition the set.
+    const needsRun = screen.getAllByText("Available once a run is loaded").length;
+    const pilot = screen.getAllByText(/^Coming in pilot\./).length;
+    expect(pilot).toBeGreaterThan(0);
+    expect(needsRun + pilot).toBe(runOnly);
   });
 
   it("renders nothing visible while closed", () => {
