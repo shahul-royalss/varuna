@@ -950,7 +950,7 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 - [x] P4.7 Tide-lock test: reversed flow on the trunk and surcharge upstream when the outfall stage rises (2026-09-10, 954e968)
 - [ ] P4.8 5 m nests at Hindmata and King's Circle with boundary heads from the city run — P1
 - [ ] P4.9 PySWMM adapter and `.inp` export of the synthetic graph behind the same `Drain1D` interface — P1
-- [ ] P4.10 `docs/SIMPLIFICATIONS.md` entries for the 1D scheme, DEM accuracy, no NWP blend
+- [x] P4.10 `docs/SIMPLIFICATIONS.md` entries for the 1D scheme, DEM accuracy, no NWP blend (2026-09-12 — verified rather than written fresh: all four topics already carried substantive rows (1D hydraulics, 2D solver, NWP blend, DEM, plus a separate DEM vertical-accuracy row), each naming the blueprint's version, the prototype's, the UI label and the upgrade path)
 
 **Exit:** rain cube → depth maps end to end; Hindmata surcharges in the demo storm; reversed-flow edge exists at a tide-locked outfall.
 
@@ -964,7 +964,7 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 - [x] P5.6 Cycle orchestrator (stages in order, Twin ∥ Flash placeholder, timings) and `make bake` (2026-09-10, 954e968)
 - [x] P5.7 API endpoints: runs, segments (+parquet), raster, hotspots, segment series, replay controls, cycle compute/status, city layers; WS events (2026-09-10, 954e968)
 - [ ] P5.8 `pnpm typegen` produces TS types; API contract tests (schemathesis or pytest + httpx)
-- [ ] P5.9 Idempotence test: baking the same cycle twice yields identical files
+- [x] P5.9 Idempotence test: baking the same cycle twice yields identical files (2026-09-12 — rule 8 and section 14 both demand byte-identical bakes and **nothing was checking it**. `services/cycle/tests/test_idempotence.py` bakes the demo bundle's first cycle twice and compares the sha256 of every product; they match. `run.json` is the single exclusion, because `stage_ms` and the wall clock are provenance and are *meant* to differ - a second test pins that the exclusion list stays one entry long, so a product that starts carrying a timestamp cannot be quietly added to it)
 
 **Exit:** `make bake BUNDLE=MUM-2019-07-02` produces every cycle; `make demo` serves them; the console (Phase 6) has data to render.
 
