@@ -32,6 +32,21 @@ export function groupShortcuts(shortcuts: readonly Shortcut[] = SHORTCUTS): Grou
 
 const RUN_NOTE = "Available once a run is loaded";
 
+/**
+ * Layer keys the console has not wired yet, and the task that wires each.
+ *
+ * CLAUDE.md 17: "Every P1 button reads 'coming in pilot' with one sentence of plan - never a
+ * dead control." A key is a control. These four were listed here as working shortcuts while
+ * nothing anywhere handled them, which is the same defect as a dead button and harder to
+ * notice, because a key that does nothing looks identical to a key you pressed wrong.
+ */
+const NOT_WIRED: Record<string, string> = {
+  routes: "Routes draw on /route; the console layer is P6 work still open",
+  isochrones: "Isochrones draw on the reachability tab, not yet as a console layer",
+  "3d": "3D terrain is P6.15, a pilot upgrade",
+  whatif: "The what-if drawer is P7.10; /whatif has the lab today",
+};
+
 /** The "?" overlay: every shortcut from CLAUDE.md section 7.2, grouped, with key caps. */
 export function ShortcutsOverlay() {
   const open = useUiStore((s) => s.shortcutsOpen);
@@ -62,8 +77,18 @@ export function ShortcutsOverlay() {
                       className="flex min-h-10 items-center justify-between gap-4 border-b border-line py-1.5 last:border-b-0"
                     >
                       <span className="flex flex-col">
-                        <span className="type-body text-text">{shortcut.label}</span>
-                        {shortcut.availability === "run" ? (
+                        <span
+                          className={
+                            NOT_WIRED[shortcut.id] ? "type-body text-text-3" : "type-body text-text"
+                          }
+                        >
+                          {shortcut.label}
+                        </span>
+                        {NOT_WIRED[shortcut.id] ? (
+                          <span className="type-micro text-text-3">
+                            Coming in pilot. {NOT_WIRED[shortcut.id]}.
+                          </span>
+                        ) : shortcut.availability === "run" ? (
                           <span className="type-micro text-text-3">{RUN_NOTE}</span>
                         ) : null}
                       </span>

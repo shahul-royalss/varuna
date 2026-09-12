@@ -213,12 +213,23 @@ export class LiveConnection {
     this.socket = null;
     this.clearWatchdog();
     if (socket) {
-      socket.onopen = null;
       socket.onmessage = null;
       socket.onerror = null;
       socket.onclose = null;
       try {
-        socket.close();
+        if (socket.readyState === WebSocket.CONNECTING) {
+          // Closing a socket that has not finished its handshake makes the browser log
+          // "WebSocket is closed before the connection is established" - a warning the app
+          // caused and section 14 counts ("zero console errors/warnings during the Playwright
+          // demo run"). It happens on every console mount in development, because React
+          // mounts an effect twice and the first cleanup lands mid-handshake. Waiting for the
+          // handshake and closing then is silent, and the socket is already detached from
+          // every handler above, so nothing it delivers in the meantime reaches the app.
+          socket.onopen = () => socket.close();
+        } else {
+          socket.onopen = null;
+          socket.close();
+        }
       } catch {
         // Already closed.
       }
