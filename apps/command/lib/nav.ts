@@ -88,17 +88,26 @@ export const PALETTE_ACTIONS: readonly PaletteAction[] = [
     needsRun: true,
     disabledReason: "Available once a run is loaded",
   },
+  /*
+   * The two deep-link actions below are gated on a loaded run and nothing else - the palette cannot
+   * see a run's hotspots or attribution - so their reasons say exactly that. An earlier "once a run
+   * has attribution" read as a condition the palette checked; it checked only `currentRun`.
+   *
+   * The label was "Clean top pipes in what-if". Nothing ranks a junction's pipes yet (P7.7) and the
+   * lab refuses the top-14-by-beta lever with its reason, so the palette no longer names a
+   * selection it cannot make: it opens the lab on the loaded run and the operator picks there.
+   */
   {
     id: "dispatch-pumps",
     label: "Dispatch pumps at a hotspot",
     needsRun: true,
-    disabledReason: "Available once a run has hotspots",
+    disabledReason: "Available once a run is loaded",
   },
   {
     id: "clean-top-pipes",
-    label: "Clean top pipes in what-if",
+    label: "Clean pipes in what-if",
     needsRun: true,
-    disabledReason: "Available once a run has attribution",
+    disabledReason: "Available once a run is loaded",
   },
   { id: "open-settings", label: "Open settings", needsRun: false },
   { id: "show-shortcuts", label: "Show keyboard shortcuts", hint: "?", needsRun: false },

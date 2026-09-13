@@ -53,6 +53,19 @@ const ACTION_ICONS: Record<PaletteActionId, LucideIcon> = {
 /** Routes the palette deep-links to; typed here so the palette compiles before every page exists. */
 const route = (path: string) => path as Route;
 
+/**
+ * A screen opened on the run the operator is looking at: `?run=<run id>`.
+ *
+ * The same parameter the hotspot drawer's "Clean in what-if" link carries, so the palette and the
+ * drawer share one deep-link shape. The palette has no hotspot in hand, so it carries only the
+ * cycle - never `segments` or `from`, which would claim a selection nobody made. Without the run
+ * the what-if lab and the pump board both default to the newest cycle, which on the baked bundle
+ * is 09:10 IST, after the storm, rather than the cycle the operator pressed the action on.
+ */
+function withRun(path: "/whatif" | "/pumps", runId: string | undefined): Route {
+  return route(runId ? `${path}?run=${encodeURIComponent(runId)}` : path);
+}
+
 async function copyRunId(runId: string | undefined): Promise<void> {
   if (!runId) return;
   try {
@@ -118,10 +131,10 @@ export function CommandPalette({ hotspots = [], onSelectHotspot }: CommandPalett
         router.push(route("/console"));
         return;
       case "dispatch-pumps":
-        router.push(route("/pumps"));
+        router.push(withRun("/pumps", currentRun?.run_id));
         return;
       case "clean-top-pipes":
-        router.push(route("/whatif"));
+        router.push(withRun("/whatif", currentRun?.run_id));
         return;
     }
   };

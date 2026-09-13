@@ -4,6 +4,7 @@ import { Waves } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { AgreementBar } from "@/components/varuna/agreement-bar";
 import { AlertCard, type AlertSummary } from "@/components/varuna/alert-card";
 import { ALERT_LEVELS, AlertLevelChip } from "@/components/varuna/alert-level-chip";
 import { CitySwitcher } from "@/components/varuna/city-switcher";
@@ -12,6 +13,7 @@ import { DeltaTable, type DeltaRow } from "@/components/varuna/delta-table";
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { FanChart, type FanChartPoint } from "@/components/varuna/fan-chart";
+import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
 import { HotspotRail } from "@/components/varuna/hotspot-rail";
 import type { Hotspot } from "@/lib/api/hotspots";
 import { IconRail } from "@/components/varuna/icon-rail";
@@ -36,6 +38,12 @@ import { StormDesigner, type StormCell } from "@/components/varuna/storm-designe
 import { TimeBar } from "@/components/varuna/time-bar";
 import { HEADLINE_SCORE_TILES, VerificationGrid } from "@/components/varuna/verification-grid";
 import { VerificationChip } from "@/components/varuna/verification-chip";
+import {
+  formatRainScale,
+  formatTideOffset,
+  WhatIfControls,
+  type WhatIfValues,
+} from "@/components/varuna/whatif-controls";
 import { addMinutesIso } from "@/lib/format";
 import { useMotionPref } from "@/lib/motion";
 import { useUiStore } from "@/lib/stores/ui";
@@ -191,6 +199,31 @@ const SAMPLE_DELTAS: DeltaRow[] = [
     minutesImpassableAfter: 45,
   },
 ];
+
+/** Valid time of each of the 36 steps from the sample run's cycle, for the drawer's clock times. */
+const SAMPLE_VALID_TS: string[] = Array.from(
+  { length: 36 },
+  (_, i) => addMinutesIso(SAMPLE_RUN.cycle_ts, i * 5) ?? SAMPLE_RUN.cycle_ts,
+);
+
+/** Step 20 is +100 min, 08:20 IST: Hindmata's sample peak, so the drawer opens on it. */
+const SAMPLE_DRAWER_STEP = 20;
+
+/**
+ * The first three of Hindmata's road segments on the 08:40 baked cycle, as the register lists
+ * them. Only three are named because only three were read off the run; the drawer's own copy
+ * counts what it is given and never implies the junction's whole set.
+ */
+const HINDMATA_SEGMENT_IDS = ["S100841069-000", "S100841079-000", "S102172139-001"];
+
+/**
+ * The reasons the what-if lab passes for its two inert switches, repeated here so the disabled
+ * state can be reviewed. The source of truth is `app/whatif/whatif-screen.tsx`.
+ */
+const STORY_CLEAN_DISABLED_REASON =
+  "Ranking pipes by beta needs attribution, which Flash-lite cannot compute (ADR-0042). Pick a " +
+  "hotspot's segments with “Clean in what-if” instead";
+const STORY_PUMP_DISABLED_REASON = "The pump plan is not a what-if lever yet (P7.7)";
 
 const SAMPLE_ONBOARD_STEPS: OnboardingStepState[] = IDLE_ONBOARDING_STEPS.map((step, i) => {
   if (i < 2) return { ...step, progress: 1, elapsedS: 34 + i * 12, status: "done" as const };
@@ -422,6 +455,15 @@ export function ComponentsSection() {
   const setShortcutsOpen = useUiStore((s) => s.setShortcutsOpen);
   const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const [selectedHotspot, setSelectedHotspot] = useState<string | null>("hindmata");
+  // What the wired what-if story was last pressed with. The story calls no endpoint, so it
+  // echoes the scenario rather than showing a result it did not compute (rule 6).
+  const [storyPress, setStoryPress] = useState<string | null>(null);
+  // The drawer's close button must do something here too, or the story ships a dead control.
+  const [drawersOpen, setDrawersOpen] = useState(true);
+  const echoPress = (action: string) => (values: WhatIfValues) =>
+    setStoryPress(
+      `${action} pressed with rain ${formatRainScale(values.rainScale)}, tide ${formatTideOffset(values.tideOffsetM)} and ${values.cleanedSegments.length} segment${values.cleanedSegments.length === 1 ? "" : "s"} to clean. The story calls no endpoint.`,
+    );
   const { reduced } = useMotionPref();
 
   return (
@@ -806,6 +848,110 @@ export function ComponentsSection() {
             <DeltaTable rows={SAMPLE_DELTAS} />
           </Panel>
         </div>
+
+        <Panel
+          title="What-if controls"
+          description="The lab's control column. A lever the request does not carry is disabled and says why; a button with no handler is disabled and says what is missing (section 17, never a dead control)."
+        >
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <Demo
+              label="Wired, as the lab mounts it"
+              note="Run has a handler and the deep link carried three Hindmata segments. Both switches are inert with the lab's own reasons; physics check has no handler."
+            >
+              <WhatIfControls
+                initial={{ rainScale: 1.3, cleanedSegments: HINDMATA_SEGMENT_IDS }}
+                cleanedSource="Hindmata junction"
+                onRun={echoPress("Run what-if")}
+                cleanDisabled
+                cleanDisabledReason={STORY_CLEAN_DISABLED_REASON}
+                pumpDisabled
+                pumpDisabledReason={STORY_PUMP_DISABLED_REASON}
+              />
+              <p aria-live="polite" className="type-micro text-text-3 mt-3">
+                {storyPress ?? "Press Run what-if to see the scenario the button would send."}
+              </p>
+            </Demo>
+            <Demo
+              label="No handlers"
+              note="The component's defaults: nothing picked, both actions disabled with the default reasons."
+            >
+              <WhatIfControls />
+            </Demo>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Agreement bar"
+          description="Emulator against physics on the same scenario. The bar fills against twice the tolerance, so agreement sits left of the tick; the difference is always printed. No physics check is wired yet (P7.8), so the two results below are illustrations of the states, not measurements."
+        >
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <Demo label="Not run" note="Before a physics check: what to do, not an empty bar.">
+              <AgreementBar result={null} />
+            </Demo>
+            <Demo
+              label="Within tolerance, illustrative"
+              note="Section 7.7's own example: 4 cm at Sion Circle against a 5 cm tolerance."
+            >
+              <AgreementBar result={{ maxDiffCm: 4, atHotspot: "Sion Circle" }} />
+            </Demo>
+            <Demo
+              label="Outside tolerance, illustrative"
+              note="Past the tick the fill turns to the degraded colour and the label says so."
+            >
+              <AgreementBar result={{ maxDiffCm: 7, atHotspot: "Hindmata junction" }} />
+            </Demo>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Hotspot drawer"
+          description="Opened at 08:20 (+100 min) on the sample Hindmata row: the big depth number, the flat fan chart of a one-member run, safe-until per vehicle, exposure, and the attribution empty state (ADR-0042)."
+        >
+          {drawersOpen ? (
+            <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+              <Demo
+                label="No road segments recorded"
+                note="The sample row carries none, so there is no deep link to offer and the footer says so."
+                bare
+              >
+                <div className="rounded-panel border-line h-[720px] overflow-hidden border">
+                  <HotspotDrawer
+                    hotspot={SAMPLE_HOTSPOTS[0] ?? null}
+                    step={SAMPLE_DRAWER_STEP}
+                    validTs={SAMPLE_VALID_TS}
+                    onClose={() => setDrawersOpen(false)}
+                  />
+                </div>
+              </Demo>
+              <Demo
+                label="With road segments"
+                note="Three segment ids, so the footer offers Clean in what-if and counts what the link carries."
+                bare
+              >
+                <div className="rounded-panel border-line h-[720px] overflow-hidden border">
+                  {SAMPLE_HOTSPOTS[0] ? (
+                    <HotspotDrawer
+                      hotspot={{ ...SAMPLE_HOTSPOTS[0], segmentIds: HINDMATA_SEGMENT_IDS }}
+                      step={SAMPLE_DRAWER_STEP}
+                      validTs={SAMPLE_VALID_TS}
+                      onClose={() => setDrawersOpen(false)}
+                    />
+                  ) : null}
+                </div>
+              </Demo>
+            </div>
+          ) : (
+            <EmptyState
+              title="Drawers closed"
+              description="Close hides both sample drawers, as it hides the drawer on the console. Open them again to review the states."
+              action={
+                <Button size="sm" variant="outline" onClick={() => setDrawersOpen(true)}>
+                  Open the drawers
+                </Button>
+              }
+            />
+          )}
+        </Panel>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Panel

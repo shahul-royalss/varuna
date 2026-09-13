@@ -67,6 +67,31 @@ describe("CommandPalette", () => {
     expect(screen.queryByText("Available once a run is loaded")).not.toBeInTheDocument();
   });
 
+  it("names the only gate the deep-link actions apply: a loaded run", () => {
+    // `disabled` is `needsRun && currentRun === null`; a reason naming hotspots or attribution
+    // would describe a check the palette never makes.
+    for (const id of ["dispatch-pumps", "clean-top-pipes"]) {
+      const action = PALETTE_ACTIONS.find((a) => a.id === id);
+      expect(action?.needsRun).toBe(true);
+      expect(action?.disabledReason).toBe("Available once a run is loaded");
+    }
+  });
+
+  it("carries the loaded run into the what-if lab and the pump board", () => {
+    useRunStore.getState().setRun(RUN);
+    render(<CommandPalette />);
+    const run = encodeURIComponent(RUN.run_id);
+
+    itemFor("Clean pipes in what-if").click();
+    expect(push).toHaveBeenLastCalledWith(`/whatif?run=${run}`);
+
+    useUiStore.setState({ commandPaletteOpen: true });
+    itemFor("Dispatch pumps at a hotspot").click();
+    expect(push).toHaveBeenLastCalledWith(`/pumps?run=${run}`);
+    // Only the cycle: the palette holds no hotspot, so it must not send segments to clean.
+    expect(push.mock.calls.every(([href]) => !String(href).includes("segments="))).toBe(true);
+  });
+
   it("tells the operator what to do when there are no hotspots, and lists them when there are", () => {
     const { unmount } = render(<CommandPalette />);
     expect(screen.getByText("No hotspots yet — press Play on the replay")).toBeInTheDocument();

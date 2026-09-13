@@ -380,12 +380,60 @@ WET_THRESHOLD_CM = 5.0
 """Below this a street is not wet, it is damp (CLAUDE.md 6.2's `--depth-dry` band)."""
 
 
+def _exceedance_from_record(
+    run_dir: Path, segment_ids: tuple[str, ...], n_steps: int
+) -> dict[float, NDArray[np.float64]] | None:
+    """Read the exceedance columns back out of the ``segment_forecast.parquet`` beside the JSON.
+
+    The cycle writes the parquet immediately before the compact layer and hands this writer only
+    the Twin level, so the record of product is where the probabilities are. They are re-keyed
+    positionally - the parquet is written one segment block of ``n_steps`` rows at a time, in the
+    order of ``index[0]`` - and that order is *checked* against ``segment_ids`` rather than
+    assumed: a positional array from a different ordering would give every street someone else's
+    probability, which is worse than giving it none.
+    """
+    path = run_dir / "segment_forecast.parquet"
+    if not path.is_file():
+        return None
+    import pandas as pd
+
+    columns = {t: f"p_gt_{t:g}" for t in EXCEEDANCE_CM}
+    frame = pd.read_parquet(path, columns=["segment_id", *columns.values()])
+    n_seg = len(segment_ids)
+    ids = frame["segment_id"].to_numpy()
+    aligned = len(frame) == n_seg * n_steps and bool(
+        (ids.reshape(n_seg, n_steps) == np.asarray(segment_ids, dtype=object)[:, None]).all()
+    )
+    if not aligned:
+        log.warning(
+            "products.wet_segments.exceedance_misaligned",
+            rows=len(frame),
+            expected=n_seg * n_steps,
+        )
+        return None
+    return {
+        t: frame[col].to_numpy(dtype=np.float64).reshape(n_seg, n_steps).T
+        for t, col in columns.items()
+    }
+
+
+def _probability(value: float) -> float | int:
+    """Two decimals, as ``depth_cm`` gets one - and a certain 0 or 1 written as an integer.
+
+    Most of a run's exceedances are certain (a dry street is 0 at every threshold), and ``0``
+    against ``0.0`` is what keeps the added key near double the payload rather than four times
+    it. JSON and the browser read the two as the same number."""
+    rounded = round(float(value), 2)
+    return int(rounded) if rounded in (0.0, 1.0) else rounded
+
+
 def write_wet_segments(
     run_dir: Path,
     depth_cm: NDArray[np.floating],
     segment_ids: tuple[str, ...],
     times: tuple[datetime, ...],
     run_id: str,
+    p_gt: dict[float, NDArray[np.floating]] | None = None,
 ) -> dict[str, Any]:
     """Write the console's segment layer as a small JSON, once, at bake time.
 
@@ -398,11 +446,23 @@ def write_wet_segments(
     So the shape the map actually draws is computed once here: the segments that get wet, their
     depth at each step, one decimal, and nothing else. On a heavy Mumbai cycle that is about
     6,500 of 21,296 segments and lands near 1 MB - a file the API can stream straight off disk.
+
+    **Exceedance** (CLAUDE.md 6.2, 7.2, task P7.6). Probability mode draws opacity as
+    ``P(depth > threshold)``, and without this key the console can only compute that from the
+    depth itself, which makes it 0 or 1 by construction. So each wet segment's ``p_gt`` series
+    at 15/30/45/60 cm goes on the wire as ``{"15": {segment_id: [per step]}, ...}``, taken from
+    ``p_gt`` (``{threshold_cm: (n_steps, n_segments)}``) or, when the caller passes none, from
+    the parquet beside this file. It is written **only when some value lies strictly between 0
+    and 1**: a single-member run's exceedances are the depth comparison the console already
+    makes, and shipping them would double the file to say nothing new (rule 6 - the key's
+    presence is itself the claim that the run measured a spread).
     """
-    peak = np.asarray(depth_cm).max(axis=0)
+    depth_cm = np.asarray(depth_cm)
+    n_steps = depth_cm.shape[0]
+    peak = depth_cm.max(axis=0)
     wet = np.flatnonzero(peak >= WET_THRESHOLD_CM)
     series = {str(segment_ids[k]): [round(float(v), 1) for v in depth_cm[:, k]] for k in wet}
-    product = {
+    product: dict[str, Any] = {
         "run_id": run_id,
         "valid_ts": [t.isoformat() for t in times],
         "min_depth_cm": WET_THRESHOLD_CM,
@@ -410,10 +470,48 @@ def write_wet_segments(
         "n_segments_wet": len(series),
         "depth_cm": series,
     }
-    (run_dir / "segments_wet.json").write_text(
-        json.dumps(product, separators=(",", ":")), encoding="utf-8"
+
+    if p_gt is None:
+        p_gt = _exceedance_from_record(run_dir, segment_ids, n_steps)
+    uncertain = 0
+    if p_gt is not None:
+        missing = [t for t in EXCEEDANCE_CM if t not in p_gt]
+        if missing:
+            raise ValueError(f"p_gt has no series for {missing} cm; the console reads all four.")
+        fields = {t: np.asarray(p_gt[t])[:, wet] for t in EXCEEDANCE_CM}
+        for t, field in fields.items():
+            if field.shape != (n_steps, wet.size):
+                raise ValueError(
+                    f"p_gt[{t:g}] is {np.asarray(p_gt[t]).shape}; expected (n_steps, n_segments)"
+                    f" = {depth_cm.shape}."
+                )
+        # Counted over what is written, not over the city: a spread on a street that never
+        # gets wet is not one the map can draw.
+        uncertain = int(
+            sum(int(((f > 0.0) & (f < 1.0)).any(axis=0).sum()) for f in fields.values())
+        )
+        if uncertain:
+            product["p_gt"] = {
+                f"{t:g}": {
+                    str(segment_ids[k]): [_probability(v) for v in field[:, j]]
+                    for j, k in enumerate(wet)
+                }
+                for t, field in fields.items()
+            }
+
+    text = json.dumps(product, separators=(",", ":"))
+    (run_dir / "segments_wet.json").write_text(text, encoding="utf-8")
+    log.info(
+        "products.wet_segments",
+        run_id=run_id,
+        wet=len(series),
+        of=len(segment_ids),
+        p_gt="p_gt" in product,
+        # Segment-threshold series with at least one step strictly between 0 and 1: the number
+        # of places probability mode draws something a deterministic run could not.
+        uncertain_series=uncertain,
+        bytes=len(text),
     )
-    log.info("products.wet_segments", run_id=run_id, wet=len(series), of=len(segment_ids))
     return product
 
 
