@@ -89,6 +89,11 @@ def train_from_runs(
 
     training: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
     beta_ref: np.ndarray | None = None
+    # The report's note describes the corpus it was fitted to, so the description is measured
+    # from the runs as they are read rather than written as a literal - a re-fit on a different
+    # corpus must not publish the old one's storms next to the new one's skill (rule 6).
+    peak_rain_mm_h: list[float] = []
+    beta_draws: set[bytes] = set()
     for path in files:
         blob = np.load(path)
         depth_cm = _segment_depths(blob["depth_m"].astype(np.float64), index)
@@ -101,6 +106,8 @@ def train_from_runs(
         rain = _segment_rain(blob["rain_mm_h"].astype(np.float64), index)
         beta = blob["beta"].astype(np.float64)
         training.append((depth_cm, rain, np.zeros(len(segment_ids))))
+        peak_rain_mm_h.append(float(rain.max()))
+        beta_draws.add(beta.tobytes())
         if beta_ref is None:
             beta_ref = np.zeros(len(segment_ids))
         log.info(
@@ -121,6 +128,13 @@ def train_from_runs(
     model_path = out_model or (train_dir / "flash_lite.npz")
     save(model, model_path)
 
+    n_runs = model.n_training_runs + holdout
+    n_draws = len(beta_draws)
+    rain_span = (
+        f"{min(peak_rain_mm_h):.0f}-{max(peak_rain_mm_h):.0f}"
+        if round(min(peak_rain_mm_h)) != round(max(peak_rain_mm_h))
+        else f"{peak_rain_mm_h[0]:.0f}"
+    )
     report = {
         "model": str(model_path),
         "n_segments": model.n_segments,
@@ -130,10 +144,11 @@ def train_from_runs(
         "rmse_cm": round(model.rmse_cm, 3),
         "csi_30cm": round(model.csi_30cm, 4),
         "note": (
-            "Reduced-order emulator calibrated to VARUNA-Twin. Fitted to design storms at 25, "
-            "50, 75 and 110 mm/h peak at two blockage draws; CLAUDE.md 11.7 asks for 200 runs "
-            "and this is 8, so the held-out skill below is the number to trust, not the "
-            "structure."
+            f"Reduced-order emulator calibrated to VARUNA-Twin. Corpus of {n_runs} Twin runs "
+            f"peaking at {rain_span} mm/h over the segments across {n_draws} blockage "
+            f"draw{'s' if n_draws != 1 else ''}, {model.n_training_runs} fitted and {holdout} "
+            f"held out; CLAUDE.md 11.7 asks for 200 runs and this is {n_runs}, so the held-out "
+            "skill below is the number to trust, not the structure."
         ),
     }
     report_path = out_report or Path("docs/verification/flash_lite.json")

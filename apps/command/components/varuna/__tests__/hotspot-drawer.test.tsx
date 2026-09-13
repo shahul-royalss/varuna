@@ -29,6 +29,10 @@ const HINDMATA: Hotspot = {
   minutesImpassable: 0,
   expectedImpact: 0.0,
   exposure: { weight: 0.783, facilities: ["shelter"] },
+  // The junction's own segments, trimmed to three like the series above.
+  segmentIds: ["S100841069-000", "S100841079-000", "S102172139-001"],
+  attribution: [],
+  attributionLabel: "Not computed on this run: Flash-lite is element-wise per segment — ADR-0042.",
 };
 
 const VALID_TS = [
@@ -54,6 +58,49 @@ describe("HotspotDrawer", () => {
     expect(
       screen.getByText(
         "Flash-lite is element-wise per segment, so cleaning a pipe that is not under this junction has exactly zero effect — ADR-0042.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("sends this junction's own segments to the what-if lab (P7.11)", () => {
+    render(<HotspotDrawer hotspot={HINDMATA} step={0} validTs={VALID_TS} />);
+    // An anchor carrying `role="button"`: the house pattern for a link styled as a button
+    // (`render={<Link/>} nativeButton={false}`), as on the landing hero and the 404.
+    const link = screen.getByRole("button", { name: "Clean in what-if" });
+    // Road-segment ids, which is the vocabulary `POST /v1/whatif` cleans on, and the junction's
+    // name so the lab can say where the chips came from. No run: the console store is empty in
+    // this test, and the lab's own default is then the newest run.
+    expect(link).toHaveAttribute(
+      "href",
+      "/whatif?segments=S100841069-000%2CS100841079-000%2CS102172139-001&from=Hindmata+junction+%28Hindmata+Cinema%2C+Dr+B.+Ambedkar+Marg%29",
+    );
+    expect(screen.getByText(/Opens the lab with/)).toHaveTextContent(
+      "Opens the lab with this junction’s 3 road segments picked. Cleaning is element-wise per " +
+        "segment, so it moves these streets and no others (ADR-0042).",
+    );
+  });
+
+  it("says the link carries the first fourteen when the junction has more", () => {
+    // Hindmata has 25 in the baked run. The ids are in the register's own order, so a bare "14"
+    // would read as the junction's whole set.
+    const ids = Array.from({ length: 25 }, (_, i) => `S1008410${String(i).padStart(2, "0")}-000`);
+    render(
+      <HotspotDrawer hotspot={{ ...HINDMATA, segmentIds: ids }} step={0} validTs={VALID_TS} />,
+    );
+    expect(screen.getByText(/Opens the lab with/)).toHaveTextContent(
+      "Opens the lab with the first 14 of this junction’s 25 road segments picked.",
+    );
+    expect(screen.getByRole("button", { name: "Clean in what-if" }).getAttribute("href")).toContain(
+      `segments=${ids.slice(0, 14).join("%2C")}`,
+    );
+  });
+
+  it("offers nothing to clean when the junction has no segments recorded", () => {
+    render(<HotspotDrawer hotspot={{ ...HINDMATA, segmentIds: [] }} step={0} validTs={VALID_TS} />);
+    expect(screen.queryByRole("button", { name: "Clean in what-if" })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "No road segments are recorded for this junction, so there is nothing to send to the what-if lab.",
       ),
     ).toBeInTheDocument();
   });

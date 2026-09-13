@@ -75,7 +75,7 @@ PLACEHOLDER_PHASES: dict[str, tuple[int, str]] = {
     "city": (1, "City-in-a-box (Mumbai)"),
     "bundle": (2, "Replay bundle and storm designer"),
     "bake": (5, "Products, cycle orchestrator, API"),
-    "train": (7, "Pulse, Flash-lite, drain X-ray, what-if"),
+    # `train` left on 2026-09-13 for the same reason `pack` did: it fits the emulator now.
     # `pack` was here until P10.6 implemented it (2026-09-11). Leaving it behind did not change
     # what the CLI does - the real command wins - but the phase-gate test drove every entry in
     # this dict expecting a refusal, so it invoked the real target and wrote an 830 MB package
@@ -429,9 +429,78 @@ def bake(
     not_implemented("bake")
 
 
-def train() -> None:
-    """Fit Flash-lite from Twin runs (Phase 7)."""
-    not_implemented("train")
+TRAIN_DIR = "data/train"
+"""Where the Twin runs that fit Flash-lite live. Gitignored: 8 runs at ~24 MB each."""
+
+
+def train(
+    train_dir: Annotated[
+        Path,
+        typer.Option("--train-dir", help="Directory of Twin runs named train-*.npz."),
+    ] = Path(TRAIN_DIR),
+    city: Annotated[
+        str, typer.Option("--city", help="City the runs were computed on: mumbai or chennai.")
+    ] = DEFAULT_CITY,
+    holdout: Annotated[
+        int,
+        typer.Option("--holdout", help="Heaviest storms held out of the fit and scored on."),
+    ] = 2,
+) -> None:
+    """Fit Flash-lite from Twin runs (task P7.5); (P1) train the GNN.
+
+    The fit itself is :func:`varuna_flash.train.train_from_runs`, which writes the model beside
+    the corpus and the measured skill to ``docs/verification/flash_lite.json`` - the file `/verify`
+    reads and the "Reduced-order emulator calibrated to VARUNA-Twin" badge is claiming. This
+    target exists so that both are reproducible from a clean clone (CLAUDE.md 4.3) rather than
+    only from the laptop that first produced them.
+
+    The report path is resolved against the repository, not the working directory: a report
+    written next to wherever somebody happened to stand is a second copy of the number `/verify`
+    reads, and the two would drift.
+    """
+    from varuna_flash.train import train_from_runs
+
+    files = sorted(train_dir.glob("train-*.npz")) if train_dir.is_dir() else []
+    if len(files) <= holdout:
+        console.print(
+            f"[yellow]No training corpus to fit from: {len(files)} run(s) named train-*.npz "
+            f"under {train_dir}; the fit needs more than the {holdout} it holds out.[/yellow]\n"
+            "Nothing was written. docs/verification/flash_lite.json is the skill `/verify` "
+            "reports and the what-if drawer's badge claims, so it is not written from an "
+            "empty corpus (CLAUDE.md rule 6).\n"
+            "The generator for that corpus - design storms x blockage draws, seeded, one "
+            "train-*.npz per Twin run - is not in this repository yet; the eight runs P7.5 was "
+            "fitted on were produced by hand. The model they produced ships as "
+            "demo/flash_lite.npz, which is what the API loads.\n"
+            "Point --train-dir at a directory of train-*.npz Twin runs to re-fit "
+            f"(looked in {train_dir})."
+        )
+        raise typer.Exit(code=2)
+
+    console.print(
+        f"[bold]Fitting Flash-lite[/] from {len(files)} Twin run(s) in {train_dir} "
+        f"({city}), holding out the {holdout} heaviest."
+    )
+    report = train_from_runs(
+        train_dir,
+        city=city,
+        holdout=holdout,
+        out_report=repo_root() / "docs" / "verification" / "flash_lite.json",
+    )
+
+    table = Table(show_edge=False)
+    table.add_column("measure")
+    table.add_column("value", justify="right")
+    table.add_row("training runs", str(report["n_training_runs"]))
+    table.add_row("held-out runs", str(report["n_holdout_runs"]))
+    table.add_row("segments fitted", f"{report['fitted_segments']} of {report['n_segments']}")
+    table.add_row("RMSE (held out)", f"{report['rmse_cm']} cm")
+    table.add_row("CSI at 30 cm (held out)", str(report["csi_30cm"]))
+    console.print(table)
+
+    console.print(f"\nModel {report['model']}")
+    console.print("Report docs/verification/flash_lite.json")
+    console.print(str(report["note"]), style="dim")
 
 
 # ---- the offline package (task P10.6) ---------------------------------------------------

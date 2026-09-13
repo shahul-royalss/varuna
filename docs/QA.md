@@ -69,6 +69,39 @@ The point is what happens next: Pulse learns β from every flood the city has. A
 baked cycles the worst pipe climbs from 0.394 to 0.683 as observations accumulate. When a surveyed
 SWMM model arrives we import it and keep the learning.
 
+## "Does Pulse actually recover a blocked pipe?"
+
+Half of what CLAUDE.md 11.6 asks for, and the half it misses is in the test suite as a red test
+rather than out of it.
+
+11.6's acceptance test is: on a synthetic truth with two blocked pipes and twenty observations,
+"the posterior mean ranks those two pipes in the top 5 with sd reduced by ≥ 40 %". Those are two
+claims, and they are not equally true. The ranking is robust; the spread cut is a coin flip.
+
+Measured 13 September 2026 on the demo laptop (Intel64 family 6 model 140, 8 logical cores,
+Windows 11), sweeping both seeds the result depends on — the observation draw (the synthetic
+city's noise) and the EnKF's own ensemble draw, which `assimilate()` defaults to 2019 and which
+the test never varied:
+
+| Grid (observation seed × ensemble seed) | Both pipes in the top five | Spread cut ≥ 40 % on both | Median cut on the worse pipe |
+|---|---|---|---|
+| 7–16 × 2019–2028 | **100 / 100** | **62 / 100** | 0.430 |
+| 0–9 × 2019–2028 | 100 / 100 | 49 / 100 | 0.398 |
+| 0–9 × 0–9 | 100 / 100 | 32 / 100 | 0.374 |
+| Committed pair alone (7, 2019) | pass | pass, at **0.40029** | — |
+
+So the pass rate is itself seed-dependent — about half, wherever you look — and the committed
+configuration cleared the floor by 3 parts in 10,000. Holding the observation draw at its
+committed value and varying only the ensemble seed, the floor is met at 3 of 10 seeds, median
+33.2 %, range 8.3–46.2 %.
+
+The cause is sampling error, not the observations: 50 members against a neighbourhood of 35–42
+reachable edges estimates a posterior spread to roughly the precision of the cut being claimed.
+More members would shrink it; that is a Pulse change, not a test change, so the 40 % floor stands
+unwidened (rule 13) and `test_the_observations_cut_the_blocked_pipes_spread` carries
+`xfail(strict=True)` with the distribution in its reason. The ranking half is parametrised over
+ten ensemble seeds and passes on all of them.
+
 ## "Sub-second forecast — how?"
 
 A reduced-order emulator (a two-reservoir Nash cascade per surface unit) calibrated to our own Twin

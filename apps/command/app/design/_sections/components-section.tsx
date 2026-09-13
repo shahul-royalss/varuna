@@ -45,6 +45,10 @@ import { Demo, DesignSection } from "./section";
 
 /* Sample data. Every string is about the 2 July 2019 Mumbai replay, per CLAUDE.md section 6.8. */
 
+/** What `/v1/nowcast/hotspots` puts on every row: no run computes attribution (ADR-0042). */
+const NO_ATTRIBUTION =
+  "Not computed on this run: Flash-lite is element-wise per segment — ADR-0042.";
+
 const SAMPLE_RUN: RunMeta = {
   run_id: "MUM-20190702T1210Z-sky1.0-twin1.0-flash0.3-baked",
   city: "mumbai",
@@ -60,8 +64,9 @@ const SAMPLE_RUN: RunMeta = {
 
 /** A plausible rise-and-recede shape, so the story panel's sparklines are not flat lines. */
 function sampleSeries(peakCm: number, peakStep: number): number[] {
-  return Array.from({ length: 36 }, (_, i) =>
-    Math.round(peakCm * Math.exp(-(((i - peakStep) / 7) ** 2)) * 10) / 10,
+  return Array.from(
+    { length: 36 },
+    (_, i) => Math.round(peakCm * Math.exp(-(((i - peakStep) / 7) ** 2)) * 10) / 10,
   );
 }
 
@@ -86,6 +91,9 @@ const SAMPLE_HOTSPOTS: Hotspot[] = [
     minutesImpassable: 95,
     expectedImpact: 0.86,
     exposure: { weight: 0.86, facilities: ["hospital", "station"] },
+    segmentIds: [],
+    attribution: [],
+    attributionLabel: NO_ATTRIBUTION,
   },
   {
     rank: 2,
@@ -107,6 +115,9 @@ const SAMPLE_HOTSPOTS: Hotspot[] = [
     minutesImpassable: 55,
     expectedImpact: 0.71,
     exposure: { weight: 0.71, facilities: ["station"] },
+    segmentIds: [],
+    attribution: [],
+    attributionLabel: NO_ATTRIBUTION,
   },
   {
     rank: 3,
@@ -128,6 +139,9 @@ const SAMPLE_HOTSPOTS: Hotspot[] = [
     minutesImpassable: 0,
     expectedImpact: 0,
     exposure: { weight: 0.64, facilities: ["hospital"] },
+    segmentIds: [],
+    attribution: [],
+    attributionLabel: NO_ATTRIBUTION,
   },
 ];
 
@@ -186,7 +200,10 @@ const SAMPLE_ONBOARD_STEPS: OnboardingStepState[] = IDLE_ONBOARDING_STEPS.map((s
 
 const SAMPLE_LOG_LINES: LogLine[] = [
   { ts: "2026-09-06T10:02:11+05:30", text: "Mosaicked 4 Copernicus GLO-30 tiles for CHN-SOUTH" },
-  { ts: "2026-09-06T10:02:48+05:30", text: "Burned 41,206 building footprints, carved 3,180 road centrelines" },
+  {
+    ts: "2026-09-06T10:02:48+05:30",
+    text: "Burned 41,206 building footprints, carved 3,180 road centrelines",
+  },
   {
     ts: "2026-09-06T10:03:05+05:30",
     level: "warn",
@@ -367,7 +384,14 @@ function reducedMotionNote(reduced: boolean): string {
     : "Reduced motion holds the middle frame and never starts the loop. Turn on reduce motion in the operating system and reload to see it here.";
 }
 
-const BUTTON_VARIANTS = ["default", "outline", "secondary", "ghost", "destructive", "link"] as const;
+const BUTTON_VARIANTS = [
+  "default",
+  "outline",
+  "secondary",
+  "ghost",
+  "destructive",
+  "link",
+] as const;
 const BUTTON_SIZES = ["xs", "sm", "default", "lg"] as const;
 
 /**
@@ -438,7 +462,10 @@ export function ComponentsSection() {
           </Panel>
         </div>
 
-        <Panel title="Empty state" description="Empty states say what to do next, never what broke.">
+        <Panel
+          title="Empty state"
+          description="Empty states say what to do next, never what broke."
+        >
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <Demo label="Default" bare>
               <EmptyState
@@ -458,7 +485,10 @@ export function ComponentsSection() {
           </div>
         </Panel>
 
-        <Panel title="Depth chip" description="Colour is fixed to the depth ramp; the number is always printed.">
+        <Panel
+          title="Depth chip"
+          description="Colour is fixed to the depth ramp; the number is always printed."
+        >
           <div className="flex flex-wrap items-center gap-2">
             {SAMPLE_DEPTHS.map((cm) => (
               <DepthChip key={cm} cm={cm} showBand />
@@ -500,7 +530,10 @@ export function ComponentsSection() {
           </PanelErrorBoundary>
         </Panel>
 
-        <Panel title="Mode banner" description="One banner per mode; degraded names the missing feed.">
+        <Panel
+          title="Mode banner"
+          description="One banner per mode; degraded names the missing feed."
+        >
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Demo label="Replay" bare>
               <ModeBanner mode="replay" label="Replay 30× · 2 Jul 2019 · 06:40 IST" />
@@ -509,7 +542,10 @@ export function ComponentsSection() {
               <ModeBanner mode="live" label="Live · 06:40 IST" />
             </Demo>
             <Demo label="Degraded" bare>
-              <ModeBanner mode="degraded" label="Degraded: radar offline, using gauges and satellite" />
+              <ModeBanner
+                mode="degraded"
+                label="Degraded: radar offline, using gauges and satellite"
+              />
             </Demo>
             <Demo label="No run" note="The state a cold console opens in." bare>
               <ModeBanner mode="none" />
@@ -543,7 +579,7 @@ export function ComponentsSection() {
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Panel title="Icon rail" description="56 px wide; labels appear on hover and focus.">
-            <div className="h-[400px] w-icon-rail overflow-hidden rounded-panel border border-line">
+            <div className="w-icon-rail rounded-panel border-line h-[400px] overflow-hidden border">
               <IconRail />
             </div>
           </Panel>
@@ -564,8 +600,11 @@ export function ComponentsSection() {
           </Panel>
         </div>
 
-        <Panel title="Time bar" description="96 px tall; scrub, play, speed and the ensemble spread band.">
-          <div className="overflow-hidden rounded-panel border border-line">
+        <Panel
+          title="Time bar"
+          description="96 px tall; scrub, play, speed and the ensemble spread band."
+        >
+          <div className="rounded-panel border-line overflow-hidden border">
             <TimeBar />
           </div>
         </Panel>
@@ -690,7 +729,11 @@ export function ComponentsSection() {
               <Demo label="Loading" note="Shimmer at the plot's own height, never a spinner." bare>
                 <FanChart points={[]} quantity="Rain rate" unit="mm/h" height={140} loading />
               </Demo>
-              <Demo label="Empty" note="Before the first run: no chart, and what to do about it." bare>
+              <Demo
+                label="Empty"
+                note="Before the first run: no chart, and what to do about it."
+                bare
+              >
                 <FanChart points={[]} quantity="Rain rate" unit="mm/h" height={140} />
               </Demo>
               <Demo label="Error" note="The API's message, verbatim." bare>
@@ -714,7 +757,10 @@ export function ComponentsSection() {
         </Panel>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Panel title="Alerts" description="Level chips carry the threshold; the card carries hysteresis.">
+          <Panel
+            title="Alerts"
+            description="Level chips carry the threshold; the card carries hysteresis."
+          >
             <div className="flex flex-col gap-4">
               <Demo label="Level chips" bare>
                 <div className="flex flex-wrap items-center gap-2">
@@ -740,7 +786,10 @@ export function ComponentsSection() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Panel title="Cycle budget bar" description="Stage timings against the 15 s live-cycle budget.">
+          <Panel
+            title="Cycle budget bar"
+            description="Stage timings against the 15 s live-cycle budget."
+          >
             <div className="flex flex-col gap-4">
               <Demo label="Complete cycle" bare>
                 <CycleBudgetBar stages={SAMPLE_STAGES} totalMs={13430} />
@@ -759,7 +808,10 @@ export function ComponentsSection() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Panel title="Onboarding steps" description="Chennai from cache: six steps with elapsed time.">
+          <Panel
+            title="Onboarding steps"
+            description="Chennai from cache: six steps with elapsed time."
+          >
             <OnboardingSteps steps={SAMPLE_ONBOARD_STEPS} />
           </Panel>
           <Panel title="Log stream" description="Real pipeline lines only; mono is allowed here.">
@@ -781,7 +833,10 @@ export function ComponentsSection() {
           <VerificationGrid tiles={HEADLINE_SCORE_TILES} groundTruthCount={null} />
         </Panel>
 
-        <Panel title="Buttons" description="The vendor primitive in every variant and size the console uses.">
+        <Panel
+          title="Buttons"
+          description="The vendor primitive in every variant and size the console uses."
+        >
           <div className="flex flex-col gap-4">
             {BUTTON_VARIANTS.map((variant) => (
               <Demo key={variant} label={variant} bare>

@@ -6,9 +6,28 @@ depot coordinates are real OSM ward offices. Every product here carries that lab
 the board prints it in its header (CLAUDE.md rule 6).
 
 **The benefit model, stated in full.** CLAUDE.md 11.10 wants benefit as "minutes above 45 cm
-avoided", measured by re-running the emulator with the extra outflow. Flash-lite is Phase 7, so
-there is no emulator to re-run and the honest alternative is an explicit reduced model rather
-than a plausible-looking number:
+avoided", measured by re-running the emulator with the extra outflow. Flash-lite exists (task
+P7.5), so that is what happens when it is on disk and the storm that drove the run is known:
+
+    The pump's rated capacity is turned into cm per step over the 45 m disc the depth series
+    describes, and `varuna_flash.simulate` is re-run for the candidate's own road segments with
+    that drawdown in `pump_cm_per_step`. The difference between the two emulator runs is the
+    water the pump actually finds to remove, and it is subtracted from the *Twin's* depth series
+    before the minutes above the threshold are recounted - the delta-correction
+    `varuna_api.routers.whatif` uses, so the level anybody reads stays the physics'.
+
+    That difference saturates, which is the whole point of using the emulator: a pump can only
+    remove water that is there, and once the locally ponded rain is gone it removes nothing more.
+
+**What that model cannot see.** Flash-lite is a perturbation around a base state - the depth
+every training storm produced regardless of intensity, which at the coast is tide and runoff
+arriving from upstream (`varuna_flash.model`). The base state cancels in the difference, so the
+benefit counted here is the pump against the *rain that fell locally* and not against the sea. On
+a tide-locked street that understates a real pump. It is a lower bound, and it is labelled.
+
+**The fallback, when no fitted emulator is on disk or the caller did not hand over the storm**
+(a fresh clone before `make train`; a caller with no hyetograph to give), is the explicit reduced
+model this file has always carried::
 
     A pump at the hotspot removes `capacity_m3_per_h` from the water ponded over its
     neighbourhood - the same 45 m disc the depth is sampled over - which lowers the depth series
@@ -17,9 +36,8 @@ than a plausible-looking number:
 
 That is a bathtub: it ignores the inflow that keeps arriving, the drain that is already pulling
 water out, and the fact that a junction is not a cylinder. It will overstate the benefit of a
-pump at a spot that is still filling. It is labelled ``reduced_model`` in the output and
-"Bathtub estimate, not a physics run" on screen, and Phase 7 replaces it with the emulator
-behind the same interface.
+pump at a spot that is still filling. Which model produced a number is on the plan in
+``benefit_model`` and on every assignment, so the board and the screen cannot drift apart.
 
 **The optimiser** is the greedy of CLAUDE.md 11.10 (P0; MILP is P1): pumps in descending
 capacity, each to the hotspot with the largest weighted remaining excess, one hotspot per pump.
@@ -33,16 +51,23 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-if TYPE_CHECKING:  # pragma: no cover - typing only
+if TYPE_CHECKING:  # pragma: no cover - typing only; varuna_flash is imported lazily below
+    from collections.abc import Sequence
     from pathlib import Path
+
+    from varuna_flash.model import FlashModel
 
 log = structlog.get_logger("varuna.products.pumps")
 
 __all__ = [
     "BENEFIT_LABEL",
+    "BENEFIT_LABELS",
+    "EMULATOR_LABEL",
+    "MODEL_PATHS",
     "PUMP_THRESHOLD_CM",
     "TRAVEL_SPEED_KMH",
     "build_pump_plan",
+    "rain_for_run",
     "write_pump_plan",
 ]
 
@@ -56,7 +81,8 @@ HOTSPOT_RADIUS_M = 45.0
 """The disc the depth series describes, and therefore the area a pump is drawing down.
 
 The same radius `varuna_products.hotspots` samples over, so the depth being lowered and the area
-it is spread across are the same patch of ground."""
+it is spread across are the same patch of ground. Both benefit models use it, so the two answer
+the same question with different dynamics."""
 
 TRAVEL_SPEED_KMH = 18.0
 """Assumed speed for a pump lorry crossing a flooding city.
@@ -66,16 +92,32 @@ monsoon morning with streets closing. It is used only for the ETA on the dispatc
 for the benefit - the arrival time shifts when the drawdown starts, which is why it appears at
 all. Route-aware travel time arrives with the routing service in P8.1."""
 
+MODEL_PATHS = ("data/train/flash_lite.npz", "demo/flash_lite.npz")
+"""Where the fitted emulator is looked for, in order - the same two paths `/v1/whatif` uses."""
+
 BENEFIT_LABEL = "Bathtub estimate, not a physics run"
-"""What the board prints beside every benefit number (rule 6)."""
+"""What the board prints beside a benefit the fallback model produced (rule 6)."""
+
+EMULATOR_LABEL = "Flash-lite emulator re-run with the pump's outflow"
+"""What the board prints beside a benefit the emulator produced (rule 6)."""
+
+MIXED_LABEL = "Flash-lite for most assignments, bathtub estimate for the rest"
+"""When some candidate had no road segment the emulator knows, so both models are in the plan."""
+
+BENEFIT_LABELS = {
+    "emulator": EMULATOR_LABEL,
+    "reduced_model": BENEFIT_LABEL,
+    "mixed": MIXED_LABEL,
+}
+"""``benefit_model`` to the sentence printed beside the number, so the two cannot disagree."""
 
 
-def _minutes_above(series: list[float], threshold: float, step_min: int) -> int:
+def _minutes_above(series: Sequence[float], threshold: float, step_min: int) -> int:
     return sum(step_min for value in series if value > threshold)
 
 
 def _drawn_down(series: list[float], rate_cm_per_step: float, from_step: int) -> list[float]:
-    """The depth series with a pump running from ``from_step``.
+    """The depth series with a pump running from ``from_step``, under the fallback model.
 
     The drawdown accumulates - a pump that has been running for an hour has removed an hour of
     water - and depth is floored at zero, because a pump cannot make a street concave.
@@ -84,6 +126,23 @@ def _drawn_down(series: list[float], rate_cm_per_step: float, from_step: int) ->
     removed = 0.0
     for i in range(from_step, len(out)):
         removed += rate_cm_per_step
+        out[i] = max(out[i] - removed, 0.0)
+    return out
+
+
+def _after_delta(series: list[float], delta: Sequence[float], from_step: int) -> list[float]:
+    """The depth series with the emulator's drawdown applied from ``from_step``.
+
+    ``delta`` is the emulator's answer for a pump that started at step 0, so a pump that arrives
+    at step ``a`` gets that same profile shifted by ``a``: it has been running for ``t - a``
+    steps when the forecast reaches step ``t``. Past the end of the profile the drawdown holds at
+    its last value, which is where it has saturated.
+    """
+    out = list(series)
+    if not delta:
+        return out
+    for i in range(from_step, len(out)):
+        removed = delta[min(i - from_step, len(delta) - 1)]
         out[i] = max(out[i] - removed, 0.0)
     return out
 
@@ -97,6 +156,191 @@ def _haversine_km(lon1: float, lat1: float, lon2: float, lat2: float) -> float:
     return 2 * r * math.asin(math.sqrt(a))
 
 
+def _load_model() -> FlashModel | None:
+    """The fitted emulator, or ``None`` when nobody has run ``make train`` in this clone.
+
+    Guarded rather than raised: a missing emulator is not a broken pump plan, it is a plan whose
+    benefit comes from the fallback model and says so.
+    """
+    from varuna_schemas.paths import repo_root
+
+    try:
+        from varuna_flash.model import load
+    except ImportError:  # pragma: no cover - varuna-flash is a declared dependency
+        return None
+    for candidate in MODEL_PATHS:
+        path = repo_root() / candidate
+        if path.is_file():
+            try:
+                return load(path)
+            except (OSError, ValueError, KeyError) as error:
+                log.warning("products.pump_model_unreadable", path=str(path), error=str(error))
+                return None
+    return None
+
+
+def rain_for_run(run_id: str) -> list[float] | None:
+    """The storm a **published** run was driven by, read back from its own ``run.json``.
+
+    The emulator has to be driven by the same rain the Twin saw, and the cycle stores it for
+    exactly this reason (`rain_aoi_mm_h`, CLAUDE.md 10.3). This is how a re-optimise prices a
+    plan for a run that already exists.
+
+    **It is the caller's explicit act, never a fallback inside** :func:`build_pump_plan`. Reading
+    the run directory from in there would make the plan depend on whether that directory happened
+    to exist: a first bake would find nothing and use the fallback model, a re-bake over the top
+    of it would find the rain it had just written and use the emulator, and the same cycle would
+    produce two different `pump_plan.json` files. Rule 8 asks for byte-identical bakes, and
+    `services/cycle/tests/test_idempotence.py` checks it.
+    """
+    from varuna_schemas.paths import run_dir
+
+    try:
+        record = run_dir(run_id) / "run.json"
+        if not record.is_file():
+            return None
+        rain = json.loads(record.read_text(encoding="utf-8")).get("rain_aoi_mm_h")
+    except (OSError, ValueError) as error:
+        log.warning("products.pump_rain_unreadable", run_id=run_id, error=str(error))
+        return None
+    if not rain:
+        return None
+    return [float(v) for v in rain]
+
+
+class _EmulatorBenefit:
+    """Benefit as CLAUDE.md 11.10 asks for it: the emulator re-run with the pump's outflow.
+
+    One instance per plan. Flash-lite solves each road segment independently, so a pump at one
+    junction can be priced on a model sliced down to that junction's own segments - half a
+    millisecond per call instead of fourteen for the whole city - and the answers are identical
+    to slicing the full run afterwards.
+    """
+
+    def __init__(self, model: FlashModel, rain: Sequence[float], city_root: Path) -> None:
+        import numpy as np
+
+        self._model = model
+        self._rain = np.asarray(rain, dtype=np.float64)
+        self._city_root = city_root
+        self._index = {sid: i for i, sid in enumerate(model.segment_ids)}
+        self._streets: dict[str, list[str]] | None = None
+        # candidate id -> (sub-model, index of the segment the series is read at), or None when
+        # the emulator has no segment for that candidate.
+        self._sub: dict[str, tuple[FlashModel, int] | None] = {}
+        self._delta: dict[tuple[str, float], tuple[float, ...]] = {}
+
+    @property
+    def provenance(self) -> dict[str, Any]:
+        """The emulator's measured skill, carried beside every number it produced (rule 6)."""
+        return {
+            "rmse_cm": round(self._model.rmse_cm, 2),
+            "csi_30cm": round(self._model.csi_30cm, 3),
+            "n_training_runs": self._model.n_training_runs,
+        }
+
+    def _street_segments(self) -> dict[str, list[str]]:
+        """Street name to its segment ids, for the candidates that are streets rather than
+        register entries. Read once per plan; the register's own entries carry their ids."""
+        if self._streets is None:
+            from varuna_products.depth import segment_names
+
+            grouped: dict[str, list[str]] = {}
+            for segment_id, name in segment_names(self._city_root).items():
+                grouped.setdefault(name, []).append(segment_id)
+            self._streets = grouped
+        return self._streets
+
+    def _sub_model(
+        self, candidate_id: str, hotspot: dict[str, Any]
+    ) -> tuple[FlashModel, int] | None:
+        """The emulator sliced to this candidate, and which of its segments the benefit is read at.
+
+        The depth series a candidate is judged on is the deepest water in its neighbourhood - a
+        90th percentile over the hotspot's disc, or the worst segment on a street - so the
+        drawdown is read at the segment the emulator itself makes deepest. The pump is applied to
+        all of the candidate's segments; because they are independent, that choice changes only
+        which one is reported.
+        """
+        if candidate_id in self._sub:
+            return self._sub[candidate_id]
+
+        import dataclasses
+
+        import numpy as np
+        from varuna_flash.model import simulate
+
+        ids = list(hotspot.get("segment_ids") or [])
+        if not ids:
+            ids = self._street_segments().get(str(hotspot.get("name")), [])
+        known = [sid for sid in ids if sid in self._index]
+        if not known:
+            self._sub[candidate_id] = None
+            return None
+
+        select = np.array([self._index[sid] for sid in known])
+        model = self._model
+        sub = dataclasses.replace(
+            model,
+            segment_ids=tuple(known),
+            k_steps=model.k_steps[select],
+            gain=model.gain[select],
+            drain_cm_per_step=model.drain_cm_per_step[select],
+            beta_ref=model.beta_ref[select],
+            baseline_cm=model.baseline_cm[:, select],
+        )
+        deepest = int(np.argmax(simulate(sub, self._rain).max(axis=0)))
+        self._sub[candidate_id] = (sub, deepest)
+        return self._sub[candidate_id]
+
+    def drawdown(
+        self, candidate_id: str, hotspot: dict[str, Any], rate_cm_per_step: float
+    ) -> tuple[float, ...] | None:
+        """cm the pump removes at each step after it arrives, or ``None`` if it cannot be priced.
+
+        Two emulator runs at the candidate's segments, with and without the pump's outflow; the
+        difference is what the pump found to remove. Cached per (candidate, rate) because the
+        greedy prices every pump against every candidate, and a fleet carries far fewer distinct
+        capacities than pumps - Mumbai's twelve are three.
+        """
+        key = (candidate_id, round(rate_cm_per_step, 6))
+        if key in self._delta:
+            return self._delta[key]
+        sliced = self._sub_model(candidate_id, hotspot)
+        if sliced is None:
+            return None
+
+        import numpy as np
+        from varuna_flash.model import simulate
+
+        sub, deepest = sliced
+        pump = np.full(sub.n_segments, rate_cm_per_step)
+        before = simulate(sub, self._rain)[:, deepest]
+        after = simulate(sub, self._rain, pump_cm_per_step=pump)[:, deepest]
+        # Non-negative by construction - extra outflow cannot raise a depth - but clipped rather
+        # than trusted, because a negative "benefit" would silently become a saving below.
+        delta = tuple(float(v) for v in np.maximum(before - after, 0.0))
+        self._delta[key] = delta
+        return delta
+
+
+def _emulator(
+    city_root: Path,
+    run_id: str,
+    model: FlashModel | None,
+    rain_mm_h: Sequence[float] | None,
+) -> _EmulatorBenefit | None:
+    """The emulator-backed benefit model, or ``None`` when this plan has to use the fallback."""
+    fitted = model if model is not None else _load_model()
+    if fitted is None:
+        log.info("products.pump_benefit_fallback", run_id=run_id, reason="no_fitted_emulator")
+        return None
+    if not rain_mm_h:
+        log.info("products.pump_benefit_fallback", run_id=run_id, reason="no_rain_series")
+        return None
+    return _EmulatorBenefit(fitted, list(rain_mm_h), city_root)
+
+
 def build_pump_plan(
     hotspots: list[dict[str, Any]],
     city_root: Path,
@@ -104,6 +348,9 @@ def build_pump_plan(
     step_min: int = 5,
     streets: dict[str, list[float]] | None = None,
     street_points: dict[str, tuple[float, float]] | None = None,
+    *,
+    model: FlashModel | None = None,
+    rain_mm_h: Sequence[float] | None = None,
 ) -> dict[str, Any]:
     """Assign the synthetic pump fleet to the places that flood, greedily by benefit.
 
@@ -114,6 +361,15 @@ def build_pump_plan(
     Candidates are the chronic register **and** the named streets, for the same reason the alert
     queue carries both - on a cycle where the register stays below 45 cm and 226 streets do not,
     a board scoped to hotspots would send twelve pumps nowhere.
+
+    Args:
+        model: the fitted Flash-lite emulator. Loaded from :data:`MODEL_PATHS` when absent.
+        rain_mm_h: the storm the run was driven by, one value per step - the cycle's own AOI-mean
+            hyetograph while it is computing, or :func:`rain_for_run` for a run already on disk.
+            Never read from the run directory here; see :func:`rain_for_run` for why.
+
+    Without both of those the benefit falls back to the bathtub model, and ``benefit_model`` on
+    the plan and on every assignment says which one produced the number.
     """
     assets_path = city_root / "assets.geojson"
     if not assets_path.is_file():
@@ -173,6 +429,8 @@ def build_pump_plan(
         )
     candidates.sort(key=lambda c: -c["minutes_before"])
 
+    emulator = _emulator(city_root, run_id, model, rain_mm_h) if candidates else None
+
     assignments: list[dict[str, Any]] = []
     taken: set[str] = set()
     for pump in pumps:
@@ -194,11 +452,16 @@ def build_pump_plan(
 
             # m3/h over the disc, as cm of depth per 5-minute step.
             rate_cm_per_step = pump["capacity_m3_per_h"] / area_m2 * 100.0 * (step_min / 60.0)
-            after = _minutes_above(
-                _drawn_down(candidate["series"], rate_cm_per_step, arrive_step),
-                PUMP_THRESHOLD_CM,
-                step_min,
+            delta = (
+                emulator.drawdown(key, hotspot, rate_cm_per_step) if emulator is not None else None
             )
+            if delta is not None:
+                lowered = _after_delta(candidate["series"], delta, arrive_step)
+                benefit_model = "emulator"
+            else:
+                lowered = _drawn_down(candidate["series"], rate_cm_per_step, arrive_step)
+                benefit_model = "reduced_model"
+            after = _minutes_above(lowered, PUMP_THRESHOLD_CM, step_min)
             saved = candidate["minutes_before"] - after
             # Weighted by exposure: two junctions saving the same minutes are not equal if one
             # of them is beside a hospital.
@@ -218,17 +481,27 @@ def build_pump_plan(
                     "minutes_before": candidate["minutes_before"],
                     "minutes_after": after,
                     "minutes_saved": saved,
+                    "benefit_model": benefit_model,
                 }
 
         if best is not None:
             taken.add(best["hotspot_id"])
             assignments.append(best)
 
+    if emulator is None:
+        benefit_model = "reduced_model"
+    elif any(a["benefit_model"] != "emulator" for a in assignments):
+        # Some candidate had no road segment this emulator knows, so both models are in the plan
+        # and the label has to say so rather than claim the better one for all of it.
+        benefit_model = "mixed"
+    else:
+        benefit_model = "emulator"
+
     plan = {
         "run_id": run_id,
         "threshold_cm": PUMP_THRESHOLD_CM,
-        "benefit_model": "reduced_model",
-        "benefit_label": BENEFIT_LABEL,
+        "benefit_model": benefit_model,
+        "benefit_label": BENEFIT_LABELS[benefit_model],
         "inventory": "synthetic",
         "travel_speed_kmh": TRAVEL_SPEED_KMH,
         "n_pumps": len(pumps),
@@ -245,12 +518,15 @@ def build_pump_plan(
         ],
         "total_minutes_saved": sum(a["minutes_saved"] for a in assignments),
     }
+    if emulator is not None:
+        plan["emulator"] = emulator.provenance
     log.info(
         "products.pump_plan",
         run_id=run_id,
         pumps=len(pumps),
         assigned=len(assignments),
         candidates=len(candidates),
+        benefit_model=benefit_model,
         minutes_saved=plan["total_minutes_saved"],
     )
     return plan

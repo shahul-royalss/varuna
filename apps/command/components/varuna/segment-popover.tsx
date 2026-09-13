@@ -7,8 +7,12 @@
  * answers the other question an operator has, which is about the street they just pointed at - and
  * on the 2 July storm most of the wet streets are not on the chronic register at all.
  *
- * Three things, in the order they are asked: how deep it is now, what it does over the next three
- * hours, and who can still drive through it.
+ * Four things, in the order they are asked: how deep it is now, what it does over the next three
+ * hours, who can still drive through it, and - when the street belongs to a chronic spot - why
+ * (CLAUDE.md 7.2, "mini fan chart, safe-until per vehicle, 'why' link").
+ *
+ * The "why" is a link into the hotspot drawer rather than a second explanation rendered here:
+ * there is one attribution surface in the console and this points at it.
  */
 
 import { X } from "lucide-react";
@@ -16,6 +20,7 @@ import { X } from "lucide-react";
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { Sparkline } from "@/components/varuna/sparkline";
 import type { SegmentPick } from "@/components/map/city-map";
+import type { Hotspot } from "@/lib/api/hotspots";
 import { formatIstTime } from "@/lib/stores/time";
 import { cn } from "@/lib/utils";
 
@@ -39,6 +44,18 @@ export interface SegmentPopoverProps {
   step: number;
   /** The run's step times, for "safe until 09:25". */
   validTs: readonly string[];
+  /**
+   * The chronic spot this street is part of, when the rail ranked one that contains it: the
+   * console matches `pick.segment.id` against each hotspot's `segment_ids`. Null for the ordinary
+   * wet street, which has no junction explanation to open.
+   */
+  hotspot?: Hotspot | null;
+  /**
+   * Opens the hotspot drawer on `hotspotId`, at its "Why this junction floods" section. Without
+   * it the popover states the hotspot it belongs to and stops; it never draws a link it cannot
+   * follow (CLAUDE.md 17, "never a dead control").
+   */
+  onWhy?: (hotspotId: string) => void;
   onClose: () => void;
   className?: string;
 }
@@ -51,12 +68,26 @@ function firstOver(depths: readonly number[], cm: number, from: number): number 
   return null;
 }
 
-export function SegmentPopover({ pick, step, validTs, onClose, className }: SegmentPopoverProps) {
+export function SegmentPopover({
+  pick,
+  step,
+  validTs,
+  hotspot = null,
+  onWhy,
+  onClose,
+  className,
+}: SegmentPopoverProps) {
   const { segment, x, y } = pick;
   const depths = segment.depthCm;
   const now = depths[step] ?? 0;
   const peak = depths.length > 0 ? Math.max(...depths) : 0;
   const peakStep = depths.indexOf(peak);
+
+  // The link is drawn only when there is a ranking on the other side of it. No run produces one
+  // today (ADR-0042), so what the operator sees instead is the run's own reason, which is the
+  // same string the drawer prints - one explanation, stated once.
+  const responsiblePipes = hotspot?.attribution.length ?? 0;
+  const canOpenWhy = hotspot != null && onWhy != null && responsiblePipes > 0;
 
   return (
     <aside
@@ -127,6 +158,26 @@ export function SegmentPopover({ pick, step, validTs, onClose, className }: Segm
         Depth is the 90th percentile of cells within 15 m of the centreline. One member, so this is
         a forecast and not a distribution.
       </p>
+
+      {hotspot ? (
+        <div className="mt-3 border-t border-line pt-2">
+          <h3 className="type-micro font-medium text-text-2">Why it floods</h3>
+          <p className="mt-1 truncate type-micro text-text-3" title={hotspot.name}>
+            On the chronic register as {hotspot.name}.
+          </p>
+          {canOpenWhy ? (
+            <button
+              type="button"
+              onClick={() => onWhy?.(hotspot.id)}
+              className="mt-1 rounded-control type-micro text-tide underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tide"
+            >
+              Show the {responsiblePipes} responsible pipes
+            </button>
+          ) : hotspot.attributionLabel ? (
+            <p className="mt-1 type-micro text-text-3">{hotspot.attributionLabel}</p>
+          ) : null}
+        </div>
+      ) : null}
     </aside>
   );
 }

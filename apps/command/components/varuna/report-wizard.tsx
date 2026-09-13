@@ -28,8 +28,8 @@ export interface ReportWizardProps {
 
 /**
  * Three steps to a citizen observation (CLAUDE.md section 7.11): where, an optional photo, and
- * how deep. `POST /v1/reports` answers 501 until Pulse lands in Phase 7, so the API's own message
- * is shown verbatim rather than hidden behind a generic failure.
+ * how deep. `POST /v1/reports` accepts the report and queues it for the next cycle, so the API's
+ * own message is shown verbatim rather than replaced by a claim about what the report changed.
  */
 export function ReportWizard({ className }: ReportWizardProps) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -90,19 +90,47 @@ export function ReportWizard({ className }: ReportWizardProps) {
   }, [depthHint, lat, lon, photo, submit]);
 
   if (submit.isSuccess) {
-    const streets = submit.data.feedback_streets ?? 0;
+    // CLAUDE.md 11.6 defines the feedback count as the segments whose p50 moved by more than 3 cm
+    // once the EnKF has assimilated the report - which happens on the *next* cycle, not inside the
+    // request a citizen just pressed Send on. Until that number exists the API sends
+    // `feedback_streets: null` with a queued message; printing `?? 0` there headlined an improved
+    // forecast for a count of zero streets - a claim of effect over a number nobody computed
+    // (rule 6). So the count is shown only when a count arrives.
+    const streets = submit.data.feedback_streets;
+    const queued = typeof streets !== "number";
+    // The API's own wording, so the screen never invents a state the service did not report; the
+    // fallback covers a service that accepted the report without one.
+    const queuedMessage =
+      submit.data.message ?? "Your report is queued; the next cycle assimilates it.";
     return (
       <Panel className={cn("p-6", className)}>
         <div className="flex flex-col items-start gap-3">
           <Check size={20} strokeWidth={1.75} aria-hidden="true" className="text-tide" />
           <h2 className="font-display text-h2 font-semibold tracking-display text-text">
-            Thanks - your report improved the forecast for <span className="num">{streets}</span>{" "}
-            {streets === 1 ? "street" : "streets"}
+            {queued ? (
+              "Report sent"
+            ) : streets > 0 ? (
+              <>
+                Thanks - your report improved the forecast for{" "}
+                <span className="num">{streets}</span> {streets === 1 ? "street" : "streets"}
+              </>
+            ) : (
+              "Thanks - your report is assimilated"
+            )}
           </h2>
           <p className="max-w-[60ch] type-body text-text-2">
-            Pulse assimilates your report in the next five-minute cycle. It appears on the drain
-            X-ray as an observation with the blockage change it caused.
+            {queued
+              ? queuedMessage
+              : streets > 0
+                ? "Pulse assimilated your report. It appears on the drain X-ray as an observation with the blockage change it caused."
+                : "Pulse assimilated your report and no street forecast moved by more than 3 cm. It still appears on the drain X-ray as an observation."}
           </p>
+          {queued ? (
+            <p className="max-w-[60ch] type-small text-text-3">
+              Once assimilated it appears on the drain X-ray as an observation with the blockage
+              change it caused.
+            </p>
+          ) : null}
           <Button
             onClick={() => {
               submit.reset();

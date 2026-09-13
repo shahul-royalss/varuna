@@ -146,7 +146,9 @@ def test_register_skips_names_taken_by_an_engine() -> None:
     ("target", "phase"),
     # `pack` is deliberately absent: P10.6 implemented it, so invoking it here no longer refuses -
     # it builds the real 830 MB offline package, which is not something a unit test should do.
-    [("city", 1), ("bundle", 2), ("bake", 5), ("train", 7), ("demo-video", 10)],
+    # `train` left for the same reason on 2026-09-13: it now fits the emulator. Its own refusal -
+    # an empty corpus - is tested below.
+    [("city", 1), ("bundle", 2), ("bake", 5), ("demo-video", 10)],
 )
 def test_phase_gate_exits_with_two_and_no_traceback(
     app: typer.Typer, target: str, phase: int
@@ -163,6 +165,64 @@ def test_phase_gate_covers_every_placeholder() -> None:
     for target, (phase, name) in tasks.PLACEHOLDER_PHASES.items():
         assert isinstance(phase, int) and 1 <= phase <= 10, target
         assert name
+
+
+# ---------------------------------------------------------------------------
+# train: the fit behind every what-if number (task P7.5)
+# ---------------------------------------------------------------------------
+
+
+def test_train_without_a_corpus_refuses_and_names_it(app: typer.Typer, tmp_path: Path) -> None:
+    """An empty corpus must refuse, not write a skill report from nothing (CLAUDE.md rule 6)."""
+    result = runner.invoke(
+        app, ["train", "--train-dir", str(tmp_path / "absent")], env={"COLUMNS": "200"}
+    )
+    assert result.exit_code == 2, result.stdout
+    assert "train-*.npz" in result.stdout
+    assert "Nothing was written" in result.stdout
+    assert "Traceback" not in result.stdout
+
+
+def test_train_reads_the_corpus_before_it_fits(
+    app: typer.Typer, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fit is reached only with more runs than the holdout, and gets the CLI's arguments.
+
+    The fit itself is ``varuna_flash``'s and is tested there; what belongs here is that the
+    target counts the corpus the same way the fitter globs it, so the refusal and the fit
+    cannot disagree about whether there is anything to train on.
+    """
+    corpus = tmp_path / "train"
+    corpus.mkdir()
+    for k in range(3):
+        (corpus / f"train-0{k}-p25-b10.npz").write_bytes(b"")
+    (corpus / "flash_lite.npz").write_bytes(b"")  # the fitted model is not training data
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_fit(train_dir: Path, **kwargs: Any) -> dict[str, object]:
+        calls.append({"train_dir": train_dir, **kwargs})
+        return {
+            "model": str(train_dir / "flash_lite.npz"),
+            "n_segments": 21296,
+            "fitted_segments": 13702,
+            "n_training_runs": 1,
+            "n_holdout_runs": 2,
+            "rmse_cm": 5.704,
+            "csi_30cm": 0.0854,
+            "note": "Reduced-order emulator calibrated to VARUNA-Twin.",
+        }
+
+    monkeypatch.setattr("varuna_flash.train.train_from_runs", fake_fit)
+    result = runner.invoke(
+        app, ["train", "--train-dir", str(corpus), "--holdout", "2"], env={"COLUMNS": "200"}
+    )
+    assert result.exit_code == 0, result.stdout
+    assert calls[0]["city"] == tasks.DEFAULT_CITY
+    assert calls[0]["holdout"] == 2
+    assert calls[0]["out_report"].name == "flash_lite.json"
+    assert "5.704 cm" in result.stdout
+    assert "0.0854" in result.stdout
 
 
 # ---------------------------------------------------------------------------

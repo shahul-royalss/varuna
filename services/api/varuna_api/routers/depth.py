@@ -36,6 +36,20 @@ BAKE_HINT = (
     "or press Compute live on the replay panel."
 )
 
+NO_ATTRIBUTION_LABEL = (
+    "Not computed on this run: Flash-lite is element-wise per segment — ADR-0042."
+)
+"""Why every hotspot's ``attribution`` is empty, said in the response rather than on the screen.
+
+Section 10.3 lists attribution as part of ``hotspots.json`` and 7.2's AC wants five pipes in the
+drawer, but no cycle writes one: ADR-0042 measured that cleaning a pipe that is not under the
+target moves the target by exactly zero, because ``varuna_flash.model.simulate`` is element-wise
+per segment. So the field exists in the contract with an empty list and this reason, which is the
+one arrangement where the drawer cannot imply a ranking nobody computed (rule 6, section 17). The
+full version of the reason, with the fix that would restore it, is
+``varuna_flash.whatif.NO_ATTRIBUTION_REASON``; it is not imported here because the hotspot rail
+must not pull the emulator in to answer a file read."""
+
 
 def _latest_run_with_depth(city: str | None = None) -> Path | None:
     """The newest run directory for a city that actually has depth rasters in it.
@@ -202,6 +216,19 @@ def segments(
     }
 
 
+def _with_attribution(row: dict[str, Any]) -> dict[str, Any]:
+    """One hotspot with the attribution pair section 10.3 promises, empty and labelled.
+
+    Nothing is synthesised: the list is whatever the artifact carries, which is nothing on every
+    run baked so far, and the label then says why (:data:`NO_ATTRIBUTION_LABEL`). A cycle that
+    one day writes real rows writes its own label with them, so this stops relabelling the moment
+    there is something to rank.
+    """
+    rows = row.get("attribution") or []
+    label = row.get("attribution_label") if rows else NO_ATTRIBUTION_LABEL
+    return {**row, "attribution": rows, "attribution_label": label}
+
+
 @router.get("/nowcast/hotspots", summary="Ranked hotspots for the rail")
 def hotspots(
     run_id: Annotated[str | None, Query()] = None,
@@ -217,6 +244,11 @@ def hotspots(
     score ordered the list, because on a deterministic run it is **not** the spec's
     ``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash
     brings a real ensemble in Phase 7.
+
+    ``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for, and the
+    list is empty on every run baked so far with the label carrying the reason (ADR-0042). The
+    field is present rather than absent so the drawer reads a refusal it can print instead of a
+    missing key it has to guess at.
     """
     path = _resolve(run_id)
     record = path / "hotspots.json"
@@ -228,7 +260,7 @@ def hotspots(
             run_id=path.name,
         )
 
-    ranked = json.loads(record.read_text(encoding="utf-8"))
+    ranked = [_with_attribution(row) for row in json.loads(record.read_text(encoding="utf-8"))]
     meta = _meta(path)
     log.info("api.hotspots", run_id=path.name, n=len(ranked), limit=limit)
     return {

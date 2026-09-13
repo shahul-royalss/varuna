@@ -21,6 +21,23 @@ export interface HotspotExposure {
   nearestStationM?: number;
 }
 
+/**
+ * One pipe named as responsible for a junction's peak, once anything can name one.
+ *
+ * The shape the products service would write (`varuna_flash.whatif.attribute`), carried here so
+ * the drawer has a type to render against. No run produces a row today — ADR-0042 measured that
+ * a per-segment emulator cannot attribute across segments — so every `attribution` is empty and
+ * `attributionLabel` says why.
+ */
+export interface HotspotAttribution {
+  rank: number;
+  segmentId: string;
+  /** Posterior blockage on the pipe under that segment. */
+  beta: number;
+  /** Centimetres the junction's peak drops when this pipe alone is cleaned. */
+  depthExplainedCm: number;
+}
+
 export interface Hotspot {
   rank: number;
   id: string;
@@ -45,6 +62,12 @@ export interface Hotspot {
   minutesImpassable: number;
   expectedImpact: number;
   exposure: HotspotExposure;
+  /** The road segments the junction is made of; what a what-if deep link carries. */
+  segmentIds: string[];
+  /** Responsible pipes, deepest first. Empty on every run so far — see `attributionLabel`. */
+  attribution: HotspotAttribution[];
+  /** Why the ranking is empty, when it is; null once a run carries rows and labels them. */
+  attributionLabel: string | null;
 }
 
 export interface HotspotSet {
@@ -84,6 +107,16 @@ interface RawHotspot {
   minutes_impassable?: number;
   expected_impact?: number;
   exposure?: RawExposure;
+  segment_ids?: string[];
+  attribution?: RawAttribution[];
+  attribution_label?: string | null;
+}
+
+interface RawAttribution {
+  rank?: number;
+  segment_id?: string;
+  beta?: number;
+  depth_explained_cm?: number;
 }
 
 const FACILITY_KINDS: readonly string[] = ["hospital", "fire_station", "station", "shelter"];
@@ -144,6 +177,14 @@ export async function loadHotspots(
         nearestStation: h.exposure?.nearest_station,
         nearestStationM: h.exposure?.nearest_station_m,
       },
+      segmentIds: h.segment_ids ?? [],
+      attribution: (h.attribution ?? []).map((row, j) => ({
+        rank: row.rank ?? j + 1,
+        segmentId: row.segment_id ?? "",
+        beta: row.beta ?? 0,
+        depthExplainedCm: row.depth_explained_cm ?? 0,
+      })),
+      attributionLabel: h.attribution_label ?? null,
     })),
   };
 }

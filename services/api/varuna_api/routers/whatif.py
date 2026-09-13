@@ -23,14 +23,23 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
+import pandas as pd
 import structlog
 from fastapi import APIRouter, Body
+from varuna_pulse.join import SegmentBetaError, segment_beta
 from varuna_schemas.paths import repo_root, run_dir
 
 from varuna_api.runs_util import latest_run_for
 from varuna_api.state import api_error
 
+# **Imported at module scope, unlike `varuna_flash` below, because it costs 0.8 s.** That is the
+# process's first `import pandas`, and deferring it to the first request spent the whole of this
+# endpoint's 1 s budget on it - 1.1 s cold against 0.1 s once warm. The API is started before the
+# judges arrive and the what-if is pressed in front of them, so the second of the two is the one
+# that must be fast; a server paying for its dependencies at boot is the ordinary arrangement.
+
 if TYPE_CHECKING:  # pragma: no cover - typing only; varuna_flash is imported lazily below
+    from numpy.typing import NDArray
     from varuna_flash.model import FlashModel
 
 log = structlog.get_logger("varuna.api.whatif")
@@ -48,6 +57,27 @@ MODEL_PATHS = ("data/train/flash_lite.npz", "demo/flash_lite.npz")
 
 UNMATCHED_NAMED = 5
 """Unmatched ids quoted back in the refusal, before it says how many more there were."""
+
+DRAIN_HEALTH = "drain_health.geojson"
+"""Pulse's posterior for the cycle, written per run by `varuna_pulse.health.write_drain_health`."""
+
+PRIOR_BETA = 0.20
+"""The flat blockage used where the city has no pipe under a segment to inherit one from.
+
+CLAUDE.md 10.1 step 7 sets the prior's mean by land use - 0.15 arterial, 0.2 residential, 0.35
+markets - so 0.2 is the residential middle, and it is what this endpoint used to run *every*
+segment at. It is now the last of three sources rather than the only one, and the response counts
+the segments it reached instead of absorbing them."""
+
+_BETA_CACHE: dict[tuple[str, str, int, int], tuple[NDArray[np.float64], dict[str, Any]]] = {}
+"""One joined beta vector per run, keyed on the posterior's mtime so a re-bake invalidates it.
+
+The join is two merges over Mumbai's 67k segment-edge pairs, about 320 ms measured - affordable
+once against the endpoint's 1 s budget, and not per drag of a what-if slider. The vector is a
+pure function of the run's posterior and the city's graph, so caching it changes no number."""
+
+MAX_CACHED_RUNS = 8
+"""Joined vectors held before the cache is emptied, so scrubbing a replay cannot grow it forever."""
 
 
 def _resolve_cleaned(requested: set[str], model: FlashModel) -> tuple[set[str], list[str]]:
@@ -108,6 +138,152 @@ def _latest_run(city: str | None = None) -> Path:
     return found
 
 
+def _posterior_edges(path: Path) -> pd.DataFrame | None:
+    """The run's learned blockage per pipe, or None when the run carries no posterior.
+
+    `drain_health.geojson` is capped at the worst `varuna_pulse.health.MAX_WRITTEN_EDGES` pipes,
+    so this frame is 6,000 of the graph's 49,770 edges, and the segments it leaves unresolved
+    fall through to the city's prior and are counted there.
+
+    **The posterior wins over the prior even when the prior is higher.** A segment whose worst
+    *learned* pipe sits at 0.20 can have an unwritten neighbour whose *prior* is 0.35, and taking
+    the higher of the two would refuse to learn downward - assimilation moved 366 pipes this
+    cycle and some of them fell. Preferring what was learned understates 2 of the 2,517 resolved
+    segments on the 09:10 run, by at most 0.025 of blockage; taking the maximum instead would
+    overrule Pulse on every pipe it cleared.
+    """
+    health_path = path / DRAIN_HEALTH
+    if not health_path.is_file():
+        return None
+    health = json.loads(health_path.read_text(encoding="utf-8"))
+    features = health.get("features") or []
+    if not features:
+        return None
+    # `capacity_reduction_pct` rides along: the join prefers the caller's column to recomputing
+    # it, so the endpoint and the drain X-ray never disagree about which pipe is worst.
+    return pd.DataFrame([feature.get("properties", {}) for feature in features])
+
+
+def _beta_vector(
+    path: Path, city: str | None, model: FlashModel
+) -> tuple[NDArray[np.float64], dict[str, Any]]:
+    """Blockage per road segment for the emulator, and where every value in it came from.
+
+    **This endpoint used to run at a flat 0.20** while the same run directory carried 6,000 pipes
+    between 0.20 and 0.68 on the 09:10 cycle - the learned state Pulse exists to produce, sitting
+    unread beside the model that needed it (CLAUDE.md 11.7, rule 6). The substitution was silent,
+    which is the part that mattered: a what-if answered at a uniform blockage looks exactly like
+    one answered at the posterior, and cleaning a pipe that was never blocked reports a benefit
+    the city would not get.
+
+    Three sources, in order, each counted in the returned `beta_source`:
+
+    1. the run's own posterior (`drain_health.geojson`), which is what Pulse learned this cycle;
+    2. the city's per-pipe prior, for segments whose worst pipe is not in the written cap;
+    3. :data:`PRIOR_BETA`, for segments with no inlet link at all - service roads, footways,
+       slivers between intersections - which have no pipe to inherit from in either table.
+
+    A city with no drain graph cannot be joined at all; that is the flat-prior fallback, and it
+    says so rather than looking like a measurement.
+    """
+    if not city:
+        # Without a city there is no graph to join against, and guessing one would attach another
+        # city's learned drains to this run's streets.
+        return np.full(model.n_segments, PRIOR_BETA), {
+            "kind": "prior_uniform",
+            "value": PRIOR_BETA,
+            "reason": f"Run {path.name} names no city in run.json, so its drain graph cannot be "
+            "identified. Re-bake the cycle.",
+        }
+
+    health_path = path / DRAIN_HEALTH
+    mtime = health_path.stat().st_mtime_ns if health_path.is_file() else 0
+    key = (path.name, city, mtime, model.n_segments)
+    cached = _BETA_CACHE.get(key)
+    if cached is not None:
+        beta, source = cached
+        return beta.copy(), dict(source)
+
+    posterior = _posterior_edges(path)
+    try:
+        prior, _ = segment_beta(city, None, model.segment_ids)
+        learned = (
+            segment_beta(city, posterior, model.segment_ids)[0]
+            if posterior is not None
+            else np.full(model.n_segments, np.nan)
+        )
+    except SegmentBetaError as error:
+        # No graph, no join. The flat prior is then the only honest thing left, and the reason
+        # travels with it so nobody reads 0.20 as something Pulse measured.
+        return np.full(model.n_segments, PRIOR_BETA), {
+            "kind": "prior_uniform",
+            "value": PRIOR_BETA,
+            "reason": str(error),
+        }
+
+    from_posterior = np.isfinite(learned)
+    from_prior = ~from_posterior & np.isfinite(prior)
+    beta = np.where(from_posterior, learned, np.where(from_prior, prior, PRIOR_BETA))
+    flat = int(model.n_segments - from_posterior.sum() - from_prior.sum())
+
+    if flat == model.n_segments:
+        # Nothing joined at all: the vector is literally uniform, so calling it a posterior would
+        # be a label on an empty join. This is what a Chennai run looks like against the
+        # Mumbai-fitted emulator - the two segment vocabularies do not meet.
+        return beta, {
+            "kind": "prior_uniform",
+            "value": PRIOR_BETA,
+            "reason": f"None of the emulator's {model.n_segments:,} segments has a pipe in "
+            f"{city}'s drain graph, so neither the posterior nor the prior could be joined. The "
+            "fitted emulator and this run are not the same city.",
+        }
+
+    source: dict[str, Any] = {
+        "kind": "pulse_posterior" if posterior is not None else "city_prior",
+        # The run whose posterior was read. It is the run the what-if is levelled on, so the two
+        # cannot drift apart; naming it anyway means a response never leaves that assumed.
+        "run_id": path.name,
+        "resolved": int(from_posterior.sum()),
+        # Everything the posterior did not reach: the city's own prior where a pipe exists,
+        # PRIOR_BETA where none does. The second is counted separately because it is weaker.
+        "filled_with_prior": int(from_prior.sum()) + flat,
+        "filled_with_flat_prior": flat,
+        "min": round(float(beta.min()), 4),
+        "max": round(float(beta.max()), 4),
+    }
+    if posterior is not None:
+        source["posterior_edges"] = len(posterior)
+    else:
+        source["reason"] = (
+            f"Run {path.name} carries no {DRAIN_HEALTH}, so nothing was learned to join; "
+            "blockage is the city's inferred prior per pipe."
+        )
+    if len(_BETA_CACHE) >= MAX_CACHED_RUNS:
+        _BETA_CACHE.clear()
+    _BETA_CACHE[key] = (beta, source)
+    return beta.copy(), dict(source)
+
+
+def _beta_note(source: dict[str, Any]) -> str:
+    """One sentence naming which blockage the answer was computed at (CLAUDE.md 6.8)."""
+    if source["kind"] == "prior_uniform":
+        return (
+            f"Blockage is a flat {source['value']} on every street: {source['reason']} "
+            "Pulse's learned drain state was not used."
+        )
+    tail = (
+        f"{source['filled_with_flat_prior']:,} of them at a flat {PRIOR_BETA} because no pipe "
+        f"drains the street. Blockage spans {source['min']} to {source['max']}."
+    )
+    if source["kind"] == "city_prior":
+        return f"{source['reason']} All {source['filled_with_prior']:,} segments took it, {tail}"
+    return (
+        f"Blockage is Pulse's posterior from run {source['run_id']}: "
+        f"{source['resolved']:,} segments from the learned state and "
+        f"{source['filled_with_prior']:,} from the city's inferred prior, {tail}"
+    )
+
+
 @router.post("/whatif", summary="What-if via the emulator, levelled on the run's own physics")
 def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     """Scale the rain, clean pipes or run pumps, and report what changes.
@@ -150,7 +326,7 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     cleaned, unmatched = _resolve_cleaned(set(body.get("cleaned_segments") or []), model)
     tide = float(body.get("tide_offset_m", 0.0))
 
-    beta = np.full(model.n_segments, 0.20)
+    beta, beta_source = _beta_vector(path, meta.get("city"), model)
     try:
         scenario = run_scenario(
             model,
@@ -195,6 +371,8 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         rain_scale=rain_scale,
         cleaned=len(cleaned),
         unmatched=len(unmatched),
+        beta_kind=beta_source["kind"],
+        beta_resolved=beta_source.get("resolved"),
         improved=scenario.n_improved,
         worse=scenario.n_worse,
     )
@@ -206,6 +384,10 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
             "csi_30cm": round(model.csi_30cm, 3),
             "n_training_runs": model.n_training_runs,
         },
+        # Which blockage the emulator ran at, and how much of it Pulse actually learned. The
+        # scenario is a difference between two runs at this vector, so it is as much a part of
+        # the answer's provenance as the emulator's own skill.
+        "beta_source": beta_source,
         "rain_scale": rain_scale,
         # Only what was actually cleaned. `cleaned_unmatched` carries the ids this city has no
         # segment for, so a partly wrong request is visible rather than absorbed.
@@ -221,6 +403,7 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         "worst_after": sorted(rows, key=lambda r: -r["after_cm"])[:20],
         "notes": [
             *scenario.notes,
+            _beta_note(beta_source),
             *(
                 [
                     f"{len(unmatched)} of the ids asked for are not road segments in this city "

@@ -6,9 +6,13 @@ import { WhatIfScreen } from "@/app/whatif/whatif-screen";
 import { useRunStore } from "@/lib/stores/run";
 import { useUiStore } from "@/lib/stores/ui";
 
+/** The query string the lab reads at mount (P7.11). Set it before `renderScreen`. */
+const nav = vi.hoisted(() => ({ params: new URLSearchParams() }));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/whatif",
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), prefetch: vi.fn() }),
+  useSearchParams: () => nav.params,
 }));
 
 function renderScreen() {
@@ -21,6 +25,7 @@ function renderScreen() {
 
 describe("WhatIfScreen", () => {
   beforeEach(() => {
+    nav.params = new URLSearchParams();
     useRunStore.getState().clear();
     useUiStore.getState().closeOverlays();
   });
@@ -53,10 +58,12 @@ describe("WhatIfScreen", () => {
   it("disables the two levers the request does not carry, and leaves them out of the scenario line", () => {
     renderScreen();
 
-    // The request body is rain and tide only: cleaning needs pipe ids the console cannot resolve
-    // yet, and there is no pump-plan field. Both switches say what is missing (section 17).
+    // Cleaning itself is a lever now - segments picked on a hotspot are sent and cleaned - but
+    // *ranking* pipes by beta is not, because nothing attributes a junction's depth to pipes on
+    // an element-wise emulator (ADR-0042); and there is no pump-plan field at all. Both switches
+    // say what is missing rather than sitting inert (section 17).
     for (const [name, reason] of [
-      ["Clean top 14 by beta", "the pipe-to-street join lands with attribution (P7.7)"],
+      ["Clean top 14 by beta", "Ranking pipes by beta needs attribution"],
       ["Pump plan", "The pump plan is not a what-if lever yet (P7.7)"],
     ]) {
       // Base UI renders a disabled switch as a span with aria-disabled rather than a form
@@ -85,5 +92,43 @@ describe("WhatIfScreen", () => {
     // empty state reading "you have not pressed it yet" would blame the operator for a
     // refusal the system owes them a reason for (section 17, ADR-0042).
     expect(screen.getByText("Physics check not available")).toBeInTheDocument();
+  });
+
+  it("carries a hotspot's segments in from the deep link, with the measured ceiling beside them", () => {
+    // What "Clean in what-if" on Hindmata puts in the address bar: the junction's own road
+    // segments, the junction it was pressed on, and the cycle the console was showing.
+    nav.params = new URLSearchParams({
+      segments: "S100841069-000,S100841079-000,S102172139-001",
+      from: "Hindmata junction",
+      run: "MUM-20190702T0310Z-sky1.0-twin1.0-flash0.1-baked",
+    });
+    renderScreen();
+
+    expect(screen.getByText("S100841069-000")).toBeInTheDocument();
+    expect(screen.getByText("S102172139-001")).toBeInTheDocument();
+    expect(screen.getByText("3 segments")).toBeInTheDocument();
+    expect(screen.getByText("From Hindmata junction.")).toBeInTheDocument();
+    // The chips are a lever with a ceiling, and the ceiling is measured (ADR-0042). Printing the
+    // segments without it would let the operator expect a junction to drain.
+    expect(screen.getByText(/Measured ceiling/)).toHaveTextContent(
+      "cleaning all 21,296 segments at once moves the deepest street 3.5 cm (ADR-0042)",
+    );
+    // The scenario line counts what will be sent, so the panel and the request agree.
+    expect(screen.getByText(/^Scenario ready to run:/)).toHaveTextContent(
+      "Rain 1.0x, tide +0.0 m, 3 segments cleaned.",
+    );
+  });
+
+  it("says so when the link asks for more segments than the lever carries", () => {
+    // The URL is hand-editable, so a longer list is possible; silently running a smaller
+    // scenario than the address bar describes is the defect this line exists to prevent.
+    const ids = Array.from({ length: 20 }, (_, i) => `S1008410${String(i).padStart(2, "0")}-000`);
+    nav.params = new URLSearchParams({ segments: ids.join(",") });
+    renderScreen();
+
+    expect(screen.getByText("14 segments")).toBeInTheDocument();
+    expect(screen.getByText(/The link asked for/)).toHaveTextContent(
+      "The link asked for 20 segments; the first 14 are loaded.",
+    );
   });
 });

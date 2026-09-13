@@ -3,8 +3,10 @@
 import NumberFlow from "@number-flow/react";
 import { ExternalLink, X } from "lucide-react";
 import { motion } from "motion/react";
+import Link from "next/link";
 
 import type { Hotspot } from "@/lib/api/hotspots";
+import { MAX_CLEANED_SEGMENTS } from "@/lib/api/whatif";
 import { Button } from "@/components/ui/button";
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { EmptyState } from "@/components/varuna/empty-state";
@@ -12,6 +14,7 @@ import { FanChart, type FanChartPoint } from "@/components/varuna/fan-chart";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { DUR, EASE_UI } from "@/lib/motion";
 import { PROFILE_THRESHOLD_CM, type PassabilityProfile } from "@/lib/ramps";
+import { useRunStore } from "@/lib/stores/run";
 import { formatIstTime } from "@/lib/stores/time";
 
 export interface HotspotDrawerProps {
@@ -44,6 +47,24 @@ function firstUnsafeStep(depthCm: readonly number[], thresholdCm: number): numbe
   return depthCm.findIndex((cm) => cm > thresholdCm);
 }
 
+/**
+ * The what-if lab, opened on this junction's own road segments (task P7.11).
+ *
+ * The ids are road segments, which is the vocabulary `POST /v1/whatif` cleans on; the run travels
+ * with them because a what-if is a question about one cycle, and the lab's own default is the
+ * newest run rather than the one the operator is looking at.
+ */
+function cleanInWhatIfHref(hotspot: Hotspot, runId: string | null) {
+  // A `UrlObject` rather than a template string: typed routes reject an interpolated path, and
+  // the query is encoded for us, which matters because a hotspot's name carries commas.
+  const query: Record<string, string> = {
+    segments: hotspot.segmentIds.slice(0, MAX_CLEANED_SEGMENTS).join(","),
+    from: hotspot.name,
+  };
+  if (runId) query.run = runId;
+  return { pathname: "/whatif", query } as const;
+}
+
 export function HotspotDrawer({
   hotspot,
   step,
@@ -52,9 +73,13 @@ export function HotspotDrawer({
   onClose,
 }: HotspotDrawerProps) {
   const reducedMotion = usePrefersReducedMotion();
+  // The console publishes the run it is showing here (the top bar's run stamp reads the same
+  // store), so the deep link can carry the cycle without the drawer being handed it.
+  const runId = useRunStore((s) => s.currentRun?.run_id ?? null);
   if (!hotspot) return null;
 
   const now = hotspot.depthCm[Math.min(step, hotspot.depthCm.length - 1)] ?? 0;
+  const cleanedCount = Math.min(hotspot.segmentIds.length, MAX_CLEANED_SEGMENTS);
 
   // One deterministic Twin run, so p10 = p50 = p90. The band is drawn flat rather than invented,
   // and the caption below says why it has no width (rule 6).
@@ -209,7 +234,48 @@ export function HotspotDrawer({
         />
       </section>
 
-      <footer className="p-4">
+      <footer className="space-y-3 p-4">
+        {/* The one action the emulator can actually take on this junction. "Dispatch pumps here"
+            and "Show drains" are section 7.2's other two buttons and are not here: the endpoint
+            has no pump-plan lever (P7.7) and the drains layer is a console toggle, so a button
+            for either would be a control that does nothing. */}
+        {cleanedCount > 0 ? (
+          <div className="space-y-1">
+            <Button
+              variant="outline"
+              className="w-full"
+              render={<Link href={cleanInWhatIfHref(hotspot, runId)} />}
+              nativeButton={false}
+            >
+              Clean in what-if
+            </Button>
+            <p className="type-micro text-text-3">
+              {/* "The first n of m" when the cap bites: the ids are in the register's own order,
+                  not ranked by anything, so a bare count would let fourteen arbitrary segments
+                  read as the junction's whole set (rule 6). */}
+              Opens the lab with{" "}
+              {hotspot.segmentIds.length > cleanedCount ? (
+                <>
+                  the first <span className="num">{cleanedCount}</span> of this junction&rsquo;s{" "}
+                  <span className="num">{hotspot.segmentIds.length}</span> road segments
+                </>
+              ) : (
+                <>
+                  this junction&rsquo;s <span className="num">{cleanedCount}</span> road segment
+                  {cleanedCount === 1 ? "" : "s"}
+                </>
+              )}{" "}
+              picked
+              {runId ? ", on this cycle" : ""}. Cleaning is element-wise per segment, so it moves
+              these streets and no others (ADR-0042).
+            </p>
+          </div>
+        ) : (
+          <p className="type-micro text-text-3">
+            No road segments are recorded for this junction, so there is nothing to send to the
+            what-if lab.
+          </p>
+        )}
         <div className="flex items-center justify-between gap-3">
           <DepthChip cm={hotspot.peakDepthCm} size="sm" showBand />
           {hotspot.sourceUrl ? (

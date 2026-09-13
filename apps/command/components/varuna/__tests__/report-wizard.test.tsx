@@ -1,8 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ReportWizard } from "@/components/varuna/report-wizard";
+import { stubFetch } from "@/lib/test-utils";
+
+/**
+ * What `POST /v1/reports` actually answered for a knee-deep report at Hindmata on 2026-09-13,
+ * copied from the response verbatim. `feedback_streets` is null because the count CLAUDE.md 11.6
+ * defines - segments whose p50 moves by more than 3 cm - belongs to the EnKF, which runs on the
+ * next cycle and not inside this request.
+ */
+const QUEUED = {
+  id: "rpt-1789280743240-3aff80",
+  accepted: true,
+  run_id: null,
+  streets_nearby: 0,
+  feedback_streets: null,
+  message: "Thanks. Your report is queued; the next cycle assimilates it.",
+};
 
 function renderWizard() {
   const queryClient = new QueryClient({
@@ -18,6 +34,10 @@ function renderWizard() {
 function click(name: string | RegExp) {
   fireEvent.click(screen.getByRole("button", { name }));
 }
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("ReportWizard", () => {
   it("advances through location, photo and depth", () => {
@@ -53,5 +73,43 @@ describe("ReportWizard", () => {
     expect(screen.getByRole("button", { name: "Send report" })).not.toBeDisabled();
 
     fetchSpy.mockRestore();
+  });
+
+  it("shows the API's queued message rather than a count nothing has computed yet", async () => {
+    vi.stubGlobal("fetch", vi.fn(stubFetch({ "/v1/reports": { status: 202, body: QUEUED } })));
+    const { container } = renderWizard();
+
+    click("Continue to photo");
+    click("Skip photo");
+    fireEvent.click(screen.getByRole("radio", { name: /Knee/ }));
+    click("Send report");
+
+    expect(await screen.findByRole("heading", { name: "Report sent" })).toBeInTheDocument();
+    expect(screen.getByText(QUEUED.message)).toBeInTheDocument();
+    // The defect this test exists for: `feedback_streets ?? 0` headlined an improved forecast for
+    // a count of zero streets, a claim of effect over a number nobody measured (CLAUDE.md rule 6).
+    expect(container.textContent).not.toMatch(/0 street/);
+    expect(container.textContent).not.toContain("improved the forecast");
+  });
+
+  it("keeps the count once Pulse has one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        stubFetch({
+          "/v1/reports": { status: 202, body: { ...QUEUED, feedback_streets: 3, message: null } },
+        }),
+      ),
+    );
+    renderWizard();
+
+    click("Continue to photo");
+    click("Skip photo");
+    fireEvent.click(screen.getByRole("radio", { name: /Knee/ }));
+    click("Send report");
+
+    expect(
+      await screen.findByRole("heading", { name: /improved the forecast for 3 streets/ }),
+    ).toBeInTheDocument();
   });
 });
