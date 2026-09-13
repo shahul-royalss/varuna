@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import json
 import math
+import secrets
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -109,7 +110,12 @@ def create_report(body: dict[str, Any]) -> dict[str, Any]:
 
     now = datetime.now(tz=IST)
     ts = str(body.get("ts") or now.isoformat())
-    report_id = f"rpt-{int(now.timestamp() * 1000):d}"
+    # A millisecond clock is not unique enough to key a report on. Windows' system clock
+    # advances in ~15.6 ms steps, so two reports submitted in the same tick - two people at the
+    # same junction, or one person's double tap - would mint the same id, and Pulse dedupes on
+    # id before it dedupes on place and time. The random suffix is per report, not per process,
+    # so retries of the same submission stay distinct too.
+    report_id = f"rpt-{int(now.timestamp() * 1000):d}-{secrets.token_hex(3)}"
     row = {
         "id": report_id,
         "ts": ts,

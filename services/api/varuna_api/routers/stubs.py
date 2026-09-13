@@ -198,7 +198,10 @@ PHYSICS_CHECK_REFUSAL = (
     "The physics check lands in Phase 7 (task P7.8). It needs a Twin re-run of the scenario, "
     "and a full-AOI Mumbai Twin run measures 137-174 s in six of the seven baked cycles "
     "(84 s in the lightest) against this endpoint's 10 s budget, so the check would have to run "
-    "on a bounded hotspot crop rather than the whole AOI. That crop is not built yet."
+    "on a bounded hotspot crop rather than the whole AOI. Such a crop was measured on "
+    "2026-09-13 at about 0.9 s coupled over a 990 m window (33 x 33 cells, 392 edges), "
+    "roughly ten times inside the budget and within 0.4 cm of the full run at the same "
+    "cells, so the cost is not the obstacle - the crop is simply not built yet (P7.8)."
 )
 
 
