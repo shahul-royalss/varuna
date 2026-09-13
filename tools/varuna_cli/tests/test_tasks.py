@@ -148,7 +148,9 @@ def test_register_skips_names_taken_by_an_engine() -> None:
     # it builds the real 830 MB offline package, which is not something a unit test should do.
     # `train` left for the same reason on 2026-09-13: it now fits the emulator. Its own refusal -
     # an empty corpus - is tested below.
-    [("city", 1), ("bundle", 2), ("bake", 5), ("demo-video", 10)],
+    # `bake` left on 2026-09-13 for the same reason: it computes cycles now, four minutes each.
+    # Its wiring is tested in test_bake_task.py with the cycle engine replaced.
+    [("city", 1), ("bundle", 2), ("demo-video", 10)],
 )
 def test_phase_gate_exits_with_two_and_no_traceback(
     app: typer.Typer, target: str, phase: int
