@@ -163,6 +163,11 @@ class TestWhenItMayDownload:
         monkeypatch.setattr(
             shutil, "disk_usage", lambda _p: shutil._ntuple_diskusage(0, 0, 50 * 1024**2)
         )
+        # Pin the branch under test. `_warm_cache` refuses before it ever looks at the disk when
+        # VARUNA_OFFLINE=1 - correctly, since that switch overrides every download - and CI's test
+        # process has it set. Unpinned, this met the offline refusal in CI and failed on a message
+        # it never asked about, while passing on a laptop where the variable is unset.
+        monkeypatch.delenv("VARUNA_OFFLINE", raising=False)
         state = a_job(from_cache_only=False)
         with pytest.raises(RuntimeError, match="Not enough room"):
             _warm_cache(state)
