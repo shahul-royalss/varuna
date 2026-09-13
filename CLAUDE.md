@@ -1099,10 +1099,19 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 | 1:40 | Scrub to +2 h: King's Circle, Sion, Gandhi Market and Milan subway turn red; manholes surcharge; tide-locked outfall shows reversed flow | TimeBar scrub, layers S on | Twin/drain coupling, M8, M9 |
 | 2:40 | Ground-truth pins drop where VARUNA was already red, ticker shows sources | replay clock passes pin times | P2.6, M18 |
 | 3:30 | Drain X-ray: 14 pipes glow; attribution; EnKF update after a traffic anomaly is assimilated | `D` layer / `/drains`, before/after | Pulse, drain health, M12 |
-| 4:30 | What-if: rain +30 % under a second; clean 14 pipes → Hindmata drops; physics check agrees | What-if drawer | Flash-lite, diff wipe M13 |
+| 4:30 | What-if: rain +30 % in under a second, with the emulator's measured skill printed beside the answer; physics check reports the disagreement | What-if drawer | Flash-lite, diff wipe M13 |
 | 5:20 | Ambulance KEM → Sion: naive vs VARUNA; safe-until; hospital reachability shrinks; phone buzzes with the alert; pump order | `/route`, Reachability tab, `/alerts` phone mock, `/pumps` | Route, isochrones, alerts, pumps, M14–M17 |
 | 6:30 | Chennai onboarding runs; first forecast appears | `/onboard` | R8, M19 |
 | 7:20 | Verification and limitations | `/verify` | Scores from artifacts |
+
+> **The cleaning lever is not in the script (ADR-0042).** Flash-lite's `simulate()` is element-wise
+> per segment, so a pipe that is not under the target moves it by exactly zero - 71.5821 cm against
+> a base of 71.5821 cm at the deepest street, 0 of Hindmata's 24 sibling candidates scoring anything
+> - and desilting the whole 21,296-segment city at once moves the deepest street by **3.466 cm**
+> (mean 0.1416 cm) on the 08:40 cycle and 1.519 cm on the newest. Section 7.2's "cleaning these 14
+> pipes: 55 -> 20 cm" is ten times that ceiling, so 4:30 is the rain scale and the drawer refuses
+> attribution with its reason rather than ranking zeros. The learning story belongs to the 3:30 beat,
+> where the before/after is Pulse's posterior moving and not a what-if.
 
 **Rehearsal checklist**
 

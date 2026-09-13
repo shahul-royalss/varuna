@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
+from varuna_schemas.paths import data_dir
 
 from varuna_pulse.enkf import assimilate, capacity_operator, hop_distances
 from varuna_pulse.health import drain_health
@@ -96,7 +97,8 @@ def run_pulse(
     Args:
         network: the loaded :class:`~varuna_twin.types.DrainNetwork`.
         city_root: ``city/<city>``, for the segment-to-inlet map.
-        bundle_dir: the replay bundle, for the traffic feed and report stream.
+        bundle_dir: the replay bundle, for the traffic feed and its report stream. Reports
+            posted through the API are read alongside it from ``data/reports/inbox.jsonl``.
         cycle_ts: only observations at or before this instant are used.
         transform, crs: the terrain grid, so a report's lon/lat can be matched to the drain node
             nearest it. Reports are skipped when they are absent, and the notes say so.
@@ -124,7 +126,11 @@ def run_pulse(
         speeds = pd.read_parquet(speeds_path)
         traffic = detect_anomalies(speeds, at=cycle_ts, raining=True)
 
-    reports = read_reports(bundle_dir, until=cycle_ts)
+    # Two report sources: the bundle's synthetic stream and the inbox POST /v1/reports appends
+    # to. Reading both here is what makes a report filed from the public map an observation on
+    # the drain X-ray one cycle later (7.11).
+    inbox = data_dir() / "reports" / "inbox.jsonl"
+    reports = read_reports(bundle_dir, until=cycle_ts, inbox=inbox)
 
     # ---- locate each observation on the graph -----------------------------------------
     nodes = pd.read_parquet(city_root / "drain_nodes.parquet", columns=["node_id", "segment_id"])

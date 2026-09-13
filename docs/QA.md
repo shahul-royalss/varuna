@@ -5,7 +5,7 @@ CLAUDE.md 16; the numbers come from `/verify`, `city/mumbai/REPORT.md`, `docs/ve
 the run directories. Where a number is bad, it is here anyway — a measured weakness is worth more
 in front of this jury than a round number nobody can reproduce (rule 6).
 
-Last measured: 11 September 2026.
+Last measured: 12 September 2026.
 
 ---
 
@@ -83,6 +83,26 @@ So what-if **levels on the Twin's own forecast** and uses the emulator only for 
 scenario makes, a tide offset is refused rather than approximated, and the measured skill is
 printed beside every answer. The GNN surrogate is the pilot upgrade.
 
+## "Show us cleaning a drain, then"
+
+We cannot, and the number says why rather than the beat quietly under-delivering on stage.
+
+Desilting the **entire city** — all 21,296 segments to β = 0.05, the largest cleaning scenario
+that exists — moves the deepest street by **3.466 cm** on the 08:40 cycle (mean 0.1416 cm; 2,032
+segments over 0.5 cm) and by **1.519 cm** on the newest. CLAUDE.md 7.2's "cleaning these 14 pipes:
+55 → 20 cm" is ten times that ceiling.
+
+And the fourteen could not be the right fourteen: cleaning every pipe *except* one target leaves
+that target exactly where it was — **71.5821 cm against a base of 71.5821 cm** at the deepest
+street, and 0 of Hindmata's 24 sibling candidates scores anything at all. `simulate()` is
+element-wise per segment, so a pipe that is not under the target has precisely zero effect, and
+the base state the depth mostly comes from — tide and upstream routing — does not depend on β.
+
+So the drawer refuses with that reason instead of ranking zeros, the 4:30 demo beat is the rain
+scale (62 ms, with the measured RMSE and CSI beside it), and the learning story is told by the
+drain X-ray's before/after, which is Pulse's posterior moving and not a what-if. ADR-0042. The fix
+is `drain1d` inside the attribution loop or the GNN surrogate (P7.12).
+
 ## "What is your ground truth?"
 
 **29 curated pins for 2 July 2019, 17 inside the scoring window**, each with the URL it was read
@@ -122,6 +142,41 @@ Because the 50-member ensemble products are not built (P7.6). Sky produces 20 me
 chart shows their spread; the Twin runs on the ensemble *mean*, so every street forecast is
 deterministic and every exceedance probability is 0 or 1. The probability layer says that on
 screen rather than drawing a smooth ramp over a spread that does not exist.
+
+## "How deep does Hindmata get?"
+
+**10.7 cm at the peak of the storm**, and the answer is that low on purpose rather than by
+omission. The number is the 90th percentile of depth over a 45 m window around the registered
+point, from the **08:10 IST cycle of 2 July 2019** (`MUM-20190702T0240Z`) — the deepest of the
+seven baked cycles at the chronic register.
+
+That cycle was re-baked on **12 September 2026** against the city rebuilt the same day, because
+ADR-0039 found two register points sitting on an OSM building footprint: both were raised 5 m and,
+since the building mask is also the solver's blocked mask, given no flux at all. The Twin could
+never wet them. What the fix is worth, measured:
+
+| Register point | Before (city of 10 Sep) | After (city of 12 Sep) |
+|---|---|---|
+| Hindmata junction | 10.7 cm | **10.7 cm** |
+| Khar Subway | 4.3 cm | **6.8 cm** |
+| Parel / Bharat Mata Cinema | 1.8 cm | **1.9 cm** |
+
+Khar Subway gains 2.5 cm and holds it, which is the fix showing up. Hindmata never sat on a
+footprint, so it does not move. Parel moves 0.1 cm: the junction figure is a p90 over 25 cells and
+restoring one of them barely shifts it — the point was blocked, and unblocking it was still
+necessary, but it was never the whole reason Parel reads shallow.
+
+So **no junction on the register reaches the 15 cm band**, while **1,004 of the 4,511 wet segments
+peak above 15 cm and 177 above 30 cm**, the deepest segment at 106.5 cm and the deepest street in
+the alert queue (V B Worlikar Marg) at 78.5 cm behind twelve severe alerts. On stage we quote those
+segment depths and the blockage the drain map learns, not a junction depth.
+
+Two things the re-bake does not fix, said out loud. **Only this cycle is re-baked** — the other six
+still come from the city of 10 September, and the board says so. And a single-cycle re-bake starts
+Pulse from the city's prior instead of the posterior the sequential pass carried into 08:10, so
+this cycle's worst pipe now reads **β 0.50** where it read 0.68: the climb from 0.394 to 0.683
+quoted above still has those endpoints, but it is no longer monotone at 08:10. A full `make bake`
+is the fix, at 126 s of CPU per cycle.
 
 ## "How accurate is the DEM?"
 

@@ -7,8 +7,8 @@ import { motion } from "motion/react";
 import type { Hotspot } from "@/lib/api/hotspots";
 import { Button } from "@/components/ui/button";
 import { DepthChip } from "@/components/varuna/depth-chip";
+import { EmptyState } from "@/components/varuna/empty-state";
 import { FanChart, type FanChartPoint } from "@/components/varuna/fan-chart";
-import { Skeleton } from "@/components/varuna/skeleton";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { DUR, EASE_UI } from "@/lib/motion";
 import { PROFILE_THRESHOLD_CM, type PassabilityProfile } from "@/lib/ramps";
@@ -196,18 +196,17 @@ export function HotspotDrawer({
 
       <section className="border-b border-line p-4">
         <h3 className="type-small font-medium text-text">Why this junction floods</h3>
-        {/* Attribution needs Pulse's posterior and Flash's cleaning sensitivity (Phase 7). A
-            skeleton is what CLAUDE.md P6.8 asks for until then - never a plausible-looking list
-            of pipes that no computation produced. */}
-        <div className="mt-2 space-y-2" aria-busy="true">
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-4/5" />
-          <Skeleton className="h-4 w-3/5" />
-        </div>
-        <p className="mt-2 type-micro text-text-3">
-          The responsible pipes are ranked by cleaning sensitivity once Pulse has learned this
-          junction&rsquo;s blockage.
-        </p>
+        {/* This was a busy skeleton captioned "once Pulse has learned this junction's blockage".
+            Pulse has: the baked runs move 202 of 6,000 edges off their prior on the 08:40 cycle
+            and 270 on 09:10, so the stated precondition was already met and the skeleton could
+            never resolve - a region that stays busy forever also fails 6.10. The ranking is
+            missing for a structural reason instead (ADR-0042), so the panel states it. */}
+        <EmptyState
+          size="sm"
+          className="mt-1"
+          title="Attribution is not computed on this run"
+          description="Flash-lite is element-wise per segment, so cleaning a pipe that is not under this junction has exactly zero effect — ADR-0042."
+        />
       </section>
 
       <footer className="p-4">

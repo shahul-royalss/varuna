@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { FloodMap } from "@/components/map/flood-map";
 import type { Isochrone } from "@/components/map/city-map";
 import type { RunDepth } from "@/lib/api/run-depth";
+import { loadDrainHealth, type DrainHealth } from "@/lib/api/drains";
 import { loadHotspots, type Hotspot, type HotspotSet } from "@/lib/api/hotspots";
 import type { MapFocus } from "@/components/map/city-map";
 import { loadSurcharge, type SurchargeSet } from "@/lib/api/surcharge";
@@ -19,6 +20,7 @@ import { LayerPanel, type LayerToggles, type LayerKey } from "@/components/varun
 import { registerLayerShortcut, type LayerKey as ShortcutLayerKey } from "@/lib/shortcuts";
 import { ProbabilityLegend } from "@/components/varuna/probability-legend";
 import { SegmentPopover } from "@/components/varuna/segment-popover";
+import { Skeleton } from "@/components/varuna/skeleton";
 import type { SegmentPick } from "@/components/map/city-map";
 import { useTruthPins } from "@/lib/hooks/use-truth-pins";
 import { RightRail } from "@/components/varuna/right-rail";
@@ -52,6 +54,10 @@ function formatStep(iso: string | undefined): string {
 
 /** Motion M7: 5-minute steps advance about three a second while playing. */
 const PLAY_INTERVAL_MS = 320;
+
+/** How many learned pipes to ask for. The cycle writes the 6,000 worst by blockage, which is what
+ * `/drains` asks for too, so the console's Drains mode and the X-ray colour the same set. */
+const LEARNED_EDGE_LIMIT = 6000;
 
 export function ConsoleScreen() {
   const replayPanelOpen = useUiStore((s) => s.replayPanelOpen);
@@ -187,6 +193,45 @@ export function ConsoleScreen() {
     return () => controller.abort();
   }, [loadedRunId]);
 
+  // The drain map Pulse learned, fetched the first time the operator asks for the layer (task
+  // P7.9). Never on mount: `drain_health.geojson` is 2.3 MB a run and section 6.7 has the layer
+  // off by default. Stamped with its run, like the rail and the surcharge set, so switching cycle
+  // re-asks rather than colouring the new run's pipes with the old run's posterior.
+  //
+  // Without this the layer drew the whole inferred network at the *prior* the city pipeline gave
+  // it - pipes, but not the learning. The posterior is what "Drains (health)" means.
+  const [drainHealth, setDrainHealth] = useState<{ runId: string; set: DrainHealth | null } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!layers.drains || !loadedRunId || drainHealth?.runId === loadedRunId) return;
+    const controller = new AbortController();
+    loadDrainHealth(loadedRunId, controller.signal, LEARNED_EDGE_LIMIT)
+      .then((set) => setDrainHealth({ runId: loadedRunId, set }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        // A run without a learned map still has pipes to draw, at their prior; the panel says so.
+        console.error("Drain health failed to load", error);
+        setDrainHealth({ runId: loadedRunId, set: null });
+      });
+    return () => controller.abort();
+  }, [layers.drains, loadedRunId, drainHealth?.runId]);
+
+  // Derived, not tracked: a posterior stamped with a different run than the map's is, by
+  // definition, still in flight (the same rule the hotspot rail uses).
+  const learned = drainHealth && drainHealth.runId === loadedRunId ? drainHealth.set : null;
+  const learnedDrains = useMemo(
+    () =>
+      (learned?.edges ?? []).map((edge) => ({
+        id: edge.id,
+        path: edge.path,
+        beta: edge.betaMean,
+        diameter: edge.diameterM,
+      })),
+    [learned],
+  );
+  const drainsPending = layers.drains && Boolean(loadedRunId) && drainHealth?.runId !== loadedRunId;
+
   const current = loadedHotspots?.runId === loadedRunId ? loadedHotspots : null;
   const hotspots = current?.set ?? null;
   const hotspotsLoading = Boolean(loadedRunId) && current === null;
@@ -315,6 +360,7 @@ export function ConsoleScreen() {
           showSegments={layers.segments}
           showSurcharge={layers.surcharge}
           showDrains={layers.drains}
+          drains={learnedDrains}
           showBuildings={layers.buildings}
           showHotspots={layers.hotspots}
           showSatellite={layers.satellite}
@@ -392,6 +438,36 @@ export function ConsoleScreen() {
               hotspots: hotspots?.hotspots.length,
             }}
           />
+          {/* What the Drains layer is actually showing. An honesty label, not fine print
+              (CLAUDE.md 6.8): most of this graph has never been observed, and the operator has to
+              be able to tell the pipes the filter moved from the pipes it never saw. */}
+          {layers.drains ? (
+            <div className="w-[248px] rounded-panel border border-line bg-[var(--ink)]/85 p-3 backdrop-blur-[12px]">
+              {drainsPending ? (
+                <>
+                  <p className="type-small text-text-2">Loading the drain map Pulse learned.</p>
+                  <Skeleton className="mt-2" lines={2} />
+                </>
+              ) : learned ? (
+                // Three numbers, all from the run's own product, and the last clause is load
+                // bearing: the cycle writes the worst 6,000 pipes, so a pipe the filter moved
+                // that ranks below them is on the map at its prior. Saying "275 pipes moved" and
+                // stopping there would claim a re-colouring the map does not draw.
+                <p className="type-small text-text-2">
+                  Inferred graph. Pulse moved{" "}
+                  <span className="num">{learned.nUpdated.toLocaleString("en-IN")}</span> of{" "}
+                  <span className="num">{learned.nEdges.toLocaleString("en-IN")}</span> pipes; the{" "}
+                  <span className="num">{learned.edges.length.toLocaleString("en-IN")}</span> worst
+                  are drawn at their posterior and the rest at the pipeline&apos;s prior.
+                </p>
+              ) : (
+                <p className="type-small text-text-2">
+                  This run has no learned drain map, so every pipe is drawn at the pipeline&apos;s
+                  prior. Bake a cycle with Pulse to give them a posterior.
+                </p>
+              )}
+            </div>
+          ) : null}
           <Button size="sm" variant="outline" onClick={() => setSkyPanelOpen((open) => !open)}>
             {skyPanelOpen ? "Hide the rain nowcast" : "Show the rain nowcast"}
           </Button>

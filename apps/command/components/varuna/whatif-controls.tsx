@@ -48,6 +48,56 @@ function firstValue(value: number | readonly number[]): number {
   return Array.isArray(value) ? Number(value[0]) : Number(value);
 }
 
+interface SwitchRowProps {
+  label: string;
+  /** What the lever does, shown under the label while it works. */
+  description: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  /** The lever is not wired to the request; the switch is inert and says why. */
+  disabled?: boolean;
+  /** What is missing and what would land it. Replaces the description while disabled. */
+  disabledReason?: string;
+}
+
+/**
+ * One switch with its label and sub-copy. A lever the request does not carry is disabled and the
+ * sub-copy becomes the reason, so the row never describes work the endpoint is not asked to do
+ * (CLAUDE.md 6.8, and section 17: never a dead control).
+ */
+function SwitchRow({
+  label,
+  description,
+  checked,
+  onCheckedChange,
+  disabled = false,
+  disabledReason,
+}: SwitchRowProps) {
+  const uid = useId();
+  const helpId = `${uid}-help`;
+  const help = disabled ? disabledReason : description;
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="min-w-0">
+        <p className="type-small font-medium text-text">{label}</p>
+        {help ? (
+          <p id={helpId} className="type-micro text-text-3">
+            {help}
+          </p>
+        ) : null}
+      </div>
+      <Switch
+        aria-label={label}
+        aria-describedby={help ? helpId : undefined}
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+      />
+    </div>
+  );
+}
+
 export interface WhatIfControlsProps {
   /** Starting values; the component owns its state after mount. */
   initial?: Partial<WhatIfValues>;
@@ -61,6 +111,14 @@ export interface WhatIfControlsProps {
   runDisabledReason?: string;
   /** Helper text under the disabled physics-check button. */
   physicsDisabledReason?: string;
+  /** The cleaning switch is inert; the request carries no pipes. */
+  cleanDisabled?: boolean;
+  /** Why cleaning is inert, shown in place of the switch's sub-copy. */
+  cleanDisabledReason?: string;
+  /** The pump-plan switch is inert; the request carries no plan. */
+  pumpDisabled?: boolean;
+  /** Why the pump plan is inert, shown in place of the switch's sub-copy. */
+  pumpDisabledReason?: string;
   className?: string;
 }
 
@@ -76,6 +134,10 @@ export function WhatIfControls({
   onPhysicsCheck,
   runDisabledReason = "The emulator lands in Phase 7",
   physicsDisabledReason = "Runs the Twin on the same scenario once Phase 7 lands",
+  cleanDisabled = false,
+  cleanDisabledReason,
+  pumpDisabled = false,
+  pumpDisabledReason,
   className,
 }: WhatIfControlsProps) {
   const [values, setValues] = useState<WhatIfValues>({ ...DEFAULT_WHATIF_VALUES, ...initial });
@@ -143,28 +205,22 @@ export function WhatIfControls({
       </section>
 
       <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="type-small font-medium text-text">Clean top 14 by beta</p>
-            <p className="type-micro text-text-3">Sets blockage to 0.05 on the 14 worst pipes.</p>
-          </div>
-          <Switch
-            aria-label="Clean top 14 by beta"
-            checked={values.cleanTop14}
-            onCheckedChange={(checked) => update({ cleanTop14: checked })}
-          />
-        </div>
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="type-small font-medium text-text">Pump plan</p>
-            <p className="type-micro text-text-3">Applies the current dispatch as extra outflow.</p>
-          </div>
-          <Switch
-            aria-label="Pump plan"
-            checked={values.pumpPlan}
-            onCheckedChange={(checked) => update({ pumpPlan: checked })}
-          />
-        </div>
+        <SwitchRow
+          label="Clean top 14 by beta"
+          description="Sets blockage to 0.05 on the 14 worst pipes."
+          checked={values.cleanTop14}
+          onCheckedChange={(checked) => update({ cleanTop14: checked })}
+          disabled={cleanDisabled}
+          disabledReason={cleanDisabledReason}
+        />
+        <SwitchRow
+          label="Pump plan"
+          description="Applies the current dispatch as extra outflow."
+          checked={values.pumpPlan}
+          onCheckedChange={(checked) => update({ pumpPlan: checked })}
+          disabled={pumpDisabled}
+          disabledReason={pumpDisabledReason}
+        />
       </section>
 
       <section className="space-y-3 border-t border-line pt-4">

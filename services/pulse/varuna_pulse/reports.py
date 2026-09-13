@@ -97,11 +97,19 @@ def observations_from(rows: list[dict[str, Any]], *, until: datetime) -> list[Re
     forecasts nothing.
     """
     parsed: list[ReportObservation] = []
+    undated = 0
     for row in rows:
         chip = str(row.get("depth_hint") or "").lower()
         if chip not in DEPTH_CHIPS:
             continue
         ts = _parse_ts(row.get("ts"))
+        if ts is not None and ts.tzinfo is None:
+            # A timestamp with no offset cannot be compared with the cycle clock, and guessing a
+            # zone for it would invent the one thing the report is evidence about - when. The
+            # rows the bundle and the API write both carry +05:30; a client that posts its own
+            # `ts` without one loses the report, and the log says how many.
+            undated += 1
+            continue
         if ts is None or ts > until:
             continue
         depth, sd = DEPTH_CHIPS[chip]
@@ -122,6 +130,10 @@ def observations_from(rows: list[dict[str, Any]], *, until: datetime) -> list[Re
     parsed.sort(key=lambda r: r.ts)
     kept: list[ReportObservation] = []
     merged: list[int] = []
+    # Whether every report in a group is synthetic. A group that a real person contributed to is
+    # not a synthetic observation, even when the bundle's stream happened to report the junction
+    # first and is the row whose id survives the merge.
+    all_synthetic: list[bool] = []
     for report in parsed:
         hit = None
         for index, existing in enumerate(kept):
@@ -133,8 +145,10 @@ def observations_from(rows: list[dict[str, Any]], *, until: datetime) -> list[Re
         if hit is None:
             kept.append(report)
             merged.append(1)
+            all_synthetic.append(report.synthetic)
         else:
             merged[hit] += 1
+            all_synthetic[hit] = all_synthetic[hit] and report.synthetic
 
     out = [
         ReportObservation(
@@ -146,30 +160,71 @@ def observations_from(rows: list[dict[str, Any]], *, until: datetime) -> list[Re
             depth_sd_cm=report.depth_sd_cm,
             chip=report.chip,
             place=report.place,
-            synthetic=report.synthetic,
+            synthetic=synthetic,
             n_merged=count,
         )
-        for report, count in zip(kept, merged, strict=True)
+        for report, count, synthetic in zip(kept, merged, all_synthetic, strict=True)
     ]
     log.info(
         "pulse.reports",
         raw=len(parsed),
         observations=len(out),
         merged=len(parsed) - len(out),
+        undated=undated,
         until=str(until),
     )
     return out
 
 
-def read_reports(bundle_dir: Path, *, until: datetime) -> list[ReportObservation]:
-    """Read ``reports.jsonl`` from a replay bundle and de-duplicate it."""
-    path = bundle_dir / "reports.jsonl"
+def read_reports(
+    bundle_dir: Path, *, until: datetime, inbox: Path | None = None
+) -> list[ReportObservation]:
+    """Read the bundle's report stream and the live inbox, and de-duplicate the two together.
+
+    ``inbox`` is ``data/reports/inbox.jsonl``, where ``POST /v1/reports`` appends what people
+    send from the public map and the report flow. It has to be merged *before* the dedupe rather
+    than after: a citizen report and the bundle's synthetic report about the same junction in the
+    same ten minutes are one piece of evidence about that junction, and assimilating both would
+    let the same water vote twice.
+
+    A row that does not say whether it is synthetic is treated as a real report, because that is
+    what arrives through the API; the bundle's own stream labels itself (rule 7).
+
+    **Limitation.** The ``until`` filter compares a report's own ``ts`` against the cycle clock,
+    so a report posted while a 2019 replay is running - whose ``ts`` is today - is later than
+    every cycle in the bundle and is not assimilated. It reaches Pulse in live mode, or when the
+    client sends the replay clock's time as ``ts``, which the endpoint accepts and the report
+    screen does not yet send.
+    """
+    rows = _read_jsonl(bundle_dir / "reports.jsonl")
+    if inbox is not None:
+        for row in _read_jsonl(inbox):
+            row.setdefault("synthetic", False)
+            rows.append(row)
+    return observations_from(rows, until=until)
+
+
+def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+    """Rows of a JSONL file, skipping any line that will not parse.
+
+    The inbox is appended to by the API while a cycle may be reading it, so a truncated last line
+    is possible. One unreadable report is not worth failing the stage for; it is worth a log line
+    naming how many were dropped.
+    """
     if not path.is_file():
         return []
-    rows = [
-        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
-    ]
-    return observations_from(rows, until=until)
+    rows: list[dict[str, Any]] = []
+    unreadable = 0
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            unreadable += 1
+    if unreadable:
+        log.warning("pulse.reports.unreadable", path=str(path), lines=unreadable)
+    return rows
 
 
 def _parse_ts(value: object) -> datetime | None:

@@ -116,15 +116,63 @@ test.describe("the demo script", () => {
     expect(errors, `console errors on /drains:\n${errors.join("\n")}`).toEqual([]);
   });
 
-  test("4:30 the what-if lab answers a scenario and prints the emulator's skill", async ({
+  test("4:30 rain plus 30 % deepens streets and prints the emulator's measured skill", async ({
     page,
   }) => {
     await open(page, "/whatif");
+
+    // The scenario has to be a scenario. At the default 1.0x the endpoint moves nothing - 0
+    // segments deeper, 0 shallower - so clicking Run straight away certifies a no-op. 1.3x is
+    // the demo's "rain plus 30 %".
+    //
+    // Written to the range input Base UI renders behind the thumb, and retried until the readout
+    // agrees: a value set before the controls hydrate is silently dropped, which is how this
+    // test first passed with the slider still at 1.0x.
+    const rain = page.getByRole("region", { name: "Rain scale" });
+    const slider = rain.getByRole("slider", { name: "Rain scale" });
+    // The readout, not the help text under the slider - that sentence names 1.3x itself, so a
+    // plain text match here would pass with the slider untouched.
+    const readout = rain.getByRole("status");
+    await expect(async () => {
+      await slider.fill("1.3");
+      await expect(readout).toHaveText("1.3x", { timeout: 1_000 });
+    }).toPass({ timeout: SETTLE });
+
     await page.getByRole("button", { name: "Run what-if" }).click();
 
-    // The count of what moved, and the honesty label beside it.
-    await expect(page.getByText(/segments deeper/i).first()).toBeVisible({ timeout: SETTLE });
+    // A count that is not zero: en-IN grouping, so "1,687 segments deeper". Anchored, because
+    // the panel's ancestor text runs the attribution line into this one - "GLO-30" followed by
+    // "0 segments deeper" reads as "GLO-300 segments deeper" and matches an unanchored pattern.
+    await expect(page.getByText(/^[1-9][\d,]* segments deeper/)).toBeVisible({
+      timeout: SETTLE,
+    });
+    // The honesty label, and the skill the answer was measured at - printed beside it rather
+    // than implied (CLAUDE.md 7.7, ADR-0025).
     await expect(page.getByText(/Reduced-order emulator/i).first()).toBeVisible();
+    await expect(
+      page.getByText(/RMSE \d+(\.\d+)? cm, CSI \d+(\.\d+)? at 30 cm/).first(),
+    ).toBeVisible();
+  });
+
+  // The other two thirds of section 15's 4:30 beat cannot be walked yet. They are recorded here
+  // rather than left out, so the suite reports them as unperformable instead of silently absent.
+  test.fixme(
+    "4:30 clean 14 pipes lowers Hindmata (P7.7: ADR-0042, the emulator is element-wise)",
+    async ({ page }) => {
+      // Flash-lite's depth is a function of each segment's own rain and its own inlet; cleaning
+      // a pipe upstream of Hindmata has exactly zero effect on Hindmata's depth, and cleaning
+      // every pipe in the city moves the deepest segment 3.466 cm on the 08:40 cycle. The demo's
+      // "55 -> 20 cm" is ten times that ceiling. The fix is drain1d in the emulator loop, or the
+      // P7.12 GNN.
+      await open(page, "/whatif");
+    },
+  );
+
+  test.fixme("4:30 physics check agrees (P7.8: the endpoint answers 501)", async ({ page }) => {
+    // POST /v1/whatif/physics-check is still a contract stub, and the button on the screen says
+    // so: a Mumbai Twin run is about three minutes against section 14's 10 s budget, so there is
+    // nothing to compare the emulator against yet.
+    await open(page, "/whatif");
   });
 
   test("5:20 the route planner compares the naive route with VARUNA's", async ({ page }) => {
