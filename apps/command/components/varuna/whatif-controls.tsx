@@ -38,6 +38,19 @@ export const CLEANING_CEILING_NOTE =
   "Cleaning is element-wise per segment, so these streets change and no others. Measured " +
   "ceiling: cleaning all 21,296 segments at once moves the deepest street 3.5 cm (ADR-0042).";
 
+/**
+ * What the tide slider can do on this screen, said before Run rather than only as the 422.
+ *
+ * `POST /v1/whatif` refuses any non-zero tide offset: Flash-lite is a perturbation around a base
+ * state measured at one tide series, so it has nothing to move a tide with. The slider stays
+ * because the request carries the field and the refusal is the API's own. The physics check that
+ * would answer a tide scenario answers 501 today, so the note says that too rather than pointing
+ * at a control that cannot run (CLAUDE.md 17, "never a dead control").
+ */
+export const TIDE_OFFSET_NOTE =
+  "The emulator cannot move the tide: it was fitted at one tide series. A tide scenario needs " +
+  "the physics check, which is not wired yet (P7.8).";
+
 export const RAIN_SCALE_MIN = 0.5;
 export const RAIN_SCALE_MAX = 2.0;
 export const TIDE_OFFSET_MIN = -0.5;
@@ -100,7 +113,7 @@ function SwitchRow({
   return (
     <div className="flex items-center justify-between gap-3">
       <div className="min-w-0">
-        <p className="type-small font-medium text-text">{label}</p>
+        <p className="type-small text-text font-medium">{label}</p>
         {help ? (
           <p id={helpId} className="type-micro text-text-3">
             {help}
@@ -140,7 +153,7 @@ function CleanedSegments({ segmentIds, onRemove, source }: CleanedSegmentsProps)
   return (
     <section aria-labelledby={labelId} className="space-y-2">
       <div className="flex items-baseline justify-between gap-3">
-        <span id={labelId} className="type-small font-medium text-text">
+        <span id={labelId} className="type-small text-text font-medium">
           Pipes to clean
         </span>
         <span className="num type-micro text-text-3">
@@ -157,13 +170,13 @@ function CleanedSegments({ segmentIds, onRemove, source }: CleanedSegmentsProps)
           <ul className="flex flex-wrap gap-1.5">
             {segmentIds.map((segmentId) => (
               <li key={segmentId}>
-                <span className="inline-flex items-center gap-1 rounded-chip border border-line bg-well py-0.5 pr-1 pl-2">
+                <span className="rounded-chip border-line bg-well inline-flex items-center gap-1 border py-0.5 pr-1 pl-2">
                   <span className="num type-micro text-text-2">{segmentId}</span>
                   <button
                     type="button"
                     aria-label={`Remove segment ${segmentId}`}
                     onClick={() => onRemove(segmentId)}
-                    className="rounded-chip p-0.5 text-text-3 transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tide"
+                    className="rounded-chip text-text-3 hover:text-text focus-visible:ring-tide p-0.5 transition-colors focus-visible:ring-2 focus-visible:outline-none"
                   >
                     <X size={12} strokeWidth={1.75} />
                   </button>
@@ -216,8 +229,13 @@ export function WhatIfControls({
   onChange,
   onRun,
   onPhysicsCheck,
-  runDisabledReason = "The emulator lands in Phase 7",
-  physicsDisabledReason = "Runs the Twin on the same scenario once Phase 7 lands",
+  // The defaults describe the component with no handler, which only a story renders: the lab
+  // always passes `onRun`. They say what is missing rather than promising a phase that has
+  // already come (CLAUDE.md 6.8).
+  runDisabledReason = "Not connected to the emulator here. The what-if lab wires this button " +
+    "to POST /v1/whatif",
+  physicsDisabledReason = "Not connected here. The check needs a Twin re-run of the scenario, " +
+    "which is not built yet (P7.8)",
   cleanedSource,
   cleanDisabled = false,
   cleanDisabledReason,
@@ -247,7 +265,7 @@ export function WhatIfControls({
     <div className={cn("space-y-6", className)}>
       <section aria-labelledby={rainLabelId} className="space-y-3">
         <div className="flex items-baseline justify-between gap-3">
-          <span id={rainLabelId} className="type-small font-medium text-text">
+          <span id={rainLabelId} className="type-small text-text font-medium">
             Rain scale
           </span>
           <output className="num type-small text-text-2" htmlFor={rainLabelId}>
@@ -269,7 +287,7 @@ export function WhatIfControls({
 
       <section aria-labelledby={tideLabelId} className="space-y-3">
         <div className="flex items-baseline justify-between gap-3">
-          <span id={tideLabelId} className="type-small font-medium text-text">
+          <span id={tideLabelId} className="type-small text-text font-medium">
             Tide offset
           </span>
           <output className="num type-small text-text-2" htmlFor={tideLabelId}>
@@ -284,9 +302,7 @@ export function WhatIfControls({
           value={[values.tideOffsetM]}
           onValueChange={(value) => update({ tideOffsetM: firstValue(value) })}
         />
-        <p className="type-micro text-text-3">
-          Added to the stage at every tidal outfall; above the trunk invert the outfall locks.
-        </p>
+        <p className="type-micro text-text-3">{TIDE_OFFSET_NOTE}</p>
       </section>
 
       <CleanedSegments
@@ -316,7 +332,7 @@ export function WhatIfControls({
         />
       </section>
 
-      <section className="space-y-3 border-t border-line pt-4">
+      <section className="border-line space-y-3 border-t pt-4">
         <div className="space-y-1">
           <Button
             className="w-full"

@@ -53,6 +53,9 @@ export interface SegmentPath {
   path: [number, number][];
   /** Depth in cm at each of the run's steps; empty means the run never wet it. */
   depthCm: number[];
+  /** P(depth > threshold) per step, keyed by the threshold in cm ("30"), measured across the
+   * run's members. Absent on a run with no spread, where probability mode compares the depth. */
+  pGt?: Record<string, number[]>;
   /** Road class, which sets the drawn width (section 6.7: 2-6 px by class). */
   width: number;
   /** Street name from OSM, where it has one. Drawn as a label at high zoom. */
@@ -745,11 +748,16 @@ export function CityMap({
             }
             const depth = d.depthCm[step] ?? 0;
             if (probabilityThresholdCm !== undefined) {
-              // **P is 0 or 1 on a one-member run**, and that is not an approximation: a
-              // deterministic forecast either puts the street over the threshold or it does not.
-              // The 15 % floor of CLAUDE.md 6.2 keeps a below-threshold street visible rather
-              // than vanishing, and the legend says which kind of run this is.
-              return probabilityRgba(depth, depth > probabilityThresholdCm ? 1 : 0);
+              // The measured fraction of members above the threshold when the run carries one
+              // (CLAUDE.md 6.2: colour at the depth, opacity = P). Absent, **P is 0 or 1**, and
+              // that is not an approximation: a run with no spread either puts the street over
+              // the threshold or it does not. The 15 % floor keeps a below-threshold street
+              // visible rather than vanishing, and the legend says which kind of run this is.
+              const measured = d.pGt?.[String(probabilityThresholdCm)]?.[step];
+              return probabilityRgba(
+                depth,
+                measured ?? (depth > probabilityThresholdCm ? 1 : 0),
+              );
             }
             return passableBelowCm === undefined
               ? depthRgba(depth)

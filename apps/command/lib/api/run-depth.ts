@@ -39,6 +39,18 @@ export interface RunDepth {
   frames: (ImageBitmap | null)[];
   /** segment_id -> depth in cm at each step. Only segments the run wetted appear. */
   depthCm: Map<string, number[]>;
+  /**
+   * segment_id -> threshold in cm ("15", "30", "45", "60") -> P(depth > threshold) at each step,
+   * measured across the run's members (CLAUDE.md 11.7, 11.8).
+   *
+   * **Null means the run has no spread to report**, not that it failed to load: the cycle only
+   * writes the key when some probability lies strictly between 0 and 1. A one-member run's
+   * exceedance is just its depth compared with the threshold, so a reader that finds null should
+   * make that comparison and say the run is deterministic - which is the one signal the
+   * probability legend needs, and a more honest one than the member count (a 20-member run whose
+   * members all agree has nothing to draw either).
+   */
+  pGt: Map<string, Record<string, number[]>> | null;
   /** ISO valid time of each step, for the time bar's labels. */
   validTs: string[];
   nSegmentsTotal: number;
@@ -62,7 +74,42 @@ interface SegmentsResponse {
   valid_ts: string[];
   n_segments_total: number;
   depth_cm: Record<string, number[]>;
+  /** threshold cm -> segment_id -> P(depth > threshold) per step. Absent on a run with no spread. */
+  p_gt?: Record<string, Record<string, number[]>>;
 }
+
+/**
+ * Turn the wire's threshold-first `p_gt` into one record per segment.
+ *
+ * The file is keyed threshold-first because that is how it compresses and how the cycle computes
+ * it; the map is keyed segment-first because a PathLayer accessor holds one segment and asks for
+ * one threshold at one step. Pivoting once at load keeps that accessor a pair of lookups, which a
+ * scrub re-runs for every wet street (CLAUDE.md 14: restyle within 16 ms).
+ */
+export function pivotExceedance(
+  pGt: Record<string, Record<string, number[]>> | undefined,
+): Map<string, Record<string, number[]>> | null {
+  if (!pGt || Object.keys(pGt).length === 0) return null;
+  const bySegment = new Map<string, Record<string, number[]>>();
+  for (const [threshold, series] of Object.entries(pGt)) {
+    for (const [segmentId, values] of Object.entries(series)) {
+      let record = bySegment.get(segmentId);
+      if (!record) {
+        record = {};
+        bySegment.set(segmentId, record);
+      }
+      record[threshold] = values;
+    }
+  }
+  return bySegment;
+}
+
+/**
+ * The exceedance that arrived with each `depthCm` map, so `joinSegments(geojson, run.depthCm)`
+ * carries it without every caller learning a third argument. Weak, so a run the console has moved
+ * past is collected with its depth map rather than pinned here.
+ */
+const EXCEEDANCE_BY_DEPTH = new WeakMap<Map<string, number[]>, Map<string, Record<string, number[]>>>();
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(apiUrl(path), { signal });
@@ -126,6 +173,10 @@ export async function loadRunDepth(
     decodeFrames(bounds.run_id, bounds.n_steps, signal, onProgress),
   ]);
 
+  const depthCm = new Map(Object.entries(segments.depth_cm ?? {}));
+  const pGt = pivotExceedance(segments.p_gt);
+  if (pGt) EXCEEDANCE_BY_DEPTH.set(depthCm, pGt);
+
   return {
     provenance: {
       runId: bounds.run_id,
@@ -141,7 +192,8 @@ export async function loadRunDepth(
     },
     bounds: bounds.bounds.wgs84,
     frames,
-    depthCm: new Map(Object.entries(segments.depth_cm ?? {})),
+    depthCm,
+    pGt,
     validTs: segments.valid_ts ?? [],
     nSegmentsTotal: segments.n_segments_total ?? 0,
   };
@@ -163,6 +215,8 @@ export interface GeoSegment {
   id: string;
   path: [number, number][];
   depthCm: number[];
+  /** threshold cm -> P(depth > threshold) per step; absent when the run has no spread. */
+  pGt?: Record<string, number[]>;
   width: number;
   /** OSM street name; 10,096 of Mumbai's 21,296 segments have one. */
   name?: string;
@@ -175,10 +229,14 @@ export interface GeoSegment {
  * paths that would never change colour, and drawing them costs frame rate the scrub needs
  * (CLAUDE.md 14: 55 fps at 1440 x 900). They are already on screen as the city's own street
  * layer, in the dry colour, which is exactly what they should look like.
+ *
+ * `pGt` defaults to the exceedance `loadRunDepth` loaded with this same `depthCm`, so a segment
+ * carries its measured probabilities wherever the run had them; pass one explicitly to override.
  */
 export function joinSegments(
   geojson: { features: { properties: Record<string, unknown>; geometry: { type: string; coordinates: number[][] } }[] },
   depthCm: Map<string, number[]>,
+  pGt: Map<string, Record<string, number[]>> | null = EXCEEDANCE_BY_DEPTH.get(depthCm) ?? null,
 ): GeoSegment[] {
   const out: GeoSegment[] = [];
   for (const feature of geojson.features ?? []) {
@@ -189,6 +247,7 @@ export function joinSegments(
       id,
       path: feature.geometry.coordinates as [number, number][],
       depthCm: series,
+      pGt: pGt?.get(id),
       width: CLASS_WIDTH[String(feature.properties?.class ?? "residential")] ?? 2,
       name: typeof feature.properties?.name === "string" ? feature.properties.name : undefined,
     });

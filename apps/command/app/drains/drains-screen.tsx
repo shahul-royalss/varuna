@@ -10,6 +10,7 @@ import { CityMap, type SegmentPath } from "@/components/map/city-map";
 import { apiUrl } from "@/lib/api/client";
 import { loadDrains, type DrainPath as DrainEdge } from "@/lib/api/city-layers";
 import { allSegments } from "@/lib/api/run-depth";
+import { loadSurcharge, type SurchargeSet } from "@/lib/api/surcharge";
 import {
   desiltingCsvUrl,
   loadDrainHealth,
@@ -93,6 +94,42 @@ export function DrainsScreen() {
       .catch(() => undefined);
     return () => controller.abort();
   }, []);
+
+  // The manholes that surcharge in the same run the blockage map came from - stamped with that
+  // run, like the console's set, so a table and rings from two different cycles never share the
+  // screen. Section 7.3 asks for them as red rings; they were passed as an empty list, so the one
+  // screen about the sewer could not show where it was failing.
+  const healthRunId = health?.runId;
+  // `failed` is kept apart from `set: null`: null means the run predates the product (a 404), and
+  // saying that over a network error would give the reader the wrong fix.
+  const [surcharge, setSurcharge] = useState<{
+    runId: string;
+    set: SurchargeSet | null;
+    failed: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (!healthRunId) return;
+    const controller = new AbortController();
+    loadSurcharge(healthRunId, controller.signal)
+      .then((set) => setSurcharge({ runId: healthRunId, set, failed: false }))
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        console.error("Surcharge failed to load", error);
+        setSurcharge({ runId: healthRunId, set: null, failed: true });
+      });
+    return () => controller.abort();
+  }, [healthRunId]);
+  const surchargeSet = surcharge?.runId === healthRunId ? surcharge?.set : undefined;
+
+  // **Each manhole at its peak, not at step 0.** This screen has no time bar, and the console's
+  // rule - draw only what surcharges *now* - would leave it at the run's first step, where one or
+  // two manholes of the 500 stored are surcharging. So every stored manhole is drawn, sized by the
+  // most it discharged over the run, and the header says that is what the rings mean.
+  const surchargeNodes = useMemo(
+    () =>
+      (surchargeSet?.nodes ?? []).map((n) => ({ id: n.id, lon: n.lon, lat: n.lat, q: n.peakQ })),
+    [surchargeSet],
+  );
 
   const rows: DrainHealthRow[] = (health?.edges ?? []).slice(0, 25).map((edge) => ({
     id: edge.id,
@@ -190,6 +227,37 @@ export function DrainsScreen() {
                           : "."}
                       </p>
                     ) : null}
+                    {/*
+                     * Section 7.3 asks for inlets as small squares coloured by clogging, and 11.6
+                     * for clogging to be learned at observed inlets. Neither exists: Pulse's state
+                     * vector is blockage alone, and `CityMap` has no point layer to draw an inlet
+                     * with. Saying so here is the honest half (rule 6) - a legend swatch for squares
+                     * that are not on the map would be the defect this sentence replaces. Remove it
+                     * when the inlet layer lands, and label that layer "prior, not learned" until
+                     * Pulse updates clogging.
+                     */}
+                    <p className="type-micro text-text-3">
+                      Inlet clogging (κ) is not learned yet, and inlets are not drawn: every inlet
+                      keeps the prior the city pipeline gave it.
+                    </p>
+                    {/*
+                     * What the red rings are. Only said once the product has answered: before
+                     * that there are no rings to explain, and a run baked before the product
+                     * existed gets the reason instead of an empty map that reads as "no surcharge".
+                     */}
+                    {surchargeSet ? (
+                      <p className="type-micro text-text-3">
+                        {surchargeSet.nodes.length > 0
+                          ? `Red rings: the ${surchargeSet.nodes.length.toLocaleString("en-IN")} manholes that surcharge hardest in this run, each at its peak, sized by discharge.`
+                          : "No manhole surcharges in this run."}
+                      </p>
+                    ) : surcharge && surcharge.runId === healthRunId ? (
+                      <p className="type-micro text-text-3">
+                        {surcharge.failed
+                          ? "Surcharge rings did not load, so manholes are not drawn. Reload the page to try again."
+                          : "No surcharge rings: this run has no surcharge product. Bake the run again to draw them."}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <ToggleGroup
@@ -231,13 +299,13 @@ export function DrainsScreen() {
                       rasterBounds={null}
                       baseSegments={streets}
                       segments={[]}
-                      surcharge={[]}
+                      surcharge={surchargeNodes}
                       hotspots={[]}
                       drains={drains}
                       showDrains
                       showRaster={false}
                       showSegments={false}
-                      showSurcharge={false}
+                      showSurcharge
                       showBuildings={false}
                       step={0}
                     />
@@ -261,7 +329,7 @@ export function DrainsScreen() {
               <PanelErrorBoundary title="Assimilation timeline">
                 <Panel
                   title="Assimilation timeline"
-                  description="Every observation Pulse used this cycle, and the blockage on the pipe it was about, before and after this cycle's update."
+                  description="The traffic anomalies Pulse detected at this cycle and the citizen reports filed up to it, with the blockage on the pipe each was about before and after this cycle's update. Earlier cycles' anomalies are not listed."
                 >
                   {observations.length === 0 ? (
                     <EmptyState
