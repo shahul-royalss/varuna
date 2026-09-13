@@ -1,4 +1,4 @@
-import { expect, test, type ConsoleMessage, type Page } from "@playwright/test";
+import { expect, test, type ConsoleMessage, type Page } from "./requirements";
 
 /**
  * The demo script, walked end to end (CLAUDE.md 15, task P10.5).
@@ -55,20 +55,23 @@ async function open(page: Page, path: string): Promise<void> {
 test.describe("the demo script", () => {
   test.slow();
 
-  test("0:00 the console opens on a real run, with the mode banner and the run stamp", async ({
-    page,
-  }) => {
-    const errors = collectConsoleErrors(page);
-    await open(page, "/console");
+  // Counts console errors, and the map's road and asset layers 404 without a built city.
+  test(
+    "0:00 the console opens on a real run, with the mode banner and the run stamp",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      const errors = collectConsoleErrors(page);
+      await open(page, "/console");
 
-    // A run stamp that names an actual run, not the empty state.
-    await expect(page.getByText(/MUM-\d{8}T\d{4}Z/).first()).toBeVisible({ timeout: SETTLE });
-    // The mode banner says what kind of run this is (CLAUDE.md 7.2).
-    await expect(page.getByText(/Replay|Live|baked/i).first()).toBeVisible();
+      // A run stamp that names an actual run, not the empty state.
+      await expect(page.getByText(/MUM-\d{8}T\d{4}Z/).first()).toBeVisible({ timeout: SETTLE });
+      // The mode banner says what kind of run this is (CLAUDE.md 7.2).
+      await expect(page.getByText(/Replay|Live|baked/i).first()).toBeVisible();
 
-    await page.waitForTimeout(3_000);
-    expect(errors, `console errors on /console:\n${errors.join("\n")}`).toEqual([]);
-  });
+      await page.waitForTimeout(3_000);
+      expect(errors, `console errors on /console:\n${errors.join("\n")}`).toEqual([]);
+    },
+  );
 
   test("0:40 the hotspot rail ranks real places with depths", async ({ page }) => {
     await open(page, "/console");
@@ -99,22 +102,27 @@ test.describe("the demo script", () => {
     }
   });
 
-  test("3:30 the drain X-ray shows a learned posterior over the inferred graph", async ({
-    page,
-  }) => {
-    const errors = collectConsoleErrors(page);
-    await open(page, "/drains");
+  // Counts console errors, and the drain and road layers 404 without a built city.
+  test(
+    "3:30 the drain X-ray shows a learned posterior over the inferred graph",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      const errors = collectConsoleErrors(page);
+      await open(page, "/drains");
 
-    await expect(page.getByText(/Inferred drain graph/i).first()).toBeVisible({ timeout: SETTLE });
-    // The table ranks pipes by blockage, with a capacity reduction for each.
-    await expect(page.getByText(/\d+ %/).first()).toBeVisible({ timeout: SETTLE });
-    await expect(page.getByText(/pipes moved this cycle/i).first()).toBeVisible({
-      timeout: SETTLE,
-    });
+      await expect(page.getByText(/Inferred drain graph/i).first()).toBeVisible({
+        timeout: SETTLE,
+      });
+      // The table ranks pipes by blockage, with a capacity reduction for each.
+      await expect(page.getByText(/\d+ %/).first()).toBeVisible({ timeout: SETTLE });
+      await expect(page.getByText(/pipes moved this cycle/i).first()).toBeVisible({
+        timeout: SETTLE,
+      });
 
-    await page.waitForTimeout(2_000);
-    expect(errors, `console errors on /drains:\n${errors.join("\n")}`).toEqual([]);
-  });
+      await page.waitForTimeout(2_000);
+      expect(errors, `console errors on /drains:\n${errors.join("\n")}`).toEqual([]);
+    },
+  );
 
   test("4:30 rain plus 30 % deepens streets and prints the emulator's measured skill", async ({
     page,
@@ -156,17 +164,16 @@ test.describe("the demo script", () => {
 
   // The other two thirds of section 15's 4:30 beat cannot be walked yet. They are recorded here
   // rather than left out, so the suite reports them as unperformable instead of silently absent.
-  test.fixme(
-    "4:30 clean 14 pipes lowers Hindmata (P7.7: ADR-0042, the emulator is element-wise)",
-    async ({ page }) => {
-      // Flash-lite's depth is a function of each segment's own rain and its own inlet; cleaning
-      // a pipe upstream of Hindmata has exactly zero effect on Hindmata's depth, and cleaning
-      // every pipe in the city moves the deepest segment 3.466 cm on the 08:40 cycle. The demo's
-      // "55 -> 20 cm" is ten times that ceiling. The fix is drain1d in the emulator loop, or the
-      // P7.12 GNN.
-      await open(page, "/whatif");
-    },
-  );
+  test.fixme("4:30 clean 14 pipes lowers Hindmata (P7.7: ADR-0042, the emulator is element-wise)", async ({
+    page,
+  }) => {
+    // Flash-lite's depth is a function of each segment's own rain and its own inlet; cleaning
+    // a pipe upstream of Hindmata has exactly zero effect on Hindmata's depth, and cleaning
+    // every pipe in the city moves the deepest segment 3.466 cm on the 08:40 cycle. The demo's
+    // "55 -> 20 cm" is ten times that ceiling. The fix is drain1d in the emulator loop, or the
+    // P7.12 GNN.
+    await open(page, "/whatif");
+  });
 
   test.fixme("4:30 physics check agrees (P7.8: the endpoint answers 501)", async ({ page }) => {
     // POST /v1/whatif/physics-check is still a contract stub, and the button on the screen says
@@ -175,15 +182,24 @@ test.describe("the demo script", () => {
     await open(page, "/whatif");
   });
 
-  test("5:20 the route planner compares the naive route with VARUNA's", async ({ page }) => {
-    await open(page, "/route");
-    await page.getByRole("button", { name: "Find route" }).click();
+  // "Find route" enables once /v1/route/facilities answers, and that reads the city's asset layer.
+  test(
+    "5:20 the route planner compares the naive route with VARUNA's",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      await open(page, "/route");
+      // Enabled first, then clicked: a click waits for a disabled button until the test times out,
+      // which is how this test spent twelve minutes in CI. This fails in 45 s and names the cause.
+      const findRoute = page.getByRole("button", { name: "Find route" });
+      await expect(findRoute).toBeEnabled({ timeout: SETTLE });
+      await findRoute.click();
 
-    await expect(page.getByText(/Routed on run/i).first()).toBeVisible({ timeout: SETTLE });
-    // Two columns of real numbers: an ETA and a distance for each route.
-    await expect(page.getByText(/\d+ min/).first()).toBeVisible({ timeout: SETTLE });
-    await expect(page.getByText(/\d+(\.\d+)? km/).first()).toBeVisible();
-  });
+      await expect(page.getByText(/Routed on run/i).first()).toBeVisible({ timeout: SETTLE });
+      // Two columns of real numbers: an ETA and a distance for each route.
+      await expect(page.getByText(/\d+ min/).first()).toBeVisible({ timeout: SETTLE });
+      await expect(page.getByText(/\d+(\.\d+)? km/).first()).toBeVisible();
+    },
+  );
 
   test("5:20 the alert centre raises alerts with a CAP document at Exercise", async ({ page }) => {
     await open(page, "/alerts");
@@ -210,19 +226,22 @@ test.describe("the demo script", () => {
     await expect(page.getByText(/Choose area/i).first()).toBeVisible();
   });
 
-  test("7:20 verification reports scores computed from artifacts, with its limits", async ({
-    page,
-  }) => {
-    const errors = collectConsoleErrors(page);
-    await open(page, "/verify");
+  // Counts console errors, and /v1/verification scores against the city's road graph.
+  test(
+    "7:20 verification reports scores computed from artifacts, with its limits",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      const errors = collectConsoleErrors(page);
+      await open(page, "/verify");
 
-    // A CSI, and the count of ground truth it was scored against.
-    await expect(page.getByText(/CSI/i).first()).toBeVisible({ timeout: SETTLE });
-    await expect(page.getByText(/\d+(\.\d+)?/).first()).toBeVisible();
+      // A CSI, and the count of ground truth it was scored against.
+      await expect(page.getByText(/CSI/i).first()).toBeVisible({ timeout: SETTLE });
+      await expect(page.getByText(/\d+(\.\d+)?/).first()).toBeVisible();
 
-    await page.waitForTimeout(2_000);
-    expect(errors, `console errors on /verify:\n${errors.join("\n")}`).toEqual([]);
-  });
+      await page.waitForTimeout(2_000);
+      expect(errors, `console errors on /verify:\n${errors.join("\n")}`).toEqual([]);
+    },
+  );
 
   test("the public map draws the run in three colours for a chosen vehicle", async ({ page }) => {
     await open(page, "/map");

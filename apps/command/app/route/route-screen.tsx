@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { CityMap, type Isochrone, type RouteLine, type SegmentPath } from "@/components/map/city-map";
+import {
+  CityMap,
+  type Isochrone,
+  type RouteLine,
+  type SegmentPath,
+} from "@/components/map/city-map";
 import { AppShell } from "@/components/varuna/app-shell";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { CyclePicker } from "@/components/varuna/cycle-picker";
@@ -196,7 +201,10 @@ export function RouteScreen() {
           <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[30fr_70fr]">
             <PanelErrorBoundary>
               <div className="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
-                <Panel title="Trip" description="KEM Hospital to Sion Hospital at the replay clock.">
+                <Panel
+                  title="Trip"
+                  description="KEM Hospital to Sion Hospital at the replay clock."
+                >
                   <RouteForm
                     value={request}
                     onChange={setRequest}
@@ -205,18 +213,16 @@ export function RouteScreen() {
                     disabled={places.length === 0}
                     submitDisabledReason="Loading the city's hospitals and chronic junctions"
                   />
-                  {running ? (
-                    <p className="mt-3 type-small text-text-3">Routing...</p>
-                  ) : null}
-                  {error ? <p className="mt-3 type-small text-text-2">{error}</p> : null}
+                  {running ? <p className="type-small text-text-3 mt-3">Routing...</p> : null}
+                  {error ? <p className="type-small text-text-2 mt-3">{error}</p> : null}
                   {plan ? (
-                    <p className="mt-3 type-micro text-text-3">
+                    <p className="type-micro text-text-3 mt-3">
                       Routed on run <span className="num">{plan.runId}</span> in{" "}
                       <span className="num">{Math.round(plan.ms)}</span> ms.
                     </p>
                   ) : null}
                   {plan?.notes.map((note) => (
-                    <p key={note} className="mt-2 type-micro text-text-3">
+                    <p key={note} className="type-micro text-text-3 mt-2">
                       {note}
                     </p>
                   ))}
@@ -231,11 +237,20 @@ export function RouteScreen() {
              * "I can't even scroll down". The map keeps a definite height rather than `flex-1`, so
              * it cannot be squeezed to nothing by the panel below it either.
              */}
-            <div className="flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-1">
+            <div
+              // Focusable, because until the city and a route have loaded it scrolls and holds
+              // nothing to tab to - the map is an empty state and the comparison has no buttons
+              // yet - so a keyboard user could not reach the bottom of it (WCAG 2.1.1). A clean
+              // clone without city/mumbai is exactly that state, which is where axe caught it.
+              tabIndex={0}
+              role="region"
+              aria-label="Route map and comparison"
+              className="focus-visible:ring-tide/50 flex min-h-0 min-w-0 flex-col gap-4 overflow-y-auto pr-1 focus-visible:ring-3 focus-visible:outline-none"
+            >
               <PanelErrorBoundary>
                 <section
                   aria-label="Route map"
-                  className="relative h-[clamp(20rem,52vh,40rem)] shrink-0 overflow-hidden rounded-panel border border-line bg-deep"
+                  className="rounded-panel border-line bg-deep relative h-[clamp(20rem,52vh,40rem)] shrink-0 overflow-hidden border"
                 >
                   {streets.length > 0 ? (
                     <CityMap
