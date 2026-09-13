@@ -281,7 +281,8 @@ export function WhatIfControls({
           onValueChange={(value) => update({ rainScale: firstValue(value) })}
         />
         <p className="type-micro text-text-3">
-          Multiplies every Sky member; 1.3x is the demo&apos;s &ldquo;rain plus 30 %&rdquo; moment.
+          Scales the storm this run&apos;s Twin ran on: the Sky ensemble mean, averaged over the
+          area, one value per 5 minutes. 1.3x is the demo&apos;s &ldquo;rain plus 30 %&rdquo; moment.
         </p>
       </section>
 
