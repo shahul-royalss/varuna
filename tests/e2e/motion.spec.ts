@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./requirements";
 
 /**
  * Motion under the OS reduced-motion setting (CLAUDE.md 8, task P10.1).
@@ -83,24 +83,33 @@ test.describe("reduced motion", () => {
     ).toBe(0);
   });
 
-  test("M14: the route is drawn whole rather than drawing itself on", async ({ page }) => {
-    await open(page, "/route");
-    await page.getByRole("button", { name: "Find route" }).click();
-    await expect(page.getByText(/Routed on run/i).first()).toBeVisible({ timeout: SETTLE });
+  // "Find route" enables once /v1/route/facilities answers, and that reads the city's asset layer.
+  test(
+    "M14: the route is drawn whole rather than drawing itself on",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      await open(page, "/route");
+      // Enabled first: a click on a disabled button waits out the whole test timeout instead.
+      const findRoute = page.getByRole("button", { name: "Find route" });
+      await expect(findRoute).toBeEnabled({ timeout: SETTLE });
+      await findRoute.click();
+      await expect(page.getByText(/Routed on run/i).first()).toBeVisible({ timeout: SETTLE });
 
-    // The catalogue's fallback for M14 is "both shown at once". The route's own draw progress is
-    // internal, so the observable version is that the comparison is complete immediately rather
-    // than filling in over 1.2 s.
-    const eta = page.getByText(/\d+ min/).first();
-    await expect(eta).toBeVisible({ timeout: 2_000 });
-  });
+      // The catalogue's fallback for M14 is "both shown at once". The route's own draw progress is
+      // internal, so the observable version is that the comparison is complete immediately rather
+      // than filling in over 1.2 s.
+      const eta = page.getByText(/\d+ min/).first();
+      await expect(eta).toBeVisible({ timeout: 2_000 });
+    },
+  );
 
   test("M22: skeletons do not shimmer", async ({ page }) => {
     await open(page, "/console");
-    const shimmering = await page.evaluate(() =>
-      [...document.querySelectorAll(".skeleton-shimmer")].filter(
-        (el) => getComputedStyle(el).animationName !== "none",
-      ).length,
+    const shimmering = await page.evaluate(
+      () =>
+        [...document.querySelectorAll(".skeleton-shimmer")].filter(
+          (el) => getComputedStyle(el).animationName !== "none",
+        ).length,
     );
     expect(shimmering, "skeletons are still shimmering under reduced motion").toBe(0);
   });
@@ -130,15 +139,21 @@ test.describe("reduced motion", () => {
 
 test.describe("motion on", () => {
   test.slow();
-  test("the route draws itself on when motion is allowed", async ({ page }) => {
-    await open(page, "/route", "no-preference");
-    await page.getByRole("button", { name: "Find route" }).click();
-    await expect(page.getByText(/Routed on run/i).first()).toBeVisible({ timeout: SETTLE });
-    // The counterpart to the reduced-motion test: with motion on, the page reports it, so the two
-    // branches are both exercised rather than only the one the CI machine happens to prefer.
-    const allowed = await page.evaluate(
-      () => !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
-    );
-    expect(allowed).toBe(true);
-  });
+  test(
+    "the route draws itself on when motion is allowed",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      await open(page, "/route", "no-preference");
+      const findRoute = page.getByRole("button", { name: "Find route" });
+      await expect(findRoute).toBeEnabled({ timeout: SETTLE });
+      await findRoute.click();
+      await expect(page.getByText(/Routed on run/i).first()).toBeVisible({ timeout: SETTLE });
+      // The counterpart to the reduced-motion test: with motion on, the page reports it, so the two
+      // branches are both exercised rather than only the one the CI machine happens to prefer.
+      const allowed = await page.evaluate(
+        () => !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+      );
+      expect(allowed).toBe(true);
+    },
+  );
 });
