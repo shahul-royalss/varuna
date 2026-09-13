@@ -74,7 +74,7 @@ DEFAULT_UI_PORT = 3000
 PLACEHOLDER_PHASES: dict[str, tuple[int, str]] = {
     "city": (1, "City-in-a-box (Mumbai)"),
     "bundle": (2, "Replay bundle and storm designer"),
-    "bake": (5, "Products, cycle orchestrator, API"),
+    # `bake` left on 2026-09-13, three days after P5.6 was ticked on it: it runs cycles now.
     # `train` left on 2026-09-13 for the same reason `pack` did: it fits the emulator now.
     # `pack` was here until P10.6 implemented it (2026-09-11). Leaving it behind did not change
     # what the CLI does - the real command wins - but the phase-gate test drove every entry in
@@ -424,9 +424,61 @@ def bundle(
 
 def bake(
     bundle: Annotated[str, typer.Option("--bundle", help="Replay bundle id.")] = DEFAULT_BUNDLE,
+    every: Annotated[
+        int | None,
+        typer.Option("--every", help="Minutes between baked cycles; default every cycle."),
+    ] = None,
+    start: Annotated[
+        str | None,
+        typer.Option("--from", help="First cycle: HH:MM IST on the bundle's day, or ISO 8601."),
+    ] = None,
+    end: Annotated[
+        str | None, typer.Option("--to", help="Last cycle, in the same forms as --from.")
+    ] = None,
+    overwrite: Annotated[
+        bool, typer.Option("--overwrite", help="Recompute cycles whose run already exists.")
+    ] = False,
 ) -> None:
-    """Pre-compute every 5-minute cycle of a bundle into data/runs/ (Phase 5)."""
-    not_implemented("bake")
+    """Pre-compute every 5-minute cycle of a bundle into data/runs/, oldest first (P5.6).
+
+    A run that already exists is skipped, so an interrupted bake resumes where it stopped.
+    ``make bake ARGS="--every 30 --from 06:10 --to 09:10"`` rebuilds the seven cycles that ship in
+    ``demo/runs``; ``uv run varuna cycle plan`` lists what a bake would compute without running it.
+    """
+    try:
+        from varuna_cycle import bake as engine
+    except ImportError as error:
+        console.print(
+            f"The cycle engine is not importable ({error}); run make setup.",
+            style="red",
+            markup=False,
+        )
+        raise typer.Exit(code=1) from error
+
+    try:
+        plan = engine.plan_bundle(bundle, every_min=every, start=start, end=end)
+    except Exception as error:  # planning reads the manifest and the radar cube; say which failed
+        console.print(str(error), style="red", markup=False)
+        raise typer.Exit(code=1) from error
+
+    console.print(
+        f"{plan.bundle} on {plan.city}: {len(plan.instants)} cycle(s), oldest first.", markup=False
+    )
+    report = engine.bake_cycles(
+        plan,
+        overwrite=overwrite,
+        on_event=lambda *event: console.print(
+            engine.describe_event(*event), markup=False, highlight=False
+        ),
+    )
+    console.print(
+        f"Baked {len(report.baked)}, skipped {len(report.skipped)} already baked, "
+        f"failed {len(report.failed)}.",
+        markup=False,
+    )
+    console.print(engine.PULSE_NOTE, style="dim", markup=False)
+    if not report.ok:
+        raise typer.Exit(code=1)
 
 
 TRAIN_DIR = "data/train"

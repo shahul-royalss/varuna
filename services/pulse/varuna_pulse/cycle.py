@@ -9,10 +9,16 @@ evidence about the pipe Hindmata drains into, and the city pipeline already know
 node each surface unit and road segment belongs to. Going through the graph rather than through
 a radius search is what makes the localisation below mean something hydraulic.
 
-**The posterior persists across cycles** (CLAUDE.md 11.6) and relaxes toward the prior with a
-30-day time constant, so a pipe that was desilted last month is not still condemned by a flood
-it caused in June. Within a bake the carry-forward is in memory; `posterior.json` in the run
-directory is what survives a restart.
+**The posterior is meant to persist across cycles** (CLAUDE.md 11.6) and relax toward the prior
+with a 30-day time constant, so a pipe that was desilted last month is not still condemned by a
+flood it caused in June. `run_pulse` takes a carried-forward posterior as ``prior_mean`` and
+``prior_sd``, and :func:`load_posterior`, :func:`save_posterior` and the relaxation below exist
+for it - **but nothing passes one yet.** The cycle calls `run_pulse` with no prior and no run
+directory holds a `posterior.json`, so each cycle re-assimilates every observation up to its own
+instant from the city's prior. (This docstring used to say the carry-forward happened in memory
+within a bake; no bake existed to do it.) Wiring it also means narrowing each cycle to the
+observations since the last one, or every observation is counted again every cycle
+(`varuna_cycle.bake`).
 """
 
 from __future__ import annotations
