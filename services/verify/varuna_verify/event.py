@@ -13,9 +13,12 @@ depth: they are civic logs and news reports that say a street was waterlogged, n
 * **Depth MAE is not.** No pin carries a depth, so there is nothing to take a difference against.
   It is reported as unavailable with that reason rather than as a number, because a depth error
   computed against depths nobody published would be an invention (rule 6).
-* **Brier and reliability are not,** on these runs. The baked runs are deterministic
-  (``ensemble_n`` is 1), so every exceedance probability is 0 or 1 and a reliability diagram would
-  be two points. Phase 7's 50-member products are what make that chart meaningful.
+* **Brier and reliability are not, yet.** This used to say the baked runs were deterministic
+  (``ensemble_n`` 1). Since 13 September 2026 the demo runs carry a 20-member street ensemble -
+  the Sky members through Flash-lite - and ``segments_wet.json`` holds its exceedance
+  probabilities, but this scorer reads only the depth series and never those probabilities, so no
+  probabilistic score is computed. They are also 20 members rather than 11.7's 50: the Pulse
+  parameter draws that multiply them are not built.
 
 **A false alarm needs care.** Absence of a pin is not absence of flooding: nobody logged most of
 Mumbai that morning. Counting every unpinned wet street as a false alarm would score the city's
@@ -357,10 +360,12 @@ def score_event(event: str = "MUM-2019-07-02", threshold_cm: float = THRESHOLD_C
             "not gauges - so there is nothing to take a difference against."
         ),
         "brier_score": (
-            "The baked runs are deterministic (one member), so every exceedance probability is 0 "
-            "or 1. The 50-member products of Phase 7 are what make this score meaningful."
+            "The demo runs carry a 20-member street ensemble and its exceedance probabilities, but "
+            "this scorer reads only the depth series and does not score probabilities yet. The "
+            "members are Sky's twenty through the emulator, not the 50 of Pulse draws the spec "
+            "asks for."
         ),
-        "reliability_diagram": "Needs the same 50-member probabilities as the Brier score.",
+        "reliability_diagram": "Needs the scorer to read the same probabilities as the Brier score.",
     }
     scores.notes = [
         f"Scored at {threshold_cm:.0f} cm, the depth at which cars stop.",
