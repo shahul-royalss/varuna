@@ -93,9 +93,11 @@ def seed_demo_runs() -> int:
     copied = 0
     skipped_local = 0
     current = 0
+    shipped: set[str] = set()
     for run in sorted(source.iterdir()):
         if not run.is_dir() or not (run / "run.json").is_file():
             continue
+        shipped.add(run.name)
 
         destination = target / run.name
         fingerprint = run_fingerprint(run)
@@ -125,11 +127,25 @@ def seed_demo_runs() -> int:
         marker.write_text(fingerprint + "\n", encoding="utf-8")
         copied += 1
 
+    # **A seeded run the shipped set no longer carries is taken back.** Seeding used to only
+    # add, which was harmless while the set only ever gained products. Re-baking the demo cycles
+    # with the ensemble changed every run id (flash0.0 to flash0.1), and the volume would have
+    # kept both runs of each cycle: the picker listing every cycle twice, the single-member run
+    # one click from the ensemble that replaced it. Only a run carrying the marker goes - one
+    # without it is this deployment's own work, and is never in the shipped set by nature.
+    removed = 0
+    for existing in sorted(target.iterdir()):
+        if existing.name in shipped or not (existing / MARKER).is_file():
+            continue
+        shutil.rmtree(existing)
+        removed += 1
+
     log.info(
         "api.seeded_demo_runs",
         written=copied,
         already_current=current,
         left_alone=skipped_local,
+        removed=removed,
         source=str(source),
         target=str(target),
     )
