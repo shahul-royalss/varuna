@@ -167,8 +167,14 @@ def test_the_shipped_design_storm_is_not_held_to_the_pin_floor() -> None:
     from varuna_schemas.paths import bundles_dir
 
     root = bundles_dir() / "MUM-IDF-25yr"
-    if not root.is_dir():
-        pytest.skip("MUM-IDF-25yr has not been generated in this checkout")
+    # The folder alone does not mean generated: its manifest and ground truth are committed,
+    # while radar/frames.zarr and truth/rain.zarr are gitignored and written by `make bundle`.
+    # On a clean clone - which is what CI checks out - the folder exists and the cubes do not,
+    # so testing the folder ran the validator over half a bundle and failed B3 for members a
+    # clean clone was never going to have. Skip on the cubes, which is what the message meant.
+    generated = all((root / cube).is_dir() for cube in ("radar/frames.zarr", "truth/rain.zarr"))
+    if not generated:
+        pytest.skip("MUM-IDF-25yr has not been generated in this checkout; run `make bundle`")
 
     report = validate_bundle(root)
 
