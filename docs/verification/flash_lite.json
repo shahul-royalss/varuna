@@ -6,5 +6,5 @@
   "n_holdout_runs": 2,
   "rmse_cm": 5.704,
   "csi_30cm": 0.0854,
-  "note": "Reduced-order emulator calibrated to VARUNA-Twin. Fitted to design storms at 25, 50, 75 and 110 mm/h peak at two blockage draws; CLAUDE.md 11.7 asks for 200 runs and this is 8, so the held-out skill below is the number to trust, not the structure."
+  "note": "Reduced-order emulator calibrated to VARUNA-Twin. Corpus of 8 Twin runs peaking at 23-109 mm/h over the segments across 2 blockage draws, 6 fitted and 2 held out; CLAUDE.md 11.7 asks for 200 runs and this is 8, so the held-out skill below is the number to trust, not the structure."
 }

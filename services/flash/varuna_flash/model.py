@@ -65,7 +65,9 @@ log = structlog.get_logger("varuna.flash.model")
 
 __all__ = [
     "K_BOUNDS",
+    "K_LOG_SD",
     "FlashModel",
+    "draw_members",
     "fit",
     "load",
     "simulate",
@@ -85,6 +87,24 @@ DEFAULT_K = 3.0
 Fifteen minutes. Stated as a constant rather than hidden in a fallback branch, because a good
 fraction of the network is never wet in eight design storms and a reader deserves to know that
 those segments are carrying a prior rather than a measurement."""
+
+K_FIT_GRID = 16
+"""How many storage coefficients :func:`_fit_one` scores. See :data:`K_LOG_SD`."""
+
+K_LOG_SD = 0.25
+"""Multiplicative spread on ``k`` between ensemble members, as a log-space standard deviation.
+
+CLAUDE.md 11.7 asks for "MC noise on ``k_u`` for structural spread": the members should disagree
+about the emulator's own parameters, not only about the weather, or the ensemble understates how
+little the model knows. The size of the noise is derived rather than chosen. :func:`_fit_one`
+searches ``k`` on a grid of :data:`K_FIT_GRID` points across :data:`K_BOUNDS`, so two values
+closer than one grid step - ``11.5 / 15 = 0.77``, which is 26 % of the typical fitted
+:data:`DEFAULT_K` - are values the fit could not tell apart in the first place. A quarter in log
+space is that resolution limit, and is therefore the least the members may honestly disagree by.
+
+It is a resolution limit and **not** a fitted posterior: the eight-run fit (ADR-0025) publishes no
+per-segment uncertainty on ``k``, so this is the same width on every street, including the ones
+that were never wet in training and are carrying :data:`DEFAULT_K` rather than a measurement."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,6 +152,7 @@ def simulate(
     rain_mm_h: NDArray[np.floating],
     *,
     beta: NDArray[np.floating] | None = None,
+    k_steps: NDArray[np.floating] | None = None,
     pump_cm_per_step: NDArray[np.floating] | None = None,
 ) -> NDArray[np.floating]:
     """Three hours of street depth for every segment, in cm. ``(n_steps, n_segments)``.
@@ -141,6 +162,9 @@ def simulate(
         rain_mm_h: ``(n_steps,)`` AOI rain, or ``(n_steps, n_segments)`` per segment.
         beta: blockage per segment to run at; the fitted reference when absent. This is the
             what-if handle - cleaning a pipe is lowering its beta.
+        k_steps: storage coefficient per segment to run at; the fitted value when absent. This
+            is the handle :func:`draw_members` needs - a member that cannot be given its own
+            ``k`` carries no structural spread at all, only the weather's.
         pump_cm_per_step: extra drawdown per segment, for the pump plan.
 
     The whole point is the cost: this is two vectorised recursions over 36 steps, so the entire
@@ -151,7 +175,7 @@ def simulate(
         rain = rain[:, None] * np.ones(model.n_segments)[None, :]
     n_steps = rain.shape[0]
 
-    k = np.clip(model.k_steps, *K_BOUNDS)
+    k = np.clip(model.k_steps if k_steps is None else np.asarray(k_steps), *K_BOUNDS)
     outflow_fraction = 1.0 / k
 
     # The drainage a pipe still provides at the blockage being asked about. Manning's capacity
@@ -185,6 +209,107 @@ def simulate(
         take = min(n_steps, base.shape[0])
         depth[:take] += base[:take]
     return depth
+
+
+def draw_members(
+    model: FlashModel,
+    beta_mean: NDArray[np.floating],
+    beta_sd: NDArray[np.floating],
+    n_members: int = 50,
+    n_sky: int = 20,
+    seed: int = 2019,
+) -> tuple[NDArray[np.int64], NDArray[np.float64], NDArray[np.float64]]:
+    """Draw the parameters of a 50-member street ensemble. ``(sky_index, beta, k)``.
+
+    CLAUDE.md 11.7: "50 members = 20 Sky members x parameter draws from the Pulse posterior
+    (with replacement); MC noise on ``k_u`` for structural spread". Each member is therefore one
+    Sky rain member run through one draw of the emulator's parameters, and the count of members
+    is not the count of rain members - fifty streets-level futures over twenty weather futures,
+    because the weather is not the only thing the forecast is uncertain about.
+
+    Args:
+        model: the fitted emulator; ``model.k_steps`` is the centre of the ``k`` draw.
+        beta_mean, beta_sd: the Pulse posterior per **road segment**, in
+            ``model.segment_ids`` order. Pulse publishes blockage per *drain edge*
+            (:class:`varuna_pulse.enkf.EnkfResult`); ``varuna_pulse.join.segment_beta`` is what
+            carries it across to this index, and a length mismatch here almost always means the
+            edge-keyed arrays were passed straight in.
+        n_members: how many members to draw.
+        n_sky: how many Sky rain members there are to draw from.
+        seed: rule 8 - two bakes on the same inputs must be byte-identical, so every draw in
+            this function comes from one ``np.random.default_rng(seed)`` and nothing else.
+
+    Returns:
+        ``sky_index`` ``(n_members,)`` - which Sky rain member each ensemble member uses, drawn
+        with replacement; ``beta`` and ``k`` ``(n_members, n_segments)`` - the blockage and
+        storage coefficient to run that member at. Feed a member straight to :func:`simulate`::
+
+            sky_index, beta, k = draw_members(model, mean, sd)
+            depth = simulate(model, hyetographs[sky_index[m]], beta=beta[m], k_steps=k[m])
+
+    **Unresolved segments stay unresolved.** ``segment_beta`` returns NaN for the 4,313 Mumbai
+    segments with no inlet link rather than handing them the prior, and this function propagates
+    that NaN into ``beta`` and on into a NaN depth. Substituting the city prior here would launder
+    "we do not know" into "we measured" (rule 6); the caller that does substitute is expected to
+    count the segments it substituted and say so on screen.
+    """
+    if n_sky < 1:
+        msg = f"need at least one Sky member to draw from; got n_sky={n_sky}"
+        raise ValueError(msg)
+    if n_members < 1:
+        msg = f"need at least one ensemble member; got n_members={n_members}"
+        raise ValueError(msg)
+
+    mean = np.asarray(beta_mean, dtype=np.float64)
+    sd = np.asarray(beta_sd, dtype=np.float64)
+    if mean.shape != (model.n_segments,) or sd.shape != (model.n_segments,):
+        msg = (
+            f"blockage must be one value per segment, {model.n_segments} of them; got "
+            f"mean {mean.shape} and sd {sd.shape}. Pulse publishes blockage per drain edge - "
+            "join it to segments with varuna_pulse.join.segment_beta first."
+        )
+        raise ValueError(msg)
+
+    rng = np.random.default_rng(seed)
+    shape = (n_members, model.n_segments)
+
+    # Which weather each member gets. With replacement, per 11.7: fifty members over twenty rain
+    # members cannot be a permutation, and sampling makes the rain members equally likely rather
+    # than giving the first ten an extra draw apiece the way tiling would.
+    sky_index = rng.integers(n_sky, size=n_members, dtype=np.int64)
+
+    # Blockage, drawn in beta space and clipped to a valid blockage. Note that the clip biases
+    # the draw for a pipe whose posterior sits within a standard deviation of 0 or 1 - the
+    # spread there comes back narrower than `beta_sd` says. The EnKF avoids this by working in
+    # logit space; here the spec asks for the published mean and sd, and the honest cost of
+    # taking them at face value is a slightly tight ensemble on a pipe that is nearly certain.
+    beta = np.clip(mean[None, :] + rng.normal(size=shape) * sd[None, :], 0.0, 1.0)
+
+    # Structural spread: the emulator's own parameter, not the weather's. Lognormal because k is
+    # a timescale - it cannot go negative, and "20 % slower" and "20 % faster" should be equally
+    # likely, which is a statement about ratios. The median member keeps the fitted value.
+    k = np.clip(
+        model.k_steps[None, :] * np.exp(rng.normal(size=shape) * K_LOG_SD),
+        *K_BOUNDS,
+    )
+
+    unresolved = int(np.count_nonzero(~np.isfinite(mean)))
+    if unresolved:
+        log.info(
+            "flash.members.unresolved_blockage",
+            segments=unresolved,
+            of=model.n_segments,
+            note="no posterior for these segments; their members carry NaN, not the prior",
+        )
+    log.info(
+        "flash.members.drawn",
+        members=n_members,
+        sky_members=n_sky,
+        segments=model.n_segments,
+        seed=seed,
+        k_log_sd=K_LOG_SD,
+    )
+    return sky_index, beta, k
 
 
 DEPTH_WEIGHT_CM = 5.0
@@ -232,7 +357,7 @@ def _fit_one(
     weights = 1.0 + np.maximum(target_cm, 0.0) / DEPTH_WEIGHT_CM
     best = (DEFAULT_K, 0.0, 0.0, np.inf)
 
-    for k in np.linspace(K_BOUNDS[0], K_BOUNDS[1], 16):
+    for k in np.linspace(K_BOUNDS[0], K_BOUNDS[1], K_FIT_GRID):
         # Run the cascade with unit gain, so the response is a basis the linear fit scales.
         s1 = s2 = 0.0
         response = np.empty(rain_mm_h.size)

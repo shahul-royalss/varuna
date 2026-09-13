@@ -46,8 +46,8 @@ bundle: ## Generate a replay bundle (storm designer, synthetic streams, curated 
 bake: ## Pre-compute every 5-minute cycle of a bundle into data/runs/
 	$(VARUNA) bake --bundle $(BUNDLE) $(ARGS)
 
-train: ## Fit Flash-lite from Twin runs (P1: train the GNN)
-	$(VARUNA) train $(ARGS)
+train: ## Fit Flash-lite from the Twin runs in data/train/ (P1: train the GNN)
+	$(VARUNA) train --city $(CITY) $(ARGS)
 
 dev: ## API on :8000 and Next.js on :3000, replay paused
 	$(VARUNA) dev $(ARGS)

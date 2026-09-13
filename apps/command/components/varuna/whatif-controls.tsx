@@ -1,5 +1,6 @@
 "use client";
 
+import { X } from "lucide-react";
 import { useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -15,9 +16,27 @@ export interface WhatIfValues {
   tideOffsetM: number;
   /** Clean the top 14 pipes by posterior beta (beta to 0.05). */
   cleanTop14: boolean;
+  /**
+   * Road segments whose pipe is cleaned (beta to 0.05), picked on a hotspot and carried here by
+   * the "Clean in what-if" deep link. Road-segment ids, which is the vocabulary `POST /v1/whatif`
+   * takes; drain edge ids are refused by it with 422.
+   */
+  cleanedSegments: string[];
   /** Apply the current pump plan as extra outflow at hotspots. */
   pumpPlan: boolean;
 }
+
+/**
+ * What cleaning can move at all, measured rather than asserted (ADR-0042).
+ *
+ * Cleaning **every** one of the city's 21,296 segments at once - the largest cleaning scenario
+ * that exists - moves the deepest street by 3.5 cm on the 08:40 cycle. The fit is element-wise
+ * per segment, so a segment's own cleaning is the only cleaning that reaches it. The operator
+ * reads this before pressing Run, not after wondering why the map barely changed.
+ */
+export const CLEANING_CEILING_NOTE =
+  "Cleaning is element-wise per segment, so these streets change and no others. Measured " +
+  "ceiling: cleaning all 21,296 segments at once moves the deepest street 3.5 cm (ADR-0042).";
 
 export const RAIN_SCALE_MIN = 0.5;
 export const RAIN_SCALE_MAX = 2.0;
@@ -29,6 +48,7 @@ export const DEFAULT_WHATIF_VALUES: WhatIfValues = {
   rainScale: 1.0,
   tideOffsetM: 0,
   cleanTop14: false,
+  cleanedSegments: [],
   pumpPlan: false,
 };
 
@@ -98,6 +118,67 @@ function SwitchRow({
   );
 }
 
+interface CleanedSegmentsProps {
+  segmentIds: readonly string[];
+  onRemove: (segmentId: string) => void;
+  /** Where the ids came from, e.g. the hotspot the deep link was pressed on. */
+  source?: string;
+}
+
+/**
+ * The segments this scenario cleans, as removable chips.
+ *
+ * They arrive from a hotspot's "Clean in what-if" rather than being typed: an id is a road
+ * segment (`S100841069-000`), and there is no way to pick one by hand that is not a deep link or
+ * the map. With none picked the section says where they come from instead of showing an empty
+ * box (CLAUDE.md 6.8 - an empty state says what to do).
+ */
+function CleanedSegments({ segmentIds, onRemove, source }: CleanedSegmentsProps) {
+  const uid = useId();
+  const labelId = `${uid}-cleaned`;
+
+  return (
+    <section aria-labelledby={labelId} className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <span id={labelId} className="type-small font-medium text-text">
+          Pipes to clean
+        </span>
+        <span className="num type-micro text-text-3">
+          {segmentIds.length} segment{segmentIds.length === 1 ? "" : "s"}
+        </span>
+      </div>
+      {segmentIds.length === 0 ? (
+        <p className="type-micro text-text-3">
+          None picked. Open a hotspot on the console and press &ldquo;Clean in what-if&rdquo; to
+          carry its segments here.
+        </p>
+      ) : (
+        <>
+          <ul className="flex flex-wrap gap-1.5">
+            {segmentIds.map((segmentId) => (
+              <li key={segmentId}>
+                <span className="inline-flex items-center gap-1 rounded-chip border border-line bg-well py-0.5 pr-1 pl-2">
+                  <span className="num type-micro text-text-2">{segmentId}</span>
+                  <button
+                    type="button"
+                    aria-label={`Remove segment ${segmentId}`}
+                    onClick={() => onRemove(segmentId)}
+                    className="rounded-chip p-0.5 text-text-3 transition-colors hover:text-text focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tide"
+                  >
+                    <X size={12} strokeWidth={1.75} />
+                  </button>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {source ? <p className="type-micro text-text-3">From {source}.</p> : null}
+          <p className="type-micro text-text-3">{CLEANING_CEILING_NOTE}</p>
+        </>
+      )}
+    </section>
+  );
+}
+
 export interface WhatIfControlsProps {
   /** Starting values; the component owns its state after mount. */
   initial?: Partial<WhatIfValues>;
@@ -111,7 +192,9 @@ export interface WhatIfControlsProps {
   runDisabledReason?: string;
   /** Helper text under the disabled physics-check button. */
   physicsDisabledReason?: string;
-  /** The cleaning switch is inert; the request carries no pipes. */
+  /** Where the preselected segments came from, printed under the chips. */
+  cleanedSource?: string;
+  /** The clean-top-14 switch is inert; nothing ranks pipes by beta on this run. */
   cleanDisabled?: boolean;
   /** Why cleaning is inert, shown in place of the switch's sub-copy. */
   cleanDisabledReason?: string;
@@ -123,9 +206,10 @@ export interface WhatIfControlsProps {
 }
 
 /**
- * The what-if lab's control column: rain scale and tide offset sliders, the clean-top-14 and
- * pump-plan switches, and the two actions. State is local; the page reads it through `onChange`.
- * Every number carries its unit and the sliders announce their value.
+ * The what-if lab's control column: rain scale and tide offset sliders, the segments this
+ * scenario cleans, the clean-top-14 and pump-plan switches, and the two actions. State is local;
+ * the page reads it through `onChange`. Every number carries its unit and the sliders announce
+ * their value.
  */
 export function WhatIfControls({
   initial,
@@ -134,6 +218,7 @@ export function WhatIfControls({
   onPhysicsCheck,
   runDisabledReason = "The emulator lands in Phase 7",
   physicsDisabledReason = "Runs the Twin on the same scenario once Phase 7 lands",
+  cleanedSource,
   cleanDisabled = false,
   cleanDisabledReason,
   pumpDisabled = false,
@@ -203,6 +288,14 @@ export function WhatIfControls({
           Added to the stage at every tidal outfall; above the trunk invert the outfall locks.
         </p>
       </section>
+
+      <CleanedSegments
+        segmentIds={values.cleanedSegments}
+        source={cleanedSource}
+        onRemove={(segmentId) =>
+          update({ cleanedSegments: values.cleanedSegments.filter((id) => id !== segmentId) })
+        }
+      />
 
       <section className="space-y-3">
         <SwitchRow

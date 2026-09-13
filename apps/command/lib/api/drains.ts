@@ -50,6 +50,25 @@ export interface AssimilatedObservation {
   z: number | null;
   chip: string | null;
   synthetic: boolean;
+  /**
+   * The pipe's posterior blockage before and after this cycle's update, and `y - H(theta)` in
+   * cm. Null on a run baked before Pulse recorded them, so the card says so rather than
+   * printing a change it does not have.
+   */
+  betaBefore: number | null;
+  betaAfter: number | null;
+  innovationCm: number | null;
+}
+
+/** One row of the model-observation disagreement list (CLAUDE.md 11.6), worst residual first. */
+export interface Disagreement {
+  kind: "traffic" | "report";
+  place: string;
+  edgeId: string | null;
+  ts: string;
+  observedDepthCm: number;
+  modelledDepthCm: number;
+  residualCm: number;
 }
 
 export interface ObservationSet {
@@ -59,6 +78,7 @@ export interface ObservationSet {
   nAssimilated: number;
   nEdgesUpdated: number;
   observations: AssimilatedObservation[];
+  disagreements: Disagreement[];
   notes: string[];
 }
 
@@ -137,6 +157,7 @@ export async function loadObservations(
     n_edges_updated?: number;
     notes?: string[];
     observations?: Record<string, unknown>[];
+    disagreements?: Record<string, unknown>[];
   };
 
   return {
@@ -146,6 +167,15 @@ export async function loadObservations(
     nAssimilated: body.n_assimilated ?? 0,
     nEdgesUpdated: body.n_edges_updated ?? 0,
     notes: body.notes ?? [],
+    disagreements: (body.disagreements ?? []).map((d) => ({
+      kind: d.kind === "report" ? "report" : "traffic",
+      place: String(d.place ?? "—"),
+      edgeId: (d.edge_id as string | null) ?? null,
+      ts: String(d.ts ?? ""),
+      observedDepthCm: Number(d.observed_depth_cm ?? 0),
+      modelledDepthCm: Number(d.modelled_depth_cm ?? 0),
+      residualCm: Number(d.residual_cm ?? 0),
+    })),
     observations: (body.observations ?? []).map((o, i) => ({
       id: String(o.report_id ?? o.segment_id ?? `obs-${i}`),
       kind: o.kind === "report" ? "report" : "traffic",
@@ -159,6 +189,9 @@ export async function loadObservations(
       z: o.z === undefined ? null : Number(o.z),
       chip: (o.chip as string | null) ?? null,
       synthetic: Boolean(o.synthetic),
+      betaBefore: o.beta_before === undefined ? null : Number(o.beta_before),
+      betaAfter: o.beta_after === undefined ? null : Number(o.beta_after),
+      innovationCm: o.innovation_cm === undefined ? null : Number(o.innovation_cm),
     })),
   };
 }

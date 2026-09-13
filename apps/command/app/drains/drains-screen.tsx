@@ -38,6 +38,18 @@ const MAP_EDGE_LIMIT = 6000;
 const EXPORT_REASON = "Available once a run has drain health";
 const TOGGLE_REASON = "Available once Pulse has assimilated an observation";
 
+/**
+ * What each observation operator is, in one line. The filter's `H(theta)` is injectable
+ * (`services/pulse/varuna_pulse/enkf.py`) and the prototype ships the reduced one, so every
+ * blockage on this map came through a stand-in for CLAUDE.md 11.6's "run drain1d per member".
+ * Naming it here is the honesty label for that (rule 6); an operator with no entry is still
+ * named, because the run stamped it and the reader should see which one ran.
+ */
+const OPERATOR_NOTES: Record<string, string> = {
+  capacity_deficit:
+    "an observation is compared against a volume balance over the pipe's catchment, not a drain1d run.",
+};
+
 export function DrainsScreen() {
   const [health, setHealth] = useState<DrainHealth | null>(null);
   const [network, setNetwork] = useState<DrainEdge[]>([]);
@@ -133,6 +145,10 @@ export function DrainsScreen() {
     place: o.place,
     inferredDepthCm: o.depthCm,
     pipeId: o.edgeId ?? undefined,
+    // Left undefined rather than defaulted, so a run baked before Pulse recorded the pair says
+    // it has no change instead of printing "0.00 → 0.00" as though the filter had moved nothing.
+    betaBefore: o.betaBefore ?? undefined,
+    betaAfter: o.betaAfter ?? undefined,
   }));
 
   return (
@@ -166,6 +182,14 @@ export function DrainsScreen() {
                     <p className="type-micro text-text-3">
                       Every pipe is dashed on the map: none of it comes from a surveyed drain GIS.
                     </p>
+                    {health ? (
+                      <p className="type-micro text-text-3">
+                        Observation operator: {health.operator.replaceAll("_", " ")}
+                        {OPERATOR_NOTES[health.operator]
+                          ? ` - ${OPERATOR_NOTES[health.operator]}`
+                          : "."}
+                      </p>
+                    ) : null}
                   </div>
                   <div className="flex flex-col items-end gap-1">
                     <ToggleGroup
@@ -237,7 +261,7 @@ export function DrainsScreen() {
               <PanelErrorBoundary title="Assimilation timeline">
                 <Panel
                   title="Assimilation timeline"
-                  description="Every observation Pulse used this cycle, and the blockage it moved."
+                  description="Every observation Pulse used this cycle, and the blockage on the pipe it was about, before and after this cycle's update."
                 >
                   {observations.length === 0 ? (
                     <EmptyState

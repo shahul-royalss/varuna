@@ -9,7 +9,10 @@ evidence of flooding only when the jam has no other explanation.
 
 1. **Depth of the anomaly.** ``z = (v - mu_wd,hr) / sigma`` against the segment's own weekday-hour
    baseline, and the anomaly has to reach ``z < -2.5``. A segment's normal speed is its own; a
-   trunk road at 12 km/h is congested and a lane in Dharavi at 12 km/h is a Tuesday.
+   trunk road at 12 km/h is congested and a lane in Dharavi at 12 km/h is a Tuesday. The feed
+   carries the mean but not the spread, so sigma is estimated from the segment's own scatter
+   over the hour *before* the window being scored (:data:`SIGMA_WINDOW`); that substitution is
+   recorded in ``docs/SIMPLIFICATIONS.md``.
 2. **Persistence.** Two consecutive snapshots. One slow reading is a bus stopping.
 3. **Spatial confounding.** Network-wide congestion is not flooding. An anomaly is rejected when
    its dry neighbours within 500 m are slow too - if the whole area has stopped, the cause is the
@@ -44,6 +47,7 @@ __all__ = [
     "CONFOUNDER_RADIUS_M",
     "MIN_CONSECUTIVE",
     "NEIGHBOUR_Z",
+    "SIGMA_WINDOW",
     "TrafficObservation",
     "depth_prior_cm",
     "detect_anomalies",
@@ -58,6 +62,20 @@ the persistence and neighbour tests below are for."""
 
 MIN_CONSECUTIVE = 2
 """Snapshots the anomaly must persist for. One is a bus at a stop; two is a street."""
+
+SIGMA_WINDOW = 12
+"""Snapshots the baseline's spread is estimated over, ending before the persistence window.
+
+11.6 scores against the segment's weekday-hour sigma; the feed carries `baseline_kmh` and no
+spread, so sigma has to be estimated. Estimating it over the two snapshots being scored makes
+the denominator ``|dv|/sqrt(2)`` - a difference of two readings, not an estimate - and on the
+2 July feed 42.4 % of rows then fell through to the floor below, because a segment that is
+equally slow twice has no scatter at all. Twelve snapshots is an hour of 5-minute probes.
+
+They end *before* the scored window because a sigma that contains the anomaly is inflated by
+it: on the same feed, including the two scored snapshots takes the 03:40Z cycle from 22
+anomalies to 3 and the 02:40Z cycle to none. Excluding them, the floor is taken by 1.8 % of
+rows at 03:40Z and the counts hold (22 -> 24)."""
 
 CONFOUNDER_RADIUS_M = 500.0
 """How far to look for the "is the whole area slow?" test (CLAUDE.md 11.6)."""
@@ -138,14 +156,18 @@ def detect_anomalies(
     target = max((s for s in stamps if s <= cutoff), default=None)
     if target is None:
         return []
-    history = [s for s in stamps if s <= target][-MIN_CONSECUTIVE:]
+    prior = [s for s in stamps if s <= target]
+    history = prior[-MIN_CONSECUTIVE:]
     if len(history) < MIN_CONSECUTIVE:
         return []
 
     # The baseline's spread is not in the feed, so it is estimated from the segment's own
-    # deviation across the window. A feed that carries sigma should pass it through instead.
+    # scatter over the snapshots before this window (SIGMA_WINDOW). A feed that carries sigma
+    # should pass it through instead.
+    sigma_history = prior[:-MIN_CONSECUTIVE][-SIGMA_WINDOW:]
+    sigma = _segment_sigma(frame[frame["ts"].isin(sigma_history)])
     window = frame[frame["ts"].isin(history)].copy()
-    window["z"] = _z_scores(window)
+    window["z"], floored = _z_scores(window, sigma)
 
     per_segment = window.groupby("segment_id")
     incidents = incident_segments or set()
@@ -199,6 +221,8 @@ def detect_anomalies(
         rejected_incident=rejected_incident,
         rejected_regional=rejected_regional,
         spatial_test=neighbours is not None,
+        sigma_snapshots=len(sigma_history),
+        sigma_floored_pct=round(100.0 * floored / max(len(window), 1), 1),
     )
     return observations
 
@@ -209,19 +233,29 @@ def _as_ts(column: pd.Series) -> pd.Series:
     return pd.to_datetime(column, utc=True, format="mixed").dt.tz_localize(None)
 
 
-def _z_scores(window: pd.DataFrame) -> np.ndarray:
-    """``(v - baseline) / sigma`` per row, with sigma from the segment's own scatter.
+def _segment_sigma(window: pd.DataFrame) -> pd.Series:
+    """Per-segment standard deviation of speed over ``window``, before the floor.
 
-    A floor on sigma stops a segment whose baseline never varies from producing an infinite z
-    the moment it moves at all.
+    A segment seen once in the window - or a cycle early enough to have no history behind it -
+    comes back as NaN, and :func:`_z_scores` puts the floor there instead.
     """
-    deviation = window["kmh"].to_numpy(dtype=np.float64) - window["baseline_kmh"].to_numpy(
-        dtype=np.float64
-    )
-    sigma = window.groupby("segment_id")["kmh"].transform("std").to_numpy(dtype=np.float64)
-    sigma = np.where(
-        np.isfinite(sigma) & (sigma > 1.0),
-        sigma,
-        np.maximum(window["baseline_kmh"].to_numpy(dtype=np.float64) * 0.2, 3.0),
-    )
-    return deviation / sigma
+    import pandas as pd
+
+    if window.empty:
+        return pd.Series(dtype=np.float64)
+    return window.groupby("segment_id")["kmh"].std()
+
+
+def _z_scores(window: pd.DataFrame, sigma_by_segment: pd.Series) -> tuple[np.ndarray, int]:
+    """``(v - baseline) / sigma`` per row, and how many rows fell back to the floor.
+
+    A floor on sigma stops a segment whose speed never varies from producing an infinite z the
+    moment it moves at all. It is applied per row rather than per segment because it is a
+    fraction of that row's baseline, which moves with the hour.
+    """
+    baseline = window["baseline_kmh"].to_numpy(dtype=np.float64)
+    deviation = window["kmh"].to_numpy(dtype=np.float64) - baseline
+    sigma = window["segment_id"].map(sigma_by_segment).to_numpy(dtype=np.float64)
+    estimated = np.isfinite(sigma) & (sigma > 1.0)
+    sigma = np.where(estimated, sigma, np.maximum(baseline * 0.2, 3.0))
+    return deviation / sigma, int((~estimated).sum())

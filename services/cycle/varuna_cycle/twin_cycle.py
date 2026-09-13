@@ -4,9 +4,12 @@ This is the stage that turns everything the engines can do into something the co
 It runs Sky, feeds its rain onto the city grid, runs the coupled Twin, reduces the depth field
 to products, and writes the whole lot into ``data/runs/<run_id>/`` atomically.
 
-**The order** (CLAUDE.md 11.11): decode/QC -> Sky -> Twin -> products -> publish. Flash and
-Pulse are Phase 7; their stages are absent rather than faked, and ``ensemble_n`` says 1 so no
-screen can imply a 50-member spread that was never computed (rule 6).
+**The order** (CLAUDE.md 11.11): decode/QC -> Sky -> Twin -> Flash -> Pulse -> products ->
+publish. The Twin is the depth of record and Flash spreads it: the emulator runs once per Sky
+member, so ``ensemble_n`` is the number of members that actually ran rather than a literal. When
+the emulator cannot run - no fit, a design storm, another city's segments - the stage says so in
+the run's notes and ``ensemble_n`` falls back to 1, so no screen implies a spread nothing
+computed (rule 6).
 
 **Atomicity.** The registry writes into a temporary folder and renames it into place, so a
 half-written run can never be served: a reader either sees a complete run directory or none at
@@ -16,25 +19,27 @@ all. That matters during a bake, where the console may be polling while cycles a
 the 30 m city grid. ``varuna_sky.products.resample_to_aoi`` owns that resample and is called
 here rather than inside the Twin, which keeps the Twin ignorant of Sky (its ``types.py`` says as
 much). The **ensemble mean** is what the Twin runs on, because one deterministic Twin run is what
-Phase 4 provides; the 20 members go to Flash in Phase 7.
+Phase 4 provides; the members themselves go to Flash, which is cheap enough to run all twenty.
 """
 
 from __future__ import annotations
 
+import inspect
 import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from time import perf_counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
 from varuna_schemas.constants import IST, N_STEPS, STEP_MIN
 from varuna_schemas.models.run import EngineVersions, GridSpec, RunMeta, build_run_id
-from varuna_schemas.paths import bundles_dir, city_dir
+from varuna_schemas.paths import bundles_dir, city_dir, repo_root
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from numpy.typing import NDArray
     from varuna_twin.types import TwinResult
 
 log = structlog.get_logger("varuna.cycle.twin")
@@ -43,9 +48,15 @@ __all__ = ["CycleResult", "run_cycle"]
 
 SKY_VERSION = "1.0"
 TWIN_VERSION = "1.0"
-FLASH_VERSION = "0.0"
-"""Flash has not been built yet (Phase 7). ``0.0`` says so in the run id rather than claiming a
-version of an engine that did not run - the run stamp is on screen throughout the demo."""
+FLASH_VERSION = "0.1"
+"""The fitted emulator's version, used only on a cycle where it actually ran."""
+
+FLASH_ABSENT_VERSION = "0.0"
+"""What the run id carries when Flash did not run - no fit on disk, or a design storm.
+
+``0.0`` says so rather than claiming a version of an engine that did not run: the run stamp is
+on screen throughout the demo, and a reader has to be able to tell a 20-member cycle from a
+single-member one by its id alone."""
 
 PULSE_VERSION = "1.0"
 PRODUCTS_VERSION = "1.0"
@@ -55,9 +66,25 @@ INFERRED_NOTE = (
     "(CLAUDE.md 10.1 step 7); every pipe carries a learned blockage."
 )
 DETERMINISTIC_NOTE = (
-    "One deterministic Twin run, so p10 = p50 = p90 and every exceedance is 0 or 1. "
-    "The 50-member street ensemble arrives with Flash-lite in Phase 7."
+    "One deterministic Twin run and no street ensemble this cycle, so p10 = p50 = p90 and "
+    "every exceedance is 0 or 1."
 )
+TWIN_LEVEL_NOTE = (
+    "The depth on screen is the Twin's, not the emulator's: Flash supplies the spread around it "
+    "and never the level (ADR-0025)."
+)
+RAIN_STORES_ABSENT_NOTE = (
+    "No rain/cube.zarr this cycle: a design storm is forced from the bundle's own truth field, "
+    "so the Sky ensemble is not the rain this run was computed on (CLAUDE.md 10.3)."
+)
+NO_MEMBER_AXIS_NOTE = (
+    "The segment quantiles in this run are still the Twin's single run - p10 = p50 = p90 and "
+    "every exceedance is 0 or 1 - because the products writer does not take a member axis yet: "
+    "the ensemble ran and nothing downstream read it."
+)
+
+FLASH_MODEL_PATHS = ("data/train/flash_lite.npz", "demo/flash_lite.npz")
+"""Where the fitted emulator is looked for, in order - the same two places `/v1/whatif` looks."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +94,7 @@ class CycleResult:
     run_id: str
     run_dir: Path
     stage_ms: dict[str, int]
+    ensemble_n: int
     mass_balance_err: float
     peak_depth_cm: float
     wet_segments: int
@@ -189,6 +217,156 @@ def _sky_rain_on_city(bundle: str, cycle_ts: datetime | None, city: str, n_steps
     return cube, cycle
 
 
+def _flash_members(
+    sky,
+    segment_ids: tuple[str, ...],
+    n_steps: int,
+    *,
+    design_storm: bool,
+) -> tuple[NDArray[np.floating] | None, tuple[str, ...]]:
+    """One street-depth series per Sky member: ``(n_members, n_steps, n_segments)`` in cm.
+
+    CLAUDE.md 11.11 runs Flash beside the Twin and 11.7 builds the ensemble from the Sky members.
+    This is that stage. It is after the Twin rather than parallel to it because the emulator is
+    two vectorised recursions - milliseconds for the whole city - and a process boundary would
+    cost more than the overlap saves.
+
+    The members carry the **AOI-mean hyetograph per member** (`varuna_sky.products`), which is the
+    only per-member rain a cycle keeps; the full member cube is 20 x 36 x 120 x 120 and is not
+    written. So the members differ from one another in amplitude and not in where the cell sits,
+    and the spread this produces is amplitude-driven. That is a real limitation of the
+    construction rather than a defect of the fit, and it goes into the run's notes so nobody
+    reads the band as the ensemble's disagreement about the *map*.
+
+    Every member runs at the blockage the fit refers to (`FlashModel.beta_ref`) rather than at
+    this cycle's posterior: Pulse publishes beta per *drain edge* and the emulator is keyed on
+    road segments, so there is no edge-to-segment map to carry the posterior across yet. The
+    parameter draws 11.7 asks for are the next piece of work and land in `varuna_flash.model`.
+
+    Returns ``(None, notes)`` whenever the stage cannot honestly run - a design storm, no fitted
+    emulator, a fit belonging to another city - so the caller keeps ``ensemble_n`` at 1 and the
+    run says why rather than failing the cycle for a product that is a bonus over the Twin's.
+    """
+    if design_storm:
+        return None, (
+            "Flash did not run: a design storm is forced from its own truth field, so this cycle "
+            "has no Sky ensemble to spread over and ensemble_n stays 1.",
+        )
+
+    from varuna_flash.model import load, simulate
+
+    model_path = None
+    for candidate in FLASH_MODEL_PATHS:
+        path = repo_root() / candidate
+        if path.is_file():
+            model_path = path
+            break
+    if model_path is None:
+        return None, (
+            "Flash did not run: no fitted emulator at "
+            + " or ".join(FLASH_MODEL_PATHS)
+            + ". Run make train to fit one from Twin runs; ensemble_n stays 1.",
+        )
+
+    model = load(model_path)
+    if tuple(model.segment_ids) != tuple(segment_ids):
+        # Same-length-different-order is the dangerous case, which is why this compares the ids
+        # rather than the count: the emulator's arrays are positional, so a mismatched order
+        # would silently give every street somebody else's storage coefficient.
+        return None, (
+            f"Flash did not run: the fitted emulator carries {model.n_segments} segments and "
+            f"this city has {len(segment_ids)} in a different order, so it was fitted on another "
+            "city or an older build. Run make train for this city; ensemble_n stays 1.",
+        )
+
+    hyetographs = np.asarray(sky.products.aoi_hyetographs, dtype=np.float64)
+    if hyetographs.ndim != 2 or hyetographs.size == 0:
+        return None, (
+            "Flash did not run: this cycle's Sky products carry no per-member hyetographs, so "
+            "there is nothing to spread over; ensemble_n stays 1.",
+        )
+
+    steps = min(int(hyetographs.shape[1]), int(n_steps))
+    # float32: 20 x 36 x 21,296 is 122 MB in float64 and half that here, and the quantities are
+    # centimetres of water read to two decimals - the cast costs nothing a product can see.
+    members = np.stack(
+        [
+            simulate(model, hyetographs[m, :steps]).astype(np.float32)
+            for m in range(int(hyetographs.shape[0]))
+        ]
+    )
+    log.info(
+        "cycle.flash_members",
+        members=int(members.shape[0]),
+        steps=int(members.shape[1]),
+        segments=int(members.shape[2]),
+        model=str(model_path.name),
+        peak_cm=round(float(members.max()), 1),
+    )
+    return members, (
+        f"Street ensemble: {members.shape[0]} Sky members through the reduced-order emulator "
+        f"(held-out RMSE {model.rmse_cm:.1f} cm, CSI {model.csi_30cm:.2f} at 30 cm on Twin runs "
+        "it never saw).",
+        "The members differ only in the amplitude of the AOI-mean rain, because that is the only "
+        "per-member rain a cycle keeps, so the spread is amplitude-driven and carries none of the "
+        "ensemble's disagreement about where the cell sits.",
+        TWIN_LEVEL_NOTE,
+    )
+
+
+def _sky_ensemble(
+    bundle: str, cycle_ts: datetime, *, design_storm: bool
+) -> tuple[Any | None, tuple[str, ...]]:
+    """This cycle's member cube for ``rain/cube.zarr``, or ``(None, notes)`` when it cannot be kept.
+
+    CLAUDE.md 10.3 lists ``rain/cube.zarr`` and ``rain/quantiles.zarr`` among a run's artifacts,
+    and they are the only place the twenty Sky members survive the cycle: :class:`RainCycle`
+    carries the reduced products because the console never needs a 20 x 36 x 120 x 120 cube, so
+    without the stores a baked run cannot be re-ensembled offline and rebuilding the members
+    costs a 6-8 s Sky run per cycle. The read side has been waiting for them all along -
+    ``sky_cycle.read_run_rain`` reads both and ``has_rain_products`` gates the rain endpoints on
+    the quantiles store.
+
+    The ensemble comes out of the memo behind :func:`run_bundle_cycle`, which this cycle filled a
+    moment ago with exactly this key (same bundle folder, same radar stamp, same snapped instant),
+    so recovering it is a dictionary lookup and not a second nowcast. ``sky_cycle`` is this
+    package's own module, which is why reaching for its cache is a package-private call rather
+    than a reimplementation; an evicted entry recomputes from the bundle's own seed and returns
+    the same ensemble (rule 8).
+
+    **A design storm keeps no cube.** Its Twin is forced from the bundle's truth field rather
+    than from the nowcast (:func:`_design_storm_rain`), so a cube written there would be a
+    forecast nobody ran the city on - and ``has_rain_products`` would then serve it as this run's
+    rain (rule 6).
+    """
+    if design_storm:
+        return None, (RAIN_STORES_ABSENT_NOTE,)
+
+    from varuna_replay.bundle import BundleLayout, load_manifest
+    from varuna_sky.products import RAIN_CUBE, RAIN_QUANTILES
+
+    from varuna_cycle.sky_cycle import _compute, _radar_stamp
+
+    try:
+        layout = BundleLayout.for_bundle(bundle)
+        manifest = load_manifest(layout.root)
+        ensemble = _compute(
+            str(layout.root), _radar_stamp(layout), cycle_ts, manifest.city, int(manifest.seed)
+        ).ensemble
+    except Exception as error:
+        # Degraded, not broken: the rain stores are provenance the rest of the run does not
+        # depend on, so a run without them is still a complete forecast that says what is missing.
+        log.warning("cycle.rain_stores_skipped", bundle=bundle, error=str(error))
+        return None, (
+            f"No {RAIN_CUBE} this cycle: the Sky ensemble could not be recovered ({error}).",
+        )
+    return ensemble, (
+        f"Rain ensemble kept as {RAIN_CUBE} ({ensemble.n_members} members x {ensemble.n_steps} "
+        f"steps at {ensemble.grid.res_m:.0f} m) and {RAIN_QUANTILES}, so this cycle can be "
+        "re-ensembled offline without re-running Sky (CLAUDE.md 10.3).",
+    )
+
+
 def run_cycle(
     bundle: str = "MUM-2019-07-02",
     cycle_ts: datetime | None = None,
@@ -228,6 +406,7 @@ def run_cycle(
     from varuna_products.surcharge import surcharge_product, write_surcharge
     from varuna_pulse.cycle import run_pulse
     from varuna_pulse.health import write_drain_health
+    from varuna_sky.products import load_aoi_grid, write_rain_products
     from varuna_twin.city import load_network, load_terrain, load_tide
     from varuna_twin.runner import run_twin
     from varuna_twin.types import TwinInputs
@@ -262,11 +441,40 @@ def run_cycle(
     stage_ms["twin"] = round((perf_counter() - mark) * 1000.0)
     stage_ms.update({f"twin_{k}": v for k, v in twin.stage_ms.items()})
 
+    # ---- Flash --------------------------------------------------------------------------
+    # The segment index is pure geometry and cached on disk, so both stages read it and neither
+    # pays for it; it is taken before the mark so the Flash timing is the emulator alone.
+    index = segment_cell_index(city_dir(city), terrain.transform, terrain.shape, terrain.crs)
+    design_storm = bool(getattr(sky, "design_storm_forced", False) or _is_design_storm(bundle))
+    # The member cube the run keeps (CLAUDE.md 10.3), taken before the Flash mark for the same
+    # reason the segment index is: it is a cache lookup, not work this stage should be billed for.
+    rain_ensemble, rain_notes = _sky_ensemble(bundle, cycle_ts, design_storm=design_storm)
+    mark = perf_counter()
+    members, flash_notes = _flash_members(sky, index[0], n_steps, design_storm=design_storm)
+    stage_ms["flash"] = round((perf_counter() - mark) * 1000.0)
+    ensemble_n = int(members.shape[0]) if members is not None else 1
+
     # ---- Products -----------------------------------------------------------------------
     mark = perf_counter()
-    index = segment_cell_index(city_dir(city), terrain.transform, terrain.shape, terrain.crs)
-    frame, depth_cm = segment_forecast(twin.depth_m, twin.times, index, run_id="pending")
-    run_id = build_run_id(city, cycle_ts, SKY_VERSION, TWIN_VERSION, FLASH_VERSION, mode)
+    # The member axis reaches the products writer only once that writer takes one (P7.6 splits
+    # the two). Until it does, the ensemble runs and the parquet still carries the Twin's single
+    # run - so the run's notes say which of the two happened rather than letting ensemble_n
+    # imply a spread the file does not have (rule 6).
+    takes_members = "member_depth_cm" in inspect.signature(segment_forecast).parameters
+    ensemble: dict[str, Any] = (
+        {"member_depth_cm": members} if members is not None and takes_members else {}
+    )
+    frame, depth_cm = segment_forecast(
+        twin.depth_m, twin.times, index, run_id="pending", **ensemble
+    )
+    run_id = build_run_id(
+        city,
+        cycle_ts,
+        SKY_VERSION,
+        TWIN_VERSION,
+        FLASH_VERSION if members is not None else FLASH_ABSENT_VERSION,
+        mode,
+    )
     hotspots = rank_hotspots(
         twin.depth_m, twin.times, city_dir(city), terrain.transform, terrain.crs, run_id, index
     )
@@ -311,12 +519,15 @@ def run_cycle(
 
     notes = [
         INFERRED_NOTE,
-        DETERMINISTIC_NOTE,
+        *flash_notes,
+        *((NO_MEMBER_AXIS_NOTE,) if members is not None and not takes_members else ()),
+        *((DETERMINISTIC_NOTE,) if members is None else ()),
+        *rain_notes,
         *(pulse.notes if pulse is not None else ("Pulse did not run this cycle.",)),
         *twin.notes,
         *(getattr(sky, "notes", None) or ()),
     ]
-    if getattr(sky, "design_storm_forced", False) or _is_design_storm(bundle):
+    if design_storm:
         notes.append(
             "Design storm: the Twin was forced from the bundle's own hyetograph, not from a "
             "nowcast. A design storm is spatially uniform by construction and STEPS extrapolates "
@@ -335,12 +546,12 @@ def run_cycle(
         versions=EngineVersions(
             sky=SKY_VERSION,
             twin=TWIN_VERSION,
-            flash=FLASH_VERSION,
+            flash=FLASH_VERSION if members is not None else FLASH_ABSENT_VERSION,
             pulse=PULSE_VERSION,
             products=PRODUCTS_VERSION,
         ),
         mode=mode,
-        ensemble_n=1,
+        ensemble_n=ensemble_n,
         stage_ms=stage_ms,
         mass_balance_err=float(twin.mass_balance.error_fraction),
         bundle=bundle,
@@ -362,6 +573,11 @@ def run_cycle(
     )
 
     def _write(tmp: Path) -> None:
+        if rain_ensemble is not None:
+            # Both stores or neither: the quantiles are what the rain endpoints serve and the
+            # cube is the only artifact carrying the nowcaster, its seed and the Z-R relation,
+            # so a run with one and not the other is a run whose rain cannot be traced.
+            write_rain_products(tmp, rain_ensemble, sky.products, load_aoi_grid(city))
         write_depth_rasters(tmp, twin.depth_m, terrain.transform, terrain.crs, stat="p50")
         frame.to_parquet(tmp / "segment_forecast.parquet", index=False)
         write_wet_segments(tmp, depth_cm, index[0], twin.times, run_id)
@@ -408,6 +624,7 @@ def run_cycle(
         run_id=run_id,
         run_dir=run_dir,
         stage_ms=stage_ms,
+        ensemble_n=ensemble_n,
         mass_balance_err=float(twin.mass_balance.error_fraction),
         peak_depth_cm=round(float(np.nanmax(twin.depth_m)) * 100.0, 1),
         wet_segments=int((depth_cm.max(axis=0) > 5.0).sum()) if depth_cm.size else 0,
@@ -419,6 +636,8 @@ def run_cycle(
         "cycle.published",
         run_id=run_id,
         total_ms=stage_ms["total"],
+        flash_ms=stage_ms["flash"],
+        ensemble_n=ensemble_n,
         peak_cm=result.peak_depth_cm,
         wet_segments=result.wet_segments,
         mass_balance=round(result.mass_balance_err, 6),

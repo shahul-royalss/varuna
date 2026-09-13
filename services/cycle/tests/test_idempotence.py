@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 from pathlib import Path
 
 import pytest
@@ -60,9 +61,19 @@ def test_baking_the_same_cycle_twice_writes_identical_products(tmp_path: Path) -
     if not _city_is_built():
         pytest.skip("city/mumbai is not built; run `make city CITY=mumbai` first")
 
+    from varuna_cycle.sky_cycle import clear_cycle_cache
     from varuna_cycle.twin_cycle import run_cycle
 
     first = run_cycle(mode="baked", overwrite=True)
+    # The second bake replaces the first *in place* - the run id is a function of the cycle, so
+    # both land in the same folder - which means the first bake's bytes have to be taken away
+    # before the second runs. Comparing `first.run_dir` with `second.run_dir` after the fact
+    # compares one directory with itself and passes whatever the writers do.
+    kept = shutil.copytree(first.run_dir, tmp_path / "first")
+    # And the second bake has to nowcast again rather than replay the first one's memoised Sky:
+    # the rain cube is the twenty members on disk, so a cached ensemble would make the store
+    # trivially identical and prove nothing about the seed (rule 8). Costs one Sky run.
+    clear_cycle_cache()
     second = run_cycle(mode="baked", overwrite=True)
 
     assert first.run_id == second.run_id, (
@@ -71,7 +82,7 @@ def test_baking_the_same_cycle_twice_writes_identical_products(tmp_path: Path) -
         f"{second.run_id}"
     )
 
-    left, right = _digest(first.run_dir), _digest(second.run_dir)
+    left, right = _digest(kept), _digest(second.run_dir)
     assert left, f"the bake wrote no products into {first.run_dir}"
 
     only_left = sorted(set(left) - set(right))
@@ -85,6 +96,44 @@ def test_baking_the_same_cycle_twice_writes_identical_products(tmp_path: Path) -
     assert not differing, (
         f"{len(differing)} of {len(left)} products differ between two bakes of the same "
         f"cycle, so the bake is not reproducible (rule 8): {differing[:8]}"
+    )
+
+    _assert_rain_cube_round_trips(kept, second.run_dir)
+
+
+def _assert_rain_cube_round_trips(first: Path, second: Path) -> None:
+    """The Sky members survive the bake, and both bakes read back the same cube.
+
+    The digest comparison above already covers every byte under ``rain/``, but a Zarr store is
+    a folder of compressed shards, and identical bytes are a stronger claim than the one that
+    matters: what a reader gets back. Reading the cube is the check that a baked run can
+    actually be re-ensembled offline (CLAUDE.md 10.3) rather than merely carrying the same
+    bytes in a store nothing can open - and it is the check that would catch a writer that
+    rounded, reordered or truncated the member axis on its way to disk.
+
+    Asserting the store is *present* is part of it: the demo bundle is a reconstructed event, so
+    its cycles run through Sky and a missing cube would mean the twenty members were computed
+    and discarded again.
+    """
+    import numpy as np
+    from varuna_sky.products import RAIN_CUBE, RAIN_QUANTILES, read_rain_cube
+
+    for run_dir in (first, second):
+        for store in (RAIN_CUBE, RAIN_QUANTILES):
+            assert (run_dir / store).is_dir(), (
+                f"{run_dir.name} has no {store}; the Sky ensemble did not survive the cycle, so "
+                "this run cannot be re-ensembled without re-running Sky (CLAUDE.md 10.3)"
+            )
+
+    left, right = read_rain_cube(first / RAIN_CUBE), read_rain_cube(second / RAIN_CUBE)
+    assert left.shape == right.shape, (
+        f"two bakes of the same cycle wrote rain cubes of different shape, {left.shape} then "
+        f"{right.shape}; the member axis is not reproducible (rule 8)"
+    )
+    assert np.array_equal(left, right), (
+        "the rain cubes of two bakes of the same cycle read back different values (largest "
+        f"difference {float(np.nanmax(np.abs(left - right))):.6g} mm/h), so the ensemble is not "
+        "seeded end to end (rule 8)"
     )
 
 

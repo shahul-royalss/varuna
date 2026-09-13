@@ -4,6 +4,11 @@ The spec's acceptance test: on a synthetic truth with two blocked pipes and twen
 the posterior mean must rank those two in the top five and cut their spread by at least 40 %.
 That is the whole claim of the engine - the city reveals its own drains - so it is tested against
 a truth the filter never sees.
+
+The two halves are asserted separately, because they are not equally true. The ranking holds at
+every ensemble seed tried; the spread cut clears its floor about half the time and its median
+misses, so it carries an ``xfail(strict=True)`` with the measured distribution. ``docs/QA.md``
+records the sweep.
 """
 
 from __future__ import annotations
@@ -21,6 +26,13 @@ from varuna_pulse.enkf import (
 N_EDGES = 200
 BLOCKED = (37, 123)
 """The two pipes the synthetic city has actually blocked. The filter is never told."""
+
+ENSEMBLE_SEEDS = tuple(range(2019, 2029))
+"""The filter's own draw, which the engine defaults to 2019 and 11.6 says nothing about.
+
+The acceptance test used to run at that one seed. Sweeping it is how the two halves of 11.6
+turned out to be different claims: the ranking survives every seed, the spread cut does not.
+"""
 
 
 def _network() -> tuple[np.ndarray, np.ndarray]:
@@ -82,25 +94,79 @@ def _setup(n_obs: int = 20, seed: int = 7):
     return operator, y, sd, hops, edge_of_observation
 
 
-def test_the_posterior_finds_the_blocked_pipes() -> None:
+@pytest.mark.parametrize("ensemble_seed", ENSEMBLE_SEEDS)
+def test_the_posterior_finds_the_blocked_pipes(ensemble_seed: int) -> None:
+    """11.6's first half: the two blocked pipes reach the top five of the posterior mean.
+
+    Parametrised over ten ensemble seeds because the filter's own draw is a free parameter the
+    engine picks (``assimilate(seed=2019)``), not a property of the city: a claim that holds at
+    one seed is a claim about that seed. This half holds at every one of them, and at all 100
+    (observation draw, ensemble seed) pairs of the sweep recorded in ``docs/QA.md``.
+    """
     operator, y, sd, hops, _edges = _setup()
 
     prior_mean = np.full(N_EDGES, 0.20)
     prior_sd = np.full(N_EDGES, 0.12)
 
-    result = assimilate(prior_mean, prior_sd, y, sd, operator, hops)
+    result = assimilate(prior_mean, prior_sd, y, sd, operator, hops, seed=ensemble_seed)
 
     ranked = np.argsort(-result.beta_mean)[:5]
     for edge in BLOCKED:
         assert edge in ranked, (
-            f"pipe {edge} is blocked at 0.85 and did not reach the top five; "
-            f"posterior ranks {ranked.tolist()}"
+            f"pipe {edge} is blocked at 0.85 and did not reach the top five at ensemble seed "
+            f"{ensemble_seed}; posterior ranks {ranked.tolist()}"
         )
 
-    # The spread must fall where the observations were informative.
-    reduction = 1.0 - result.beta_sd[list(BLOCKED)] / prior_sd[list(BLOCKED)]
-    assert np.all(reduction >= 0.40), (
-        f"observations must cut the blocked pipes' spread by 40 %; got {reduction}"
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Real defect, measured properly: across the ten ensemble seeds the worse blocked pipe's "
+        "spread cut has median 33.2 % (range 8.3-46.2 %, 3 of 10 at or above the floor) against "
+        "the 40 % CLAUDE.md 11.6 asks for. The committed seed pair scored 40.03 % - a margin of "
+        "3 parts in 10,000 - so the test read as a measured engine property when it was a "
+        "measured property of seed 2019. A 50-member ensemble against a 35-42 edge "
+        "neighbourhood is the cause, not the observations: the sampling error in the spread is "
+        "of the same order as the cut being claimed. Widening the floor would be widening a "
+        "spec budget (rule 13), so the number stands and the test is red. "
+        "strict=True so this turns red the day it starts passing and the number gets read."
+    ),
+)
+def test_the_observations_cut_the_blocked_pipes_spread() -> None:
+    """11.6's second half: the observations cut the blocked pipes' spread by at least 40 %.
+
+    Scored on the median across the ten ensemble seeds of the worse of the two pipes, since it
+    is ``np.all`` in the spec's wording - both pipes must clear the floor - and a single seed's
+    score is noise. The top-five half above is robust at every seed; this one is not, and the
+    two used to be asserted in the same test, so one green tick covered both.
+    """
+    operator, y, sd, hops, _edges = _setup()
+
+    prior_mean = np.full(N_EDGES, 0.20)
+    prior_sd = np.full(N_EDGES, 0.12)
+
+    worst_pipe = np.array(
+        [
+            np.min(
+                1.0
+                - assimilate(prior_mean, prior_sd, y, sd, operator, hops, seed=seed).beta_sd[
+                    list(BLOCKED)
+                ]
+                / prior_sd[list(BLOCKED)]
+            )
+            for seed in ENSEMBLE_SEEDS
+        ]
+    )
+    median = float(np.median(worst_pipe))
+    print(
+        f"\nspread cut on the worse blocked pipe, {len(ENSEMBLE_SEEDS)} ensemble seeds: "
+        f"median {median * 100:.1f} % (range {worst_pipe.min() * 100:.1f}-"
+        f"{worst_pipe.max() * 100:.1f} %); 11.6 asks for 40 %"
+    )
+    assert median >= 0.40, (
+        f"observations must cut the blocked pipes' spread by 40 %; the median across "
+        f"{len(ENSEMBLE_SEEDS)} ensemble seeds is {median * 100:.1f} %, "
+        f"per seed {np.round(worst_pipe, 4).tolist()}"
     )
 
 

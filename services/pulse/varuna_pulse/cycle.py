@@ -28,17 +28,21 @@ from varuna_schemas.paths import data_dir
 from varuna_pulse.enkf import assimilate, capacity_operator, hop_distances
 from varuna_pulse.health import drain_health
 from varuna_pulse.reports import read_reports
-from varuna_pulse.traffic import detect_anomalies
+from varuna_pulse.traffic import CONFOUNDER_RADIUS_M, detect_anomalies
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from collections.abc import Sequence
     from datetime import datetime
     from pathlib import Path
 
+    import pandas as pd
     from numpy.typing import NDArray
+
+    from varuna_pulse.traffic import TrafficObservation
 
 log = structlog.get_logger("varuna.pulse.cycle")
 
-__all__ = ["RELAX_DAYS", "PulseResult", "run_pulse"]
+__all__ = ["RELAX_DAYS", "PulseResult", "run_pulse", "write_observations"]
 
 RELAX_DAYS = 30.0
 """Time constant of the posterior's relaxation back toward the prior (CLAUDE.md 11.6).
@@ -54,6 +58,13 @@ Mumbai produces thousands of traffic anomalies. Four hundred of the most anomalo
 that runs in well under the 3 s stage budget and carries essentially all the information - the
 thousandth-slowest street tells you nothing the first four hundred did not."""
 
+DISAGREEMENT_LIMIT = 25
+"""Rows kept in the model-observation disagreement list (CLAUDE.md 11.6).
+
+The list exists to be read - "where was the model most wrong this cycle" - and every row is
+already in the observations array beside it, so it carries the worst residuals rather than a
+second copy of all four hundred."""
+
 
 @dataclass(frozen=True, slots=True)
 class PulseResult:
@@ -67,6 +78,9 @@ class PulseResult:
     n_assimilated: int
     n_edges_updated: int
     observations: list[dict[str, Any]]
+    disagreements: list[dict[str, Any]]
+    """The worst residuals, model against observation (CLAUDE.md 11.6), largest first."""
+
     notes: tuple[str, ...]
 
 
@@ -120,11 +134,19 @@ def run_pulse(
     )
 
     # ---- observations -----------------------------------------------------------------
-    traffic: list[Any] = []
+    notes: list[str] = []
+    traffic: list[TrafficObservation] = []
     speeds_path = bundle_dir / "traffic" / "speeds.parquet"
     if speeds_path.is_file():
         speeds = pd.read_parquet(speeds_path)
-        traffic = detect_anomalies(speeds, at=cycle_ts, raining=True)
+        # `incident_segments` stays unset on purpose: the synthetic feed carries no incident
+        # column (services/replay/varuna_replay/streams.py), so its confounders have to be
+        # rejected on the evidence around them rather than on a label. That is the spatial
+        # test below - the one filter of CLAUDE.md 11.6's three this feed can actually run.
+        candidates = detect_anomalies(speeds, at=cycle_ts, raining=True)
+        traffic, note = _reject_regional_congestion(speeds, candidates, city_root, cycle_ts)
+        if note is not None:
+            notes.append(note)
 
     # Two report sources: the bundle's synthetic stream and the inbox POST /v1/reports appends
     # to. Reading both here is what makes a report filed from the public map an observation on
@@ -195,7 +217,6 @@ def run_pulse(
             }
         )
 
-    notes: list[str] = []
     if len(observed_edges) > MAX_OBSERVATIONS:
         order = np.argsort(np.asarray(y_sd))[:MAX_OBSERVATIONS]
         observed_edges = [observed_edges[i] for i in order]
@@ -246,6 +267,48 @@ def run_pulse(
             seed=seed,
         )
 
+    # ---- what each observation did to the posterior ------------------------------------
+    # CLAUDE.md 11.6 asks for "the beta change each caused" and 7.3's timeline prints it. The
+    # pair is the pipe's blockage before and after *this cycle's* batch rather than this one
+    # observation alone: the EnKF updates every edge from every observation at once, and
+    # splitting the move between them would be a number the filter never computed.
+    innovation = np.asarray(posterior.innovation, dtype=np.float64)
+    for record, edge, residual in zip(records, observed_edges, innovation, strict=True):
+        record["beta_before"] = round(float(posterior.prior_mean[edge]), 4)
+        record["beta_after"] = round(float(posterior.beta_mean[edge]), 4)
+        # y - H(theta^f): what the model got wrong at this place before the update. Positive
+        # means the street was wetter than the drain map expected.
+        record["innovation_cm"] = round(float(residual), 2)
+        record["modelled_depth_cm"] = round(float(record["depth_cm"] - residual), 1)
+
+    disagreements = sorted(
+        (
+            {
+                "kind": record["kind"],
+                "place": _place_of(record, street_of_edge[edge]),
+                "edge_id": record["edge_id"],
+                "ts": record["ts"],
+                "observed_depth_cm": record["depth_cm"],
+                "modelled_depth_cm": record["modelled_depth_cm"],
+                "residual_cm": record["innovation_cm"],
+            }
+            for record, edge in zip(records, observed_edges, strict=True)
+        ),
+        # Ties broken on the pipe id so two bakes of the same cycle order them the same (rule 8).
+        key=lambda row: (-abs(row["residual_cm"]), row["edge_id"]),
+    )[:DISAGREEMENT_LIMIT]
+    if disagreements:
+        # The operator is named because the modelled depth is *its* number, not the Twin's: a
+        # volume balance over a fixed ponding area will predict metres where a big catchment
+        # meets a small pipe, and a reader has to be able to tell that from a forecast.
+        worst = disagreements[0]
+        notes.append(
+            f"Largest model-observation disagreement: {abs(worst['residual_cm']):.0f} cm at "
+            f"{worst['place']} - {worst['observed_depth_cm']:.0f} cm observed against "
+            f"{worst['modelled_depth_cm']:.0f} cm from the {posterior.operator} operator "
+            f"before the update."
+        )
+
     counts = np.zeros(beta_prior.size, dtype=np.int64)
     for edge in observed_edges:
         counts[edge] += 1
@@ -278,8 +341,124 @@ def run_pulse(
         n_assimilated=len(observed_edges),
         n_edges_updated=int(posterior.updated_edges.size),
         observations=records,
+        disagreements=disagreements,
         notes=tuple([*notes, *posterior.notes]),
     )
+
+
+def _place_of(record: dict[str, Any], street: str | None) -> str:
+    """Where an observation was, in the words a ward officer would use.
+
+    A report carries the place it was filed at; a traffic anomaly carries only a segment id, so
+    it falls back to the street the pipe runs under and then, for an unnamed way, to the id.
+    """
+    return str(record.get("place") or street or record.get("segment_id") or record["edge_id"])
+
+
+def write_observations(run_dir: Path, result: PulseResult, run_id: str) -> None:
+    """Write ``observations.json``: what Pulse assimilated, and where it disagreed with itself.
+
+    The payload lives here rather than in the cycle orchestrator so the disagreement list
+    CLAUDE.md 11.6 names travels with the observations it is derived from, and so the beta pair
+    the drain X-ray's timeline prints cannot be dropped by a caller that composes its own dict.
+    """
+    (run_dir / "observations.json").write_text(
+        json.dumps(
+            {
+                "run_id": run_id,
+                "n_traffic": result.n_traffic,
+                "n_reports": result.n_reports,
+                "n_assimilated": result.n_assimilated,
+                "n_edges_updated": result.n_edges_updated,
+                "observations": result.observations,
+                "disagreements": result.disagreements,
+                "notes": list(result.notes),
+            },
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+
+
+def _reject_regional_congestion(
+    speeds: pd.DataFrame,
+    candidates: list[TrafficObservation],
+    city_root: Path,
+    cycle_ts: datetime,
+) -> tuple[list[TrafficObservation], str | None]:
+    """Drop the anomalies network-wide congestion explains (CLAUDE.md 11.6's third filter).
+
+    The detector runs twice because it reports its rejections only to its log, and the product
+    has to be able to say how many it dropped. The first pass over the whole feed finds the
+    candidates; this second pass re-scores them with their neighbours' speeds in hand, and the
+    difference is what the area explained away. The second pass is given only the candidates and
+    the segments within 500 m of them - a few thousand rows against the feed's half a million -
+    so it costs a fraction of the first.
+
+    Returns the surviving observations and the note that says what the test did, or ``None``
+    when there was nothing to test.
+    """
+    if not candidates:
+        return [], None
+
+    ids = [observation.segment_id for observation in candidates]
+    neighbours = _neighbour_map(city_root, ids)
+    if not neighbours:
+        # Never silently skip a filter: say which file was missing and what is not being done.
+        return candidates, (
+            f"Spatial confounder test skipped: no segment geometry at "
+            f"{city_root.name}/segments.parquet, so the {CONFOUNDER_RADIUS_M:.0f} m neighbour "
+            f"test could not run and all {len(candidates)} traffic anomalies were kept."
+        )
+
+    # Unresolved candidates stay in the frame so they survive untested rather than vanish.
+    keep = set(ids) | {n for nearby in neighbours.values() for n in nearby}
+    subset = speeds[speeds["segment_id"].astype(str).isin(keep)]
+    kept = detect_anomalies(subset, at=cycle_ts, raining=True, neighbours=neighbours)
+
+    rejected_regional = len(candidates) - len(kept)
+    log.info(
+        "pulse.regional_congestion",
+        candidates=len(candidates),
+        kept=len(kept),
+        rejected_regional=rejected_regional,
+        radius_m=CONFOUNDER_RADIUS_M,
+    )
+    return kept, (
+        f"Spatial confounder test: {rejected_regional} of {len(candidates)} traffic anomalies "
+        f"rejected as network-wide congestion; the test drops an anomaly whose neighbours "
+        f"within {CONFOUNDER_RADIUS_M:.0f} m are all equally slow."
+    )
+
+
+def _neighbour_map(city_root: Path, segment_ids: Sequence[str]) -> dict[str, list[str]]:
+    """Segments within :data:`~varuna_pulse.traffic.CONFOUNDER_RADIUS_M` of each given segment.
+
+    Built only for the segments that would otherwise become observations: those are the only
+    keys the detector looks up, and a tree query over all 21k of Mumbai's segments would cost
+    more than the test it feeds. The centroids are in the city's metric CRS, so the radius is
+    metres without a projection step.
+    """
+    import geopandas as gpd
+    from scipy.spatial import cKDTree
+
+    path = city_root / "segments.parquet"
+    if not segment_ids or not path.is_file():
+        return {}
+    frame = gpd.read_parquet(path, columns=["segment_id", "geometry"])
+    centroid = frame.geometry.centroid
+    ids = frame["segment_id"].astype(str).to_numpy()
+    xy = np.column_stack([centroid.x.to_numpy(), centroid.y.to_numpy()])
+    index = {sid: i for i, sid in enumerate(ids)}
+    rows = [(sid, index[sid]) for sid in dict.fromkeys(segment_ids) if sid in index]
+    if not rows:
+        return {}
+    balls = cKDTree(xy).query_ball_point(xy[[i for _, i in rows]], r=CONFOUNDER_RADIUS_M)
+    # Sorted so two bakes of the same cycle produce the same map (rule 8).
+    return {
+        sid: sorted(str(ids[j]) for j in ball if str(ids[j]) != sid)
+        for (sid, _), ball in zip(rows, balls, strict=True)
+    }
 
 
 def _street_names(city_root: Path, network, nodes, node_index: dict[str, int]) -> list[str | None]:

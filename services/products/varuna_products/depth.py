@@ -18,11 +18,21 @@ cell and never let go. Which cells belong to which segment is fixed geometry, so
 once and cached beside the city (:func:`segment_cell_index`) rather than per run.
 
 **Honesty about the ensemble** (rule 6). A Twin run is deterministic: one rain field in, one
-depth field out. So ``p10 == p50 == p90`` here and every exceedance probability is 0 or 1. That
-is not a spread and this module does not dress it up as one - :func:`segment_forecast` records
-``ensemble_n = 1`` and the run's notes say so. The 50-member spread arrives in Phase 7, when
-Flash-lite runs 20 Sky members against draws from the Pulse posterior (CLAUDE.md 11.7); at that
-point this same function takes a stack instead of a single field and the quantiles become real.
+depth field out. So with the Twin alone ``p10 == p50 == p90`` and every exceedance probability
+is 0 or 1, and this module does not dress that up as a spread - the caller records
+``ensemble_n = 1`` and the run's notes say so. The spread CLAUDE.md 11.7 asks for arrives as a
+*second* argument: :func:`segment_forecast` takes an optional ``member_depth_cm`` stack from
+Flash-lite, one street depth field per Sky member, and turns it into real quantiles and real
+exceedance fractions.
+
+The two are combined rather than swapped, and the reason is ADR-0025: the emulator is calibrated
+to the Twin but its held-out RMSE is 5.7 cm and its level is visibly low (it peaked at 106 cm on
+a 2 July cycle where the Twin peaked at 252 cm), so it cannot be the depth on screen. What it
+*can* say is how much the answer moves between members. So the level stays the Twin's and only
+each member's deviation from the member mean is carried across. The member mean of the resulting
+stack is then the Twin depth exactly - bar the streets where a member would have gone below zero
+and was clipped to dry - which is what makes "Flash supplies the spread and never the level" a
+statement about the file rather than a slogan.
 """
 
 from __future__ import annotations
@@ -43,6 +53,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 log = structlog.get_logger("varuna.products.depth")
 
 __all__ = [
+    "EXCEEDANCE_CM",
     "PROFILE_THRESHOLD_CM",
     "PROFILE_TOLERANCE",
     "SEGMENT_BUFFER_M",
@@ -95,6 +106,12 @@ PROFILE_TOLERANCE: dict[str, float] = {
 
 An ambulance is the cautious one at 0.2 (CLAUDE.md 7.4): it turns back on a one-in-five chance,
 because the cost of being wrong is a stranded ambulance rather than a longer drive."""
+
+EXCEEDANCE_CM: tuple[float, ...] = (15.0, 30.0, 45.0, 60.0)
+"""Depths the parquet carries an exceedance probability for (CLAUDE.md 11.8, 10.3).
+
+They are the depth ramp's own band edges, so ``p_gt_30`` answers exactly the question the map's
+probability mode asks when the operator picks 30 cm."""
 
 
 # ============================================================================ rasters
@@ -226,19 +243,67 @@ def segment_cell_index(city_root: Path, transform, shape: tuple[int, int], crs: 
     return (segment_ids, offsets, cells)
 
 
+def _member_levels(
+    depth_cm: NDArray[np.floating], member_depth_cm: NDArray[np.floating]
+) -> NDArray[np.float32]:
+    """Twin depth per segment per step, re-centred into one field per ensemble member.
+
+    ``member_depth_cm`` is ``(n_members, n_steps, n_segments)`` of *absolute* emulator depth,
+    aligned to the same segment order as ``depth_cm``. Only its deviation from the member mean
+    is used, so whatever bias the emulator carries cancels exactly and the member mean of the
+    result is the Twin field (ADR-0025, and the module docstring).
+
+    float32 because the stack is the largest array a cycle holds - 20 x 36 x 21,296 is 122 MB in
+    float64 - and these are centimetres of water read to two decimals.
+
+    Raises:
+        ValueError: if the member stack is not 3-D or its segment axis does not match the Twin's.
+            The caller guarantees the alignment by construction, so a mismatch here means a
+            member array from another city, and every street would silently get the wrong spread.
+    """
+    members = np.asarray(member_depth_cm, dtype=np.float32)
+    n_steps, n_seg = depth_cm.shape
+    if members.ndim != 3 or members.shape[2] != n_seg:
+        raise ValueError(
+            f"member_depth_cm must be (n_members, n_steps, {n_seg}) to match the Twin's segment "
+            f"axis; got {members.shape}."
+        )
+
+    level = np.broadcast_to(depth_cm.astype(np.float32), (members.shape[0], n_steps, n_seg)).copy()
+    # A shorter member stack than the Twin's horizon is possible when Sky keeps fewer per-member
+    # steps than the Twin ran; the steps it does not cover keep the Twin's single value rather
+    # than borrowing a spread from a neighbouring step.
+    shared = min(n_steps, int(members.shape[1]))
+    head = members[:, :shared]
+    level[:, :shared] += head - head.mean(axis=0, keepdims=True)
+    # Depth below zero is not a depth. Re-centring can push a dry street negative where the
+    # members disagree by more than the Twin's own level, and the console draws these numbers.
+    np.maximum(level, 0.0, out=level)
+    return level
+
+
 def segment_forecast(
     depth_m: NDArray[np.floating],
     times: tuple[datetime, ...],
     index,
     run_id: str,
+    member_depth_cm: NDArray[np.floating] | None = None,
 ):
     """Per-segment depth per step, with exceedances and safe-until per profile.
 
-    ``depth_m`` is ``(n_steps, n_rows, n_cols)`` from one Twin run. Because that run is
-    deterministic there is no ensemble to take a quantile over, so p10, p50 and p90 are the same
-    number and every exceedance is 0 or 1 - see the module docstring. The columns exist now so
-    the console, the API contract and the parquet schema do not change shape when Phase 7 makes
-    them real.
+    ``depth_m`` is ``(n_steps, n_rows, n_cols)`` from one Twin run and fixes the *level*: it is
+    the Twin's depth the band is centred on (exactly, bar the zero clip). With members
+    ``depth_p50_cm`` is their median rather than their mean, so it can sit a little off the Twin
+    where they are skewed; how far is measured into ``max_p50_shift_cm`` on every run rather than
+    asserted (2.7 cm at worst on the 2 July 09:10 cycle, against a 251.7 cm peak).
+
+    ``member_depth_cm`` is the optional Flash-lite stack, ``(n_members, n_steps, n_segments)`` in
+    centimetres, in the segment order of ``index``. Given it, the quantiles are taken across the
+    members (:func:`_member_levels`) and each exceedance is the fraction of members above the
+    threshold, so safe-until becomes what CLAUDE.md 11.8 actually asks for - the first step where
+    ``P(h > threshold)`` passes the profile's tolerance - rather than the first step the single
+    deterministic depth crosses it. Without it every quantile is the same number and every
+    exceedance is 0 or 1, which is what a run of one member honestly has to say.
     """
     import pandas as pd
 
@@ -255,30 +320,42 @@ def segment_forecast(
         picked = flat[:, cells[lo:hi]]
         depth_cm[:, k] = np.percentile(picked, SEGMENT_PERCENTILE, axis=1) * 100.0
 
+    # Every profile's threshold is asked of the probability field too, so a profile added at a
+    # depth the parquet does not carry a column for still gets a probabilistic safe-until.
+    thresholds = sorted(set(EXCEEDANCE_CM) | set(PROFILE_THRESHOLD_CM.values()))
+    if member_depth_cm is None:
+        n_members = 1
+        p10 = p50 = p90 = depth_cm
+        prob = {t: (depth_cm > t).astype(np.float64) for t in thresholds}
+    else:
+        level = _member_levels(depth_cm, member_depth_cm)
+        n_members = int(level.shape[0])
+        p10, p50, p90 = np.percentile(level, (10.0, 50.0, 90.0), axis=0)
+        prob = {t: (level > t).mean(axis=0, dtype=np.float64) for t in thresholds}
+
     rows: list[dict[str, object]] = []
     for k, seg_id in enumerate(segment_ids):
-        series = depth_cm[:, k]
         safe_until: dict[str, object] = {}
         for profile, threshold in PROFILE_THRESHOLD_CM.items():
-            # A deterministic run makes the exceedance probability 1 above the threshold, so
-            # "first time P > tolerance" is just "first time the depth passes the threshold".
-            over = np.flatnonzero(series > threshold)
-            safe_until[profile] = times[int(over[0])].isoformat() if over.size else None
+            # On a single-member run the probability is 1 above the threshold and 0 below it, so
+            # this reduces to "first step the depth crosses" and reproduces the old answer.
+            risky = np.flatnonzero(prob[threshold][:, k] > PROFILE_TOLERANCE[profile])
+            safe_until[profile] = times[int(risky[0])].isoformat() if risky.size else None
+        blob = json.dumps(safe_until)
         for step in range(n_steps):
-            d = float(series[step])
             rows.append(
                 {
                     "run_id": run_id,
                     "segment_id": seg_id,
                     "valid_ts": times[step],
-                    "depth_p10_cm": d,
-                    "depth_p50_cm": d,
-                    "depth_p90_cm": d,
-                    "p_gt_15": float(d > 15.0),
-                    "p_gt_30": float(d > 30.0),
-                    "p_gt_45": float(d > 45.0),
-                    "p_gt_60": float(d > 60.0),
-                    "safe_until": json.dumps(safe_until),
+                    "depth_p10_cm": float(p10[step, k]),
+                    "depth_p50_cm": float(p50[step, k]),
+                    "depth_p90_cm": float(p90[step, k]),
+                    "p_gt_15": float(prob[15.0][step, k]),
+                    "p_gt_30": float(prob[30.0][step, k]),
+                    "p_gt_45": float(prob[45.0][step, k]),
+                    "p_gt_60": float(prob[60.0][step, k]),
+                    "safe_until": blob,
                 }
             )
 
@@ -288,8 +365,13 @@ def segment_forecast(
         segments=n_seg,
         steps=n_steps,
         rows=len(frame),
+        members=n_members,
         max_cm=round(float(depth_cm.max()) if depth_cm.size else 0.0, 1),
         wet_segments=int((depth_cm.max(axis=0) > 5.0).sum()) if depth_cm.size else 0,
+        # Measured, not claimed (rule 6): how wide the band actually is, and how far the member
+        # median sits from the Twin level the band is centred on.
+        max_band_cm=round(float((p90 - p10).max()) if n_seg else 0.0, 1),
+        max_p50_shift_cm=round(float(np.abs(p50 - depth_cm).max()) if n_seg else 0.0, 2),
     )
     return frame, depth_cm
 
