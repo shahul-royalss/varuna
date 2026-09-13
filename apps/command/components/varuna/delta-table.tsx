@@ -22,10 +22,15 @@ export interface DeltaRow {
   beforeCm: number;
   /** p50 peak depth in cm after the scenario. */
   afterCm: number;
-  /** Minutes the hotspot is impassable for cars (above 30 cm) before the scenario. */
-  minutesImpassableBefore: number;
+  /** Minutes the hotspot is impassable for cars (above 30 cm) before the scenario.
+   *
+   * Optional, and the column only renders when a row carries it. `POST /v1/whatif` returns peak
+   * depth per segment and no duration, so the what-if lab passes neither: a "0 min -> 0 min"
+   * printed in every row is a number nothing computed, which is what rule 6 forbids. When the
+   * emulator gains a per-step exceedance the field comes back and the column returns with it. */
+  minutesImpassableBefore?: number;
   /** The same after the scenario. */
-  minutesImpassableAfter: number;
+  minutesImpassableAfter?: number;
 }
 
 export interface DeltaTableProps {
@@ -45,6 +50,13 @@ export function formatDeltaCm(beforeCm: number, afterCm: number): string {
  * table agrees with the diff layer; the change column is signed and coloured only as a hint.
  */
 export function DeltaTable({ rows, className }: DeltaTableProps) {
+  // The column appears only when something actually measured a duration. Rendering it against
+  // rows that carry none printed "0 min -> 0 min" on every line, which reads as a computed
+  // result rather than an absent one (rule 6).
+  const showMinutes = rows.some(
+    (row) => row.minutesImpassableBefore !== undefined || row.minutesImpassableAfter !== undefined,
+  );
+
   if (rows.length === 0) {
     return (
       <EmptyState
@@ -64,7 +76,9 @@ export function DeltaTable({ rows, className }: DeltaTableProps) {
             <TableHead>Before</TableHead>
             <TableHead>After</TableHead>
             <TableHead className="text-right">Change</TableHead>
-            <TableHead className="text-right">Minutes impassable</TableHead>
+            {showMinutes ? (
+              <TableHead className="text-right">Minutes impassable</TableHead>
+            ) : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -90,10 +104,14 @@ export function DeltaTable({ rows, className }: DeltaTableProps) {
                 >
                   {formatDeltaCm(row.beforeCm, row.afterCm)}
                 </TableCell>
-                <TableCell className="num text-right text-text-2">
-                  {formatMinutes(row.minutesImpassableBefore)} &rarr;{" "}
-                  <span className="text-text">{formatMinutes(row.minutesImpassableAfter)}</span>
-                </TableCell>
+                {showMinutes ? (
+                  <TableCell className="num text-right text-text-2">
+                    {formatMinutes(row.minutesImpassableBefore ?? 0)} &rarr;{" "}
+                    <span className="text-text">
+                      {formatMinutes(row.minutesImpassableAfter ?? 0)}
+                    </span>
+                  </TableCell>
+                ) : null}
               </TableRow>
             );
           })}

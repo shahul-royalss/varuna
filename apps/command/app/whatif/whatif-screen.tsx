@@ -61,9 +61,17 @@ function scenarioLine(values: WhatIfValues): string {
 }
 
 /**
- * What-if lab (CLAUDE.md section 7.7). In Phase 0 the controls are live and local, and both
- * actions say when they start working; the map, the delta table and the agreement bar hold their
- * empty states until the emulator lands.
+ * What-if lab (CLAUDE.md section 7.7).
+ *
+ * What is live: the rain and tide sliders, `POST /v1/whatif` on the emulator (62-78 ms warm
+ * against section 14's 1 s budget), the difference layer with its M13 wipe, the delta table,
+ * and the held-out skill printed beside every answer.
+ *
+ * What is refused, and says so on screen rather than looking idle: cleaning pipes and the pump
+ * plan, because the fit is element-wise per segment and cleaning one pipe moves no other street
+ * (measured 0.000000 cm at the deepest street with every other pipe in the city cleaned,
+ * ADR-0042); and the physics check, because `POST /v1/whatif/physics-check` answers 501 and the
+ * Twin it would re-run measures 137-174 s in the baked cycles against a 10 s budget.
  */
 export function WhatIfScreen() {
   const [values, setValues] = useState<WhatIfValues>(DEFAULT_WHATIF_VALUES);
@@ -134,10 +142,8 @@ export function WhatIfScreen() {
     hotspot: row.segmentId,
     beforeCm: row.beforeCm,
     afterCm: row.afterCm,
-    // The endpoint reports peak depth, not a duration; claiming minutes here would be inventing
-    // a number, so the columns stay at zero and the panel description says what is shown.
-    minutesImpassableBefore: 0,
-    minutesImpassableAfter: 0,
+    // No minutes: the endpoint reports peak depth per segment and no duration, and DeltaTable
+    // drops the column when no row carries one rather than printing a computed-looking zero.
   }));
 
   return (
@@ -202,7 +208,10 @@ export function WhatIfScreen() {
                       <MapSlot
                         emptyState={{
                           title: "No scenario run yet",
-                          description: "Set the rain and the pipes, then press Run what-if.",
+                          // Names only the two levers this screen actually sends. The pipe and pump
+// switches are disabled with their reasons beside them, so inviting the
+// operator to "set the pipes" would point at a control that cannot move.
+                          description: "Set the rain and the tide, then press Run what-if.",
                         }}
                       />
                     )}
@@ -226,7 +235,10 @@ export function WhatIfScreen() {
               <PanelErrorBoundary title="Hotspot deltas">
                 <Panel
                   title="Hotspot deltas"
-                  description="Before and after per hotspot, with the minutes each stays impassable."
+                  // The response carries before and after depth per hotspot; it does not carry
+                  // minutes-impassable, and nothing computes it, so the panel does not
+                  // promise it (rule 6).
+                  description="Before and after depth per hotspot, from the emulator."
                   className="min-w-0"
                 >
                   <DeltaTable rows={rows} />

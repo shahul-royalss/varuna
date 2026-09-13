@@ -5,7 +5,7 @@ CLAUDE.md 16; the numbers come from `/verify`, `city/mumbai/REPORT.md`, `docs/ve
 the run directories. Where a number is bad, it is here anyway — a measured weakness is worth more
 in front of this jury than a round number nobody can reproduce (rule 6).
 
-Last measured: 12 September 2026.
+Last measured: 13 September 2026.
 
 ---
 
@@ -82,6 +82,62 @@ and segment S215609077-002 takes 10 mm of rain and ponds 60 cm for exactly that 
 So what-if **levels on the Twin's own forecast** and uses the emulator only for the *difference* a
 scenario makes, a tide offset is refused rather than approximated, and the measured skill is
 printed beside every answer. The GNN surrogate is the pilot upgrade.
+
+## "Why won't the physics check run?"
+
+Because re-running the Twin on a what-if scenario does not fit the **10 s** CLAUDE.md 14 gives
+that endpoint — at full AOI. A three-hour Mumbai run is 137–174 s in six of the seven baked
+cycles and 84 s in the lightest, so `/v1/whatif/physics-check` refuses with that cost printed
+rather than with "not implemented".
+
+The question that decides whether the check is worth building at all is whether a **bounded
+crop** fits. It does, with room to spare.
+
+### Physics check feasibility
+
+Measured 13 September 2026 on the demo laptop (Intel64 family 6 model 140, 8 logical cores,
+Windows 11) on the 08:10 IST cycle of 2 July 2019 (`MUM-20190702T0240Z`), 36 steps of 5 minutes,
+with the same Sky forcing the baked run used. The crop is **33 × 33 cells at 30 m — 990 m ×
+990 m** centred on the Hindmata register point, carrying the 410 drain nodes and 392 edges whose
+cells fall inside it, with its boundary ring held at the full run's water surface interpolated
+in time. Three warm repeats each, `structlog` at WARNING.
+
+| Run | Three-hour cost | Against the 10 s budget |
+|---|---|---|
+| Full AOI, coupled — 168,606 cells, 49,897 nodes, 49,770 edges | 69,100 ms (surface 23,692 · drain 34,658 · coupling 6,265) | 6.9× over |
+| Crop, 2D surface alone, 36 calls of 300 s | **151 / 154 / 163 ms** | met |
+| Crop, coupled 2D + 1D + exchange, 2,160 syncs of 5 s | **931 / 893 / 922 ms** | met, with 10× to spare |
+
+The 137–174 s above is what the baked cycles recorded in their own `stage_ms`; the 69,100 ms row
+is this one cycle re-run today under the same quiet conditions as the crop, so the two columns of
+this table are comparable to each other rather than to the run registry.
+
+**10 s is reachable: the coupled crop is 0.9 s, and the endpoint is worth building.** Four
+things that number comes with.
+
+**The crop must be the coupled one, not the surface.** Over the same nine cells at Hindmata the
+full run peaks at 11.23 cm, the coupled crop at 11.60 cm — 0.4 cm apart, which is the crop
+reproducing the physics it was cut out of — and the surface alone at 5.09 cm. Over half of that
+junction's water arrives back out of the drains as surcharge, so a 2D-only check at 0.15 s would
+be checking the wrong thing.
+
+**The crop borrows its boundary from the run it is checking.** Holding the ring at the baseline
+run's water surface is what makes a 990 m window well-posed, and it also suppresses whatever the
+scenario would have changed about the water arriving at that ring. The check is therefore a check
+at the crop's centre, and a wider crop is the way to buy more of it — cheaply, since the cost is
+not in the cells.
+
+**A tide offset cannot be checked on this crop at all.** It contains **0 of the city's 3 tidal
+outfalls**, so the tide boundary the scenario would move is not inside it. The what-if already
+refuses a tide offset rather than approximating it (ADR-0025); this is the same wall.
+
+**Shrinking the crop further buys almost nothing.** It has 155× fewer cells and 127× fewer edges
+than the AOI but runs only 75× faster, because the 2,160 sync intervals cost the same number of
+Python-level solver calls whatever the domain is. That per-call floor, not the grid, is what a
+future speed-up has to attack — and it is the same scatter-add problem ADR-0035 names for the
+full run. (For the same reason the number is sensitive to logging: with `structlog` left at its
+default, the 2,160 `surface.run` debug lines take the coupled crop to 1.3–2.6 s. The API
+configures INFO, so the endpoint gets the quiet path.)
 
 ## "Show us cleaning a drain, then"
 
