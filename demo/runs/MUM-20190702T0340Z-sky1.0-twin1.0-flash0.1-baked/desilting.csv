@@ -1,0 +1,26 @@
+rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E010664,,0.6218,0.2006,80.2,0,,inferred
+2,MUM-E029187,Sir Bhalchandra Road,0.4147,0.195,59.0,0,,inferred
+3,MUM-E018095,Khodadad Circle,0.4071,0.2336,58.2,0,,inferred
+4,MUM-E004660,,0.3856,0.1355,55.6,0,,inferred
+5,MUM-E025673,,0.3819,0.1645,55.1,0,,inferred
+6,MUM-E012845,,0.38,0.2058,54.9,0,,inferred
+7,MUM-E023104,,0.3767,0.1324,54.5,1,,inferred
+8,MUM-E008041,60 Feet Road,0.3752,0.1447,54.3,0,,inferred
+9,MUM-E000372,,0.3736,0.1292,54.1,0,,inferred
+10,MUM-E010657,,0.3723,0.1809,54.0,1,,inferred
+11,MUM-E015038,,0.3726,0.1495,54.0,0,,inferred
+12,MUM-E046944,,0.3705,0.1254,53.8,0,,inferred
+13,MUM-E029136,,0.3699,0.1979,53.7,1,,inferred
+14,MUM-E004661,,0.366,0.1381,53.2,0,,inferred
+15,MUM-E015041,,0.3618,0.1232,52.7,1,,inferred
+16,MUM-E002737,"['Sion Flyover', 'Sion Circle Flyover']",0.3572,0.2029,52.1,1,,inferred
+17,MUM-E004659,,0.3563,0.1361,52.0,0,,inferred
+18,MUM-E025674,,0.3557,0.1396,51.9,0,,inferred
+19,MUM-E015040,,0.3546,0.1521,51.8,0,,inferred
+20,MUM-E023103,,0.3531,0.1418,51.6,0,,inferred
+21,MUM-E008290,Dr Babasaheb Ambedkar Marg,0.3506,0.2155,51.3,0,,inferred
+22,MUM-E000008,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
+23,MUM-E000009,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
+24,MUM-E000010,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
+25,MUM-E000103,Road No 5,0.35,0.15,51.2,0,,inferred

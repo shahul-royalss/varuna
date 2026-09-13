@@ -1,0 +1,26 @@
+rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E018095,Khodadad Circle,0.4953,0.2419,68.0,0,,inferred
+2,MUM-E029187,Sir Bhalchandra Road,0.4064,0.1936,58.1,0,,inferred
+3,MUM-E039082,,0.3889,0.1323,56.0,0,,inferred
+4,MUM-E004660,,0.3856,0.1355,55.6,0,,inferred
+5,MUM-E021688,,0.3858,0.1431,55.6,0,,inferred
+6,MUM-E021690,,0.3824,0.175,55.2,0,,inferred
+7,MUM-E025673,,0.3819,0.1645,55.1,0,,inferred
+8,MUM-E006993,,0.3742,0.1483,54.2,0,,inferred
+9,MUM-E012702,,0.3743,0.144,54.2,0,,inferred
+10,MUM-E022112,I A Project Road,0.3739,0.1366,54.2,0,,inferred
+11,MUM-E024329,,0.3732,0.1314,54.1,0,,inferred
+12,MUM-E015038,,0.3726,0.1495,54.0,0,,inferred
+13,MUM-E001498,,0.3699,0.1315,53.7,0,,inferred
+14,MUM-E022111,I A Project Road,0.3672,0.1577,53.4,0,,inferred
+15,MUM-E004661,,0.366,0.1381,53.2,0,,inferred
+16,MUM-E008049,,0.3653,0.1537,53.1,0,,inferred
+17,MUM-E024328,,0.3643,0.1364,53.0,0,,inferred
+18,MUM-E015041,,0.3618,0.1232,52.7,1,,inferred
+19,MUM-E004659,,0.3563,0.1361,52.0,0,,inferred
+20,MUM-E025674,,0.3557,0.1396,51.9,0,,inferred
+21,MUM-E015040,,0.3546,0.1521,51.8,0,,inferred
+22,MUM-E039083,,0.3542,0.1519,51.8,0,,inferred
+23,MUM-E024331,Chandvali Farm Road,0.3524,0.1863,51.5,1,,inferred
+24,MUM-E000008,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
+25,MUM-E000009,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred

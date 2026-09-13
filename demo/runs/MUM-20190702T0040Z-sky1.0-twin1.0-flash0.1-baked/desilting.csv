@@ -1,0 +1,26 @@
+rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E009874,,0.4509,0.1749,63.2,0,,inferred
+2,MUM-E000008,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
+3,MUM-E000009,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
+4,MUM-E000010,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
+5,MUM-E000103,Road No 5,0.35,0.15,51.2,0,,inferred
+6,MUM-E000104,Road No 5,0.35,0.15,51.2,0,,inferred
+7,MUM-E000105,Road No 5,0.35,0.15,51.2,0,,inferred
+8,MUM-E000106,Road No 5,0.35,0.15,51.2,0,,inferred
+9,MUM-E000107,Road No 5,0.35,0.15,51.2,0,,inferred
+10,MUM-E000127,Sir Pochkhanwala Marg,0.35,0.15,51.2,0,,inferred
+11,MUM-E000128,Sir Pochkhanwala Marg,0.35,0.15,51.2,0,,inferred
+12,MUM-E000129,Sir Pochkhanwala Marg,0.35,0.15,51.2,0,,inferred
+13,MUM-E000130,Sir Pochkhanwala Marg,0.35,0.15,51.2,0,,inferred
+14,MUM-E000131,Sir Pochkhanwala Marg,0.35,0.15,51.2,0,,inferred
+15,MUM-E000132,Sir Pochkhanwala Marg,0.35,0.15,51.2,0,,inferred
+16,MUM-E000372,,0.35,0.15,51.2,0,,inferred
+17,MUM-E000373,,0.35,0.15,51.2,0,,inferred
+18,MUM-E000374,,0.35,0.15,51.2,0,,inferred
+19,MUM-E000375,,0.35,0.15,51.2,0,,inferred
+20,MUM-E000376,,0.35,0.15,51.2,0,,inferred
+21,MUM-E000377,,0.35,0.15,51.2,0,,inferred
+22,MUM-E000378,,0.35,0.15,51.2,0,,inferred
+23,MUM-E000640,,0.35,0.15,51.2,0,,inferred
+24,MUM-E000642,,0.35,0.15,51.2,0,,inferred
+25,MUM-E000643,,0.35,0.15,51.2,0,,inferred

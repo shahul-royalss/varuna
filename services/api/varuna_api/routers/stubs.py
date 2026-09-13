@@ -191,13 +191,13 @@ def pumps_dispatch(body: PumpDispatchRequest) -> PumpPlan:
 # The generic 501 says "the engine is not built yet", which is true of the physics check and
 # misleading about the Twin: the Twin exists and runs every baked cycle. What is missing is a
 # Twin run small enough to answer inside section 14's 10 s budget. The numbers are the
-# `stage_ms.twin_total_ms` of the seven baked MUM-2019-07-02 cycles in demo/runs - 136,639 to
-# 173,776 ms in six of them and 84,479 ms in the lightest - so the refusal names the measured
+# `stage_ms.twin_total_ms` of the seven baked MUM-2019-07-02 cycles in demo/runs - 58,282 to
+# 113,999 ms in six of them and 47,026 ms in the lightest - so the refusal names the measured
 # cost rather than implying the physics is absent (CLAUDE.md 6.8, 7.7).
 PHYSICS_CHECK_REFUSAL = (
     "The physics check lands in Phase 7 (task P7.8). It needs a Twin re-run of the scenario, "
-    "and a full-AOI Mumbai Twin run measures 137-174 s in six of the seven baked cycles "
-    "(84 s in the lightest) against this endpoint's 10 s budget, so the check would have to run "
+    "and a full-AOI Mumbai Twin run measures 58-114 s in six of the seven baked cycles "
+    "(47 s in the lightest) against this endpoint's 10 s budget, so the check would have to run "
     "on a bounded hotspot crop rather than the whole AOI. Such a crop was measured on "
     "2026-09-13 at about 0.9 s coupled over a 990 m window (33 x 33 cells, 392 edges), "
     "roughly ten times inside the budget and within 0.4 cm of the full run at the same "

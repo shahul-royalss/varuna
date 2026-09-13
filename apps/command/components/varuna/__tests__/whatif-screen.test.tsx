@@ -88,7 +88,7 @@ describe("WhatIfScreen", () => {
     expect(screen.getByText("No what-if yet")).toBeInTheDocument();
     expect(screen.getByText("Set the controls and run one.")).toBeInTheDocument();
     // Not "not run" - the button cannot work. `POST /v1/whatif/physics-check` answers 501 and
-    // the Twin it would re-run measures 137-174 s against section 14's 10 s budget, so an
+    // the Twin it would re-run measures 58-114 s against section 14's 10 s budget, so an
     // empty state reading "you have not pressed it yet" would blame the operator for a
     // refusal the system owes them a reason for (section 17, ADR-0042).
     expect(screen.getByText("Physics check not available")).toBeInTheDocument();

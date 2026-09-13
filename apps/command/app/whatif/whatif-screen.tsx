@@ -32,17 +32,17 @@ const MAX_DELTA_ROWS = 25;
 /** Motion M13: the diff layer wipes left to right over 500 ms (CLAUDE.md 8). */
 const WIPE_MS = 500;
 
-/** A full-AOI Twin run on this city measures 137-174 s in six of the seven baked cycles, against
+/** A full-AOI Twin run on this city measures 58-114 s in six of the seven baked cycles, against
  * the 10 s CLAUDE.md 14 budget for a physics check. The control says so rather than starting
  * something that would look hung. */
 const PHYSICS_DISABLED_REASON =
-  "Runs the Twin on the same scenario; a full-AOI Mumbai run measures 137-174 s against a 10 s " +
+  "Runs the Twin on the same scenario; a full-AOI Mumbai run measures 58-114 s against a 10 s " +
   "budget, so it is not wired to this button yet";
 
 /** The same refusal the endpoint returns (`POST /v1/whatif/physics-check`, 501), so the panel
  * says why no disagreement is on screen instead of implying the button was never pressed. */
 const PHYSICS_UNAVAILABLE_REASON =
-  "The check needs a Twin re-run of the scenario. A full-AOI Mumbai Twin run measures 137-174 s " +
+  "The check needs a Twin re-run of the scenario. A full-AOI Mumbai Twin run measures 58-114 s " +
   "in six of the seven baked cycles against a 10 s budget, so it would have to run on a bounded " +
   "hotspot crop rather than the whole AOI; that crop is not built yet (P7.8).";
 
@@ -99,7 +99,7 @@ function parseSegments(raw: string | null): { picked: string[]; asked: number } 
  * What is refused, and says so on screen rather than looking idle: the top-14-by-beta ranking,
  * because nothing can attribute a junction's depth to pipes on this emulator; the pump plan,
  * because the endpoint has no field for one; and the physics check, because
- * `POST /v1/whatif/physics-check` answers 501 and the Twin it would re-run measures 137-174 s in
+ * `POST /v1/whatif/physics-check` answers 501 and the Twin it would re-run measures 58-114 s in
  * the baked cycles against a 10 s budget.
  *
  * `?segments=a,b,c&run=<run id>` is the console's "Clean in what-if" deep link (P7.11): the

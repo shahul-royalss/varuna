@@ -25,8 +25,8 @@ storms its CSI at the 30 cm car threshold is 0.085. So:
   comes from the Twin's own forecast for the run. The physics check of CLAUDE.md 7.7 - re-run
   the Twin on the same scenario, print the disagreement - is specified and unbuilt: there is no
   ``physics_check`` in this package, and ``POST /v1/whatif/physics-check`` answers 501 naming
-  why. The reason is cost, not absence: the Twin runs every baked cycle, at 137-174 s per
-  full-AOI Mumbai run in six of the seven baked cycles (84 s in the lightest) against section
+  why. The reason is cost, not absence: the Twin runs every baked cycle, at 58-114 s per
+  full-AOI Mumbai run in six of the seven baked cycles (47 s in the lightest) against section
   14's 10 s budget for the check. A bounded hotspot crop is the route to that budget, and it is
   not built. So the disagreement is not displayed here because it has not been measured - which
   is what the endpoint says rather than leaving the screen implying a button was never pressed.

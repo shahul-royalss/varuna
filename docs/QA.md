@@ -15,13 +15,15 @@ Yes. A local-inertial 2D shallow-water solver (Bates 2010) on a hydro-conditione
 to a head-driven 1D drain model with Manning capacity, surcharge and backflow, exchanging through
 inlet capture and surcharge at every sync interval.
 
-**Mass balance on the 08:40 cycle: 6.1 × 10⁻⁴** — inside the 0.1 % budget CLAUDE.md 11.3 sets.
+**Mass balance on the 08:40 cycle: 7.0 × 10⁻⁴** — inside the 0.1 % budget CLAUDE.md 11.3 sets.
 Say the whole sentence: the audit only started counting what the drains discharge at their outfalls
 after we found the network's main sink missing from it, which is why the error used to grow with
 the water (1.5 × 10⁻² before).
 
-One cycle of the seven, at 06:40, sits at **0.18 %** — over budget. It is on screen in the replay
-screen's cycle log rather than hidden, and it is the one we would investigate next.
+One cycle of the seven, at 06:40, sits at **0.215 %** — over budget, and worse than the 0.18 % the
+same cycle measured before the demo set was re-baked with the 20-member ensemble on 13 September
+2026. The other six measure 0.014–0.091 %. It is on screen in the replay screen's cycle log rather
+than hidden, and it is the one we would investigate next.
 
 The blueprint's full dynamic-wave 1D and 5 m GPU nests are the pilot upgrade; the interfaces for
 both are in place (a PySWMM adapter, and the nest geometry in `configs/mumbai.yaml`).
@@ -66,8 +68,11 @@ outfalls (3 tidal), 100 % of nodes reaching an outfall**. Every element carries
 draws them dashed for that reason.
 
 The point is what happens next: Pulse learns β from every flood the city has. Across the seven
-baked cycles the worst pipe climbs from 0.394 to 0.683 as observations accumulate. When a surveyed
-SWMM model arrives we import it and keep the learning.
+baked cycles the worst pipe reads 0.451 at 06:10 and 0.622 at 09:10, but not as a steady climb:
+it is already 0.620 at 06:40 and sits at 0.471–0.526 through the middle of the morning. Each cycle
+re-assimilates every observation up to its own time from the city's prior rather than carrying the
+last cycle's posterior forward (CLAUDE.md P7.3), so the series is seven analyses rather than one
+learning curve. When a surveyed SWMM model arrives we import it and keep the learning.
 
 ## "Does Pulse actually recover a blocked pipe?"
 
@@ -119,8 +124,9 @@ printed beside every answer. The GNN surrogate is the pilot upgrade.
 ## "Why won't the physics check run?"
 
 Because re-running the Twin on a what-if scenario does not fit the **10 s** CLAUDE.md 14 gives
-that endpoint — at full AOI. A three-hour Mumbai run is 137–174 s in six of the seven baked
-cycles and 84 s in the lightest, so `/v1/whatif/physics-check` refuses with that cost printed
+that endpoint — at full AOI. A three-hour Mumbai run is 58–114 s in six of the seven baked
+cycles and 47 s in the lightest (re-baked 13 September 2026; the pre-ensemble set measured
+137–174 s and 84 s), so `/v1/whatif/physics-check` refuses with that cost printed
 rather than with "not implemented".
 
 The question that decides whether the check is worth building at all is whether a **bounded
