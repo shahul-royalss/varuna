@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import numpy as np
 import structlog
@@ -29,6 +29,9 @@ from varuna_schemas.paths import repo_root, run_dir
 
 from varuna_api.runs_util import latest_run_for
 from varuna_api.state import api_error
+
+if TYPE_CHECKING:  # pragma: no cover - typing only; varuna_flash is imported lazily below
+    from varuna_flash.model import FlashModel
 
 log = structlog.get_logger("varuna.api.whatif")
 
@@ -42,6 +45,41 @@ map, which is why the difference layer looked empty on a scenario that moved 1,6
 
 MODEL_PATHS = ("data/train/flash_lite.npz", "demo/flash_lite.npz")
 """Where the fitted emulator is looked for, in order."""
+
+UNMATCHED_NAMED = 5
+"""Unmatched ids quoted back in the refusal, before it says how many more there were."""
+
+
+def _resolve_cleaned(requested: set[str], model: FlashModel) -> tuple[set[str], list[str]]:
+    """Split the ids asked for into the ones this emulator can clean and the rest.
+
+    **The endpoint used to echo the request back as the answer.** `run_scenario` drops an id it
+    does not recognise, so posting drain edge ids returned 200, said "2 pipes cleaned to beta =
+    0.05" and reported zero change - a response that named pipes nothing had touched (rule 6).
+    Drain edge ids (`MUM-E035757`) and road-segment ids (`S1001383363-000`) are disjoint
+    vocabularies: 6,000 edges and 21,296 segments with no overlap, so the mistake is easy to
+    make and was invisible.
+    """
+    known = set(model.segment_ids)
+    matched = requested & known
+    unmatched = sorted(requested - known)
+    if requested and not matched:
+        named = ", ".join(unmatched[:UNMATCHED_NAMED])
+        extra = (
+            f" and {len(unmatched) - UNMATCHED_NAMED} more"
+            if len(unmatched) > UNMATCHED_NAMED
+            else ""
+        )
+        raise api_error(
+            422,
+            "unknown_segments",
+            f"None of the ids to clean are road segments in this city: {named}{extra}. "
+            "Cleaning is applied to the pipe under a road segment, so this endpoint takes "
+            "road-segment ids (S...), not drain edge ids (MUM-E...); the desilting CSV at "
+            "/v1/drains/health.csv lists edge ids, which are a different vocabulary. Read "
+            "segment ids from /v1/nowcast/segments or the hotspot drawer.",
+        )
+    return matched, unmatched
 
 
 def _model():
@@ -79,6 +117,10 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     A tide offset is refused: the emulator is a perturbation around a base state measured at one
     tide series, so it has no representation of a different sea level, and returning a number
     anyway would be inventing one.
+
+    ``cleaned_segments`` are road-segment ids. Ids this city has no segment for are reported in
+    ``cleaned_unmatched`` and never counted as cleaned; a request where *none* of them match is
+    refused with 422 ``unknown_segments`` rather than answered for a scenario nobody asked for.
     """
     from time import perf_counter
 
@@ -105,7 +147,7 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     baseline_by_id = wet.get("depth_cm", {})
 
     rain_scale = float(body.get("rain_scale", 1.0))
-    cleaned = set(body.get("cleaned_segments") or [])
+    cleaned, unmatched = _resolve_cleaned(set(body.get("cleaned_segments") or []), model)
     tide = float(body.get("tide_offset_m", 0.0))
 
     beta = np.full(model.n_segments, 0.20)
@@ -152,6 +194,7 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         ms=round(ms, 1),
         rain_scale=rain_scale,
         cleaned=len(cleaned),
+        unmatched=len(unmatched),
         improved=scenario.n_improved,
         worse=scenario.n_worse,
     )
@@ -164,7 +207,10 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
             "n_training_runs": model.n_training_runs,
         },
         "rain_scale": rain_scale,
+        # Only what was actually cleaned. `cleaned_unmatched` carries the ids this city has no
+        # segment for, so a partly wrong request is visible rather than absorbed.
         "cleaned_segments": sorted(cleaned),
+        "cleaned_unmatched": unmatched,
         "n_improved": scenario.n_improved,
         "n_worse": scenario.n_worse,
         "ms": round(ms, 1),
@@ -175,6 +221,14 @@ def whatif(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         "worst_after": sorted(rows, key=lambda r: -r["after_cm"])[:20],
         "notes": [
             *scenario.notes,
+            *(
+                [
+                    f"{len(unmatched)} of the ids asked for are not road segments in this city "
+                    f"and were not cleaned; they are listed in cleaned_unmatched."
+                ]
+                if unmatched
+                else []
+            ),
             "The level is the Twin's own forecast for this run; the emulator supplies only the "
             "difference the scenario makes. Run the physics check for a scenario the Twin has "
             "solved end to end.",

@@ -28,11 +28,14 @@ export interface WhatIfResult {
   notes: string[];
 }
 
+/**
+ * What the request carries. Cleaning is a set of pipe ids the console cannot resolve yet and the
+ * endpoint has no pump-plan field at all, so neither is a member here: the screen's switches for
+ * them are disabled and say so rather than being read into a body that omits them.
+ */
 export interface WhatIfScenario {
   rainScale: number;
   tideOffsetM: number;
-  cleanTop14: boolean;
-  pumpPlan: boolean;
 }
 
 function toSegments(rows: Record<string, unknown>[] | undefined): WhatIfSegment[] {
@@ -56,9 +59,9 @@ export async function runWhatIf(
     body: JSON.stringify({
       rain_scale: scenario.rainScale,
       tide_offset_m: scenario.tideOffsetM,
-      // Cleaning is expressed as pipes in the API; the console's "top 14" shortcut resolves to
-      // them once the drain X-ray has a posterior to rank. Until it does, the switch changes
-      // nothing and the response's notes say the scenario was rain only.
+      // Cleaning is expressed as road-segment ids in the API; the console's "top 14" shortcut
+      // ranks pipes, and the pipe-to-street join lands with attribution (P7.7). Sending an empty
+      // list is the honest request: the response's notes then say the scenario was rain only.
       cleaned_segments: [],
     }),
   });

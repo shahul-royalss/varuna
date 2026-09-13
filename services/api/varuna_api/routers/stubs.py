@@ -27,7 +27,7 @@ from varuna_schemas.models import (
 )
 from varuna_schemas.models.common import BBox, Timestamp
 
-from varuna_api.state import not_implemented
+from varuna_api.state import api_error, not_implemented
 
 NOT_BUILT = {501: {"model": ErrorEnvelope, "description": "Engine not built yet (phase named)"}}
 
@@ -188,6 +188,20 @@ def pumps_dispatch(body: PumpDispatchRequest) -> PumpPlan:
 
 
 # ---- what-if (Phase 7) --------------------------------------------------------------------
+# The generic 501 says "the engine is not built yet", which is true of the physics check and
+# misleading about the Twin: the Twin exists and runs every baked cycle. What is missing is a
+# Twin run small enough to answer inside section 14's 10 s budget. The numbers are the
+# `stage_ms.twin_total_ms` of the seven baked MUM-2019-07-02 cycles in demo/runs - 136,639 to
+# 173,776 ms in six of them and 84,479 ms in the lightest - so the refusal names the measured
+# cost rather than implying the physics is absent (CLAUDE.md 6.8, 7.7).
+PHYSICS_CHECK_REFUSAL = (
+    "The physics check lands in Phase 7 (task P7.8). It needs a Twin re-run of the scenario, "
+    "and a full-AOI Mumbai Twin run measures 137-174 s in six of the seven baked cycles "
+    "(84 s in the lightest) against this endpoint's 10 s budget, so the check would have to run "
+    "on a bounded hotspot crop rather than the whole AOI. That crop is not built yet."
+)
+
+
 @router.post(
     "/whatif/physics-check",
     tags=["whatif"],
@@ -195,7 +209,7 @@ def pumps_dispatch(body: PumpDispatchRequest) -> PumpPlan:
     summary="Re-run the Twin on a what-if and report the disagreement",
 )
 def physics_check(body: PhysicsCheckRequest) -> PhysicsCheckResponse:
-    raise not_implemented("The physics check", 7, "P7.8")
+    raise api_error(501, "not_implemented", PHYSICS_CHECK_REFUSAL)
 
 
 # Replay bundles and the clock are no longer stubs: the clock landed with Phase 2 and lives in
@@ -216,6 +230,7 @@ def physics_check(body: PhysicsCheckRequest) -> PhysicsCheckResponse:
 
 
 __all__ = [
+    "PHYSICS_CHECK_REFUSAL",
     "AlertActionRequest",
     "OnboardJob",
     "OnboardRequest",

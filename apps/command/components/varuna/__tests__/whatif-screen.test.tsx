@@ -50,10 +50,40 @@ describe("WhatIfScreen", () => {
     );
   });
 
+  it("disables the two levers the request does not carry, and leaves them out of the scenario line", () => {
+    renderScreen();
+
+    // The request body is rain and tide only: cleaning needs pipe ids the console cannot resolve
+    // yet, and there is no pump-plan field. Both switches say what is missing (section 17).
+    for (const [name, reason] of [
+      ["Clean top 14 by beta", "the pipe-to-street join lands with attribution (P7.7)"],
+      ["Pump plan", "The pump plan is not a what-if lever yet (P7.7)"],
+    ]) {
+      // Base UI renders a disabled switch as a span with aria-disabled rather than a form
+      // element, so jest-dom's toBeDisabled does not apply; the announced state is the assertion.
+      const lever = screen.getByRole("switch", { name });
+      expect(lever).toHaveAttribute("aria-disabled", "true");
+      const helpId = lever.getAttribute("aria-describedby");
+      expect(helpId).toBeTruthy();
+      expect(document.getElementById(helpId as string)).toHaveTextContent(reason);
+    }
+
+    // The pre-run line named both switches while sending neither; it now names only the levers.
+    expect(screen.getByText(/^Scenario ready to run:/)).toHaveTextContent(
+      "Scenario ready to run: Rain 1.0x, tide +0.0 m.",
+    );
+    expect(screen.queryByText(/pipes cleaned/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pump plan on/)).not.toBeInTheDocument();
+  });
+
   it("holds the result panels in their empty states until a what-if has run", () => {
     renderScreen();
     expect(screen.getByText("No what-if yet")).toBeInTheDocument();
     expect(screen.getByText("Set the controls and run one.")).toBeInTheDocument();
-    expect(screen.getByText("Physics check not run")).toBeInTheDocument();
+    // Not "not run" - the button cannot work. `POST /v1/whatif/physics-check` answers 501 and
+    // the Twin it would re-run measures 137-174 s against section 14's 10 s budget, so an
+    // empty state reading "you have not pressed it yet" would blame the operator for a
+    // refusal the system owes them a reason for (section 17, ADR-0042).
+    expect(screen.getByText("Physics check not available")).toBeInTheDocument();
   });
 });

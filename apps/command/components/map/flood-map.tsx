@@ -38,6 +38,11 @@ import type { SurchargeSet } from "@/lib/api/surcharge";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Button } from "@/components/ui/button";
 
+/** Stable empty default for `drains`: a fresh `[]` in the parameter list would change identity on
+ * every render and re-run the memo below (and `CityMap`'s layer build) for the screens - the
+ * public map, the landing hero - that never pass a posterior. */
+const NO_LEARNED_DRAINS: readonly DrainPath[] = [];
+
 type Status =
   | { kind: "loading"; done: number; total: number }
   | { kind: "ready"; run: RunDepth; segments: SegmentPath[]; baseSegments: SegmentPath[] }
@@ -62,6 +67,16 @@ export interface FloodMapProps {
   focus?: MapFocus | null;
   /** Reachability bands from the right rail, drawn over the streets (section 6.7). */
   isochrones?: readonly Isochrone[];
+  /**
+   * The run's learned pipes, joined onto the city's inferred network by edge id.
+   *
+   * The city layer carries all 49,770 edges at the prior the pipeline gave them; a run's
+   * drain-health product carries the worst 6,000 at the posterior Pulse learned. Passing the
+   * latter here re-colours the pipes the filter actually moved and leaves the rest at their
+   * prior, which is the honest picture: most of Mumbai's drains have never been observed.
+   * Omitted, the map draws the whole network at its prior.
+   */
+  drains?: readonly DrainPath[];
   /** `hero` makes the map read-only for the landing page's scrub loop (motion M1). */
   mode?: CityMapMode;
   /** Set to draw wet streets in the public map's three colours against this stopping depth. */
@@ -92,6 +107,7 @@ export function FloodMap({
   showSurcharge = true,
   showBuildings = true,
   showDrains = false,
+  drains: learned = NO_LEARNED_DRAINS,
   focus = null,
   isochrones = [],
   mode = "console",
@@ -166,15 +182,29 @@ export function FloodMap({
 
   // Drains only when asked for: section 6.7 has them off by default, and they are the biggest
   // layer VARUNA serves.
-  const [drains, setDrains] = useState<readonly DrainPath[]>([]);
+  const [network, setNetwork] = useState<readonly DrainPath[]>([]);
   useEffect(() => {
-    if (!showDrains || drains.length > 0) return;
+    if (!showDrains || network.length > 0) return;
     const controller = new AbortController();
     loadDrains(city, controller.signal)
-      .then(setDrains)
+      .then(setNetwork)
       .catch(() => undefined);
     return () => controller.abort();
-  }, [city, showDrains, drains.length]);
+  }, [city, showDrains, network.length]);
+
+  // The whole network at its prior, with the run's learned pipes drawn over it at their
+  // posterior - the same join `/drains` makes, so the console's Drains mode and the X-ray
+  // colour the same pipe the same way. Before the 18 MB network arrives, the learned pipes are
+  // what there is to draw, so the layer is never empty once the operator has asked for it.
+  const drains = useMemo(() => {
+    if (learned.length === 0) return network;
+    if (network.length === 0) return learned;
+    const posterior = new Map(learned.map((edge) => [edge.id, edge.beta]));
+    return network.map((edge) => {
+      const beta = posterior.get(edge.id);
+      return beta === undefined ? edge : { ...edge, beta };
+    });
+  }, [network, learned]);
 
   // Named facilities, for the label layer. Small (a few hundred points) and worth having early:
   // "KEM Hospital" on the map is what turns a route from two lines into a trip.

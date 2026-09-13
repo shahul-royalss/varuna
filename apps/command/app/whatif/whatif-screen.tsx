@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { runWhatIf, type WhatIfResult } from "@/lib/api/whatif";
 
-import { AgreementBar } from "@/components/varuna/agreement-bar";
 import { AppShell } from "@/components/varuna/app-shell";
+import { EmptyState } from "@/components/varuna/empty-state";
 import { DeltaTable, type DeltaRow } from "@/components/varuna/delta-table";
 import { CityMap } from "@/components/map/city-map";
 import { MapSlot } from "@/components/varuna/map-slot";
@@ -30,21 +30,34 @@ const MAX_DELTA_ROWS = 25;
 /** Motion M13: the diff layer wipes left to right over 500 ms (CLAUDE.md 8). */
 const WIPE_MS = 500;
 
-/** A Twin run on this city is about three minutes, against the 10 s CLAUDE.md 14 budgets for a
- * physics check. The control says so rather than starting something that would look hung. */
+/** A full-AOI Twin run on this city measures 137-174 s in six of the seven baked cycles, against
+ * the 10 s CLAUDE.md 14 budget for a physics check. The control says so rather than starting
+ * something that would look hung. */
 const PHYSICS_DISABLED_REASON =
-  "Runs the Twin on the same scenario; a Mumbai run is about three minutes, so it is not wired " +
-  "to this button yet";
+  "Runs the Twin on the same scenario; a full-AOI Mumbai run measures 137-174 s against a 10 s " +
+  "budget, so it is not wired to this button yet";
 
-/** The scenario as one line of copy, so the controls and the result panel agree. */
+/** The same refusal the endpoint returns (`POST /v1/whatif/physics-check`, 501), so the panel
+ * says why no disagreement is on screen instead of implying the button was never pressed. */
+const PHYSICS_UNAVAILABLE_REASON =
+  "The check needs a Twin re-run of the scenario. A full-AOI Mumbai Twin run measures 137-174 s " +
+  "in six of the seven baked cycles against a 10 s budget, so it would have to run on a bounded " +
+  "hotspot crop rather than the whole AOI; that crop is not built yet (P7.8).";
+
+/** The request's `cleaned_segments` is a list of road-segment ids, while "top 14 by beta" ranks
+ * drain pipes; the two vocabularies do not overlap at all, so until attribution supplies the join
+ * the switch has nothing to send. */
+const CLEAN_DISABLED_REASON =
+  "Cleaning is keyed on pipes; the pipe-to-street join lands with attribution (P7.7)";
+
+/** The endpoint takes rain, tide and cleaned road segments. There is no pump-plan field. */
+const PUMP_DISABLED_REASON = "The pump plan is not a what-if lever yet (P7.7)";
+
+/** The scenario as one line of copy, so the controls and the result panel agree. Only the two
+ * levers the request actually carries: naming the switches here would claim a scenario the
+ * endpoint was never asked to run (CLAUDE.md rule 6). */
 function scenarioLine(values: WhatIfValues): string {
-  const parts = [
-    `Rain ${formatRainScale(values.rainScale)}`,
-    `tide ${formatTideOffset(values.tideOffsetM)}`,
-    values.cleanTop14 ? "top 14 pipes cleaned" : "pipes as learned",
-    values.pumpPlan ? "pump plan on" : "pump plan off",
-  ];
-  return parts.join(", ");
+  return `Rain ${formatRainScale(values.rainScale)}, tide ${formatTideOffset(values.tideOffsetM)}`;
 }
 
 /**
@@ -141,7 +154,7 @@ export function WhatIfScreen() {
             <PanelErrorBoundary title="Scenario">
               <Panel
                 title="Scenario"
-                description="Rain, tide, cleaned pipes and the pump plan."
+                description="Rain and tide are levers; cleaned pipes and the pump plan are not yet."
                 className="min-w-0"
               >
                 <WhatIfControls
@@ -149,6 +162,10 @@ export function WhatIfScreen() {
                   onChange={setValues}
                   onRun={(scenario) => void run(scenario)}
                   physicsDisabledReason={PHYSICS_DISABLED_REASON}
+                  cleanDisabled
+                  cleanDisabledReason={CLEAN_DISABLED_REASON}
+                  pumpDisabled
+                  pumpDisabledReason={PUMP_DISABLED_REASON}
                 />
                 {running ? (
                   <p className="mt-3 type-small text-text-3">Running the scenario...</p>
@@ -222,7 +239,13 @@ export function WhatIfScreen() {
                   description="How far the emulator sits from a Twin run on the same scenario."
                   className="min-w-0"
                 >
-                  <AgreementBar result={null} />
+                  {/* `AgreementBar` renders the comparison the day the endpoint answers; until
+                      then the panel carries the endpoint's own reason, because its empty state
+                      reads as "you have not pressed the button" and the button cannot work. */}
+                  <EmptyState
+                    title="Physics check not available"
+                    description={PHYSICS_UNAVAILABLE_REASON}
+                  />
                 </Panel>
               </PanelErrorBoundary>
             </div>
