@@ -108,3 +108,33 @@ def test_no_demo_directory_is_not_an_error(tmp_path: Path, monkeypatch: pytest.M
     monkeypatch.setattr(seed, "demo_runs_dir", lambda: tmp_path / "absent")
     monkeypatch.setattr(seed, "runs_dir", lambda: tmp_path / "runs")
     assert seed.seed_demo_runs() == 0
+
+
+def test_a_run_the_shipped_set_replaced_leaves_the_volume(dirs: tuple[Path, Path]) -> None:
+    """Re-baking the demo cycles with the ensemble changed every run id, flash0.0 to flash0.1.
+
+    Seeding never removed anything, so the volume would have kept both runs of each cycle: the
+    cycle picker listing every cycle twice, and the single-member run one click away from the
+    ensemble that replaced it.
+    """
+    source, target = dirs
+    _demo_run(source, "MUM-0040Z-flash0.0")
+    assert seed.seed_demo_runs() == 1
+
+    (source / "MUM-0040Z-flash0.0").rename(source / "MUM-0040Z-flash0.1")
+
+    assert seed.seed_demo_runs() == 1
+    assert (target / "MUM-0040Z-flash0.1" / "run.json").is_file()
+    assert not (target / "MUM-0040Z-flash0.0").exists()
+
+
+def test_a_run_the_deployment_baked_itself_is_never_pruned(dirs: tuple[Path, Path]) -> None:
+    """Pruning takes back only what seeding put there. A run with no marker is this
+    deployment's own work - a Compute live, say - and is not in the shipped set by nature."""
+    source, target = dirs
+    _demo_run(source, "RUN-A")
+    own = _demo_run(target.parent / "runs", "MUM-LIVE")
+
+    seed.seed_demo_runs()
+
+    assert (own / "run.json").is_file()
