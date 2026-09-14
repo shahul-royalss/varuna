@@ -57,7 +57,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import perf_counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import structlog
@@ -758,6 +758,7 @@ class SurfaceStepper:
         "_dt_min",
         "_n_clamped_low",
         "_n_steps",
+        "_next_audit_at",
         "_rain",
         "_rain_seen",
         "_run",
@@ -792,6 +793,10 @@ class SurfaceStepper:
         self._rain_seen = np.zeros(shape, dtype=np.bool_)
         self._audit_every = int(audit_every)
         self._audits = 0
+        # The sub-step count at which the next periodic audit falls due. Kept apart from the
+        # audit count so that `finish` (or a call long enough to cross two multiples) cannot
+        # shift the schedule.
+        self._next_audit_at = self._audit_every if self._audit_every > 0 else -1
         self._n_steps = 0
         self._n_clamped_low = 0
         self._dt_min = float("inf")
@@ -823,7 +828,7 @@ class SurfaceStepper:
             # non-finite, and np.add.reduce is not compiled with fastmath, so it keeps NaN.
             if not np.isfinite(np.add.reduce(value, axis=None)):
                 raise ValueError(f"{name} contains non-finite values; the solver cannot use it")
-            return value
+            return cast("NDArray[np.float64]", value)  # dtype checked just above
         return _source(value, self.kernel.shape, name)
 
     # ------------------------------------------------------------------ stepping
@@ -911,8 +916,9 @@ class SurfaceStepper:
             run[k] += volume
             window[k] += volume
         self._n_steps += n_steps
-        if self._audit_every > 0 and self._n_steps // self._audit_every > self._audits:
+        if self._next_audit_at > 0 and self._n_steps >= self._next_audit_at:
             self._audit()
+            self._next_audit_at = (self._n_steps // self._audit_every + 1) * self._audit_every
         self._call_ms += (perf_counter() - started) * 1000.0
         return SurfaceAdvance(n_steps, *call)
 
