@@ -35,6 +35,7 @@ import { apiUrl } from "@/lib/api/client";
 import { allSegments, joinSegments, loadRunDepth, type RunDepth } from "@/lib/api/run-depth";
 import type { Hotspot } from "@/lib/api/hotspots";
 import type { SurchargeSet } from "@/lib/api/surcharge";
+import { reversedEdgesAtStep } from "./layers/reversed-flow";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Button } from "@/components/ui/button";
 
@@ -253,6 +254,12 @@ export function FloodMap({
       .map((n) => ({ id: n.id, lon: n.lon, lat: n.lat, q: n.q[step] ?? 0 }))
       .filter((n) => n.q > 0);
   }, [surchargeSet, step]);
+  // Pipes running backwards *now* that carry geometry (motion M9). A run baked before the product
+  // carried paths yields none, so the layer draws nothing rather than failing.
+  const reversedEdges = useMemo(
+    () => reversedEdgesAtStep(surchargeSet?.reversedEdges ?? [], step),
+    [surchargeSet, step],
+  );
 
   if (status.kind === "loading") {
     const pct = status.total > 0 ? Math.round((status.done / status.total) * 100) : 0;
@@ -307,6 +314,7 @@ export function FloodMap({
       baseSegments={status.baseSegments}
       segments={status.segments}
       surcharge={surcharge}
+      reversedEdges={reversedEdges}
       showSurcharge={showSurcharge}
       buildings={buildings}
       drains={drains}

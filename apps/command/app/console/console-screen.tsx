@@ -10,6 +10,7 @@ import { loadDrainHealth, type DrainHealth } from "@/lib/api/drains";
 import { loadHotspots, type Hotspot, type HotspotSet } from "@/lib/api/hotspots";
 import type { MapFocus } from "@/components/map/city-map";
 import { loadSurcharge, type SurchargeSet } from "@/lib/api/surcharge";
+import { reversedFlowSummary } from "@/components/map/layers/reversed-flow";
 import { AppShell } from "@/components/varuna/app-shell";
 import { MapSlot } from "@/components/varuna/map-slot";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
@@ -436,6 +437,9 @@ export function ConsoleScreen() {
             counts={{
               surcharge: surcharge?.set?.nodes.length,
               hotspots: hotspots?.hotspots.length,
+            }}
+            details={{
+              surcharge: surcharge?.set ? reversedFlowSummary(surcharge.set) : undefined,
             }}
           />
           {/* What the Drains layer is actually showing. An honesty label, not fine print
