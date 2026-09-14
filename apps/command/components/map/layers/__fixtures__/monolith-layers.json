@@ -404,11 +404,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 200,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -788,7 +842,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": [
    {
     "text": "Hindmata junction\n18.0 cm",
@@ -1193,11 +1247,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 200,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -1577,7 +1685,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": [
    {
     "text": "Hindmata junction\n47.0 cm",
@@ -1883,11 +1991,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 200,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -2267,7 +2429,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": null,
   "onClick": false,
   "onViewStateChange": true,
@@ -2678,11 +2840,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 200,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -2909,7 +3125,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": [
    {
     "text": "Hindmata junction\n18.0 cm",
@@ -3334,11 +3550,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 200,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -3565,7 +3835,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": [
    {
     "text": "Hindmata junction\n18.0 cm",
@@ -3910,11 +4180,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 200,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -3940,7 +4264,7 @@
   },
   "controller": false,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": null,
   "onClick": false,
   "onViewStateChange": false,
@@ -4375,7 +4699,7 @@
      239,
      68,
      68,
-     120
+     200
     ],
     "getLineColor": [
      239,
@@ -4401,11 +4725,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1.56,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 120,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -4785,7 +5163,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": [
    {
     "text": "Hindmata junction\n18.0 cm",
@@ -5184,7 +5562,7 @@
      239,
      68,
      68,
-     70
+     200
     ],
     "getLineColor": [
      239,
@@ -5210,11 +5588,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1.91,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 70,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -5594,7 +6026,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": [
    {
     "text": "Hindmata junction\n18.0 cm",
@@ -5993,7 +6425,7 @@
      239,
      68,
      68,
-     150
+     200
     ],
     "getLineColor": [
      239,
@@ -6019,11 +6451,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1.35,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 150,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -6403,7 +6889,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": [
    {
     "text": "Hindmata junction\n18.0 cm",
@@ -6828,11 +7314,9 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 200,
      "getRadius": [
       {
        "id": "N-1",
@@ -7637,11 +8121,65 @@
     "pickable": false,
     "radiusMaxPixels": 16,
     "radiusMinPixels": 3,
-    "radiusScale": 1,
     "radiusUnits": "meters",
     "stroked": true,
     "updateTriggers": {
-     "getFillColor": 200,
+     "getRadius": [
+      {
+       "id": "N-1",
+       "lat": 19.0121,
+       "lon": 72.8412,
+       "q": 0.4
+      },
+      {
+       "id": "N-2",
+       "lat": 19.035,
+       "lon": 72.8601
+      }
+     ]
+    }
+   },
+   {
+    "id": "surcharge-pulse",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 2
+    },
+    "extensions": [
+     {
+      "class": "SurchargePulseExtension",
+      "opts": null
+     }
+    ],
+    "filled": false,
+    "getLineColor": [
+     239,
+     68,
+     68,
+     240
+    ],
+    "getPosition": [
+     [
+      72.8412,
+      19.0121
+     ],
+     [
+      72.8601,
+      19.035
+     ]
+    ],
+    "getRadius": [
+     109.57010852370435,
+     40
+    ],
+    "lineWidthMinPixels": 2,
+    "pickable": false,
+    "pulseAnimated": true,
+    "radiusMaxPixels": 16,
+    "radiusMinPixels": 3,
+    "radiusUnits": "meters",
+    "stroked": true,
+    "updateTriggers": {
      "getRadius": [
       {
        "id": "N-1",
@@ -8189,7 +8727,7 @@
   },
   "controller": true,
   "pickingRadius": 6,
-  "animate": false,
+  "animate": true,
   "tooltip": [
    {
     "text": "Hindmata junction\n18.0 cm",
