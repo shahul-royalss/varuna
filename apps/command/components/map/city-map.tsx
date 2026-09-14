@@ -47,10 +47,10 @@ import { inletLayers } from "./layers/inlets";
 import { isochroneLayers, useDisplayedIsochrones } from "./layers/isochrones";
 import { useLabelLayers } from "./layers/map-labels";
 import { depthRasterLayers } from "./layers/raster";
-import { reversedFlowLayers } from "./layers/reversed-flow";
+import { pointsInView, useReversedFlowLayers, viewBounds } from "./layers/reversed-flow";
 import { routeLayers, useRouteProgress } from "./layers/routes";
 import { wetStreetsLayers } from "./layers/streets";
-import { deckAnimates, surchargeLayers, useSurchargePulse } from "./layers/surcharge";
+import { deckAnimates, surchargeLayers } from "./layers/surcharge";
 import { mapTooltip } from "./layers/tooltip";
 import { truthPinLayers } from "./layers/truth-pins";
 import type {
@@ -139,7 +139,8 @@ export interface CityMapProps {
 
   /** The replay is playing, which lets street colours tween between steps (M7, MO5). */
   playing?: boolean;
-  /** Drain edges flowing backwards, drawn with an animated dash (M9, MO3). */
+  /** Drain edges flowing backwards at `step`, drawn with an animated dash (M9): tidal edges at
+   * every zoom, inland edges from zoom 14 and in view. */
   reversedEdges?: readonly ReversedEdgePath[];
   /** The drain before/after cross-fade in ms, set only for a toggle (M12, MO10). */
   drainCrossFadeMs?: number;
@@ -194,7 +195,6 @@ export function CityMap({
   const reducedMotion = usePrefersReducedMotion();
 
   const routeProgress = useRouteProgress(routes, reducedMotion);
-  const pulse = useSurchargePulse(showSurcharge && surcharge.length > 0 && !reducedMotion);
   const shownIsochrones = useDisplayedIsochrones(isochrones, reducedMotion);
 
   // ---- Framing --------------------------------------------------------------------------
@@ -273,18 +273,25 @@ export function CityMap({
     [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm, onSegmentPick, playing, reducedMotion],
   );
 
+  // What the camera can see, for the reversed-flow zoom gate and the redraw gate (M8, M9).
+  const visible = viewBounds(viewState, size);
+  const reversedFlow = useReversedFlowLayers({
+    edges: reversedEdges,
+    show: showSurcharge,
+    reducedMotion,
+    zoom: viewState.zoom,
+    bounds: visible,
+  });
+
   const drainFlowLayers = useMemo(
-    () => [
-      ...reversedFlowLayers({ edges: reversedEdges, show: showSurcharge, step, reducedMotion }),
-      ...inletLayers({ inlets, show: showDrains }),
-    ],
-    [reversedEdges, showSurcharge, step, reducedMotion, inlets, showDrains],
+    () => [...reversedFlow.layers, ...inletLayers({ inlets, show: showDrains })],
+    [reversedFlow.layers, inlets, showDrains],
   );
 
-  // Rebuilt on every pulse frame, so kept on its own: a pulse re-uploads nothing but the markers.
+  // The pulse runs on deck's clock (a shader uniform), so the markers rebuild only with their data.
   const markerLayers = useMemo(
-    () => surchargeLayers({ surcharge, show: showSurcharge, pulse, style: surchargeStyle }),
-    [showSurcharge, surcharge, pulse, surchargeStyle],
+    () => surchargeLayers({ surcharge, show: showSurcharge, reducedMotion, style: surchargeStyle }),
+    [showSurcharge, surcharge, reducedMotion, surchargeStyle],
   );
 
   // Reachability under the routes, routes over everything (section 6.7's order), pins above both.
@@ -325,8 +332,8 @@ export function CityMap({
 
   const animate = deckAnimates({
     reducedMotion,
-    surchargeVisible: showSurcharge ? surcharge.length : 0,
-    reversedVisible: showSurcharge ? reversedEdges.length : 0,
+    surchargeVisible: showSurcharge ? pointsInView(surcharge, visible) : 0,
+    reversedVisible: reversedFlow.inView,
   });
 
   return (

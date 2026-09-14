@@ -24,13 +24,25 @@ export interface ReversedEdge {
   tidal: boolean;
   steps: number[];
   minQ: number;
+  /**
+   * The pipe's geometry as [lon, lat] pairs, `path[0]` at its from-node (reversed flow runs toward
+   * it). Absent on runs baked before the product carried it; such an edge is never drawn.
+   */
+  path?: [number, number][];
 }
 
 export interface SurchargeSet {
   runId: string;
   nodesTotal: number;
   nodes: SurchargeNodeSeries[];
+  /** The worst reversed edges the product stored (500 at most, tidal first). */
   reversedEdges: ReversedEdge[];
+  /**
+   * Every edge the run reversed at any step (`n_reversed_edges`), which is what the UI quotes. Null
+   * when the product does not report it: the stored list is capped at 500, so its length is not the
+   * run's number and is never substituted for it.
+   */
+  reversedTotal: number | null;
   reversedAtTidalOutfall: number;
 }
 
@@ -47,6 +59,21 @@ interface RawEdge {
   tidal?: boolean;
   steps?: number[];
   min_q_m3s?: number;
+  path?: unknown;
+}
+
+/** A path only if it is a list of at least two finite [lon, lat] pairs; anything else is dropped. */
+export function parseEdgePath(raw: unknown): [number, number][] | undefined {
+  if (!Array.isArray(raw) || raw.length < 2) return undefined;
+  const out: [number, number][] = [];
+  for (const point of raw) {
+    if (!Array.isArray(point) || point.length < 2) return undefined;
+    const [lon, lat] = point as unknown[];
+    if (typeof lon !== "number" || typeof lat !== "number") return undefined;
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) return undefined;
+    out.push([lon, lat]);
+  }
+  return out;
 }
 
 /** Fetch a run's surcharge product. Returns null when the run predates it. */
@@ -64,6 +91,7 @@ export async function loadSurcharge(
   const body = (await response.json()) as {
     run_id?: string;
     n_nodes_total?: number;
+    n_reversed_edges?: number;
     n_reversed_at_tidal_outfall?: number;
     nodes?: RawNode[];
     reversed_edges?: RawEdge[];
@@ -72,6 +100,10 @@ export async function loadSurcharge(
   return {
     runId: body.run_id ?? "",
     nodesTotal: body.n_nodes_total ?? 0,
+    reversedTotal:
+      typeof body.n_reversed_edges === "number" && Number.isFinite(body.n_reversed_edges)
+        ? body.n_reversed_edges
+        : null,
     reversedAtTidalOutfall: body.n_reversed_at_tidal_outfall ?? 0,
     nodes: (body.nodes ?? []).map((n, i) => ({
       id: n.node_id ?? `node-${i}`,
@@ -85,6 +117,7 @@ export async function loadSurcharge(
       tidal: Boolean(e.tidal),
       steps: e.steps ?? [],
       minQ: e.min_q_m3s ?? 0,
+      path: parseEdgePath(e.path),
     })),
   };
 }

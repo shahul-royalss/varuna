@@ -4,7 +4,7 @@
  * when that chunk lands it updates the fixture scenario it changes, and this test with it.
  */
 
-import { render, renderHook } from "@testing-library/react";
+import { act, render, renderHook } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,9 +13,8 @@ import { drainsLayers } from "../drains";
 import { hotspotRingsLayers } from "../hotspots";
 import { inletLayers } from "../inlets";
 import { isochroneLayers, useDisplayedIsochrones } from "../isochrones";
-import { reversedFlowLayers } from "../reversed-flow";
 import { wetStreetsLayers } from "../streets";
-import { deckAnimates, surchargeLayers } from "../surcharge";
+import { surchargeLayers } from "../surcharge";
 import type { InletPoint, ReversedEdgePath } from "../types";
 import * as fx from "./fixture";
 import { serializeLayers } from "./serialize";
@@ -66,7 +65,7 @@ beforeEach(() => {
 });
 
 describe("MO1 seams draw nothing yet", () => {
-  it("CityMap with every seam set renders the monolith's console layers", () => {
+  it("CityMap with every seam set renders the console layers, plus MO3's reversed-flow dash", () => {
     render(
       <CityMap
         {...fx.consoleProps({
@@ -82,10 +81,61 @@ describe("MO1 seams draw nothing yet", () => {
     const recorded = renders.at(-1);
     if (!recorded) throw new Error("CityMap never rendered DeckGL");
     const expected = (
-      JSON.parse(readFileSync(FIXTURE, "utf8")) as Record<string, { layers: unknown }>
+      JSON.parse(readFileSync(FIXTURE, "utf8")) as Record<string, { layers: { id: string }[] }>
     ).console.layers;
-    expect(JSON.parse(JSON.stringify(serializeLayers(recorded.layers)))).toEqual(expected);
-    expect(recorded.animate).toBe(false);
+    const drawn = JSON.parse(JSON.stringify(serializeLayers(recorded.layers))) as {
+      id: string;
+      [key: string]: unknown;
+    }[];
+    // MO3 made `reversedEdges` draw: the tidal edge is kept at every zoom, in the section 6.7 slot
+    // after the hotspot rings and under the surcharge markers. Every other seam is still inert.
+    const ids = drawn.map((layer) => layer.id);
+    const at = ids.indexOf("reversed-flow");
+    expect(at).toBeGreaterThan(ids.indexOf("hotspot-rings"));
+    expect(at).toBeLessThan(ids.indexOf("surcharge"));
+    expect(drawn[at]).toMatchObject({ class: "PathLayer", flowAnimated: true });
+    expect(drawn.filter((layer) => layer.id !== "reversed-flow")).toEqual(expected);
+    // Markers and a dash on screen, motion allowed: deck runs its own redraw loop.
+    expect(recorded.animate).toBe(true);
+  });
+
+  it("the pulse and the dash cost CityMap no renders: nothing queues a frame for them", () => {
+    // M8 and M9 run on deck's clock. With nothing else animating (no route to draw, no pin to
+    // drop), mounting the console map must leave no React animation loop behind.
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    try {
+      render(
+        <CityMap
+          {...fx.consoleProps({ routes: [], truthPins: [], isochrones: [], reversedEdges })}
+        />,
+      );
+      expect(renders.at(-1)?.animate).toBe(true);
+      // The route hook settles its progress in one frame even with no route; run whatever is
+      // queued until nothing re-queues. A React pulse or dash loop would queue a frame every frame.
+      let rounds = 0;
+      while (frames.length > 0 && rounds < 10) {
+        const queue = frames.splice(0);
+        act(() => {
+          for (const callback of queue) callback(performance.now() + 16 * (rounds + 1));
+        });
+        rounds += 1;
+      }
+      expect(frames).toHaveLength(0);
+      expect(rounds).toBeLessThanOrEqual(1);
+      const settled = renders.length;
+      act(() => {
+        for (const callback of frames.splice(0)) callback(performance.now() + 2000);
+      });
+      expect(renders.length).toBe(settled);
+      expect(renders.at(-1)?.animate).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("each builder ignores its seam argument", () => {
@@ -111,15 +161,10 @@ describe("MO1 seams draw nothing yet", () => {
     const rings = { hotspots: fx.hotspots, selectedHotspotId: "H-sion", show: true };
     same(hotspotRingsLayers({ ...rings, reducedMotion: true }), hotspotRingsLayers(rings));
     same(
-      surchargeLayers({ surcharge: fx.surcharge, show: true, pulse: 0.5, style: "ring" }),
-      surchargeLayers({ surcharge: fx.surcharge, show: true, pulse: 0.5 }),
+      surchargeLayers({ surcharge: fx.surcharge, show: true, reducedMotion: false, style: "ring" }),
+      surchargeLayers({ surcharge: fx.surcharge, show: true, reducedMotion: false }),
     );
     expect(inletLayers({ inlets, show: true })).toEqual([]);
-    expect(reversedFlowLayers({ edges: reversedEdges, show: true, step: 2, reducedMotion: false }))
-      .toEqual([]);
-    expect(deckAnimates({ reducedMotion: false, surchargeVisible: 2, reversedVisible: 1 })).toBe(
-      false,
-    );
   });
 
   it("the isochrone tween hands back the slice it was given", () => {
