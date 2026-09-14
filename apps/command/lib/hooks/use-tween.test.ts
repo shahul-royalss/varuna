@@ -35,9 +35,12 @@ function installFrameClock() {
 type Props = { tweenKey: TweenKey; duration: number; options?: TweenOptions };
 
 function render(initial: Props) {
-  return renderHook(({ tweenKey, duration, options }: Props) => useTween(tweenKey, duration, options), {
-    initialProps: initial,
-  });
+  return renderHook(
+    ({ tweenKey, duration, options }: Props) => useTween(tweenKey, duration, options),
+    {
+      initialProps: initial,
+    },
+  );
 }
 
 describe("useTween", () => {

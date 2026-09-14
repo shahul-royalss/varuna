@@ -45,7 +45,8 @@ interface CatalogueRow {
 function readSection8(): { preamble: string; rows: CatalogueRow[] } {
   const spec = readFileSync(SPEC_PATH, "utf8");
   const start = spec.indexOf("## 8. Motion catalogue");
-  if (start < 0) throw new Error(`CLAUDE.md at ${SPEC_PATH} has no "## 8. Motion catalogue" heading`);
+  if (start < 0)
+    throw new Error(`CLAUDE.md at ${SPEC_PATH} has no "## 8. Motion catalogue" heading`);
   const end = spec.indexOf("\n---", start);
   const section = spec.slice(start, end < 0 ? undefined : end);
   const lines = section.split(/\r?\n/);
@@ -53,10 +54,18 @@ function readSection8(): { preamble: string; rows: CatalogueRow[] } {
   const rows = lines
     .filter((line) => /^\|\s*M\d+\s*\|/.test(line))
     .map((line) => {
-      const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
+      const cells = line
+        .split("|")
+        .slice(1, -1)
+        .map((cell) => cell.trim());
       if (cells.length !== 6) throw new Error(`section 8 row has ${cells.length} cells: ${line}`);
       const [id, where, motion, implementation, trigger, reduced] = cells as [
-        string, string, string, string, string, string,
+        string,
+        string,
+        string,
+        string,
+        string,
+        string,
       ];
       return { id, where, motion, implementation, trigger, reduced };
     });
@@ -87,7 +96,9 @@ function statedDurationsMs(text: string): number[] {
 
 /** Unitless integers in the Implementation column, where the catalogue writes deck.gl props such as `getColor: 120`. */
 function bareIntegers(text: string): number[] {
-  return [...text.matchAll(/(?<![\d.])(\d+)(?![\d.]|\s*(?:ms|s)\b)/g)].map(([, value]) => Number(value));
+  return [...text.matchAll(/(?<![\d.])(\d+)(?![\d.]|\s*(?:ms|s)\b)/g)].map(([, value]) =>
+    Number(value),
+  );
 }
 
 const { preamble, rows } = readSection8();
@@ -129,7 +140,10 @@ describe("CLAUDE.md section 8 parity", () => {
         const at = unclaimed.indexOf(ms);
         if (at >= 0) unclaimed.splice(at, 1);
         else
-          expect(bare, `${id} claims DUR_MS.${key} = ${ms} ms, which the row does not state`).toContain(ms);
+          expect(
+            bare,
+            `${id} claims DUR_MS.${key} = ${ms} ms, which the row does not state`,
+          ).toContain(ms);
       }
       expect(unclaimed, `${id} states durations lib/motion.ts does not carry`).toEqual([]);
     },
@@ -139,7 +153,8 @@ describe("CLAUDE.md section 8 parity", () => {
     for (const id of MOTION_IDS) {
       const spec = M[id];
       const values = spec.durations.map((key) => DUR_MS[key]);
-      for (const ms of statedDurationsMs(spec.motion)) expect(values, `${id}: "${spec.motion}"`).toContain(ms);
+      for (const ms of statedDurationsMs(spec.motion))
+        expect(values, `${id}: "${spec.motion}"`).toContain(ms);
     }
   });
 
@@ -175,7 +190,9 @@ describe("section 8 preamble against tokens.json", () => {
     expect(DUR_MS.micro).toBeLessThanOrEqual(DUR_MS.microMax);
     expect(DUR_MS.panel).toBe(Number(preamble.match(/(\d+) ms panel/)?.[1]));
     expect(DUR_MS.flight).toBe(Number(preamble.match(/(\d+) ms map flight/)?.[1]));
-    expect(DUR_MS.drawOnMax).toBe(Number(preamble.match(/≤ (\d+(?:\.\d+)?) s draw-on/)?.[1]) * 1000);
+    expect(DUR_MS.drawOnMax).toBe(
+      Number(preamble.match(/≤ (\d+(?:\.\d+)?) s draw-on/)?.[1]) * 1000,
+    );
   });
 });
 
@@ -261,6 +278,7 @@ describe("springValue", () => {
   it("stays within 2 % of 1 after springSettleMs, which is under 600 ms", () => {
     const settle = springSettleMs();
     expect(settle).toBeLessThan(600);
-    for (let ms = settle; ms <= 2000; ms += 1) expect(Math.abs(springValue(ms) - 1)).toBeLessThanOrEqual(0.02);
+    for (let ms = settle; ms <= 2000; ms += 1)
+      expect(Math.abs(springValue(ms) - 1)).toBeLessThanOrEqual(0.02);
   });
 });
