@@ -74,6 +74,10 @@ def test_run_then_micro_report_every_kernel_with_a_contention_label(
     assert run["calls"]["surface_call"] == 60, "one surface call per 5 s sync over 5 minutes"
     assert run["calls"]["k_flux"] == run["cfl_substeps"] > 0
     assert run["calls"]["k_drain"] == 300, "five 1 s drain steps per sync"
+    # Every stage the split reports must have been timed, or its 0 s is not a measurement.
+    for key in ("compute_exchange", "k_exchange", "effective_rain", "py_tide_at", "drain_call"):
+        assert run["calls"].get(key, 0) > 0, key
+    assert run["calls"]["compute_exchange"] == run["calls"]["k_exchange"]
     for key in ("surface_kernels", "surface_python", "drain_kernel", "coupling_kernel"):
         assert key in run["split_s"]
     assert run["snapshot_sync"] == 30
@@ -94,6 +98,8 @@ def test_run_then_micro_report_every_kernel_with_a_contention_label(
                 "2",
                 "--rounds",
                 "1",
+                "--python-repeats",
+                "3",
             ]
         )
         == 0
@@ -130,6 +136,14 @@ def test_hooks_put_every_function_back(tool) -> None:
         hooks.wrap(swe2d, "_update_flux", "k_flux")
         assert swe2d._update_flux is not original
     assert swe2d._update_flux is original
+
+
+def test_hooks_refuse_a_target_that_does_not_exist(tool) -> None:
+    """A renamed kernel must fail the profile, not report 0 s for its stage."""
+    from varuna_twin import swe2d
+
+    with tool.hooked() as hooks, pytest.raises(AttributeError):
+        hooks.wrap(swe2d, "_no_such_kernel", "k_missing")
 
 
 def test_contention_label_reads_other_pythons_and_load(tool) -> None:

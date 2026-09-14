@@ -729,8 +729,8 @@ class SurfaceStepper:
     * the rain raster is validated in :meth:`set_rain`, once per 5-minute step, because that is
       how often it changes;
     * the exchange rasters are the coupling kernel's own float64 buffers, so they are not
-      copied or converted - but they are still checked for NaN and infinity on every call, by a
-      sum rather than an ``isfinite`` mask. That check is not optional: a NaN inlet rate does
+      copied or converted - but they are still checked for NaN and infinity on every call, with
+      an ``isfinite`` mask. That check is not optional: a NaN inlet rate does
       not poison the depth, the capture limiter reads ``NaN < available`` as false and quietly
       drains the cell instead, so a corrupted exchange would otherwise publish plausible water.
 
