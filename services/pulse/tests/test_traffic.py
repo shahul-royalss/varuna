@@ -17,10 +17,14 @@ from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
+import pytest
 from shapely.geometry import LineString
+from varuna_pulse import traffic
 from varuna_pulse.cycle import _neighbour_map
 from varuna_pulse.traffic import detect_anomalies
+from varuna_schemas.paths import bundles_dir
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from pathlib import Path
@@ -169,3 +173,204 @@ def test_sigma_comes_from_the_history_not_from_the_two_scored_snapshots() -> Non
 
     assert [o.segment_id for o in observations] == ["S0-STEADY"]
     assert observations[0].z < -7.0
+
+
+# ---- the vectorised detector against the loop it replaced (P7.1, PU5) ---------------------------
+#
+# The detector was rewritten from a per-segment loop to array operations because it was most of
+# Pulse's stage time. The rewrite is only allowed if nothing it returns changed, so the loop is kept
+# here as the reference and both run on the same feeds. Equality is exact: the dataclasses compare
+# their floats bit for bit.
+
+
+def _reference_detect(
+    speeds: pd.DataFrame,
+    *,
+    at: datetime,
+    raining: bool = True,
+    neighbours: dict[str, list[str]] | None = None,
+    incident_segments: set[str] | None = None,
+) -> list[traffic.TrafficObservation]:
+    """The detector as it stood at 1bc503a, before vectorisation. Do not edit."""
+    from datetime import UTC
+
+    if not raining or speeds.empty:
+        return []
+
+    frame = speeds.copy()
+    frame["ts"] = traffic._as_ts(frame["ts"])
+    stamps = sorted(frame["ts"].unique())
+    if not stamps:
+        return []
+    cutoff = np.datetime64(at.astimezone(UTC).replace(tzinfo=None))
+    target = max((s for s in stamps if s <= cutoff), default=None)
+    if target is None:
+        return []
+    prior = [s for s in stamps if s <= target]
+    history = prior[-traffic.MIN_CONSECUTIVE :]
+    if len(history) < traffic.MIN_CONSECUTIVE:
+        return []
+
+    sigma_history = prior[: -traffic.MIN_CONSECUTIVE][-traffic.SIGMA_WINDOW :]
+    sigma_frame = frame[frame["ts"].isin(sigma_history)]
+    sigma = (
+        pd.Series(dtype=np.float64)
+        if sigma_frame.empty
+        else sigma_frame.groupby("segment_id")["kmh"].std()
+    )
+    window = frame[frame["ts"].isin(history)].copy()
+    base = window["baseline_kmh"].to_numpy(dtype=np.float64)
+    dev = window["kmh"].to_numpy(dtype=np.float64) - base
+    sig = window["segment_id"].map(sigma).to_numpy(dtype=np.float64)
+    est = np.isfinite(sig) & (sig > 1.0)
+    window["z"] = dev / np.where(est, sig, np.maximum(base * 0.2, 3.0))
+
+    per_segment = window.groupby("segment_id")
+    incidents = incident_segments or set()
+    slow = {str(k): float(g["z"].min()) for k, g in per_segment}
+    out: list[traffic.TrafficObservation] = []
+    for segment_id, group in per_segment:
+        key = str(segment_id)
+        ordered = group.sort_values("ts")
+        if not bool((ordered["z"] < traffic.ANOMALY_Z).all()):
+            continue
+        if key in incidents:
+            continue
+        if neighbours is not None:
+            nearby = [slow[n] for n in neighbours.get(key, []) if n in slow]
+            if nearby and max(nearby) < traffic.NEIGHBOUR_Z:
+                continue
+        latest = ordered.iloc[-1]
+        speed = float(latest["kmh"])
+        depth, sd = traffic.depth_prior_cm(speed)
+        if depth <= 0.0:
+            continue
+        out.append(
+            traffic.TrafficObservation(
+                segment_id=key,
+                ts=at,
+                speed_kmh=speed,
+                baseline_kmh=float(latest["baseline_kmh"]),
+                z=float(latest["z"]),
+                depth_cm=depth,
+                depth_sd_cm=sd,
+                n_consecutive=len(ordered),
+            )
+        )
+    return out
+
+
+def _messy_feed(seed: int) -> tuple[pd.DataFrame, list[datetime], dict[str, list[str]], set[str]]:
+    """A feed with what the clean one lacks: shuffled rows, gaps, NaNs, erratic and steady streets.
+
+    Half the segments collapse to a slow speed for a stretch - some for one snapshot only, some
+    above the 15 km/h the depth prior ignores - a few rows are missing so a segment is seen once
+    in its window, and a few speeds are NaN.
+    """
+    rng = np.random.default_rng(seed)
+    stamps = [CYCLE_TS - timedelta(minutes=5 * n) for n in reversed(range(24))]
+    ids = [f"S{seed}-{n:03d}" for n in range(240)]
+    rows = []
+    for k, segment in enumerate(ids):
+        base = float(rng.uniform(15.0, 50.0))
+        spread = float(rng.choice([0.5, 2.0, 6.0, 15.0]))
+        onset = int(rng.integers(10, 26)) if k % 2 == 0 else 99
+        length = int(rng.integers(1, 6))
+        for n, ts in enumerate(stamps):
+            if rng.random() < 0.04:
+                continue  # a gap in the probe data
+            kmh = max(base + float(rng.normal(0.0, spread)), 0.5)
+            if onset <= n < onset + length:
+                kmh = float(rng.choice([2.0, 4.5, 9.0, 14.0, 16.0]))
+            if rng.random() < 0.01:
+                kmh = float("nan")
+            rows.append(
+                {
+                    "ts": ts.isoformat(),
+                    "segment_id": segment,
+                    "kmh": kmh,
+                    "baseline_kmh": base,
+                    "synthetic": True,
+                }
+            )
+    frame = pd.DataFrame(rows).sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    neighbours = {
+        s: sorted(str(x) for x in rng.choice(ids, size=int(rng.integers(0, 6)), replace=False))
+        for s in ids
+    }
+    incidents = {str(x) for x in rng.choice(ids, size=12, replace=False)}
+    return frame, stamps, neighbours, incidents
+
+
+@pytest.mark.parametrize("seed", [1, 2, 3])
+def test_the_vectorised_detector_returns_what_the_loop_returned(seed: int) -> None:
+    speeds, stamps, neighbours, incidents = _messy_feed(seed)
+    checked = 0
+    moments = [stamps[0], stamps[1], stamps[5], stamps[13], stamps[-1], stamps[-1] + timedelta(1)]
+    for at in moments:
+        for kwargs in (
+            {},
+            {"neighbours": neighbours},
+            {"neighbours": neighbours, "incident_segments": incidents},
+        ):
+            expected = _reference_detect(speeds, at=at, **kwargs)
+            assert traffic.detect_anomalies(speeds, at=at, **kwargs) == expected
+            checked += len(expected)
+    assert checked > 0  # the feed has to exercise the filters, not agree on nothing
+
+
+def test_a_window_scores_each_snapshot_as_at_would() -> None:
+    """``(start, end]`` is every snapshot in it, each scored as ``at=`` scores it, stamped with it.
+
+    This is the form a carried-forward posterior needs: the observations since the previous cycle
+    and not one more, so a flooded street is assimilated once per cycle rather than again from the
+    start of the storm every time.
+    """
+    speeds, stamps, neighbours, _ = _messy_feed(4)
+    start, end = stamps[15], stamps[20]
+
+    window = traffic.detect_anomalies(speeds, start=start, end=end, neighbours=neighbours)
+
+    expected = [
+        (o.segment_id, stamp, o.speed_kmh, o.z, o.n_consecutive)
+        for stamp in stamps[16:21]
+        for o in traffic.detect_anomalies(speeds, at=stamp, neighbours=neighbours)
+    ]
+    assert expected
+    assert [(o.segment_id, o.ts, o.speed_kmh, o.z, o.n_consecutive) for o in window] == expected
+    assert all(start < o.ts <= end for o in window)
+    assert all(o.ts.utcoffset() == end.utcoffset() for o in window)
+
+    # Consecutive windows partition the storm: nothing counted twice, nothing dropped.
+    halves = traffic.detect_anomalies(speeds, end=start) + traffic.detect_anomalies(
+        speeds, start=start, end=end
+    )
+    whole = traffic.detect_anomalies(speeds, end=end)
+    assert [(o.segment_id, o.ts) for o in halves] == [(o.segment_id, o.ts) for o in whole]
+
+
+def test_one_snapshot_or_a_window_but_not_both() -> None:
+    speeds, stamps, _, _ = _messy_feed(5)
+    with pytest.raises(ValueError, match="either at="):
+        traffic.detect_anomalies(speeds)
+    with pytest.raises(ValueError, match="either at="):
+        traffic.detect_anomalies(speeds, at=stamps[-1], end=stamps[-1])
+    assert traffic.detect_anomalies(speeds, start=stamps[-1], end=stamps[-1]) == []
+    assert traffic.detect_anomalies(speeds, at=stamps[-1], raining=False) == []
+
+
+DEMO_FEED = bundles_dir() / "MUM-2019-07-02" / "traffic" / "speeds.parquet"
+DEMO_CYCLES = ["06:10", "06:40", "07:10", "07:40", "08:10", "08:40", "09:10"]
+
+
+@pytest.mark.skipif(not DEMO_FEED.is_file(), reason="needs `make bundle BUNDLE=MUM-2019-07-02`")
+def test_the_demo_feed_gives_the_same_anomalies_at_every_demo_cycle() -> None:
+    """The seven cycles the demo ships, 06:10 to 09:10 IST: the same anomalies, to the bit."""
+    speeds = pd.read_parquet(DEMO_FEED)
+    total = 0
+    for hhmm in DEMO_CYCLES:
+        at = datetime.fromisoformat(f"2019-07-02T{hhmm}+05:30")
+        expected = _reference_detect(speeds, at=at)
+        assert traffic.detect_anomalies(speeds, at=at) == expected, hhmm
+        total += len(expected)
+    assert total > 0
