@@ -5,7 +5,12 @@
  *
  * Constants are safe to import anywhere. `useMotionPref()` is a client hook.
  */
-import { useReducedMotion, type Target, type TargetAndTransition, type Transition } from "motion/react";
+import {
+  useReducedMotion,
+  type Target,
+  type TargetAndTransition,
+  type Transition,
+} from "motion/react";
 import { tokens } from "@varuna/tokens";
 
 /** Global UI easing: cubic-bezier(0.2, 0.8, 0.2, 1), as framer's control-point array. */
@@ -88,7 +93,8 @@ export const SPRING: Transition = {
 };
 
 const SPRING_OMEGA = Math.sqrt(SPRING_PARAMS.stiffness / SPRING_PARAMS.mass);
-const SPRING_ZETA = SPRING_PARAMS.damping / (2 * Math.sqrt(SPRING_PARAMS.stiffness * SPRING_PARAMS.mass));
+const SPRING_ZETA =
+  SPRING_PARAMS.damping / (2 * Math.sqrt(SPRING_PARAMS.stiffness * SPRING_PARAMS.mass));
 
 /**
  * Position of the catalogue spring released from 0 at rest towards 1, `ms` after release: the
@@ -102,7 +108,9 @@ export function springValue(ms: number): number {
   const decay = SPRING_ZETA * SPRING_OMEGA;
   if (SPRING_ZETA < 1) {
     const damped = SPRING_OMEGA * Math.sqrt(1 - SPRING_ZETA * SPRING_ZETA);
-    return 1 - Math.exp(-decay * t) * (Math.cos(damped * t) + (decay / damped) * Math.sin(damped * t));
+    return (
+      1 - Math.exp(-decay * t) * (Math.cos(damped * t) + (decay / damped) * Math.sin(damped * t))
+    );
   }
   // Critically damped or overdamped would need other forms; the token is neither, and the test
   // pins zeta below 1, so this branch exists only to keep the function total.
@@ -165,9 +173,32 @@ export function tween(seconds: number, extra: Transition = {}): Transition {
 }
 
 export type MotionId =
-  | "M1" | "M2" | "M3" | "M4" | "M5" | "M6" | "M7" | "M8" | "M9" | "M10" | "M11" | "M12"
-  | "M13" | "M14" | "M15" | "M16" | "M17" | "M18" | "M19" | "M20" | "M21" | "M22" | "M23" | "M24"
-  | "M25" | "M26";
+  | "M1"
+  | "M2"
+  | "M3"
+  | "M4"
+  | "M5"
+  | "M6"
+  | "M7"
+  | "M8"
+  | "M9"
+  | "M10"
+  | "M11"
+  | "M12"
+  | "M13"
+  | "M14"
+  | "M15"
+  | "M16"
+  | "M17"
+  | "M18"
+  | "M19"
+  | "M20"
+  | "M21"
+  | "M22"
+  | "M23"
+  | "M24"
+  | "M25"
+  | "M26";
 
 /** Framer props for one motion; spread onto a `motion.*` element. */
 export interface MotionPreset {
@@ -195,7 +226,11 @@ export interface MotionSpec {
   fallback?: MotionPreset;
 }
 
-const instant: MotionPreset = { initial: false, animate: { opacity: 1 }, transition: { duration: 0 } };
+const instant: MotionPreset = {
+  initial: false,
+  animate: { opacity: 1 },
+  transition: { duration: 0 },
+};
 
 /** Every row of the catalogue. Add a row here before adding a motion anywhere. */
 export const M: Readonly<Record<MotionId, MotionSpec>> = {
@@ -331,11 +366,16 @@ export const M: Readonly<Record<MotionId, MotionSpec>> = {
   M14: {
     id: "M14",
     where: "Route planner",
-    motion: "Naive route draws dashed grey, VARUNA route draws on over 1.2 s; avoided segments flash once",
+    motion:
+      "Naive route draws dashed grey, VARUNA route draws on over 1.2 s; avoided segments flash once",
     trigger: "result",
     reduced: "both shown at once",
     durations: ["routeDrawOn"],
-    full: { initial: { pathLength: 0 }, animate: { pathLength: 1 }, transition: tween(DUR.routeDrawOn) },
+    full: {
+      initial: { pathLength: 0 },
+      animate: { pathLength: 1 },
+      transition: tween(DUR.routeDrawOn),
+    },
     fallback: { initial: false, animate: { pathLength: 1 }, transition: { duration: 0 } },
   },
   M15: {
@@ -349,7 +389,8 @@ export const M: Readonly<Record<MotionId, MotionSpec>> = {
   M16: {
     id: "M16",
     where: "Alerts",
-    motion: "Card slides into the queue 180 ms; phone mock message pops with a 300 ms shake and optional sound",
+    motion:
+      "Card slides into the queue 180 ms; phone mock message pops with a 300 ms shake and optional sound",
     trigger: "new alert",
     reduced: "fade only, no sound",
     durations: ["alertSlide", "phoneShake"],
@@ -378,7 +419,11 @@ export const M: Readonly<Record<MotionId, MotionSpec>> = {
     trigger: "replay clock passes timestamp",
     reduced: "pin appears, no ripple",
     durations: ["pinRipple"],
-    full: { initial: { scale: 0, opacity: 0 }, animate: { scale: 1, opacity: 1 }, transition: SPRING },
+    full: {
+      initial: { scale: 0, opacity: 0 },
+      animate: { scale: 1, opacity: 1 },
+      transition: SPRING,
+    },
     fallback: instant,
   },
   M19: {

@@ -158,6 +158,24 @@ describe("CLAUDE.md section 8 parity", () => {
     }
   });
 
+  it("carries no DUR_MS entry that neither a row nor the preamble states", () => {
+    // The preamble's tokens are checked against its prose in the next describe block; every other
+    // entry must be named by some row, so a timing cannot enter the code without entering the table.
+    const preambleKeys = new Set<string>([
+      "micro",
+      "microMin",
+      "microMax",
+      "panel",
+      "flight",
+      "drawOnMax",
+    ]);
+    const claimed = new Set<string>(MOTION_IDS.flatMap((id) => M[id].durations));
+    const orphans = Object.keys(DUR_MS).filter(
+      (key) => !preambleKeys.has(key) && !claimed.has(key),
+    );
+    expect(orphans, "DUR_MS entries no section 8 row states").toEqual([]);
+  });
+
   it("carries only draw-on durations within the preamble's ceiling", () => {
     expect(DUR_MS.routeDrawOn).toBeLessThanOrEqual(DUR_MS.drawOnMax);
   });
