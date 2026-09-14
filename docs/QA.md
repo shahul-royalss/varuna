@@ -76,36 +76,50 @@ learning curve. When a surveyed SWMM model arrives we import it and keep the lea
 
 ## "Does Pulse actually recover a blocked pipe?"
 
-Half of what CLAUDE.md 11.6 asks for, and the half it misses is in the test suite as a red test
-rather than out of it.
+On the spec's own test, yes. Both halves of it now pass across the seeds the result depends on.
 
-11.6's acceptance test is: on a synthetic truth with two blocked pipes and twenty observations,
-"the posterior mean ranks those two pipes in the top 5 with sd reduced by ≥ 40 %". Those are two
-claims, and they are not equally true. The ranking is robust; the spread cut is a coin flip.
+11.6's acceptance test: on a synthetic truth with two blocked pipes and twenty observations, "the
+posterior mean ranks those two pipes in the top 5 with sd reduced by ≥ 40 %". Until 14 September
+2026 only the ranking was robust. The single-step stochastic EnKF cleared the spread floor at 49 of
+100 seed pairs, and at 3 of 10 ensemble seeds for the committed observation draw (median 33.2 %),
+so the spread test shipped `xfail(strict=True)`.
 
-Measured 13 September 2026 on the demo laptop (Intel64 family 6 model 140, 8 logical cores,
-Windows 11), sweeping both seeds the result depends on — the observation draw (the synthetic
-city's noise) and the EnKF's own ensemble draw, which `assimilate()` defaults to 2019 and which
-the test never varied:
+That was a filter defect, not a data limit. An exact grid-Bayes posterior on the same observations
+cuts the spread by a median 0.518 and clears 40 % at every draw; the old update missed it by 0.115.
 
-| Grid (observation seed × ensemble seed) | Both pipes in the top five | Spread cut ≥ 40 % on both | Median cut on the worse pipe |
-|---|---|---|---|
-| 7–16 × 2019–2028 | **100 / 100** | **62 / 100** | 0.430 |
-| 0–9 × 2019–2028 | 100 / 100 | 49 / 100 | 0.398 |
-| 0–9 × 0–9 | 100 / 100 | 32 / 100 | 0.374 |
-| Committed pair alone (7, 2019) | pass | pass, at **0.40029** | — |
+The update is now ES-MDA with perturbed observations: 4 passes, R ×4, moment-matched prior, still
+50 members (ADR-0044). The 40 % floor was not widened. Two alternatives were rejected: 200 members
+in one step (median only 0.377), and a square-root update, which drops the perturbed observations
+11.6 specifies.
 
-So the pass rate is itself seed-dependent — about half, wherever you look — and the committed
-configuration cleared the floor by 3 parts in 10,000. Holding the observation draw at its
-committed value and varying only the ensemble seed, the floor is met at 3 of 10 seeds, median
-33.2 %, range 8.3–46.2 %.
+Measured 14 September 2026 on the demo laptop with 8-10 python processes running (light numpy, so
+the timings are not load-bearing), varying the observation draw and the filter's own ensemble seed:
 
-The cause is sampling error, not the observations: 50 members against a neighbourhood of 35–42
-reachable edges estimates a posterior spread to roughly the precision of the cut being claimed.
-More members would shrink it; that is a Pulse change, not a test change, so the 40 % floor stands
-unwidened (rule 13) and `test_the_observations_cut_the_blocked_pipes_spread` carries
-`xfail(strict=True)` with the distribution in its reason. The ranking half is parametrised over
-ten ensemble seeds and passes on all of them.
+| Grid (observation seed × ensemble seed) | Both pipes in the top five | Spread cut ≥ 40 % on both | Median cut on the worse pipe | Median over ensemble seeds, per observation draw |
+|---|---|---|---|---|
+| 0–9 × 2019–2028 | **100 / 100** | **100 / 100** | 0.509 | 0.473–0.564, all ≥ 0.40 |
+| 7–16 × 2019–2028 | 100 / 100 | 100 / 100 | 0.531 | 0.498–0.564, all ≥ 0.40 |
+| 0–9 × 0–9 | 100 / 100 | **98 / 100** | 0.514 | 0.457–0.557, all ≥ 0.40 |
+| 20–39 × 100–109 (independent review) | 200 / 200 | 195 / 200 | — | all ≥ 0.40 |
+| Committed draw (7) × 2019–2028 | 10 / 10 | 10 / 10 | 0.498 (0.406–0.538) | — |
+
+Individual seed pairs still fail; the lowest is 0.352. The tests therefore assert the median over
+ensemble seeds rather than one seed's score, and that median clears 0.40 at every observation draw
+measured.
+
+A pass is also checked against the right answer, not merely a narrow one:
+`test_the_posterior_agrees_with_exact_bayes` runs at three observation draws. At the committed draw
+the filter reads mean 0.694 / 0.743 against exact 0.690 / 0.728, and cut 0.507 / 0.570 against
+0.505 / 0.544. Across the three draws the median over seeds is within 0.017 in mean and 0.027 in
+cut. A collapsed ensemble would pass the floor and fail this.
+
+What this does not claim:
+- **The sd is not coverage.** The prior (0.20 ± 0.12) puts the true 0.85 about 3 sd out, so exact
+  Bayes and this filter hold the truth inside their 90 % interval only about 40–46 % of the time.
+- **It says nothing about the Mumbai runs.** The test uses a synthetic operator. On the city the
+  capacity-deficit operator's inputs are wrong by metres (see the EnKF observation operator row in
+  `docs/SIMPLIFICATIONS.md`), and the drain graph itself is not gravity-consistent (P1.8).
+- **The shipped posteriors are still the old update's.** The baked demo runs predate this change.
 
 ## "Sub-second forecast — how?"
 
@@ -317,3 +331,8 @@ Inferred and labelled as such: the entire drain network.
 The honesty labels are UI copy, not fine print — "Reconstructed replay", "Inferred drain graph",
 "Reduced-order emulator", "Synthetic pump inventory", and `status=Exercise` on every CAP document
 a replay raises.
+
+That last one is tested, not asserted: all 272 committed demo CAP documents validate against the
+vendored OASIS CAP-v1.2.xsd and carry `Exercise`, and generated CAP validates in baked, replay and
+live modes with `Actual` only in live (`services/products/tests/test_cap_schema.py`, 14 tests,
+passing with outbound sockets denied; ADR-0045, measured 14 September 2026 at 78f6c0b).
