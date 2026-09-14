@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
@@ -244,18 +244,28 @@ export function WhatIfControls({
   className,
 }: WhatIfControlsProps) {
   const [values, setValues] = useState<WhatIfValues>({ ...DEFAULT_WHATIF_VALUES, ...initial });
+  // The scenario as of the last change, which can be ahead of `values`: two changes that land
+  // before a re-render (a slider drag, two chips removed in one batch) compose on each other
+  // instead of the second rebuilding from the render both handlers were drawn in.
+  const latest = useRef(values);
   const uid = useId();
   const rainLabelId = `${uid}-rain`;
   const tideLabelId = `${uid}-tide`;
   const runHelpId = `${uid}-run-help`;
   const physicsHelpId = `${uid}-physics-help`;
 
-  const update = (patch: Partial<WhatIfValues>) => {
-    setValues((prev) => {
-      const next = { ...prev, ...patch };
-      onChange?.(next);
-      return next;
-    });
+  // `onChange` is called here, in the handler, and never inside a state updater. React runs an
+  // updater while it renders this component, and the lab passes its own setter as `onChange`, so
+  // calling it from one updated the lab mid-render ("Cannot update a component while rendering a
+  // different component").
+  const update = (
+    patch: Partial<WhatIfValues> | ((prev: WhatIfValues) => Partial<WhatIfValues>),
+  ) => {
+    const prev = latest.current;
+    const next = { ...prev, ...(typeof patch === "function" ? patch(prev) : patch) };
+    latest.current = next;
+    setValues(next);
+    onChange?.(next);
   };
 
   const canRun = Boolean(onRun);
@@ -310,7 +320,9 @@ export function WhatIfControls({
         segmentIds={values.cleanedSegments}
         source={cleanedSource}
         onRemove={(segmentId) =>
-          update({ cleanedSegments: values.cleanedSegments.filter((id) => id !== segmentId) })
+          update((prev) => ({
+            cleanedSegments: prev.cleanedSegments.filter((id) => id !== segmentId),
+          }))
         }
       />
 

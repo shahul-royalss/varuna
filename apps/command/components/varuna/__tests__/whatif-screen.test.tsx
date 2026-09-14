@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -130,5 +130,37 @@ describe("WhatIfScreen", () => {
     expect(screen.getByText(/The link asked for/)).toHaveTextContent(
       "The link asked for 20 segments; the first 14 are loaded.",
     );
+  });
+
+  it("tells the lab about a change from the handler, never while the controls render", () => {
+    // `WhatIfControls` used to call `onChange` inside its state updater. React runs an updater
+    // while it renders the component that owns it, and the lab's `onChange` is its own setter,
+    // so the lab was updated mid-render: "Cannot update a component while rendering a different
+    // component". The first change of a batch escapes because React computes it eagerly; the
+    // second is the one that runs in render, so two removals in one act is the reproduction.
+    nav.params = new URLSearchParams({
+      segments: "S100841069-000,S100841079-000,S102172139-001",
+    });
+    const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      renderScreen();
+      act(() => {
+        fireEvent.click(screen.getByRole("button", { name: "Remove segment S100841069-000" }));
+        fireEvent.click(screen.getByRole("button", { name: "Remove segment S100841079-000" }));
+      });
+
+      expect(errors.mock.calls.flat().map(String).join("\n")).not.toMatch(
+        /while rendering a different component/,
+      );
+      // Both removals land: the second composes on the first rather than restoring its segment
+      // from the render both buttons were drawn in. The lab's scenario line agrees with the chips.
+      expect(screen.getByText("1 segment")).toBeInTheDocument();
+      expect(screen.queryByText("S100841069-000")).not.toBeInTheDocument();
+      expect(screen.getByText(/^Scenario ready to run:/)).toHaveTextContent(
+        "Rain 1.0x, tide +0.0 m, 1 segment cleaned.",
+      );
+    } finally {
+      errors.mockRestore();
+    }
   });
 });
