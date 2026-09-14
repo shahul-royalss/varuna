@@ -37,8 +37,12 @@ export interface SurchargeSet {
   nodes: SurchargeNodeSeries[];
   /** The worst reversed edges the product stored (500 at most, tidal first). */
   reversedEdges: ReversedEdge[];
-  /** Every edge the run reversed at any step (`n_reversed_edges`), which is what the UI quotes. */
-  reversedTotal: number;
+  /**
+   * Every edge the run reversed at any step (`n_reversed_edges`), which is what the UI quotes. Null
+   * when the product does not report it: the stored list is capped at 500, so its length is not the
+   * run's number and is never substituted for it.
+   */
+  reversedTotal: number | null;
   reversedAtTidalOutfall: number;
 }
 
@@ -96,7 +100,10 @@ export async function loadSurcharge(
   return {
     runId: body.run_id ?? "",
     nodesTotal: body.n_nodes_total ?? 0,
-    reversedTotal: body.n_reversed_edges ?? (body.reversed_edges ?? []).length,
+    reversedTotal:
+      typeof body.n_reversed_edges === "number" && Number.isFinite(body.n_reversed_edges)
+        ? body.n_reversed_edges
+        : null,
     reversedAtTidalOutfall: body.n_reversed_at_tidal_outfall ?? 0,
     nodes: (body.nodes ?? []).map((n, i) => ({
       id: n.node_id ?? `node-${i}`,

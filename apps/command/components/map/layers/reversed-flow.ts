@@ -5,7 +5,7 @@
  * **What is drawn.** Every cycle reverses 18,380 to 24,014 of Mumbai's 49,770 inferred pipes, and
  * the surcharge product stores the 500 worst with the tidal ones first. All of them are model
  * output, so hiding them would be a physics choice; but 500 animated dashes at the citywide fit read
- * as noise, and many inland reversals follow pipes the inferred graph lays uphill (ADR-0048). So:
+ * as noise, and an inland pipe of 40 m is a pixel or two there. So:
  *
  * - tide-locked edges are drawn and animated at every zoom;
  * - inland edges only at zoom 14 or closer, and only those in view;
@@ -163,30 +163,6 @@ export function viewBounds(
 
 // ---- Motion ----------------------------------------------------------------------------------
 
-/**
- * The dash offset at `phase`, in deck's dash units (see `DASH_ARRAY`). One period moves the pattern by
- * exactly one dash-plus-gap, so the loop has no seam.
- */
-export function dashOffset(phase: number, dash: readonly [number, number] = DASH_ARRAY): number {
-  return phase * (dash[0] + dash[1]);
-}
-
-/**
- * Whether the point `along` dash units from `path[0]` is inside a dash at `phase`: the
- * fragment shader's test, `mod(vPathPosition.y + offset, unit) <= solid`, in TypeScript so the
- * direction of travel can be checked without a GPU.
- */
-export function insideDash(
-  along: number,
-  phase: number,
-  dash: readonly [number, number] = DASH_ARRAY,
-): boolean {
-  const unit = dash[0] + dash[1];
-  if (!(unit > 0)) return true;
-  const offset = (((along + dashOffset(phase, dash)) % unit) + unit) % unit;
-  return offset <= dash[0];
-}
-
 /** The uniform block the flow-dash module declares for the vertex stage. */
 const FLOW_DASH_BLOCK = /* glsl */ `\
 layout(std140) uniform flowDashUniforms {
@@ -342,14 +318,19 @@ export function reversedFlowSummary(
   const stored = set.reversedEdges.length;
   const withPath = set.reversedEdges.filter((edge) => edge.path && hasLength(edge.path)).length;
   const n = (value: number) => value.toLocaleString("en-IN");
-  if (total <= 0) return "No pipe runs backwards in this run.";
-  const lead = `${n(total)} ${total === 1 ? "pipe runs" : "pipes run"} backwards in this run.`;
+  if (total !== null && total <= 0) return "No pipe runs backwards in this run.";
+  if (total === null && withPath <= 0) {
+    return "This run reports no reversed-pipe total and stores no pipe geometry, so none are drawn.";
+  }
+  const lead =
+    total === null
+      ? "This run does not report how many pipes run backwards."
+      : `${n(total)} ${total === 1 ? "pipe runs" : "pipes run"} backwards in this run.`;
   if (withPath <= 0) {
-    return `${lead} The run carries no pipe paths, so none are drawn; bake it again to draw them.`;
+    return `${lead} This run stores no pipe geometry, so they are counted here but not drawn.`;
   }
   return (
     `${lead} ${n(withPath)} of the ${n(stored)} it stored can be drawn: tide-locked outfalls at ` +
-    `every zoom, inland pipes from zoom ${INLAND_MIN_ZOOM}, where many follow pipes the inferred ` +
-    "graph lays uphill."
+    `every zoom, inland pipes from zoom ${INLAND_MIN_ZOOM} and in view.`
   );
 }

@@ -39,12 +39,6 @@ export function loopPhase(nowMs: number, periodMs: number): number {
   return phase < 0 ? phase + 1 : phase;
 }
 
-/** The pulse ring at `phase`: its radius multiplier and its alpha multiplier (the shader mirrors this). */
-export function pulseRing(phase: number): { scale: number; alpha: number } {
-  const p = Math.min(Math.max(phase, 0), 1);
-  return { scale: 1 + PULSE_GROWTH * p, alpha: 1 - p };
-}
-
 /** The uniform block the pulse shader module declares, identical in both stages. */
 const PULSE_BLOCK = /* glsl */ `\
 layout(std140) uniform surchargePulseUniforms {
