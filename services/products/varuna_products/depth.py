@@ -47,6 +47,7 @@ import structlog
 from varuna_schemas.ramps import depth_array_to_rgba
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from collections.abc import Callable
     from datetime import datetime
 
     from numpy.typing import NDArray
@@ -423,6 +424,29 @@ def _probability(value: float) -> float | int:
     return int(rounded) if rounded in (0.0, 1.0) else rounded
 
 
+def _one_decimal(value: float) -> float:
+    """A depth in cm as the wet-segment layer writes it: Python's ``round`` to one decimal."""
+    return round(float(value), 1)
+
+
+def _per_column(field: NDArray[Any], convert: Callable[[float], object]) -> list[list[object]]:
+    """``[[convert(v) for v in field[:, j]] for j in ...]`` with ``convert`` run once per value.
+
+    A cycle's layer holds about a million numbers and very few *distinct* ones - a 20-member
+    exceedance takes one of 21 values - so converting each distinct value once and laying the
+    results out by position gives the same Python objects, and so the same JSON bytes, for a
+    small fraction of the calls (task P10.4). Values are told apart by their float64 bit
+    pattern rather than by ``==``, so ``-0.0`` stays ``-0.0`` and a NaN keeps its own entry:
+    nothing two values would print differently can share a result. The float64 view is the
+    ``float(v)`` the per-value loop took, for float32 and integer fields alike.
+    """
+    values = np.ascontiguousarray(field, dtype=np.float64)
+    distinct, inverse = np.unique(values.view(np.uint64), return_inverse=True)
+    converted = np.empty(distinct.size, dtype=object)
+    converted[:] = [convert(v) for v in distinct.view(np.float64).tolist()]
+    return converted[np.asarray(inverse).reshape(values.shape)].T.tolist()
+
+
 def write_wet_segments(
     run_dir: Path,
     depth_cm: NDArray[np.floating],
@@ -457,13 +481,12 @@ def write_wet_segments(
     n_steps = depth_cm.shape[0]
     peak = depth_cm.max(axis=0)
     wet = np.flatnonzero(peak >= WET_THRESHOLD_CM)
-    # `.tolist()` hands back the same Python floats `float(v)` would, once per column instead of
-    # one NumPy scalar conversion per value; `round` is then applied exactly as before, so the
-    # JSON is the same bytes (rule 8). np.round is deliberately not used: it is not always the
+    # Python's `round`, once per distinct value (`_per_column`), so the JSON is the bytes the
+    # per-value loop wrote (rule 8). np.round is deliberately not used: it is not always the
     # correctly rounded decimal Python's `round` is, and the file would drift in its last digit.
     series = {
-        str(segment_ids[k]): [round(v, 1) for v in column]
-        for k, column in zip(wet.tolist(), depth_cm[:, wet].T.tolist(), strict=True)
+        str(segment_ids[k]): column
+        for k, column in zip(wet.tolist(), _per_column(depth_cm[:, wet], _one_decimal), strict=True)
     }
     product: dict[str, Any] = {
         "run_id": run_id,
@@ -496,8 +519,10 @@ def write_wet_segments(
         if uncertain:
             product["p_gt"] = {
                 f"{t:g}": {
-                    str(segment_ids[k]): [_probability(v) for v in column]
-                    for k, column in zip(wet.tolist(), field.T.tolist(), strict=True)
+                    str(segment_ids[k]): column
+                    for k, column in zip(
+                        wet.tolist(), _per_column(field, _probability), strict=True
+                    )
                 }
                 for t, field in fields.items()
             }
