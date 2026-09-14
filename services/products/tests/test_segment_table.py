@@ -3,8 +3,9 @@
 A faster products writer is only acceptable if a bake cannot tell it apart from the slow one, so
 nothing here checks "close": arrays are compared with ``np.array_equal`` and frames with
 ``assert_frame_equal(check_exact=True)``, dtypes and row order included. The reference is always
-the path that ships today - ``depth.segment_forecast`` - or, where that is too slow to call on
-the full Mumbai index, a verbatim copy of its sampling loop.
+the row loop ``depth.segment_forecast`` shipped before E9 wired this module into it, frozen
+verbatim below as ``_row_loop_forecast``; both this module and the wired ``depth.segment_forecast``
+are held to it.
 """
 
 from __future__ import annotations
@@ -66,6 +67,53 @@ def _loop_sample(depth_m: np.ndarray, index) -> np.ndarray:
     return depth_cm
 
 
+def _row_loop_forecast(depth_m: np.ndarray, times, index, run_id: str, member_depth_cm=None):
+    """``depth.segment_forecast`` as it was before E9 wired this module in, verbatim bar the log.
+
+    Frozen here because ``depth.segment_forecast`` now *is* the column-wise path, so comparing
+    the two in the library would compare a function with itself. This is the reference every
+    equivalence test below is held to: one Python row per segment per step, built by
+    ``DataFrame.from_records``."""
+    import json
+
+    segment_ids, _, _ = index
+    n_steps = depth_m.shape[0]
+    depth_cm = _loop_sample(depth_m, index)
+    thresholds = sorted(set(D.EXCEEDANCE_CM) | set(D.PROFILE_THRESHOLD_CM.values()))
+    if member_depth_cm is None:
+        p10 = p50 = p90 = depth_cm
+        prob = {t: (depth_cm > t).astype(np.float64) for t in thresholds}
+    else:
+        level = D._member_levels(depth_cm, member_depth_cm)
+        p10, p50, p90 = np.percentile(level, (10.0, 50.0, 90.0), axis=0)
+        prob = {t: (level > t).mean(axis=0, dtype=np.float64) for t in thresholds}
+
+    rows: list[dict[str, object]] = []
+    for k, seg_id in enumerate(segment_ids):
+        safe_until: dict[str, object] = {}
+        for profile, threshold in D.PROFILE_THRESHOLD_CM.items():
+            risky = np.flatnonzero(prob[threshold][:, k] > D.PROFILE_TOLERANCE[profile])
+            safe_until[profile] = times[int(risky[0])].isoformat() if risky.size else None
+        blob = json.dumps(safe_until)
+        for step in range(n_steps):
+            rows.append(
+                {
+                    "run_id": run_id,
+                    "segment_id": seg_id,
+                    "valid_ts": times[step],
+                    "depth_p10_cm": float(p10[step, k]),
+                    "depth_p50_cm": float(p50[step, k]),
+                    "depth_p90_cm": float(p90[step, k]),
+                    "p_gt_15": float(prob[15.0][step, k]),
+                    "p_gt_30": float(prob[30.0][step, k]),
+                    "p_gt_45": float(prob[45.0][step, k]),
+                    "p_gt_60": float(prob[60.0][step, k]),
+                    "safe_until": blob,
+                }
+            )
+    return pd.DataFrame.from_records(rows), depth_cm
+
+
 def _members(rng: np.random.Generator, depth_cm: np.ndarray, n: int, steps: int) -> np.ndarray:
     """A seeded member stack straddling the Twin level, so probabilities land strictly in (0, 1)."""
     noise = rng.normal(0.0, 12.0, size=(n, steps, depth_cm.shape[1]))
@@ -80,7 +128,7 @@ def test_sampling_is_bitwise_the_shipped_path(dtype) -> None:
     index = _index(rng, 300, 40 * 40)
     field = _field(rng, (N_STEPS, 40, 40), dtype)
 
-    _, shipped = D.segment_forecast(field, _times(), index, "TEST-RUN")
+    _, shipped = _row_loop_forecast(field, _times(), index, "TEST-RUN")
     grouped = S.sample_segments(field, index)
 
     assert grouped.dtype == np.float64
@@ -132,11 +180,14 @@ def test_single_member_frame_equals_the_row_built_frame(dtype) -> None:
     index = _index(rng, 300, 40 * 40)
     field = _field(rng, (N_STEPS, 40, 40), dtype)
 
-    shipped, shipped_cm = D.segment_forecast(field, _times(), index, "TEST-RUN")
+    shipped, shipped_cm = _row_loop_forecast(field, _times(), index, "TEST-RUN")
     frame, depth_cm = S.segment_forecast_columnar(field, _times(), index, "TEST-RUN")
+    wired, wired_cm = D.segment_forecast(field, _times(), index, "TEST-RUN")
 
     pd.testing.assert_frame_equal(frame, shipped, check_exact=True)
     assert np.array_equal(depth_cm, shipped_cm)
+    pd.testing.assert_frame_equal(wired, shipped, check_exact=True)
+    assert np.array_equal(wired_cm, shipped_cm)
 
 
 @pytest.mark.parametrize("member_steps", [N_STEPS, 24])
@@ -147,15 +198,20 @@ def test_twenty_member_frame_equals_the_row_built_frame(member_steps: int) -> No
     field = _field(rng, (N_STEPS, 40, 40), np.float64)
     members = _members(rng, S.sample_segments(field, index), 20, member_steps)
 
-    shipped, shipped_cm = D.segment_forecast(
+    shipped, shipped_cm = _row_loop_forecast(
         field, _times(), index, "TEST-RUN", member_depth_cm=members
     )
     frame, depth_cm = S.segment_forecast_columnar(
         field, _times(), index, "TEST-RUN", member_depth_cm=members
     )
+    wired, wired_cm = D.segment_forecast(
+        field, _times(), index, "TEST-RUN", member_depth_cm=members
+    )
 
     pd.testing.assert_frame_equal(frame, shipped, check_exact=True)
     assert np.array_equal(depth_cm, shipped_cm)
+    pd.testing.assert_frame_equal(wired, shipped, check_exact=True)
+    assert np.array_equal(wired_cm, shipped_cm)
     fractional = shipped.p_gt_30[(shipped.p_gt_30 > 0.0) & (shipped.p_gt_30 < 1.0)]
     assert not fractional.empty, "the fixture must carry a real spread, or the test is vacuous"
 
@@ -166,7 +222,7 @@ def test_safe_until_strings_are_the_loops_strings() -> None:
     field = _field(rng, (N_STEPS, 40, 40), np.float64)
     members = _members(rng, S.sample_segments(field, index), 20, N_STEPS)
 
-    shipped, _ = D.segment_forecast(field, _times(), index, "TEST-RUN", member_depth_cm=members)
+    shipped, _ = _row_loop_forecast(field, _times(), index, "TEST-RUN", member_depth_cm=members)
     statistics = S.ensemble_statistics(S.sample_segments(field, index), members)
     blobs = S.safe_until_blobs(statistics.prob, _times())
 
@@ -177,7 +233,7 @@ def test_safe_until_strings_are_the_loops_strings() -> None:
 def test_zero_segments_give_the_same_empty_frame() -> None:
     index = ((), np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64))
     field = np.zeros((N_STEPS, 4, 4))
-    shipped, shipped_cm = D.segment_forecast(field, _times(), index, "TEST-RUN")
+    shipped, shipped_cm = _row_loop_forecast(field, _times(), index, "TEST-RUN")
     frame, depth_cm = S.segment_forecast_columnar(field, _times(), index, "TEST-RUN")
     pd.testing.assert_frame_equal(frame, shipped, check_exact=True)
     assert np.array_equal(depth_cm, shipped_cm)
@@ -248,13 +304,13 @@ def test_segment_points_are_memoised_until_the_table_changes(tmp_path, monkeypat
     _segments_table(root)
     S.clear_segment_points_cache()
     calls = {"n": 0}
-    original = D.segment_points
+    original = D._read_segment_points
 
     def counted(city_root):
         calls["n"] += 1
         return original(city_root)
 
-    monkeypatch.setattr(D, "segment_points", counted)
+    monkeypatch.setattr(D, "_read_segment_points", counted)
 
     first = S.segment_points_cached(root)
     assert first == original(root)
@@ -271,6 +327,27 @@ def test_segment_points_are_memoised_until_the_table_changes(tmp_path, monkeypat
     assert calls["n"] == 2
     assert third == original(root)
     assert third != second
+    S.clear_segment_points_cache()
+
+
+def test_the_public_segment_points_is_the_memo(tmp_path, monkeypatch) -> None:
+    """Since E9 the products stage's own call, ``depth.segment_points``, reads the table once."""
+    root = tmp_path / "mumbai"
+    _segments_table(root)
+    S.clear_segment_points_cache()
+    calls = {"n": 0}
+    original = D._read_segment_points
+
+    def counted(city_root):
+        calls["n"] += 1
+        return original(city_root)
+
+    monkeypatch.setattr(D, "_read_segment_points", counted)
+    first = D.segment_points(root)
+    second = D.segment_points(root)
+    assert calls["n"] == 1
+    assert first == second == original(root)
+    assert first is not second, "each caller gets its own copy"
     S.clear_segment_points_cache()
 
 

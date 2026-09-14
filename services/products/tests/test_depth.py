@@ -7,8 +7,10 @@ members rather than widened by construction (rule 6).
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -134,6 +136,108 @@ def test_safe_until_reads_the_probability_not_the_level() -> None:
     safe = json.loads(frame.iloc[0].safe_until)
     assert safe["ambulance"] is not None, "P(> 60 cm) = 0.5 is over an ambulance's 0.2"
     assert safe["car"] is not None, "every member is over a car's 30 cm"
+
+
+def _sequential_rasters(run_dir: Path, depth_m: np.ndarray, transform, stat: str) -> None:
+    """``write_depth_rasters``' PNG and world-file loop as it was before E9, verbatim."""
+    from PIL import Image
+    from varuna_schemas.ramps import depth_array_to_rgba
+
+    out = run_dir / "depth"
+    out.mkdir(parents=True, exist_ok=True)
+    res, _, left, _, _, top = transform
+    for step in range(depth_m.shape[0]):
+        rgba = depth_array_to_rgba(depth_m[step], alpha=255, dry_alpha=0)
+        Image.fromarray(rgba, mode="RGBA").save(out / f"{stat}_{step:02d}.png", optimize=True)
+        (out / f"{stat}_{step:02d}.pgw").write_text(
+            f"{res}\n0.0\n0.0\n{-res}\n{left + res / 2.0}\n{top - res / 2.0}\n", encoding="utf-8"
+        )
+
+
+def _digests(root: Path) -> dict[str, str]:
+    return {
+        str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in sorted(root.rglob("*"))
+        if p.is_file()
+    }
+
+
+TRANSFORM = (30.0, 0.0, 269970.0, 0.0, -30.0, 2117220.0)
+
+
+@pytest.mark.parametrize("workers", [1, 3, 8])
+def test_parallel_raster_encoding_writes_the_sequential_bytes(tmp_path, workers: int) -> None:
+    """Rule 8: the thread pool changes when a PNG is encoded, never what is in it."""
+    from varuna_products.depth import write_depth_rasters
+
+    rng = np.random.default_rng(2019)
+    depth_m = rng.gamma(0.6, 0.25, size=(12, 60, 40)).astype(np.float32)
+    depth_m[rng.random(depth_m.shape) < 0.5] = 0.0  # a dry band, which the ramp makes transparent
+
+    _sequential_rasters(tmp_path / "old", depth_m, TRANSFORM, "p50")
+    written = write_depth_rasters(
+        tmp_path / "new", depth_m, TRANSFORM, "EPSG:32643", stat="p50", workers=workers
+    )
+
+    new = _digests(tmp_path / "new")
+    assert new.pop(str(Path("depth") / "bounds.json"))
+    assert new == _digests(tmp_path / "old")
+    assert [p.name for p in written] == [f"p50_{k:02d}.png" for k in range(12)]
+
+
+def _old_wet_segments(depth_cm, segment_ids, times, run_id, p_gt) -> str:
+    """``write_wet_segments``' JSON as it was built before E9, verbatim, for a given ``p_gt``."""
+    from varuna_products.depth import EXCEEDANCE_CM, WET_THRESHOLD_CM, _probability
+
+    n_steps = depth_cm.shape[0]
+    wet = np.flatnonzero(depth_cm.max(axis=0) >= WET_THRESHOLD_CM)
+    series = {str(segment_ids[k]): [round(float(v), 1) for v in depth_cm[:, k]] for k in wet}
+    product = {
+        "run_id": run_id,
+        "valid_ts": [t.isoformat() for t in times],
+        "min_depth_cm": WET_THRESHOLD_CM,
+        "n_segments_total": len(segment_ids),
+        "n_segments_wet": len(series),
+        "depth_cm": series,
+    }
+    fields = {t: np.asarray(p_gt[t])[:, wet] for t in EXCEEDANCE_CM}
+    assert all(f.shape == (n_steps, wet.size) for f in fields.values())
+    if sum(int(((f > 0.0) & (f < 1.0)).any(axis=0).sum()) for f in fields.values()):
+        product["p_gt"] = {
+            f"{t:g}": {
+                str(segment_ids[k]): [_probability(v) for v in field[:, j]]
+                for j, k in enumerate(wet)
+            }
+            for t, field in fields.items()
+        }
+    return json.dumps(product, separators=(",", ":"))
+
+
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_wet_segments_json_is_the_row_built_bytes(tmp_path, dtype) -> None:
+    """The per-column conversion writes the file the per-value loop wrote, to the byte."""
+    from varuna_products.depth import write_wet_segments
+
+    rng = np.random.default_rng(2019)
+    n_steps, n_seg = 8, 400
+    depth_cm = (rng.gamma(0.7, 18.0, size=(n_steps, n_seg)) * (rng.random(n_seg) < 0.6)).astype(
+        dtype
+    )
+    depth_cm[:, 7] = 5.0  # exactly on the wet edge, which is inclusive
+    depth_cm[3, 7] = -0.0  # prints "-0.0", so it must not share a result with 0.0
+    ids = tuple(f"S{k:05d}-000" for k in range(n_seg))
+    # Probabilities in twentieths, as a 20-member stack gives, with certain 0s and 1s among them;
+    # one threshold as integers, and a NaN and a -0.0, each of which prints differently.
+    p_gt = {t: rng.integers(0, 21, size=(n_steps, n_seg)) / 20.0 for t in (15.0, 30.0, 45.0)}
+    p_gt[60.0] = (rng.random((n_steps, n_seg)) < 0.5).astype(np.int64)
+    p_gt[15.0][2, 7] = np.nan
+    p_gt[30.0][5, 7] = -0.0
+
+    product = write_wet_segments(tmp_path, depth_cm, ids, _times(n_steps), "TEST-RUN", p_gt=p_gt)
+
+    written = (tmp_path / "segments_wet.json").read_text(encoding="utf-8")
+    assert "p_gt" in product, "the fixture must carry a spread, or the p_gt half is untested"
+    assert written == _old_wet_segments(depth_cm, ids, _times(n_steps), "TEST-RUN", p_gt)
 
 
 def test_a_member_stack_for_another_city_is_refused() -> None:
