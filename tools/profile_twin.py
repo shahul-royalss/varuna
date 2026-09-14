@@ -43,7 +43,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -73,7 +73,7 @@ def machine_state() -> dict[str, Any]:
         import numba
 
         state["numba_threads"] = int(numba.get_num_threads())
-        state["numba_threads_max"] = int(numba.config.NUMBA_NUM_THREADS)
+        state["numba_threads_max"] = int(getattr(numba.config, "NUMBA_NUM_THREADS"))  # noqa: B009
     except Exception:  # pragma: no cover - numba is a Twin dependency
         state["numba_threads"] = None
     if sys.platform == "win32":
@@ -377,7 +377,7 @@ def profile_run(inputs, *, snapshot_sync: int | None = None) -> tuple[dict, dict
         hooks.wrap(swe2d, "dry_state", "py_dry_state", after=keep_surface)
         hooks.wrap(swe2d, "_update_flux", "k_flux")
         hooks.wrap(swe2d, "_update_depth", "k_depth")
-        hooks.wrap(swe2d, "cfl_dt", "py_cfl", after=lambda _a, _k, r: dts.append(float(r)))
+        hooks.wrap(swe2d, "cfl_dt", "py_cfl", after=lambda _a, _k, r: dts.append(cast(float, r)))
         hooks.wrap(swe2d, "_apply_tide", "py_tide")
         hooks.wrap(swe2d, "_audit", "py_audit")
         hooks.wrap(swe2d, "_check_ledger", "py_audit")
@@ -514,8 +514,25 @@ def micro(
     def depth() -> None:
         h[:] = h0
         swe2d._update_depth(
-            h, qx, qy, r_eff, q_in, q_su, kt.blocked, work_scale, *rows, kt.res_m, dt
+            h,
+            qx,
+            qy,
+            r_eff,
+            q_in,
+            q_su,
+            kt.blocked,
+            work_scale,
+            rows[0],
+            rows[1],
+            rows[2],
+            rows[3],
+            kt.res_m,
+            dt,
         )
+
+    def flux_and_depth() -> None:
+        flux()
+        depth()
 
     state = SurfaceState(h=h0.copy(), qx=qx0.copy(), qy=qy0.copy())
 
@@ -598,7 +615,7 @@ def micro(
         stepper_call()
 
     default_threads = int(numba.get_num_threads())
-    max_threads = int(numba.config.NUMBA_NUM_THREADS)
+    max_threads = int(getattr(numba.config, "NUMBA_NUM_THREADS"))  # noqa: B009
     result: dict[str, Any] = {
         "mode": "micro",
         "grid": list(kt.shape),
@@ -622,7 +639,7 @@ def micro(
                     "depth": best_and_median(depth, repeats),
                 }
             numba.set_num_threads(default_threads)
-            kernels = best_and_median(lambda: (flux(), depth()), repeats)
+            kernels = best_and_median(flux_and_depth, repeats)
             call = best_and_median(surface_call, repeats)
             entry["surface_kernels_one_substep"] = kernels
             entry["run_surface_one_substep"] = call
