@@ -31,6 +31,7 @@ import numpy as np
 import structlog
 from varuna_schemas.paths import data_dir
 
+from varuna_pulse.citycache import cached, digest
 from varuna_pulse.enkf import assimilate, capacity_operator, hop_distances
 from varuna_pulse.health import drain_health
 from varuna_pulse.reports import read_reports
@@ -169,7 +170,12 @@ def run_pulse(
         if seg is not None and str(nid) in node_index
     }
     outgoing = _edge_below_node(np.asarray(network.from_node))
-    street_of_edge = _street_names(city_root, network, nodes, node_index)
+    street_of_edge = cached(
+        "street_names",
+        [city_root / "segments.parquet", city_root / "drain_nodes.parquet"],
+        digest(network.edge_ids, network.node_ids, np.asarray(network.from_node)),
+        lambda: _street_names(city_root, network, nodes, node_index),
+    )
 
     observed_edges: list[int] = []
     y: list[float] = []
@@ -243,7 +249,12 @@ def run_pulse(
         # The catchment each pipe actually drains, from the city pipeline's rational-method
         # sizing, rather than one number for every junction. A trunk under Dadar and a lane in
         # Chembur do not fail at the same rainfall, and the filter should know that.
-        catchment = _contributing_area(city_root, network)[edges]
+        catchment = cached(
+            "contributing_area",
+            [city_root / "drain_edges.parquet"],
+            digest(network.edge_ids),
+            lambda: _contributing_area(city_root, network),
+        )[edges]
         operator = capacity_operator(
             edges,
             contributing_area_m2=catchment,
@@ -322,7 +333,12 @@ def run_pulse(
     health = drain_health(
         posterior,
         network.edge_ids,
-        _edge_geometry(city_root, network.edge_ids),
+        cached(
+            "edge_geometry",
+            [city_root / "drain_edges.parquet"],
+            digest(network.edge_ids),
+            lambda: _edge_geometry(city_root, network.edge_ids),
+        ),
         diameter_m=np.asarray(network.diameter, dtype=np.float64),
         street=street_of_edge,
         observation_counts=counts,
