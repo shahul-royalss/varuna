@@ -29,7 +29,9 @@ the posterior spread honest rather than collapsing it.
 Why not the single stochastic step, measured on 11.6's own acceptance fixture (two blocked pipes
 in 200, twenty observations): against an exact grid-Bayes posterior it under-cut the blocked
 pipes' spread by a median 0.115, clearing the 40 % floor at 49 of 100 (observation seed, ensemble
-seed) pairs. ES-MDA x4 lands within 0.01 of the exact cut. More members does not substitute: 200
+seed) pairs. ES-MDA x4 lands within 0.03 of the exact cut and 0.02 of the exact mean (median over
+ten ensemble seeds, at three observation draws; one seed alone can be 0.035 off the mean). More
+members does not substitute: 200
 members in one step measured a median cut of 0.377. The prior ensemble is also moment-matched -
 the standard-normal draw is standardised per edge to zero mean and unit sd before scaling - so the
 filter starts from the prior it was given rather than from 50 samples of it.
