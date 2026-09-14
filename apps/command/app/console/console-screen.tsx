@@ -82,6 +82,9 @@ export function ConsoleScreen() {
         replay_mode: p.mode === "live" ? "live" : "baked",
         ensemble_n: p.ensembleN,
         mass_balance_err: p.massBalanceErr,
+        // Section 7.2's stamp reads "... · baked · 3.9 s". Without the timings the stamp had no
+        // time to print, and its total rule (top-level stages only, ADR-0046) never ran.
+        stage_ms: p.stageMs,
         bundle: p.bundle,
       });
       // The replay panel is open on an empty console because it holds the command that fixes
@@ -150,10 +153,7 @@ export function ConsoleScreen() {
   // and by a new run - a popover about a segment of a run that is no longer on screen is a lie.
   const [pick, setPick] = useState<SegmentPick | null>(null);
 
-  const truth = useTruthPins(
-    run?.provenance.bundle ?? undefined,
-    run?.validTs[step] ?? null,
-  );
+  const truth = useTruthPins(run?.provenance.bundle ?? undefined, run?.validTs[step] ?? null);
 
   const toggleLayer = useCallback(
     (key: LayerKey, next: boolean) => setLayers((current) => ({ ...current, [key]: next })),
@@ -442,7 +442,7 @@ export function ConsoleScreen() {
               (CLAUDE.md 6.8): most of this graph has never been observed, and the operator has to
               be able to tell the pipes the filter moved from the pipes it never saw. */}
           {layers.drains ? (
-            <div className="w-[248px] rounded-panel border border-line bg-[var(--ink)]/85 p-3 backdrop-blur-[12px]">
+            <div className="rounded-panel border-line w-[248px] border bg-[var(--ink)]/85 p-3 backdrop-blur-[12px]">
               {drainsPending ? (
                 <>
                   <p className="type-small text-text-2">Loading the drain map Pulse learned.</p>

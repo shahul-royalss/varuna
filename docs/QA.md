@@ -5,7 +5,7 @@ CLAUDE.md 16; the numbers come from `/verify`, `city/mumbai/REPORT.md`, `docs/ve
 the run directories. Where a number is bad, it is here anyway — a measured weakness is worth more
 in front of this jury than a round number nobody can reproduce (rule 6).
 
-Last measured: 13 September 2026.
+Last measured: 15 September 2026.
 
 ---
 
@@ -30,13 +30,21 @@ both are in place (a PySWMM adapter, and the nest geometry in `configs/mumbai.ya
 
 ## "How fast is it?"
 
-A three-hour city run is **74 s**, against an 8 s budget. We missed it, and we know exactly why.
+The Twin is far over its 8 s budget for a three-hour city run: 47–114 s in the seven baked demo
+cycles. We missed it, and we can say exactly where the time goes.
 
-The 2D surface solver is 15 s of that and is already compiled. The other 59 s was NumPy: the drain
-solver steps 49,770 edges 10,800 times, and the coupling exchanges over 50,110 nodes 2,160 times.
-Both are now Numba kernels (drain 106 s → 29 s, coupling 25 s → 4.6 s, physics bit-for-bit the
-same). The remaining factor of seven needs the drain step parallelised, which its scatter-adds
-currently forbid; the way in is edge colouring. ADR-0035.
+The drain solver was NumPy at 106 s and the coupling at 25 s; both are Numba kernels now (29 s and
+4.6 s, physics bit-for-bit the same, ADR-0035). On 15 September the surface solver's per-call
+Python setup came out of the sync loop as well — 1.95–2.06 ms per call down to 0.20–0.22 ms, with
+outputs bitwise identical (ADR-0049). A one-hour coupled run now measures 27.1 s under contention
+(14 python processes): the drain kernel is 13.2 s of it and the surface kernels 9.2 s, so the
+drain step is the wall, and it needs parallelising, which its scatter-adds currently forbid.
+
+A whole cycle, counting each stage once, took **64.8–147.2 s** across the seven baked cycles.
+Figures of 155–359 s that appeared earlier counted the Twin's internal sub-timings on top of its
+own wall clock (ADR-0046). The products stage has a column-wise segment table ready that turns
+8.5 s into 0.97 s for 20 members, bitwise equal, not yet wired in; with the raster, parquet and
+wet-segment writers section 11.8 counts, products would still be 3.6 s against 2 s (ADR-0050).
 
 What this costs the demo: nothing. The replay is baked and publishes in under 200 ms. It costs a
 *live* cycle, which is why "Compute live" is a moment in the demo and not the default.
@@ -57,6 +65,13 @@ the way it reads these.
 Everything downstream of the frames is real: the Z–R fit, the gauge merge, pySTEPS optical flow and
 the 20-member STEPS ensemble.
 
+The same analysis now exists as a series of its own (ADR-0047): Sky's QC, Z–R and gauge merge of
+every elapsed frame, the forcing a hot-started Twin will catch up on, computed without ever reading
+the truth field. Against the reconstruction's truth it carries 0.955 of the rain over 05:40–08:40
+and 1.106 over 05:40–09:40, hourly 0.80–1.46, so the three-hour agreement is errors cancelling. It
+trails truth by about one 15-minute gauge interval, because the merge anchors on each station's
+newest reading.
+
 ## "Where is the drain GIS?"
 
 There isn't one — Mumbai has no public street-level storm-water network, which is the problem we
@@ -66,6 +81,12 @@ Ours is inferred from roads, terrain and design norms: **49,770 edges, 1,716 km 
 outfalls (3 tidal), 100 % of nodes reaching an outfall**. Every element carries
 `confidence = "inferred"`, every pipe carries a blockage random variable β, and the drain X-ray
 draws them dashed for that reason.
+
+Say the other half too: the graph is connected but not gravity-consistent. Inverts sit at a fixed
+cover and are never deepened, so **18,994 of the 49,770 pipes (38.2 %) run uphill**, and 56.1 % of
+nodes reach their outfall only by surcharging over an invert higher than their own street —
+Hindmata's included, by 8.56 m (ADR-0048). The 100 % above is topological; hydraulically it is
+43.9 %. A regrade within the blueprint's 1–3 m depth bound is decided and not yet built.
 
 The point is what happens next: Pulse learns β from every flood the city has. Across the seven
 baked cycles the worst pipe reads 0.451 at 06:10 and 0.622 at 09:10, but not as a steady climb:
