@@ -29,13 +29,13 @@ civil warning.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 from xml.etree import ElementTree as ET
 
 import structlog
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from datetime import datetime
     from pathlib import Path
 
 log = structlog.get_logger("varuna.products.alerts")
@@ -278,11 +278,32 @@ def build_alerts(
     return alerts
 
 
+def _cap_datetime(value: str) -> str:
+    """An ISO timestamp in the one form CAP 1.2 accepts: whole seconds and an explicit offset.
+
+    The CAP 1.2 schema restricts ``sent``, ``onset`` and ``expires`` to the pattern
+    ``YYYY-MM-DDThh:mm:ss+hh:mm``. ``datetime.isoformat()`` meets it only by accident: a cycle
+    time carrying microseconds writes ``06:40:00.123456+05:30`` and a naive one writes no offset,
+    and either document fails validation (``tests/test_cap_schema.py``). Truncating to seconds
+    loses nothing a warning needs. A missing offset is refused rather than assumed, because
+    guessing IST would put a time on a civil warning that nothing measured.
+    """
+    moment = datetime.fromisoformat(value)
+    if moment.utcoffset() is None:
+        raise ValueError(
+            f"CAP 1.2 needs an explicit UTC offset on every time, and {value!r} has none. "
+            "Pass timezone-aware datetimes (varuna_schemas.constants.IST) to build_alerts."
+        )
+    return moment.isoformat(timespec="seconds")
+
+
 def cap_xml(alert: dict[str, Any]) -> str:
     """One alert as a CAP 1.2 document.
 
     ``status`` is ``Exercise`` for every replay alert (CLAUDE.md 11.10): the document is valid
     CAP and can be pasted into any CAP reader, and it says on its face that it is a drill.
+    Validity is checked against the vendored OASIS schema, not asserted: see
+    :func:`varuna_products.schemas.validate_cap`.
     """
     ET.register_namespace("", CAP_NS)
     root = ET.Element(f"{{{CAP_NS}}}alert")
@@ -294,7 +315,7 @@ def cap_xml(alert: dict[str, Any]) -> str:
 
     child(root, "identifier", alert["id"])
     child(root, "sender", SENDER)
-    child(root, "sent", alert["raised_ts"])
+    child(root, "sent", _cap_datetime(alert["raised_ts"]))
     child(root, "status", alert.get("cap_status", "Exercise"))
     child(root, "msgType", "Alert")
     child(root, "scope", "Public")
@@ -310,8 +331,8 @@ def cap_xml(alert: dict[str, Any]) -> str:
     )
     # "Likely" and not "Observed": this is a forecast, and CAP has a word for that.
     child(info, "certainty", "Likely")
-    child(info, "onset", alert["window_from"])
-    child(info, "expires", alert["window_to"])
+    child(info, "onset", _cap_datetime(alert["window_from"]))
+    child(info, "expires", _cap_datetime(alert["window_to"]))
     child(info, "headline", alert["headline"])
     child(info, "description", f"VARUNA nowcast run {alert['run_id']}.")
     if alert.get("instruction"):
