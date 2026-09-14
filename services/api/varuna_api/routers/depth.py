@@ -301,7 +301,9 @@ def surcharge(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
         surcharging=product.get("n_surcharging"),
         reversed_edges=product.get("n_reversed_edges"),
     )
-    return {**product, "notes": meta.get("notes", [])}
+    # The product's own notes (reversed edges the city export gave no line to) sit after the
+    # run's; replacing them with the run's would hide an edge the map silently cannot draw.
+    return {**product, "notes": [*meta.get("notes", []), *product.get("notes", [])]}
 
 
 @router.get("/alerts", tags=["alerts"], summary="Alerts raised by a run")
