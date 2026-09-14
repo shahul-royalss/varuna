@@ -526,6 +526,9 @@ def micro(
 
     def surface_call() -> None:
         reset()
+        run_surface_once()
+
+    def run_surface_once() -> None:
         swe2d.run_surface(
             state,
             kt,
@@ -539,6 +542,7 @@ def micro(
         )
 
     stepper_call: Callable[[], None] | None = None
+    stepper_once: Callable[[], None] | None = None
     if hasattr(swe2d, "SurfaceStepper"):
         # The run-long audit is off here only because every repeat rewinds the state, which
         # a ledger rightly reads as water appearing from nowhere; its cost is one volume sum
@@ -546,11 +550,14 @@ def micro(
         stepper = swe2d.SurfaceStepper(state, kt, sea_mask=sea, audit_every=0)
         stepper.set_rain(r_eff)
 
-        def stepper_call() -> None:
-            reset()
+        def stepper_once() -> None:
             stepper.advance(
                 dt, q_inlet_ms=q_in, q_surcharge_ms=q_su, tide_stage_m=tide_stage, max_dt_s=dt
             )
+
+        def stepper_call() -> None:
+            reset()
+            stepper_once()
 
     drain_state = DrainState(head=snap["head"].copy(), flow=snap["flow"].copy())
     sinks, sink_state = drain1d.no_sinks()
@@ -632,13 +639,19 @@ def micro(
                 }
             # The subtraction above is two noisy numbers under contention and can even come out
             # negative. This is the same call with both kernels replaced by no-ops, so what is
-            # left is the Python and NumPy the sub-step pays for, measured directly.
+            # left is the Python and NumPy the sub-step pays for, measured directly. No rewind
+            # here: with the kernels stubbed the only write is the sea clamp, which re-imposes
+            # the same level every time, so the state is already the snapshot's. The rewind is
+            # harness cost, not solver cost, and is reported on its own.
+            entry["harness_reset_ms"] = best_and_median(reset, repeats)
             with hooked() as stubs:
                 stubs.replace(swe2d, "_update_flux", _no_kernel)
                 stubs.replace(swe2d, "_update_depth", _no_kernel)
-                entry["run_surface_python_only"] = best_and_median(surface_call, repeats)
-                if stepper_call is not None:
-                    entry["stepper_python_only"] = best_and_median(stepper_call, repeats)
+                reset()
+                entry["run_surface_python_only"] = best_and_median(run_surface_once, repeats)
+                if stepper_once is not None:
+                    entry["stepper_python_only"] = best_and_median(stepper_once, repeats)
+                reset()
             entry["drain_sync_5_steps"] = best_and_median(drain_sync, repeats)
             entry["exchange_call"] = best_and_median(exchange, repeats)
             result["rounds_data"].append(entry)
