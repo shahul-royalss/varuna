@@ -2,6 +2,8 @@
 
 import { create } from "zustand";
 
+import { CYCLE_STAGES } from "@/lib/api/schemas";
+
 /** Whether the run was computed live or served from a bake (run.json `mode`). */
 export type RunReplayMode = "baked" | "live";
 
@@ -52,10 +54,21 @@ export function deriveSystemMode(run: RunMeta | null): SystemMode {
   return run.mode === "live" ? "live" : "replay";
 }
 
-/** Total stage time in milliseconds, or null when the run has no timings. */
+/**
+ * Wall-clock of a cycle in milliseconds, each cycle stage counted once, or null when the run has
+ * no stage timings.
+ *
+ * Only `CYCLE_STAGES` keys count. run.json also carries the Twin's sub-timings
+ * (`twin_total_ms`, `twin_surface_ms` and the rest), measured inside the `twin` wall clock, and
+ * summing every key showed 189.7 s on the run stamp for a 76.9 s cycle. The API applies the same
+ * allowlist (`varuna_schemas.models.stage_total_ms`, ADR-0046), so the stamp and `/v1/runs` agree.
+ */
 export function totalStageMs(run: RunMeta | null): number | null {
-  if (!run?.stage_ms) return null;
-  const values = Object.values(run.stage_ms).filter((v) => Number.isFinite(v));
+  const stageMs = run?.stage_ms;
+  if (!stageMs) return null;
+  const values = CYCLE_STAGES.map((stage) => stageMs[stage]).filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v),
+  );
   return values.length ? values.reduce((a, b) => a + b, 0) : null;
 }
 
