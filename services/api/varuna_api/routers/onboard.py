@@ -39,6 +39,22 @@ def onboard(body: OnboardRequest) -> dict[str, Any]:
     one - on stage, a double-click on "Start" must not raise a dialog.
     """
     from varuna_city.config import load_city_config
+    from varuna_schemas.settings import get_settings
+
+    # Refused before anything is validated or started. On 13 September 2026 a Chennai build was
+    # started against the public Railway API: it downloaded tiles and OSM responses onto the
+    # 500 MB volume beside two built cities, failed at `export` with ENOSPC, and left the volume
+    # at 495 MB, after which the API crashed on its next restart and stayed down. The wizard is a
+    # demo-laptop feature (CLAUDE.md 7.9 "on the demo laptop"), so the deployment says so.
+    if not get_settings().varuna_onboard_enabled:
+        raise api_error(
+            403,
+            "onboard_disabled",
+            "City-in-a-box is switched off on this public deployment. A Chennai build needs about "
+            "320 MB of terrain tiles, OSM responses and outputs, and the volume here is 500 MB "
+            "shared with the Mumbai demo. Run the wizard against a local API (make demo), or "
+            "build from the command line with make city CITY=chennai.",
+        )
 
     city = body.city or "chennai"
     try:

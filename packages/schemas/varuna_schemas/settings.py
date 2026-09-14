@@ -54,6 +54,13 @@ class Settings(BaseSettings):
     varuna_offline: bool = Field(
         default=False, description="Block all outbound network (offline package, tests)."
     )
+    varuna_onboard_enabled: bool = Field(
+        default=True,
+        description=(
+            "Accept POST /v1/onboard. Off on the public deployment, where one build filled the "
+            "500 MB volume and took the API down; on the demo laptop it stays on."
+        ),
+    )
     api_port: int = Field(
         default=8000,
         ge=1,

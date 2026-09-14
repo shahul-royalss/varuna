@@ -89,11 +89,17 @@ ENV UV_NO_SYNC=1
 # image ships without them and the entrypoint builds them into the mounted volume on first
 # boot. Every layer endpoint answers 404 with "Run make city CITY=<city>" until it has, which
 # is the honest state rather than a crash.
+#
+# City-in-a-box is off in this image. A public visitor can press Start on /onboard, and a Chennai
+# build needs about 320 MB beside the Mumbai city on a 500 MB volume: the one started on
+# 13 September 2026 failed with ENOSPC and the API did not come back. The wizard runs on the demo
+# laptop, where the variable is unset and the endpoint accepts builds.
 ENV VARUNA_DATA_DIR=/data \
     VARUNA_CITY_DIR=/data/city \
     VARUNA_BUNDLES_DIR=/data/bundles \
     VARUNA_MODE=replay \
     VARUNA_CITY=mumbai \
+    VARUNA_ONBOARD_ENABLED=0 \
     PORT=8000
 
 COPY docker/entrypoint.sh /usr/local/bin/varuna-entrypoint

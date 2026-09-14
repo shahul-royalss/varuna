@@ -98,6 +98,42 @@ build_bundle() {
   fi
 }
 
+# What the volume holds, and the regenerable part of it reclaimed, before anything else writes.
+# On 13 September 2026 an onboarding build left Chennai's downloaded tiles and OSM responses in
+# city/cache after failing with ENOSPC, the volume stood at 495 of 500 MB, and the API crashed on
+# its next restart and stayed down. Every entry is logged with its size first, so what was on
+# the volume is on record rather than inferred. Only two things are removed, both regenerable:
+#   - the download cache, and only once the default city is complete, which is the same rule
+#     drop_download_cache already follows after a successful build;
+#   - run directories an atomic write abandoned (`.<run_id>.tmp-*`), which no reader ever opens.
+# A built city, the bundle and every published or seeded run are left alone.
+DATA_DIR="${VARUNA_DATA_DIR:-/data}"
+
+volume_usage() {
+  df -h "${DATA_DIR}" 2>/dev/null | awk 'NR==2 {print $3 " used, " $4 " free of " $2}'
+}
+
+reclaim_volume() {
+  [ -d "${DATA_DIR}" ] || return 0
+  log "volume before reclaim: $(volume_usage)"
+  for entry in "${DATA_DIR}"/* "${CITY_DIR}"/*; do
+    [ -e "${entry}" ] || continue
+    log "volume holds $(du -sh "${entry}" 2>/dev/null | cut -f1) in ${entry}"
+  done
+  if [ -d "${CITY_DIR}/cache" ] && city_is_complete; then
+    drop_download_cache
+  fi
+  if [ -d "${DATA_DIR}/runs" ]; then
+    find "${DATA_DIR}/runs" -mindepth 1 -maxdepth 1 -type d -name '.*.tmp-*' -print \
+      | while read -r stale; do
+          rm -rf "${stale}" && log "removed an abandoned atomic write: ${stale}"
+        done
+  fi
+  log "volume after reclaim: $(volume_usage)"
+}
+
+reclaim_volume
+
 if [ "${BUILD_ON_BOOT}" = "1" ]; then
   # Sequential, and in that order: the bundle is built ON the city. Its reconstruction reads
   # the city's own segments.parquet - the traffic feed is synthesised on real road segments -
