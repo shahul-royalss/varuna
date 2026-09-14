@@ -18,8 +18,9 @@ For each 5-minute forecast step:
 
    a. ``coupling.compute_exchange`` reads the surface depth and drain heads and computes
       the inlet capture and surcharge fluxes (CLAUDE.md 11.5, Appendix A);
-   b. ``swe2d.run_surface`` sub-steps the 2D solver under the CFL rule for ``sync_s``,
-      with the rain, capture and surcharge frozen as source terms;
+   b. ``swe2d.SurfaceStepper.advance`` sub-steps the 2D solver under the CFL rule for
+      ``sync_s``, with the rain, capture and surcharge frozen as source terms - the same
+      arithmetic as ``swe2d.run_surface``, with its per-call setup done once per run;
    c. ``drain1d.simulate`` sub-steps the 1D solver at ``inner_dt_s`` for ``sync_s``,
       with the same capture and surcharge frozen.
 
@@ -30,8 +31,9 @@ For each 5-minute forecast step:
 
 **Mass balance** (CLAUDE.md 11.3). The combined surface + drain volume is audited at the
 end of the run: ``|V_surface + V_drain - (V_rain_in - V_boundary_out)| / V_rain_in < 0.1%``.
-The surface's own audit runs every 100 CFL steps inside ``run_surface``; the drain's runs
-inside ``simulate``. This final audit is the coupled one that catches exchange leaks.
+The surface's own audit runs every 100 CFL sub-steps across the run inside the
+``SurfaceStepper`` and once more at the end; the drain's runs inside ``simulate``. This final
+audit is the coupled one that catches exchange leaks.
 
 **Performance** (CLAUDE.md 14). The target is a 3-hour AOI run <= 8 s on an 8-core CPU.
 The 2D solver is Numba-parallel; the 1D solver is vectorised numpy. The coupling loop adds
@@ -138,6 +140,10 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     # level when the bundle has no tide series rather than leaving the solver without a level.
     has_sea = sea_mask is not None and bool(sea_mask.any())
 
+    # Built once: the sea-cell index, the kernel workspace and the run-long mass ledger. Doing
+    # that inside every one of the 2,160 surface calls cost more than the kernels (P4.6).
+    surface_stepper = swe2d.SurfaceStepper(surface, kernel_terrain, sea_mask=sea_mask)
+
     # Sinks (pumps/tanks)  -  not wired until Phase 7, but the interface is ready
     sinks, sink_state = drain1d.no_sinks()
 
@@ -178,6 +184,11 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         r_eff_ms = effective_rain(rain_rate, terrain, hydro_state, step_s)
         t_hydro += int((perf_counter() - t0) * 1000)
 
+        # The rain raster is validated here, once per 5-minute step, not once per sync.
+        t0 = perf_counter()
+        surface_stepper.set_rain(r_eff_ms)
+        t_surface += int((perf_counter() - t0) * 1000)
+
         # Track rain volume: r_eff_ms is m/s, over step_s seconds and cell_area
         total_rain_in_m3 += float(np.sum(r_eff_ms)) * step_s * kernel_terrain.cell_area_m2
 
@@ -216,14 +227,10 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
 
             # 2b. Advance the 2D surface
             t0 = perf_counter()
-            surface_run = swe2d.run_surface(
-                surface,
-                kernel_terrain,
+            surface_run = surface_stepper.advance(
                 actual_sync_s,
-                r_eff_ms=r_eff_ms,
                 q_inlet_ms=exchange.q_inlet_cell,
                 q_surcharge_ms=exchange.q_surcharge_cell,
-                sea_mask=sea_mask,
                 tide_stage_m=tide_stage,
                 max_dt_s=actual_sync_s,
             )
@@ -253,6 +260,11 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         if step_surcharge_count > 0:
             q_surcharge_out[step_idx] = step_surcharge / step_surcharge_count
         edge_flow_out[step_idx] = drain_state.flow.copy()
+
+    # The surface's closing audit: the window since its last 100-sub-step check, and the run.
+    t0 = perf_counter()
+    surface_stepper.finish()
+    t_surface += int((perf_counter() - t0) * 1000)
 
     # ---- Stage timings -------------------------------------------------------
     elapsed_ms = round((perf_counter() - started) * 1000.0)
