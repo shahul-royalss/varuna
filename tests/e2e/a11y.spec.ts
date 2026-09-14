@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page } from "./requirements";
 
 /**
  * The accessibility floor, checked rather than asserted (CLAUDE.md 6.10, task P10.3).
@@ -44,13 +44,15 @@ async function scan(page: Page, path: string) {
   // Panels arrive after their fetches; scanning before they do tests the skeletons.
   await page.waitForTimeout(2_500);
 
-  return new AxeBuilder({ page })
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    // deck.gl's canvas and its own tooltip node: no inspectable DOM, and both are decorative to
-    // a screen reader by construction.
-    .exclude("canvas")
-    .exclude("#deckgl-wrapper")
-    .analyze();
+  return (
+    new AxeBuilder({ page })
+      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+      // deck.gl's canvas and its own tooltip node: no inspectable DOM, and both are decorative to
+      // a screen reader by construction.
+      .exclude("canvas")
+      .exclude("#deckgl-wrapper")
+      .analyze()
+  );
 }
 
 test.describe("accessibility floor", () => {
