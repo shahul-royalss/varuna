@@ -314,6 +314,172 @@ def _table(rows: list[tuple[str, str]], header: tuple[str, str]) -> list[str]:
     return lines
 
 
+def _gravity(
+    config: CityConfig, grid: CityGrid, nodes: Any, edges: Any, hotspots: Any
+) -> tuple[dict[str, Any] | None, str | None]:
+    """The gravity audit of the drain tables already loaded, or ``(None, why not)``."""
+    if nodes is None or edges is None or not len(nodes) or not len(edges):
+        return None, "no drain graph loaded"
+    from varuna_city.gravity import MIN_SLOPE, audit_gravity
+
+    try:
+        audit = audit_gravity(
+            nodes,
+            edges,
+            min_slope=float(getattr(config, "min_drain_slope", MIN_SLOPE)),
+            hotspots=hotspots if hotspots is not None and len(hotspots) else None,
+            transform=grid.transform,
+            crs=grid.crs,
+        )
+    except (KeyError, ValueError) as exc:
+        log.warning("report.gravity_unavailable", error=str(exc))
+        return None, f"audit failed: {exc}"
+    return audit, None
+
+
+def _connectivity_rows(
+    connectivity: float, gravity: dict[str, Any] | None, error: str | None
+) -> list[str]:
+    """The two connectivity rows of the targets table: topological, then hydraulic.
+
+    The first row counts paths, not gradients. It stays met on a graph whose water cannot reach
+    an outfall without surcharging, so the sill-blocked figure sits directly under it. There is
+    no spec target for the second row, so it carries no verdict.
+    """
+    rows = [
+        "| Drain graph connectivity (every node reaches an outfall) | 100 % "
+        f"| {_pct(connectivity)} topologically | {_verdict(connectivity >= 1.0)} |"
+    ]
+    if gravity is None:
+        measured = f"not measured ({error})"
+    else:
+        sill = gravity["sill"]
+        measured = (
+            f"{_pct(1.0 - float(sill['share']))} ({_fmt(int(sill['blocked_nodes']))} of "
+            f"{_fmt(int(gravity['nodes']))} nodes sill-blocked; see Drain gravity)"
+        )
+    rows.append(
+        "| Drain graph hydraulic connectivity (no downstream invert above a node's own ground) "
+        f"| no spec target | {measured} | reported |"
+    )
+    return rows
+
+
+def _gravity_section(gravity: dict[str, Any] | None, error: str | None) -> list[str]:
+    if gravity is None:
+        return [f"Not measured: {error}."]
+    adv, under, sill = gravity["adverse"], gravity["under_min_slope"], gravity["sill"]
+    field = gravity.get("slope_field") or {}
+    depth = gravity.get("invert_depth_m") or {}
+    rise = adv.get("rise_m") or {}
+    excess = sill.get("excess_m") or {}
+    lines = [
+        "Connectivity above proves a path from every node to an outfall. This section checks "
+        "whether water can follow that path downhill. A node is **sill-blocked** when some "
+        "invert downstream of it, on its way to its outfall, stands above its own street. The "
+        "drain solver can then move its water on only by surcharging first. Measured by "
+        "`varuna_city.gravity` from `drain_nodes.parquet` and `drain_edges.parquet`; nothing "
+        "below is a storm result.",
+        "",
+    ]
+    lines += _table(
+        [
+            (
+                "Adverse edges (downstream invert above upstream)",
+                f"{_fmt(adv['edges'])} of {_fmt(gravity['edges'])} ({_pct(adv['share'])}), "
+                f"{_fmt(adv['length_km'], 1)} km ({_pct(adv['length_share'])} of length)",
+            ),
+            (
+                "Rise on adverse edges (m)",
+                f"p50 {_fmt(rise.get('p50'))}, p90 {_fmt(rise.get('p90'))}, "
+                f"max {_fmt(rise.get('max'))}"
+                if rise
+                else "none",
+            ),
+            (
+                f"Edges falling under {gravity['min_slope'] * 100:g} %",
+                f"{_fmt(under['edges'])} ({_pct(under['share'])}), "
+                f"{_fmt(under['length_km'], 1)} km",
+            ),
+            (
+                "Stored `slope` that disagrees with the invert fall",
+                f"{_fmt(field.get('disagreeing_edges'))} edges (stored minimum "
+                f"{field.get('stored_min')})"
+                if field
+                else "no slope column",
+            ),
+            ("Inverts above ground", _fmt(gravity["inverts_above_ground"])),
+            (
+                "Invert depth (m)",
+                f"min {_fmt(depth.get('min'))}, p50 {_fmt(depth.get('p50'))}, "
+                f"p90 {_fmt(depth.get('p90'))}, max {_fmt(depth.get('max'))}",
+            ),
+            (
+                "Sill-blocked nodes",
+                f"{_fmt(sill['blocked_nodes'])} of {_fmt(gravity['nodes'])} "
+                f"({_pct(sill['share'])}); {_fmt(sill['pipe_km_from_blocked_nodes'], 1)} km of "
+                "pipe starts at one",
+            ),
+            (
+                "Sill above ground at blocked nodes (m)",
+                f"p50 {_fmt(excess.get('p50'))}, p90 {_fmt(excess.get('p90'))}, "
+                f"max {_fmt(excess.get('max'))}"
+                if excess
+                else "none",
+            ),
+        ],
+        ("Gravity", "Value"),
+    )
+
+    by_type = gravity["outfalls"]["by_boundary_type"]
+    if by_type:
+        lines += [
+            "",
+            "| Outfall type | Outfalls | Nodes drained | Ground p50 (m) | Invert p50 (m) "
+            "| On ground above 5 m |",
+            "|---|---|---|---|---|---|",
+        ]
+        for kind, entry in by_type.items():
+            lines.append(
+                f"| {kind} | {_fmt(entry['outfalls'])} | {_fmt(entry['nodes_served'])} "
+                f"| {_fmt((entry['ground_m'] or {}).get('p50'))} "
+                f"| {_fmt((entry['invert_m'] or {}).get('p50'))} "
+                f"| {_fmt(entry['ground_above_5_m'])} |"
+            )
+    tidal = gravity["outfalls"]["tidal"]
+    if tidal:
+        lines += [
+            "",
+            "| Tidal outfall | Snapped node | Ground (m) | Invert (m) | Nodes drained |",
+            "|---|---|---|---|---|",
+        ]
+        lines += [
+            f"| {row['outfall_id']}{' (flap gate)' if row.get('flap_gate') else ''} "
+            f"| {row['node_id']} | {_fmt(row['z_ground_m'])} | {_fmt(row['z_invert_m'])} "
+            f"| {_fmt(row['nodes_served'])} |"
+            for row in tidal
+        ]
+
+    hs = gravity.get("hotspots")
+    if hs and hs["rows"]:
+        size = hs["window_cells"]
+        lines += [
+            "",
+            f"Register points with sill-blocked drain nodes in their {size} x {size} cell window: "
+            f"{hs['with_blocked_nodes']} of {hs['points']}.",
+            "",
+            "| Point | Sourced | Nodes in window | Sill-blocked | Worst sill above ground |",
+            "|---|---|---|---|---|",
+        ]
+        lines += [
+            f"| {row['name']} | {'yes' if row['sourced'] else 'candidate'} "
+            f"| {_fmt(row['nodes_in_window'])} | {_fmt(row['sill_blocked'])} "
+            f"| {'-' if row['max_excess_m'] is None else _fmt(row['max_excess_m']) + ' m'} |"
+            for row in hs["rows"]
+        ]
+    return lines
+
+
 def write_report(
     config: CityConfig,
     grid: CityGrid,
@@ -349,6 +515,7 @@ def write_report(
     overlap = depression_overlap(hotspots, depressions)
     drains = stats.get("drains", {})
     connectivity = float(drains.get("connectivity", 0.0))
+    gravity, gravity_error = _gravity(config, grid, nodes, edges, hotspots)
     units = stats.get("units", {})
     segs = stats.get("segments", {})
     dem = stats.get("dem", {})
@@ -382,8 +549,7 @@ def write_report(
         f"| >= 60 % | {_pct(overlap['share'])} of {overlap['register']} points "
         f"({_pct(overlap['sourced_share'])} of the {overlap['sourced']} sourced) "
         f"| {_verdict(overlap['share'] >= OVERLAP_TARGET)} |",
-        f"| Drain graph connectivity (every node reaches an outfall) | 100 % "
-        f"| {_pct(connectivity)} | {_verdict(connectivity >= 1.0)} |",
+        *_connectivity_rows(connectivity, gravity, gravity_error),
         f"| Sourced register points inside the AOI | >= 10 | {hs_stats.get('sourced', 0)} "
         f"| {_verdict(int(hs_stats.get('sourced', 0)) >= 10)} |",
         f"| Surface units inside the 0.5-2 ha cap | >= 90 % | "
@@ -608,6 +774,9 @@ def write_report(
             "reverse flow, the others can run backwards and surcharge the trunk (CLAUDE.md 11.4).",
         ]
 
+    lines += ["", "## Drain gravity", ""]
+    lines += _gravity_section(gravity, gravity_error)
+
     lines += ["", "## Assets and register provenance", ""]
     lines += _table(
         [
@@ -685,6 +854,7 @@ def write_report(
     summary = {
         "overlap": {k: v for k, v in overlap.items() if k != "points"},
         "maps": {k: str(v) for k, v in written_maps.items()},
+        "gravity": gravity,
     }
     (root / "report.json").write_text(
         json.dumps(summary, indent=1) + "\n", encoding="utf-8", newline="\n"

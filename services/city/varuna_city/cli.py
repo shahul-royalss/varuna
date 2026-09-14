@@ -109,6 +109,72 @@ def report(
         raise typer.Exit(code=1)
 
 
+@app.command("audit-gravity")
+def audit_gravity_command(
+    city: Annotated[str, typer.Option("--city", help="City slug.")] = DEFAULT_CITY,
+    bundle: Annotated[
+        str | None,
+        typer.Option(
+            "--bundle",
+            help="Replay bundle whose tide.csv maximum the outfall inverts are compared with.",
+        ),
+    ] = None,
+    json_out: Annotated[
+        Path | None, typer.Option("--json", help="Also write the full audit to this JSON file.")
+    ] = None,
+) -> None:
+    """Audit the drain graph in city/<city>/ for adverse beds and downstream sills. Read-only."""
+    import json
+
+    import geopandas as gpd
+    import pandas as pd
+    import rasterio
+    from varuna_schemas.paths import bundle_dir, city_dir
+
+    from varuna_city.config import load_city_config
+    from varuna_city.gravity import MIN_SLOPE, audit_gravity, summary_lines
+
+    root = city_dir(city)
+    nodes_path, edges_path = root / "drain_nodes.parquet", root / "drain_edges.parquet"
+    if not nodes_path.is_file() or not edges_path.is_file():
+        typer.echo(f"No drain graph in {root}. Run `make city CITY={city}` first.")
+        raise typer.Exit(code=1)
+    nodes = pd.read_parquet(nodes_path)
+    edges = pd.read_parquet(edges_path)
+
+    transform = crs = hotspots = None
+    dem_path, hotspots_path = root / "dem_conditioned.tif", root / "hotspots.geojson"
+    if dem_path.is_file() and hotspots_path.is_file():
+        with rasterio.open(dem_path) as ds:
+            transform, crs = ds.transform, str(ds.crs)
+        hotspots = gpd.read_file(hotspots_path)
+
+    tide_max: float | None = None
+    if bundle is not None:
+        tide_path = bundle_dir(bundle) / "tide.csv"
+        if not tide_path.is_file():
+            typer.echo(f"No tide.csv in {tide_path.parent}. Run `make bundle BUNDLE={bundle}`.")
+            raise typer.Exit(code=1)
+        tide_max = float(pd.read_csv(tide_path)["stage_m"].max())
+
+    min_slope = float(getattr(load_city_config(city), "min_drain_slope", MIN_SLOPE))
+    audit = audit_gravity(
+        nodes,
+        edges,
+        min_slope=min_slope,
+        hotspots=hotspots,
+        transform=transform,
+        crs=crs,
+        tide_max_m=tide_max,
+    )
+    for line in summary_lines(audit):
+        typer.echo(line)
+    if json_out is not None:
+        json_out.parent.mkdir(parents=True, exist_ok=True)
+        json_out.write_text(json.dumps(audit, indent=1) + "\n", encoding="utf-8", newline="\n")
+        typer.echo(f"audit written to {json_out}")
+
+
 @app.command("layers")
 def layers(
     city: Annotated[str, typer.Option("--city", help="City slug.")] = DEFAULT_CITY,
