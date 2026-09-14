@@ -14,6 +14,7 @@ Importing a stage does not import the others' heavy dependencies: only the names
 re-exported eagerly, and each stage module is small. ``run_sky`` is what the cycle calls.
 """
 
+from varuna_sky.analysis import AnalysisRain, AnalysisSeries, analysis_rain, analysis_series
 from varuna_sky.merge import merge_gauges
 from varuna_sky.motion import optical_flow, rain_from_dbz
 from varuna_sky.pipeline import STAGES, run_sky, sky_notes
@@ -46,6 +47,8 @@ __version__ = "0.1.0"
 
 __all__ = [
     "STAGES",
+    "AnalysisRain",
+    "AnalysisSeries",
     "AoiGrid",
     "GaugePair",
     "MergeResult",
@@ -59,6 +62,8 @@ __all__ = [
     "SkyResult",
     "ZRParams",
     "__version__",
+    "analysis_rain",
+    "analysis_series",
     "fit_zr",
     "gauge_pairs",
     "load_aoi_grid",
