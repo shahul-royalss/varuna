@@ -380,6 +380,7 @@ def profile_run(inputs, *, snapshot_sync: int | None = None) -> tuple[dict, dict
         hooks.wrap(swe2d, "cfl_dt", "py_cfl", after=lambda _a, _k, r: dts.append(float(r)))
         hooks.wrap(swe2d, "_apply_tide", "py_tide")
         hooks.wrap(swe2d, "_audit", "py_audit")
+        hooks.wrap(swe2d, "_check_ledger", "py_audit")
         hooks.wrap(swe2d, "_notes", "py_notes")
         hooks.wrap(swe2d, "run_surface", "surface_call")
         stepper = getattr(swe2d, "SurfaceStepper", None)
