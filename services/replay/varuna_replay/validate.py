@@ -718,8 +718,30 @@ def _feature_lonlat(
     return (lon, lat)
 
 
-def _check_honesty(report: ValidationReport, manifest: BundleManifest) -> None:
+def _check_honesty(
+    report: ValidationReport, manifest: BundleManifest, layout: BundleLayout | None = None
+) -> None:
     report.ran("B9")
+    # The tide's vertical datum is a labelled assumption like the calibration basis: a stage
+    # above chart datum read as if it were in the DEM's frame floods the coast by metres. B2
+    # already validates a declared block; this says out loud when a tide carries none, and
+    # when a block describes a tide the bundle does not have.
+    has_tide = layout is not None and layout.tide.exists()
+    if has_tide and manifest.tide_datum is None:
+        report.add(
+            "B9",
+            "note",
+            MANIFEST_NAME,
+            "tide.csv is present but tide_datum is not, so every consumer reads stage_m as "
+            "already in the DEM's frame",
+        )
+    if layout is not None and not has_tide and manifest.tide_datum is not None:
+        report.add(
+            "B9",
+            "error",
+            MANIFEST_NAME,
+            "declares tide_datum but the bundle carries no tide.csv for it to describe",
+        )
     if manifest.is_reconstructed:
         report.ran("B8")
         if not manifest.sources:
@@ -800,7 +822,7 @@ def validate_bundle(bundle: str | Path) -> ValidationReport:
     _check_cubes(report, layout, manifest)
     _check_streams(report, layout, manifest)
     _check_ground_truth(report, layout, manifest)
-    _check_honesty(report, manifest)
+    _check_honesty(report, manifest, layout)
     log.info(
         "bundle.validated",
         bundle=report.bundle_id,

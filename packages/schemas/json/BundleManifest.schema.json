@@ -382,6 +382,108 @@
       ],
       "title": "StormDesign",
       "type": "object"
+    },
+    "TideDatum": {
+      "additionalProperties": false,
+      "description": "The vertical datum of ``tide.csv`` and the offset that puts it in the DEM's frame.\n\nA tide table states heights above **chart datum**, a low-water reference, while the Twin's\nterrain is a Copernicus GLO-30 surface whose heights are relative to the EGM2008 geoid. At\nMumbai the two differ by about the whole mean tide, so a stage read in the wrong datum\nfloods the coastal boundary cells by metres. This block names the datum the series is in,\nthe offset to mean sea level with the benchmark arithmetic behind it, the sources it was\nread from, and the residual that is still not quantified.\n\nConsumers subtract :attr:`offset_to_dem_m` from ``stage_m``; a bundle without this block is\nread as written, which is what it did before the block existed.",
+      "properties": {
+        "dem_datum": {
+          "description": "The DEM's vertical datum, as its source says.",
+          "minLength": 8,
+          "title": "Dem Datum",
+          "type": "string"
+        },
+        "dem_datum_source_url": {
+          "description": "Where the DEM's datum is stated.",
+          "minLength": 8,
+          "title": "Dem Datum Source Url",
+          "type": "string"
+        },
+        "derivation": {
+          "description": "The benchmark arithmetic the offset comes from, step by step.",
+          "minLength": 20,
+          "title": "Derivation",
+          "type": "string"
+        },
+        "msl_above_chart_datum_m": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mean sea level above chart datum at the tide station, metres.",
+          "title": "Msl Above Chart Datum M"
+        },
+        "range_m": {
+          "anyOf": [
+            {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The span of mean sea level above chart datum the sources support, metres.",
+          "title": "Range M"
+        },
+        "residual": {
+          "description": "What the conversion does not account for, said out loud.",
+          "minLength": 8,
+          "title": "Residual",
+          "type": "string"
+        },
+        "source_urls": {
+          "description": "Where the benchmark relation and the annual means were read.",
+          "items": {
+            "minLength": 8,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Source Urls",
+          "type": "array"
+        },
+        "stage_datum": {
+          "description": "The datum stage_m is written in. 'chart_datum' means a consumer in the DEM's frame subtracts msl_above_chart_datum_m; 'dem' means the stage is already in that frame.",
+          "enum": [
+            "chart_datum",
+            "dem"
+          ],
+          "title": "Stage Datum",
+          "type": "string"
+        },
+        "stage_reference": {
+          "description": "The datum in UI-ready words, including what is assumed.",
+          "minLength": 8,
+          "title": "Stage Reference",
+          "type": "string"
+        }
+      },
+      "required": [
+        "stage_datum",
+        "stage_reference",
+        "derivation",
+        "source_urls",
+        "dem_datum",
+        "dem_datum_source_url",
+        "residual"
+      ],
+      "title": "TideDatum",
+      "type": "object"
     }
   },
   "$id": "urn:varuna:schema:BundleManifest",
@@ -531,6 +633,18 @@
       "format": "date-time",
       "title": "T1",
       "type": "string"
+    },
+    "tide_datum": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TideDatum"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The vertical datum of tide.csv and the offset into the DEM's frame."
     },
     "tide_source": {
       "anyOf": [
