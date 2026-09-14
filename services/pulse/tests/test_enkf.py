@@ -5,10 +5,13 @@ the posterior mean must rank those two in the top five and cut their spread by a
 That is the whole claim of the engine - the city reveals its own drains - so it is tested against
 a truth the filter never sees.
 
-The two halves are asserted separately, because they are not equally true. The ranking holds at
-every ensemble seed tried; the spread cut clears its floor about half the time and its median
-misses, so it carries an ``xfail(strict=True)`` with the measured distribution. ``docs/QA.md``
-records the sweep.
+The two halves are asserted separately, and both are scored across the filter's own ensemble
+seeds rather than at one of them. Under the single-step stochastic EnKF the ranking held at every
+seed and the spread cut was a coin flip - median 33.2 % at the committed observation draw, 49 of
+100 seed pairs over the floor - so the spread test carried ``xfail(strict=True)``. The update is
+ES-MDA with perturbed observations now (``varuna_pulse.enkf``), and the spread half is also
+checked against an exact grid-Bayes posterior, so a pass means the filter found the right answer
+rather than a lucky one. ``docs/QA.md`` records the sweep.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from varuna_pulse.enkf import (
+    INFLATION,
     assimilate,
     capacity_operator,
     hop_distances,
@@ -118,45 +122,45 @@ def test_the_posterior_finds_the_blocked_pipes(ensemble_seed: int) -> None:
         )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Real defect, measured properly: across the ten ensemble seeds the worse blocked pipe's "
-        "spread cut has median 33.2 % (range 8.3-46.2 %, 3 of 10 at or above the floor) against "
-        "the 40 % CLAUDE.md 11.6 asks for. The committed seed pair scored 40.03 % - a margin of "
-        "3 parts in 10,000 - so the test read as a measured engine property when it was a "
-        "measured property of seed 2019. A 50-member ensemble against a 35-42 edge "
-        "neighbourhood is the cause, not the observations: the sampling error in the spread is "
-        "of the same order as the cut being claimed. Widening the floor would be widening a "
-        "spec budget (rule 13), so the number stands and the test is red. "
-        "strict=True so this turns red the day it starts passing and the number gets read."
-    ),
-)
-def test_the_observations_cut_the_blocked_pipes_spread() -> None:
-    """11.6's second half: the observations cut the blocked pipes' spread by at least 40 %.
+PRIOR_BETA = 0.20
+PRIOR_SD = 0.12
 
-    Scored on the median across the ten ensemble seeds of the worse of the two pipes, since it
-    is ``np.all`` in the spec's wording - both pipes must clear the floor - and a single seed's
-    score is noise. The top-five half above is robust at every seed; this one is not, and the
-    two used to be asserted in the same test, so one green tick covered both.
+
+def _worst_cuts(obs_seed: int) -> np.ndarray:
+    """The worse blocked pipe's spread cut, ``1 - sd_post / sd_prior``, at every ensemble seed.
+
+    ``np.min`` over the two pipes because 11.6 asks it of both; one value per ensemble seed.
     """
-    operator, y, sd, hops, _edges = _setup()
-
-    prior_mean = np.full(N_EDGES, 0.20)
-    prior_sd = np.full(N_EDGES, 0.12)
-
-    worst_pipe = np.array(
+    operator, y, sd, hops, _edges = _setup(seed=obs_seed)
+    prior_mean = np.full(N_EDGES, PRIOR_BETA)
+    prior_sd = np.full(N_EDGES, PRIOR_SD)
+    return np.array(
         [
             np.min(
                 1.0
                 - assimilate(prior_mean, prior_sd, y, sd, operator, hops, seed=seed).beta_sd[
                     list(BLOCKED)
                 ]
-                / prior_sd[list(BLOCKED)]
+                / PRIOR_SD
             )
             for seed in ENSEMBLE_SEEDS
         ]
     )
+
+
+def test_the_observations_cut_the_blocked_pipes_spread() -> None:
+    """11.6's second half: the observations cut the blocked pipes' spread by at least 40 %.
+
+    Scored on the median across the ten ensemble seeds of the worse of the two pipes, since it
+    is ``np.all`` in the spec's wording - both pipes must clear the floor - and a single seed's
+    score is noise. Under the single-step EnKF this median was 33.2 % and the test shipped
+    ``xfail(strict=True)``; the 40 % floor was never widened, the update was fixed.
+
+    The assertion is 0.45, not 0.40, at the committed observation draw only because that is
+    where this module's done-when put it - measured 0.498 (range 0.406-0.538) - and a regression
+    to the old single-step behaviour would land near 0.33, well under either.
+    """
+    worst_pipe = _worst_cuts(obs_seed=7)
     median = float(np.median(worst_pipe))
     print(
         f"\nspread cut on the worse blocked pipe, {len(ENSEMBLE_SEEDS)} ensemble seeds: "
@@ -167,6 +171,90 @@ def test_the_observations_cut_the_blocked_pipes_spread() -> None:
         f"observations must cut the blocked pipes' spread by 40 %; the median across "
         f"{len(ENSEMBLE_SEEDS)} ensemble seeds is {median * 100:.1f} %, "
         f"per seed {np.round(worst_pipe, 4).tolist()}"
+    )
+    assert median >= 0.45, (
+        f"the median cut at the committed observation draw was measured at 49.8 % under ES-MDA "
+        f"and is {median * 100:.1f} % now; below 45 % the update has regressed toward the "
+        f"single-step EnKF's 33 %"
+    )
+
+
+@pytest.mark.parametrize("obs_seed", range(10))
+def test_the_spread_cut_holds_for_other_observation_draws(obs_seed: int) -> None:
+    """The same 40 % floor, not widened, at ten other draws of the synthetic city's noise.
+
+    The committed draw is one sample of the observation noise too. The median over ensemble
+    seeds is asserted at each observation draw; measured 0.473-0.564 across these ten.
+    """
+    worst_pipe = _worst_cuts(obs_seed)
+    median = float(np.median(worst_pipe))
+    assert median >= 0.40, (
+        f"observation draw {obs_seed}: median spread cut {median * 100:.1f} % across "
+        f"{len(ENSEMBLE_SEEDS)} ensemble seeds, per seed {np.round(worst_pipe, 4).tolist()}; "
+        f"11.6 asks for 40 %"
+    )
+
+
+def _exact_posterior(obs_seed: int) -> tuple[np.ndarray, np.ndarray]:
+    """Grid-Bayes posterior mean and spread cut for each blocked pipe, from its own observations.
+
+    4,001 points on beta, the prior the filter draws from (normal in logit space with the same
+    inflated sd, carried back through the Jacobian), and the Gaussian likelihood of the
+    observations that sit on that pipe. Every other pipe is held at the prior mean, which is
+    exact here: the operator reads only the observed edge, and each blocked pipe's observations
+    touch no other blocked pipe.
+    """
+    operator, y, sd, _hops, edges = _setup(seed=obs_seed)
+    grid = np.linspace(1e-4, 1.0 - 1e-4, 4001)
+    theta_mean = float(logit(np.array([PRIOR_BETA]))[0])
+    theta_sd = PRIOR_SD / (PRIOR_BETA * (1.0 - PRIOR_BETA)) * INFLATION
+    prior = np.exp(-0.5 * ((logit(grid) - theta_mean) / theta_sd) ** 2) / (grid * (1.0 - grid))
+    means, cuts = [], []
+    for pipe in BLOCKED:
+        beta = np.full((grid.size, N_EDGES), PRIOR_BETA)
+        beta[:, pipe] = grid
+        predicted = np.asarray(operator(beta))
+        own = edges == pipe
+        loglik = -0.5 * (((y[own][None, :] - predicted[:, own]) / sd[own][None, :]) ** 2).sum(1)
+        weight = prior * np.exp(loglik - loglik.max())
+        weight /= weight.sum()
+        mean = float((weight * grid).sum())
+        means.append(mean)
+        cuts.append(1.0 - float(np.sqrt((weight * (grid - mean) ** 2).sum())) / PRIOR_SD)
+    return np.array(means), np.array(cuts)
+
+
+@pytest.mark.parametrize("obs_seed", (7, 0, 3))
+def test_the_posterior_agrees_with_exact_bayes(obs_seed: int) -> None:
+    """A pass must be the right answer, not merely a narrow one.
+
+    A filter that collapsed its ensemble would clear the 40 % floor trivially. So the blocked
+    pipes' posterior - the median over ensemble seeds, as above - is compared with the exact
+    one-dimensional posterior: mean within 0.03 blockage, spread cut within 0.05. Measured at
+    the committed draw: exact mean 0.690 / 0.728 and cut 0.505 / 0.544. The single-step EnKF
+    missed the exact cut by a median 0.115 and would fail this.
+    """
+    operator, y, sd, hops, _edges = _setup(seed=obs_seed)
+    prior_mean = np.full(N_EDGES, PRIOR_BETA)
+    prior_sd = np.full(N_EDGES, PRIOR_SD)
+    runs = [
+        assimilate(prior_mean, prior_sd, y, sd, operator, hops, seed=seed)
+        for seed in ENSEMBLE_SEEDS
+    ]
+    mean = np.median([r.beta_mean[list(BLOCKED)] for r in runs], axis=0)
+    cut = np.median([1.0 - r.beta_sd[list(BLOCKED)] / PRIOR_SD for r in runs], axis=0)
+
+    exact_mean, exact_cut = _exact_posterior(obs_seed)
+    print(
+        f"\nobservation draw {obs_seed}: ES-MDA mean {np.round(mean, 3).tolist()} cut "
+        f"{np.round(cut, 3).tolist()}; exact mean {np.round(exact_mean, 3).tolist()} cut "
+        f"{np.round(exact_cut, 3).tolist()}"
+    )
+    assert np.all(np.abs(mean - exact_mean) <= 0.03), (
+        f"posterior mean {mean.tolist()} is more than 0.03 from exact {exact_mean.tolist()}"
+    )
+    assert np.all(np.abs(cut - exact_cut) <= 0.05), (
+        f"spread cut {cut.tolist()} is more than 0.05 from exact {exact_cut.tolist()}"
     )
 
 

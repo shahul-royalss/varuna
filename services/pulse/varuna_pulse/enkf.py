@@ -12,13 +12,27 @@ increments walks members straight out of the interval. In logit space the update
 the inverse transform puts it back inside, which is the standard fix and the reason CLAUDE.md's
 equation sheet writes the update over logit beta.
 
-**The update** is the stochastic EnKF of Appendix A::
+**The update** is Appendix A's perturbed-observation Kalman update::
 
     theta^a = theta^f + P_theta_y (P_yy + R)^-1 (y + eps - H(theta^f))
 
-with perturbed observations (``eps``), which is what keeps the posterior spread honest - a
-deterministic update collapses the ensemble variance and the filter stops listening after a few
-cycles.
+applied as an ensemble smoother with multiple data assimilation (ES-MDA, Emerick & Reynolds
+2013): the same batch is assimilated :data:`MDA_STEPS` times, each time with the observation
+error variance inflated by ``MDA_STEPS`` and ``H`` re-evaluated on the updated members. Because
+the inflation factors' reciprocals sum to one, a linear-Gaussian problem gets exactly the
+single-step answer; a non-linear one - and ``H`` here is non-linear twice over, through the
+sigmoid and through the ``max(0, .)`` of the capacity deficit - gets the posterior a single step
+linearised around the prior cannot reach. Perturbed observations (``eps``, drawn afresh every
+step with the inflated variance) are kept, as 11.6 and Appendix A write them; they are what keep
+the posterior spread honest rather than collapsing it.
+
+Why not the single stochastic step, measured on 11.6's own acceptance fixture (two blocked pipes
+in 200, twenty observations): against an exact grid-Bayes posterior it under-cut the blocked
+pipes' spread by a median 0.115, clearing the 40 % floor at 49 of 100 (observation seed, ensemble
+seed) pairs. ES-MDA x4 lands within 0.01 of the exact cut. More members does not substitute: 200
+members in one step measured a median cut of 0.377. The prior ensemble is also moment-matched -
+the standard-normal draw is standardised per edge to zero mean and unit sd before scaling - so the
+filter starts from the prior it was given rather than from 50 samples of it.
 
 **Localisation** is by hydraulic hop distance, not by metres. Two pipes a hundred metres apart
 with no hydraulic connection have nothing to say about each other, while a trunk two kilometres
@@ -49,6 +63,7 @@ log = structlog.get_logger("varuna.pulse.enkf")
 __all__ = [
     "ENSEMBLE_SIZE",
     "LOCALISATION_HOPS",
+    "MDA_STEPS",
     "EnkfResult",
     "assimilate",
     "capacity_operator",
@@ -66,8 +81,15 @@ also the standard remedy for the spurious long-range correlations a small ensemb
 LOCALISATION_HOPS = 3
 """How far an observation may reach through the graph (CLAUDE.md 11.6)."""
 
+MDA_STEPS = 4
+"""Passes of the ES-MDA update per batch, each with the observation variance times this number.
+
+Four, because it is the smallest count that closed the gap to the exact posterior on the 11.6
+fixture (see the module docstring); each pass costs one more evaluation of ``H`` over the
+ensemble, which for the analytic operator is milliseconds."""
+
 INFLATION = 1.02
-"""Multiplicative spread inflation applied before each update.
+"""Multiplicative spread inflation applied once to the prior draw, before the update passes.
 
 Ensemble filters lose variance every cycle - the update is a contraction - and a filter that has
 convinced itself stops learning. Two percent per cycle is enough to hold the spread open across
@@ -176,7 +198,11 @@ def assimilate(
     seed: int = 2019,
     operator_name: str = "capacity_deficit",
 ) -> EnkfResult:
-    """One EnKF update of blockage from a batch of depth observations.
+    """One ES-MDA update of blockage from a batch of depth observations.
+
+    ``MDA_STEPS`` perturbed-observation Kalman passes with the observation variance inflated by
+    ``MDA_STEPS``; ``innovation`` in the result is measured against the prior ensemble, before
+    the first pass.
 
     Args:
         beta_prior_mean, beta_prior_sd: the current posterior, per edge, in blockage units.
@@ -211,38 +237,58 @@ def assimilate(
     # rather than reinvented, so a pipe the city pipeline was unsure about stays unsure.
     slope = 1.0 / np.clip(beta_prior_mean * (1.0 - beta_prior_mean), 1e-3, None)
     theta_sd = np.asarray(beta_prior_sd, dtype=np.float64) * slope * INFLATION
-    theta = theta_mean[None, :] + rng.normal(size=(n_members, n_edges)) * theta_sd[None, :]
-    beta = sigmoid(theta)
+    # Moment-matched: each edge's 50 draws are standardised to exactly zero mean and unit sd, so
+    # the ensemble *is* the prior's first two moments instead of a noisy estimate of them. The
+    # update then spends none of its accuracy correcting a prior that was drawn slightly wrong.
+    draw = rng.normal(size=(n_members, n_edges))
+    if n_members > 1:
+        draw = (draw - draw.mean(axis=0, keepdims=True)) / np.clip(
+            draw.std(axis=0, ddof=1, keepdims=True), 1e-12, None
+        )
+    theta = theta_mean[None, :] + draw * theta_sd[None, :]
 
-    predicted = np.asarray(operator(beta), dtype=np.float64)  # (members, obs)
     y = np.asarray(observations_cm, dtype=np.float64)
     r = np.asarray(observation_sd_cm, dtype=np.float64) ** 2
-
-    theta_anomaly = theta - theta.mean(axis=0, keepdims=True)
-    y_anomaly = predicted - predicted.mean(axis=0, keepdims=True)
     denominator = max(n_members - 1, 1)
-
-    # P_yy + R, with the observation error on the diagonal.
-    pyy = y_anomaly.T @ y_anomaly / denominator + np.diag(r)
-    # A ridge, because a batch of observations at one junction makes P_yy singular and the
-    # ensemble's own rank is only n_members - 1 anyway.
-    pyy += np.eye(n_obs) * 1e-6
-    ptheta_y = theta_anomaly.T @ y_anomaly / denominator  # (edges, obs)
-
-    try:
-        gain = np.linalg.solve(pyy.T, ptheta_y.T).T
-    except np.linalg.LinAlgError:  # pragma: no cover - the ridge above makes this very unlikely
-        gain = ptheta_y @ np.linalg.pinv(pyy)
-        notes.append("Innovation covariance was singular; the gain used a pseudo-inverse.")
 
     # Localisation: an observation may only move pipes near it in the graph.
     taper = _localisation(hops)  # (obs, edges)
-    gain = gain * taper.T
 
-    perturbed = y[None, :] + rng.normal(size=(n_members, n_obs)) * np.sqrt(r)[None, :]
-    theta_posterior = theta + (perturbed - predicted) @ gain.T
+    innovation = np.zeros(n_obs)
+    singular = False
+    for step in range(MDA_STEPS):
+        # ES-MDA: the batch is assimilated MDA_STEPS times with R inflated by MDA_STEPS, so the
+        # passes together weigh the observations exactly once.
+        r_step = r * MDA_STEPS
+        predicted = np.asarray(operator(sigmoid(theta)), dtype=np.float64)  # (members, obs)
+        if step == 0:
+            innovation = y - predicted.mean(axis=0)
 
-    beta_posterior = sigmoid(theta_posterior)
+        theta_anomaly = theta - theta.mean(axis=0, keepdims=True)
+        y_anomaly = predicted - predicted.mean(axis=0, keepdims=True)
+
+        # P_yy + R, with the (inflated) observation error on the diagonal.
+        pyy = y_anomaly.T @ y_anomaly / denominator + np.diag(r_step)
+        # A ridge, because a batch of observations at one junction makes P_yy singular and the
+        # ensemble's own rank is only n_members - 1 anyway.
+        pyy += np.eye(n_obs) * 1e-6
+        ptheta_y = theta_anomaly.T @ y_anomaly / denominator  # (edges, obs)
+
+        try:
+            gain = np.linalg.solve(pyy.T, ptheta_y.T).T
+        except np.linalg.LinAlgError:  # pragma: no cover - the ridge makes this very unlikely
+            gain = ptheta_y @ np.linalg.pinv(pyy)
+            singular = True
+        gain = gain * taper.T
+
+        # Perturbed observations, y + eps, drawn afresh each pass with the inflated variance.
+        perturbed = y[None, :] + rng.normal(size=(n_members, n_obs)) * np.sqrt(r_step)[None, :]
+        theta = theta + (perturbed - predicted) @ gain.T
+
+    if singular:  # pragma: no cover
+        notes.append("Innovation covariance was singular; the gain used a pseudo-inverse.")
+
+    beta_posterior = sigmoid(theta)
 
     # Localisation, enforced rather than merely weighted. Tapering the gain to zero leaves an
     # unreachable edge's *theta* untouched, but its posterior beta is still the mean of a fresh
@@ -254,12 +300,12 @@ def assimilate(
     beta_sd = np.where(reachable, np.maximum(beta_posterior.std(axis=0), MIN_SD), beta_prior_sd)
 
     touched = np.flatnonzero(np.abs(beta_mean - beta_prior_mean) > 1e-4)
-    innovation = y - predicted.mean(axis=0)
 
     log.info(
         "pulse.enkf",
         observations=n_obs,
         members=n_members,
+        mda_steps=MDA_STEPS,
         edges_updated=int(touched.size),
         edges_reachable=int(reachable.sum()),
         mean_innovation_cm=round(float(np.mean(np.abs(innovation))), 2),
@@ -267,8 +313,9 @@ def assimilate(
         operator=operator_name,
     )
     notes.append(
-        f"{n_obs} observations moved {touched.size} pipes; the observation operator is "
-        f"{operator_name}."
+        f"{n_obs} observations moved {touched.size} pipes; the update is ES-MDA with perturbed "
+        f"observations ({MDA_STEPS} passes, {n_members} members, moment-matched prior draw); "
+        f"the observation operator is {operator_name}."
     )
     return EnkfResult(
         beta_mean=beta_mean,
