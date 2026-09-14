@@ -19,118 +19,63 @@
  * them is the thing no basemap has. A judge reads the city from the data VARUNA derived, which
  * is the honest version of this map anyway.
  *
- * Layer order follows section 6.7 bottom to top: buildings, depth raster, dry streets, wet
- * streets, drains, surcharging manholes, hotspot rings.
+ * **This file is the host.** It owns the memoised composition, the props and the DOM around the
+ * canvas. Every layer is built by one module under `layers/` (task MO1), and the camera (the fit,
+ * the fly-to, who owns the view) by `layers/camera.ts`, so a motion or a new layer edits that
+ * module rather than this file.
+ *
+ * Layer order follows section 6.7 bottom to top: basemap, buildings, dry streets, drains, depth
+ * raster, wet streets, hotspot rings, reversed-flow edges, inlets, surcharging manholes,
+ * isochrones, routes, ground-truth pins, labels.
  *
  * **Scrubbing costs nothing.** The run's 36 frames are decoded to ImageBitmaps before the scrub
  * is usable; a step change swaps a texture and re-runs one colour accessor. No fetch, no decode
  * (CLAUDE.md 7.2: "no network during scrub").
  */
 
-import { FlyToInterpolator, WebMercatorViewport } from "@deck.gl/core";
-import { PathStyleExtension, type PathStyleExtensionProps } from "@deck.gl/extensions";
-import { BitmapLayer, PathLayer, PolygonLayer, ScatterplotLayer } from "@deck.gl/layers";
 import DeckGL from "@deck.gl/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 
-import { boundsCentre, cityBounds, type Bbox } from "./basemap";
-import { MAP_ATTRIBUTION, labelLayers, satelliteLayers } from "./satellite";
-import {
-  labelMarkerLayers,
-  labelTextLayers,
-  streetLabels,
-  visibleLabels,
-  type MapLabel,
-} from "./labels";
+import { cityBounds, type Bbox } from "./basemap";
+import { buildingsLayers, dryStreetsLayers } from "./layers/base";
+import { useCityCamera } from "./layers/camera";
+import { wipeLongitude } from "./layers/diff";
+import { drainsLayers } from "./layers/drains";
+import { drawnExtent } from "./layers/frame";
+import { hotspotRingsLayers } from "./layers/hotspots";
+import { inletLayers } from "./layers/inlets";
+import { isochroneLayers, useDisplayedIsochrones } from "./layers/isochrones";
+import { useLabelLayers } from "./layers/map-labels";
+import { depthRasterLayers } from "./layers/raster";
+import { reversedFlowLayers } from "./layers/reversed-flow";
+import { routeLayers, useRouteProgress } from "./layers/routes";
+import { wetStreetsLayers } from "./layers/streets";
+import { deckAnimates, surchargeLayers, useSurchargePulse } from "./layers/surcharge";
+import { mapTooltip } from "./layers/tooltip";
+import { truthPinLayers } from "./layers/truth-pins";
+import type {
+  BuildingPolygon,
+  DrainPath,
+  DrainPick,
+  HotspotRing,
+  InletPoint,
+  Isochrone,
+  MapFocus,
+  ReversedEdgePath,
+  RouteLine,
+  SegmentPath,
+  SegmentPick,
+  SurchargeNode,
+  SurchargeStyle,
+  TruthPin,
+} from "./layers/types";
+import type { MapLabel } from "./labels";
+import { MAP_ATTRIBUTION, satelliteLayers } from "./satellite";
 import type { CityMapMode } from "./types";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
-import { DUR_MS, FLY_TO_CURVE } from "@/lib/motion";
-import { depthRgba, probabilityRgba } from "@/lib/ramps";
 
-/** One segment's geometry plus the depth series the run gave it. */
-export interface SegmentPath {
-  id: string;
-  path: [number, number][];
-  /** Depth in cm at each of the run's steps; empty means the run never wet it. */
-  depthCm: number[];
-  /** P(depth > threshold) per step, keyed by the threshold in cm ("30"), measured across the
-   * run's members. Absent on a run with no spread, where probability mode compares the depth. */
-  pGt?: Record<string, number[]>;
-  /** Road class, which sets the drawn width (section 6.7: 2-6 px by class). */
-  width: number;
-  /** Street name from OSM, where it has one. Drawn as a label at high zoom. */
-  name?: string;
-  /** Change in peak depth under a what-if, in cm. Negative is an improvement. */
-  deltaCm?: number;
-}
-
-export interface SurchargeNode {
-  id: string;
-  lon: number;
-  lat: number;
-  /** Discharge out of the manhole at the current step, in m³/s; sets the marker's size. */
-  q?: number;
-}
-
-export interface HotspotRing {
-  id: string;
-  name: string;
-  lon: number;
-  lat: number;
-}
-
-/** A building footprint ring, in lon/lat. */
-export type BuildingPolygon = [number, number][];
-
-/** One inferred drain edge, coloured by its blockage prior. */
-export interface DrainPath {
-  path: [number, number][];
-  /** Blockage 0-1; the magenta ramp of section 6.2. */
-  beta: number;
-  /** Pipe diameter in metres, which sets the drawn width (section 6.7: 1-4 px). */
-  diameter: number;
-}
-
-/** One drawn route: the naive shortest path, the VARUNA route, or an alternate. */
-export interface RouteLine {
-  id: string;
-  path: [number, number][];
-  /** `naive` is the dashed grey comparison; `varuna` the tide-coloured route (section 6.7);
-   * `avoided` is a street the route refused, drawn in the depth ramp's deepest red. */
-  kind: "naive" | "varuna" | "alternate" | "avoided";
-}
-
-/** One reachability band, drawn as a translucent polygon (section 6.2 `--reach-*`). */
-export interface Isochrone {
-  minutes: number;
-  rings: [number, number][][];
-}
-
-/** A street the operator pointed at: the segment, and where on screen to anchor a panel. */
-export interface SegmentPick {
-  segment: SegmentPath;
-  x: number;
-  y: number;
-}
-
-/** One sourced ground-truth pin, drawn where a civic log said the water was (task P6.12). */
-export interface TruthPin {
-  id: string;
-  lon: number;
-  lat: number;
-  name: string;
-  /** 0 to 1: how far through its drop animation this pin is (motion M18). */
-  age: number;
-}
-
-/** Where to fly. `key` changes on every request, so clicking the same row twice flies again. */
-export interface MapFocus {
-  lon: number;
-  lat: number;
-  key: string;
-  /** Zoom to settle at; the flight never zooms out from a closer view the operator chose. */
-  zoom?: number;
-}
+// The data types lived here before the split; importers still find them here.
+export type * from "./layers/types";
 
 export interface CityMapProps {
   mode?: CityMapMode;
@@ -187,264 +132,24 @@ export interface CityMapProps {
   labels?: readonly MapLabel[];
   /** Draw the map credit. Off where `MapSlot` sits behind this map and draws it already. */
   attribution?: boolean;
+
+  // ---- Seams (task MO1) ---------------------------------------------------------------------
+  // Accepted and handed to their layer module, and **not drawn or applied yet**. Each names the
+  // chunk that makes it do something, so that chunk edits `layers/*` and not this file.
+
+  /** The replay is playing, which lets street colours tween between steps (M7, MO5). */
+  playing?: boolean;
+  /** Drain edges flowing backwards, drawn with an animated dash (M9, MO3). */
+  reversedEdges?: readonly ReversedEdgePath[];
+  /** The drain before/after cross-fade in ms, set only for a toggle (M12, MO10). */
+  drainCrossFadeMs?: number;
+  /** Hovering a pipe on `/drains` (PU8). */
+  onDrainHover?: (pick: DrainPick | null) => void;
+  /** Drain inlets as squares coloured by κ (CLAUDE.md 7.3, PU8). */
+  inlets?: readonly InletPoint[];
+  /** The console's pulsing manholes or `/drains`' static rings (PU8). */
+  surchargeStyle?: SurchargeStyle;
 }
-
-const MUMBAI_CENTRE = boundsCentre(cityBounds("mumbai"));
-
-/** Used only until the container has been measured; the fit below replaces it on that frame. */
-const INITIAL_VIEW = { ...MUMBAI_CENTRE, zoom: 11.4, bearing: 0, pitch: 0 };
-
-type ViewState = typeof INITIAL_VIEW & {
-  transitionDuration?: number;
-  transitionInterpolator?: FlyToInterpolator;
-};
-
-/** Section 6.7: the raster sits at 55 % so the streets read through it. */
-const RASTER_OPACITY = 0.55;
-
-/** `--depth-dry` #2B3A55: present, and quiet enough that water is the only bright thing. */
-const DRY_STREET: [number, number, number, number] = [43, 58, 85, 235];
-
-/** `--deep` #111A2E, the panel colour: buildings are the ground the streets are cut into. */
-const BUILDING_FILL: [number, number, number, number] = [17, 26, 46, 235];
-
-/** The public map's three colours (CLAUDE.md 7.11 and `PublicLegend`): go, slow down, do not
- * enter. A commuter does not need six depth bands, they need to know whether to turn around.
- *
- * `--depth-1` #3B82F6, `--depth-3` #F97316, `--depth-5` #B91C1C - the same three the legend on
- * that screen draws, so the swatch and the street are provably the same colour. */
-const PASSABLE: [number, number, number, number] = [59, 130, 246, 235];
-const CAUTION: [number, number, number, number] = [249, 115, 22, 245];
-const IMPASSABLE: [number, number, number, number] = [185, 28, 28, 255];
-
-/** Caution begins at this share of the vehicle's own stopping depth. */
-const CAUTION_FRACTION = 0.5;
-
-function passabilityRgba(
-  depthCm: number,
-  thresholdCm: number,
-): [number, number, number, number] {
-  if (depthCm >= thresholdCm) return IMPASSABLE;
-  if (depthCm >= thresholdCm * CAUTION_FRACTION) return CAUTION;
-  return PASSABLE;
-}
-
-/** `--naive` #64748B: the shortest path a navigation app would give you today. */
-const NAIVE_ROUTE: [number, number, number, number] = [100, 116, 139, 235];
-
-/** `--tide` #2DD4BF: the route VARUNA gives you instead. */
-const VARUNA_ROUTE: [number, number, number, number] = [45, 212, 191, 255];
-
-/** The what-if diff ramp (CLAUDE.md 7.7): blue improved, red worse, grey unchanged.
- *
- * `--depth-1` #3B82F6 for water removed and `--depth-4` #EF4444 for water added - the same two
- * ends of the depth ramp an operator already reads, so "blue is better" needs no legend. Grey is
- * `--depth-dry`, and it is deliberately the *majority* colour: most of a city does not change
- * when fourteen pipes are cleaned, and a diff layer that lights up everywhere is lying. */
-const DIFF_IMPROVED: [number, number, number] = [59, 130, 246];
-const DIFF_WORSE: [number, number, number] = [239, 68, 68];
-const DIFF_UNCHANGED: [number, number, number, number] = [43, 58, 85, 190];
-
-/** Change below this is not a change: the emulator's own noise floor is larger than half a cm. */
-const DIFF_DEADBAND_CM = 0.5;
-
-/** Change at which the diff colour is fully saturated. Past 20 cm it is "a lot" either way. */
-const DIFF_FULL_CM = 20;
-
-/** A segment's diff colour: opacity carries the size of the change, hue carries its sign. */
-function diffColour(deltaCm: number | undefined): [number, number, number, number] {
-  const delta = deltaCm ?? 0;
-  if (Math.abs(delta) < DIFF_DEADBAND_CM) return DIFF_UNCHANGED;
-  const strength = Math.min(Math.abs(delta) / DIFF_FULL_CM, 1);
-  const [r, g, b] = delta < 0 ? DIFF_IMPROVED : DIFF_WORSE;
-  return [r, g, b, Math.round(90 + 165 * strength)];
-}
-
-/** `--truth` #FFFFFF with a `--tide` ring: the sourced pins, and the only white on this map.
- *
- * White because they are the one thing here that is not a model output. Everything else on screen
- * is something VARUNA computed; these are what the city wrote down. */
-const TRUTH_FILL: [number, number, number, number] = [255, 255, 255, 255];
-const TRUTH_RING: [number, number, number, number] = [45, 212, 191, 255];
-
-/** Pin radius in metres at full drop, and the ripple it expands to (motion M18). */
-const TRUTH_RADIUS_M = 70;
-const RIPPLE_RADIUS_M = 320;
-
-/** `--depth-5` #B91C1C: a street the route refused, so the detour has something to be around. */
-const AVOIDED_ROUTE: [number, number, number, number] = [185, 28, 28, 255];
-
-/** Every route line's colour, by what the line is. */
-const ROUTE_COLOUR: Record<RouteLine["kind"], [number, number, number, number]> = {
-  naive: NAIVE_ROUTE,
-  varuna: VARUNA_ROUTE,
-  alternate: [45, 212, 191, 150],
-  avoided: AVOIDED_ROUTE,
-};
-
-/**
- * The first `fraction` of a path, by cumulative length, with the cut edge interpolated.
- *
- * Interpolated rather than truncated to the nearest vertex: a route's legs are hundreds of metres
- * long, so snapping to vertices makes the draw-on jump in visible chunks instead of running
- * smoothly along the road.
- */
-function partialPath(path: [number, number][], fraction: number): [number, number][] {
-  if (fraction >= 1 || path.length < 2) return path;
-  if (fraction <= 0) return path.slice(0, 1);
-
-  const lengths: number[] = [];
-  let total = 0;
-  for (let i = 1; i < path.length; i += 1) {
-    const dx = path[i][0] - path[i - 1][0];
-    const dy = path[i][1] - path[i - 1][1];
-    const d = Math.hypot(dx, dy);
-    lengths.push(d);
-    total += d;
-  }
-
-  const target = total * fraction;
-  const out: [number, number][] = [path[0]];
-  let walked = 0;
-  for (let i = 0; i < lengths.length; i += 1) {
-    if (walked + lengths[i] >= target) {
-      const t = lengths[i] > 0 ? (target - walked) / lengths[i] : 0;
-      out.push([
-        path[i][0] + (path[i + 1][0] - path[i][0]) * t,
-        path[i][1] + (path[i + 1][1] - path[i][1]) * t,
-      ]);
-      break;
-    }
-    walked += lengths[i];
-    out.push(path[i + 1]);
-  }
-  return out;
-}
-
-/** Motion M14's duration: the VARUNA route draws itself over 1.2 s (CLAUDE.md 8). */
-const ROUTE_DRAW_MS = 1200;
-
-/**
- * 0 to 1 over {@link ROUTE_DRAW_MS} whenever the drawn route changes; 1 at once under reduced
- * motion, where CLAUDE.md 8 asks for both routes shown together rather than drawn.
- */
-function useRouteDraw(key: string, reducedMotion: boolean): number {
-  const [progress, setProgress] = useState(1);
-
-  useEffect(() => {
-    if (!key || reducedMotion) {
-      // Reduced motion wants the finished route immediately. Setting it on the next frame rather
-      // than synchronously keeps this out of the cascading-render path the lint rule guards, and a
-      // frame is imperceptible for something whose whole point is that it does not animate.
-      const settle = requestAnimationFrame(() => setProgress(1));
-      return () => cancelAnimationFrame(settle);
-    }
-    let frame = 0;
-    const started = performance.now();
-    const tick = () => {
-      const elapsed = performance.now() - started;
-      const t = Math.min(elapsed / ROUTE_DRAW_MS, 1);
-      // The same ease as every other motion in the catalogue (CLAUDE.md 8): fast out of the
-      // origin, settling into the destination.
-      setProgress(1 - (1 - t) ** 3);
-      if (t < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [key, reducedMotion]);
-
-  return progress;
-}
-
-/** `--ink` #0A1020: the casing that lifts the route off whatever it crosses (section 6.7). */
-const ROUTE_CASING: [number, number, number, number] = [10, 16, 32, 235];
-
-/** `--tide` at the section 6.2 opacities for the 5, 10 and 15-minute bands. */
-const REACH_FILL: Record<number, [number, number, number, number]> = {
-  5: [45, 212, 191, 115],
-  10: [45, 212, 191, 71],
-  15: [45, 212, 191, 36],
-};
-
-/** `--line` #24314F: a hairline so a block reads as blocks rather than one grey mass. */
-const BUILDING_LINE: [number, number, number, number] = [36, 49, 79, 170];
-
-/** The magenta blockage ramp of section 6.2, `--drain-0` through `--drain-3`. */
-const DRAIN_RAMP: [number, number, number][] = [
-  [62, 76, 110],
-  [124, 58, 237],
-  [192, 38, 211],
-  [232, 121, 249],
-];
-
-function drainColour(beta: number): [number, number, number, number] {
-  const band = beta > 0.75 ? 3 : beta > 0.5 ? 2 : beta > 0.25 ? 1 : 0;
-  const [r, g, b] = DRAIN_RAMP[band];
-  return [r, g, b, 200];
-}
-
-/**
- * The dash that carries "inferred" (section 6.7, task P7.9).
- *
- * Not decoration and not a style choice: every pipe on this map was synthesised from roads and
- * terrain by the city pipeline, none of it from a surveyed drain GIS, and `/drains` says so in
- * words beside the map. Drawing the pipes solid made that sentence false - a solid line reads as
- * a surveyed asset. One instance at module scope: deck.gl's `LayerExtension.equals` compares the
- * constructor and the options rather than the reference, so a fresh instance per render would not
- * rebuild the shaders - it would just be an allocation on every scrub step for nothing.
- */
-const DASHED = new PathStyleExtension({ dash: true });
-
-/** `[dash, gap]` **as multiples of the drawn width**, which is how deck.gl's dash shader reads the
- * array ("solid stroke length, relative to width"). The narrowest pipe the city pipeline emits is
- * 450 mm, drawn 1.9 px wide, so it dashes 7.6 px on and 5.7 px off; a 1500 mm trunk is 4 px and
- * dashes proportionally. The dash stays legible across the whole diameter range. */
-const DRAIN_DASH: [number, number] = [4, 3];
-
-/** Framing margin in pixels, so the coast and the northern subways are not against the edge.
- *
- * Deliberately small. The layer panel, the legend and the hotspot rail all float *over* the map,
- * so the city already has furniture around it; a wide margin as well leaves it swimming in a
- * panel it is meant to fill. */
-const FIT_PADDING = 12;
-
-/**
- * Phase 0-1 of the surcharge pulse, or a fixed 0 when it should not run (motion M8).
- *
- * The loop runs every display frame but the phase it publishes is quantised, and the setter
- * bails when the value has not changed - so React re-renders `PULSE_FRAMES` times per cycle
- * (12.5 a second) rather than 60. Quantising also makes the pulse the same size on a 60 Hz and
- * a 144 Hz display.
- *
- * The surcharge markers are the only looping thing on the console, and CLAUDE.md 8 allows it
- * because a pulsing manhole is data - it is the drain failing - not decoration.
- */
-function useSurchargePulse(active: boolean): number {
-  const [phase, setPhase] = useState(0);
-
-  useEffect(() => {
-    if (!active) return;
-    let frame = 0;
-    const started = performance.now();
-    const tick = (now: number) => {
-      const next =
-        Math.round(
-          (((now - started) % DUR_MS.surchargePulse) / DUR_MS.surchargePulse) * PULSE_FRAMES,
-        ) / PULSE_FRAMES;
-      setPhase((current) => (current === next ? current : next));
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [active]);
-
-  // Read through `active` rather than resetting the state when the loop stops: a phase left over
-  // from the last pulse would otherwise freeze the ring mid-expansion under reduced motion.
-  return active ? phase : 0;
-}
-
-/** Steps the pulse is quantised to over its 1.6 s: 20 is smooth and costs 12 renders a second. */
-const PULSE_FRAMES = 20;
 
 export function CityMap({
   mode = "console",
@@ -478,479 +183,44 @@ export function CityMap({
   showLabels = true,
   labels = [],
   attribution = true,
+  playing = false,
+  reversedEdges = [],
+  drainCrossFadeMs,
+  onDrainHover,
+  inlets = [],
+  surchargeStyle = "pulse",
 }: CityMapProps) {
   const interactive = mode !== "hero";
   const reducedMotion = usePrefersReducedMotion();
 
-  // A new route draws itself in (motion M14). Keyed on the drawn geometry, so re-planning the
-  // same trip after a profile change animates again and a scrub does not.
-  const routeKey = useMemo(
-    () => routes.map((r) => `${r.kind}:${r.path.length}:${r.path[0]?.join(",") ?? ""}`).join("|"),
-    [routes],
-  );
-  const drawProgress = useRouteDraw(routeKey, reducedMotion);
+  const routeProgress = useRouteProgress(routes, reducedMotion);
   const pulse = useSurchargePulse(showSurcharge && surcharge.length > 0 && !reducedMotion);
+  const shownIsochrones = useDisplayedIsochrones(isochrones, reducedMotion);
 
   // ---- Framing --------------------------------------------------------------------------
-  // **The camera is controlled.** It used to be handed to deck.gl as `initialViewState` on the
-  // theory that deck would notice a changed object and move itself. It does not: `initialViewState`
-  // is read once, when the view is created, and the fit computed from the first `ResizeObserver`
-  // callback arrives a frame *after* that. So the map stayed at the placeholder zoom for ever -
-  // the city sat in a corner of the console with the panel half empty, and on `/drains` the pipes
-  // rendered as a thumbnail in the middle of nothing.
-  //
-  // The fit is **derived, not stored**. Only two things are state: the measured container and the
-  // camera once somebody moves it. Everything else is computed during render, which is what makes
-  // a resize or a data load re-frame on its own - no effect, no stale copy of the view.
-  const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  const [camera, setCamera] = useState<ViewState | null>(null);
-  // Whether the operator has taken the camera. deck reports *every* view-state change through
-  // `onViewStateChange`, including ones it makes itself when the canvas is resized, so "camera is
-  // not null" is not the same question as "somebody moved it" - treating them as the same left
-  // `/route` framed on the whole city after a resize instead of on the trip it had just drawn.
-  // Only a drag, a zoom, a rotate or a fly-to sets this; until then the fit owns the view.
-  const [owned, setOwned] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
+  // The camera (fit, fly-to, ownership) lives in `layers/camera.ts`; it frames what is drawn.
   const aoi = bounds ?? cityBounds("mumbai");
 
-  // **What the camera frames: what is actually drawn, not the city's configured AOI.** `/drains`
-  // draws the drain graph, the console draws the street network, and those cover different ground.
-  // The AOI is the fallback for a map with nothing on it yet.
-  const frame = useMemo<Bbox>(() => {
-    let west = Infinity;
-    let south = Infinity;
-    let east = -Infinity;
-    let north = -Infinity;
-    const eat = (lon: number, lat: number) => {
-      if (!Number.isFinite(lon) || !Number.isFinite(lat)) return;
-      if (lon < west) west = lon;
-      if (lon > east) east = lon;
-      if (lat < south) south = lat;
-      if (lat > north) north = lat;
-    };
-    // A drawn route wins: on `/route` the whole city is loaded for context, but the answer on
-    // screen is one trip and the camera should be on it.
-    for (const line of routes) for (const [lon, lat] of line.path) eat(lon, lat);
-    if (Number.isFinite(west)) {
-      // A little air around a route, which is a thin thing in a wide panel.
-      const padLon = Math.max((east - west) * 0.35, 0.004);
-      const padLat = Math.max((north - south) * 0.35, 0.004);
-      return [
-        [west - padLon, south - padLat],
-        [east + padLon, north + padLat],
-      ] as Bbox;
-    }
+  const frame = useMemo<Bbox>(
+    () => drawnExtent({ routes, baseSegments, segments, drains, hotspots, fallback: aoi }),
+    [routes, baseSegments, segments, drains, hotspots, aoi],
+  );
 
-    // Streets next: when the city layer is loaded it is the widest thing on the map, and it is
-    // the extent the console should sit at.
-    for (const segment of baseSegments) for (const [lon, lat] of segment.path) eat(lon, lat);
-    if (!Number.isFinite(west)) {
-      for (const segment of segments) for (const [lon, lat] of segment.path) eat(lon, lat);
-    }
-    if (!Number.isFinite(west)) {
-      for (const drain of drains) for (const [lon, lat] of drain.path) eat(lon, lat);
-    }
-    if (!Number.isFinite(west)) for (const ring of hotspots) eat(ring.lon, ring.lat);
-    // Nothing drawn, or an extent too small to fit against (one point, a single street).
-    if (!Number.isFinite(west) || east - west < 1e-3 || north - south < 1e-3) return aoi;
-    return [
-      [west, south],
-      [east, north],
-    ] as Bbox;
-  }, [routes, baseSegments, segments, drains, hotspots, aoi]);
+  const wipeLon = useMemo(
+    () => wipeLongitude(diffMode, diffProgress, frame),
+    [diffMode, diffProgress, frame],
+  );
 
-  // Where the diff wipe has reached, as a longitude. Derived from the drawn extent rather than
-  // from a screen-space mask, so the wipe follows the city and not the window.
-  const wipeLon = useMemo(() => {
-    if (!diffMode || diffProgress >= 1) return Number.POSITIVE_INFINITY;
-    const [[west], [east]] = frame;
-    return west + (east - west) * diffProgress;
-  }, [diffMode, diffProgress, frame]);
-
-  const fitted = useMemo<ViewState>(() => {
-    if (!size || size.width < 2 || size.height < 2) return INITIAL_VIEW;
-    const [[west, south], [east, north]] = frame;
-    const view = new WebMercatorViewport({ width: size.width, height: size.height }).fitBounds(
-      [
-        [west, south],
-        [east, north],
-      ],
-      { padding: FIT_PADDING },
-    );
-    return {
-      longitude: view.longitude,
-      latitude: view.latitude,
-      zoom: view.zoom,
-      bearing: 0,
-      pitch: 0,
-    };
-  }, [size, frame]);
-
-  useEffect(() => {
-    const element = containerRef.current;
-    if (!element) return;
-    const observer = new ResizeObserver((entries) => {
-      const box = entries[0]?.contentRect;
-      if (!box) return;
-      setSize((current) =>
-        current && Math.abs(current.width - box.width) < 1 &&
-        Math.abs(current.height - box.height) < 1
-          ? current
-          : { width: box.width, height: box.height },
-      );
-    });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
-
-  // Motion M10: a 900 ms flight to the selected hotspot, a jump cut under reduced motion.
-  //
-  // Keyed on `focus.key` rather than the coordinates, so selecting the same row twice flies
-  // again: after panning away, "show me Hindmata" should still take you back. A flight counts as
-  // moving the camera, so the fit stops claiming it afterwards.
-  const focusKey = focus?.key ?? null;
-  useEffect(() => {
-    if (!focus) return;
-    // Everything the flight does not name it inherits from wherever the camera already is - and
-    // when it has never been moved, from `INITIAL_VIEW`, whose bearing and pitch are the zero the
-    // fit produces anyway. So the fallback costs nothing and a rotated camera keeps its rotation.
-    //
-    // `set-state-in-effect` is disabled here, and only here, with a reason. The rule exists to
-    // stop effects being used to recompute state that could have been derived, and the fit above
-    // takes that advice - it is derived, not stored. This is the other thing entirely: `focus` is
-    // an imperative command from the hotspot rail ("fly here now"), and deck.gl's camera is the
-    // external system it commands. Deriving it instead would pin the camera to the focus and the
-    // operator could never pan away from a selected hotspot. One render per click is the cost.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOwned(true);
-    setCamera((current) => ({
-      ...(current ?? INITIAL_VIEW),
-      longitude: focus.lon,
-      latitude: focus.lat,
-      zoom: focus.zoom ?? 14,
-      transitionDuration: reducedMotion ? 0 : DUR_MS.flight,
-      transitionInterpolator: reducedMotion
-        ? undefined
-        : new FlyToInterpolator({ curve: FLY_TO_CURVE }),
-    }));
-    // `focus` is a fresh object each render; `focusKey` is the identity that matters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusKey, reducedMotion]);
-
-  const viewState = owned ? (camera ?? fitted) : fitted;
+  const { containerRef, size, viewState, onViewStateChange } = useCityCamera({
+    frame,
+    focus,
+    reducedMotion,
+    interactive,
+  });
 
   // ---- Layers ---------------------------------------------------------------------------
-  // Everything that does not change with the scrub, memoised apart from the things that do, so
-  // moving the time bar never rebuilds 39,259 building polygons.
-  const cityLayers = useMemo(() => {
-    const built: unknown[] = [];
-
-    if (showBuildings && buildings.length > 0) {
-      built.push(
-        new PolygonLayer<BuildingPolygon>({
-          id: "buildings",
-          data: buildings as BuildingPolygon[],
-          getPolygon: (d) => d,
-          filled: true,
-          getFillColor: BUILDING_FILL,
-          stroked: true,
-          getLineColor: BUILDING_LINE,
-          lineWidthMinPixels: 0.4,
-          lineWidthUnits: "pixels",
-          pickable: false,
-        }),
-      );
-    }
-    return built;
-  }, [buildings, showBuildings]);
-
-  const streetLayers = useMemo(() => {
-    const built: unknown[] = [];
-
-    // The whole street network, dim. This is the geography the operator orients by, and it is
-    // the same 21,296 segments the city pipeline derived - not a tile service's idea of Mumbai.
-    if (baseSegments.length > 0) {
-      built.push(
-        new PathLayer<SegmentPath>({
-          id: "streets-dry",
-          data: baseSegments as SegmentPath[],
-          getPath: (d) => d.path,
-          getColor: DRY_STREET,
-          getWidth: (d) => Math.max(d.width * 0.7, 0.8),
-          widthUnits: "pixels",
-          widthMinPixels: 0.6,
-          capRounded: true,
-          jointRounded: true,
-          pickable: false,
-        }),
-      );
-    }
-
-    if (showDrains && drains.length > 0) {
-      built.push(
-        new PathLayer<DrainPath, PathStyleExtensionProps<DrainPath>>({
-          id: "drains",
-          data: drains as DrainPath[],
-          getPath: (d) => d.path,
-          getColor: (d) => drainColour(d.beta),
-          // Section 6.7: width by diameter, 1-4 px.
-          getWidth: (d) => Math.min(1 + d.diameter * 2, 4),
-          widthUnits: "pixels",
-          // The floor never binds on this data and is kept only as a guard: diameters snap to
-          // 450-1500 mm, so the narrowest pipe already draws at 1 + 2 x 0.45 = 1.9 px, wide
-          // enough for the dash to separate. What the dash cannot survive is the citywide fit
-          // both this page and the console open at - a 40 m pipe is about two pixels long there,
-          // so the network reads as a wash until the operator zooms in. That is scale, not a
-          // style: the dash is drawn at every zoom, and separates once a junction fills the view.
-          widthMinPixels: 0.8,
-          extensions: [DASHED],
-          getDashArray: DRAIN_DASH,
-          dashJustified: true,
-          pickable: false,
-        }),
-      );
-    }
-    return built;
-  }, [baseSegments, drains, showDrains]);
-
-  const runLayers = useMemo(() => {
-    const built: unknown[] = [];
-
-    const frame = frames[step] ?? null;
-    if (showRaster && frame && rasterBounds) {
-      built.push(
-        new BitmapLayer({
-          id: "depth-raster",
-          bounds: rasterBounds,
-          image: frame,
-          opacity: RASTER_OPACITY,
-          pickable: false,
-          // Nearest on magnify: a 30 m cell is a real measurement and smoothing it across the
-          // screen would imply a resolution the model does not have.
-          textureParameters: { minFilter: "linear", magFilter: "nearest" },
-        }),
-      );
-    }
-
-    if (showSegments && segments.length > 0) {
-      built.push(
-        new PathLayer<SegmentPath>({
-          id: "streets-wet",
-          data: segments as SegmentPath[],
-          getPath: (d) => d.path,
-          getColor: (d) => {
-            if (diffMode) {
-              // Motion M13: the diff wipes in left to right. A segment east of the wipe is drawn
-              // unchanged rather than hidden, so the network stays whole while the answer arrives -
-              // hiding it would read as "these streets were deleted".
-              const lon = d.path[0]?.[0] ?? 0;
-              return lon <= wipeLon ? diffColour(d.deltaCm) : DIFF_UNCHANGED;
-            }
-            const depth = d.depthCm[step] ?? 0;
-            if (probabilityThresholdCm !== undefined) {
-              // The measured fraction of members above the threshold when the run carries one
-              // (CLAUDE.md 6.2: colour at the depth, opacity = P). Absent, **P is 0 or 1**, and
-              // that is not an approximation: a run with no spread either puts the street over
-              // the threshold or it does not. The 15 % floor keeps a below-threshold street
-              // visible rather than vanishing, and the legend says which kind of run this is.
-              const measured = d.pGt?.[String(probabilityThresholdCm)]?.[step];
-              return probabilityRgba(
-                depth,
-                measured ?? (depth > probabilityThresholdCm ? 1 : 0),
-              );
-            }
-            return passableBelowCm === undefined
-              ? depthRgba(depth)
-              : passabilityRgba(depth, passableBelowCm);
-          },
-          getWidth: (d) =>
-            // A changed street is drawn thicker, so the answer reads from across a room.
-            diffMode && Math.abs(d.deltaCm ?? 0) >= DIFF_DEADBAND_CM ? d.width * 1.8 : d.width * 1.15,
-          widthUnits: "pixels",
-          widthMinPixels: 1.6,
-          capRounded: true,
-          jointRounded: true,
-          // Only when someone is listening: picking costs a second render pass, and the hero map
-          // and the public map have nothing to do with a pick.
-          pickable: Boolean(onSegmentPick),
-          // A line a few pixels wide is hard to hit; a 6 px tolerance is the difference between
-          // "click the street" and "click exactly the street".
-          autoHighlight: Boolean(onSegmentPick),
-          highlightColor: [227, 234, 246, 90],
-          // A scrub changes one thing, so one accessor is re-run.
-          updateTriggers: {
-            getColor: [step, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm],
-            getWidth: [diffMode],
-          },
-        }),
-      );
-    }
-
-    if (showHotspots && hotspots.length > 0) {
-      built.push(
-        new ScatterplotLayer<HotspotRing>({
-          id: "hotspot-rings",
-          data: hotspots as HotspotRing[],
-          getPosition: (d) => [d.lon, d.lat],
-          // 120 m (section 6.7), so it reads as a place rather than a pin.
-          getRadius: 120,
-          radiusUnits: "meters",
-          radiusMinPixels: 4,
-          filled: false,
-          stroked: true,
-          // Unselected rings sit back; the selected one is the only glow on the map
-          // (section 6.4), which is what makes the rail's click legible from a distance.
-          getLineColor: (d) =>
-            d.id === selectedHotspotId ? [45, 212, 191, 255] : [45, 212, 191, 130], // --tide
-          getLineWidth: (d) => (d.id === selectedHotspotId ? 3 : 1.2),
-          lineWidthUnits: "pixels",
-          lineWidthMinPixels: 1,
-          pickable: false,
-          updateTriggers: {
-            getLineColor: selectedHotspotId,
-            getLineWidth: selectedHotspotId,
-          },
-        }),
-      );
-    }
-    return built;
-  }, [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm, onSegmentPick]);
-
-  // Motion M8, rebuilt on every pulse frame and therefore kept on its own so that a pulse
-  // re-uploads nothing but the markers.
-  const surchargeLayer = useMemo(() => {
-    if (!showSurcharge || surcharge.length === 0) return null;
-    const grow = 1 + 1.4 * pulse;
-    const fade = Math.round(200 * (1 - pulse));
-    return new ScatterplotLayer<SurchargeNode>({
-      id: "surcharge",
-      data: surcharge as SurchargeNode[],
-      getPosition: (d) => [d.lon, d.lat],
-      // Radius by discharge, so a manhole shifting 0.4 m³/s reads bigger than one at 0.01.
-      // Square root because the eye compares areas, and the marker's area is what it is.
-      getRadius: (d) => 40 + 110 * Math.sqrt(Math.min(d.q ?? 0, 1)),
-      radiusUnits: "meters",
-      radiusMinPixels: 3,
-      radiusMaxPixels: 16,
-      radiusScale: grow,
-      filled: true,
-      getFillColor: [239, 68, 68, Math.max(fade, 70)], // --surcharge
-      stroked: true,
-      getLineColor: [239, 68, 68, 240],
-      lineWidthMinPixels: 1,
-      pickable: false,
-      updateTriggers: { getRadius: surcharge, getFillColor: fade },
-    });
-  }, [showSurcharge, surcharge, pulse]);
-
-  // Reachability under the routes, routes over everything (section 6.7's order). Both are small -
-  // three polygons and four paths - so they rebuild on every change without a memo of their own
-  // costing less than it saves.
-  const routeLayers = useMemo(() => {
-    const built: unknown[] = [];
-
-    if (isochrones.length > 0) {
-      built.push(
-        new PolygonLayer<Isochrone>({
-          id: "isochrones",
-          // Largest band first, so the 5-minute core reads as the darkest patch rather than
-          // being painted over by the 15-minute one.
-          data: [...isochrones].sort((a, b) => b.minutes - a.minutes) as Isochrone[],
-          getPolygon: (d) => d.rings[0] ?? [],
-          getFillColor: (d) => REACH_FILL[d.minutes] ?? REACH_FILL[15],
-          getLineColor: [45, 212, 191, 140],
-          getLineWidth: 1,
-          lineWidthUnits: "pixels",
-          stroked: true,
-          filled: true,
-          pickable: false,
-        }),
-      );
-    }
-
-    if (routes.length > 0) {
-      // The casing is a wider, darker path drawn first: without it the route disappears wherever
-      // it crosses a street of a similar tone, which on this map is most of them.
-      built.push(
-        new PathLayer<RouteLine>({
-          id: "route-casing",
-          data: routes.filter((r) => r.kind === "varuna" || r.kind === "alternate") as RouteLine[],
-          getPath: (d) => d.path,
-          getColor: ROUTE_CASING,
-          getWidth: 7,
-          widthUnits: "pixels",
-          capRounded: true,
-          jointRounded: true,
-          pickable: false,
-        }),
-        new PathLayer<RouteLine>({
-          id: "routes",
-          data: routes as RouteLine[],
-          // Motion M14: the VARUNA route draws itself over 1.2 s. `drawProgress` runs 0 to 1 and
-          // the path is truncated to that fraction of its length, so the line grows from the
-          // origin rather than fading in - which is what makes it read as *a route being found*
-          // instead of a shape appearing.
-          getPath: (d) => (d.kind === "varuna" ? partialPath(d.path, drawProgress) : d.path),
-          getColor: (d) => ROUTE_COLOUR[d.kind],
-          getWidth: (d) => (d.kind === "varuna" ? 5 : d.kind === "avoided" ? 4 : 3),
-          widthUnits: "pixels",
-          capRounded: true,
-          jointRounded: true,
-          pickable: false,
-          updateTriggers: {
-            getPath: [routes.length, drawProgress],
-            getColor: routes.length,
-            getWidth: routes.length,
-          },
-        }),
-      );
-    }
-    if (truthPins.length > 0) {
-      // Motion M18: the pin drops - scale 0 to 1 on a spring - trailing a ripple that expands and
-      // fades over its first 600 ms. Drawn above everything, because a pin under a street is a
-      // pin nobody sees, and these are the point of the whole replay.
-      const rippling = truthPins.filter((p) => p.age < 1);
-      if (rippling.length > 0) {
-        built.push(
-          new ScatterplotLayer<TruthPin>({
-            id: "truth-ripples",
-            data: rippling as TruthPin[],
-            getPosition: (d) => [d.lon, d.lat],
-            getRadius: (d) => TRUTH_RADIUS_M + (RIPPLE_RADIUS_M - TRUTH_RADIUS_M) * d.age,
-            radiusUnits: "meters",
-            stroked: true,
-            filled: false,
-            getLineColor: (d) => [TRUTH_RING[0], TRUTH_RING[1], TRUTH_RING[2], Math.round(220 * (1 - d.age))],
-            getLineWidth: 2,
-            lineWidthUnits: "pixels",
-            pickable: false,
-            updateTriggers: { getRadius: rippling.map((p) => p.age), getLineColor: rippling.map((p) => p.age) },
-          }),
-        );
-      }
-      built.push(
-        new ScatterplotLayer<TruthPin>({
-          id: "truth-pins",
-          data: truthPins as TruthPin[],
-          getPosition: (d) => [d.lon, d.lat],
-          // Springs past its final size and settles, which is what makes a drop read as a drop.
-          getRadius: (d) => TRUTH_RADIUS_M * Math.min(1, 0.4 + 0.75 * d.age),
-          radiusUnits: "meters",
-          radiusMinPixels: 4,
-          stroked: true,
-          filled: true,
-          getFillColor: TRUTH_FILL,
-          getLineColor: TRUTH_RING,
-          getLineWidth: 2,
-          lineWidthUnits: "pixels",
-          pickable: false,
-          updateTriggers: { getRadius: truthPins.map((p) => p.age) },
-        }),
-      );
-    }
-
-    return built;
-  }, [routes, isochrones, drawProgress, truthPins]);
+  // Memoised in groups by what changes them, so moving the time bar rebuilds only the run's
+  // layers and never 39,259 building polygons, the drain graph or the routes.
 
   // The basemap, under everything. Rebuilt only when it is toggled or the raster comes and goes:
   // `TileLayer` keeps its own tile cache, and handing deck a new instance every render would
@@ -960,69 +230,83 @@ export function CityMap({
     [showSatellite, showRaster],
   );
 
-  // **Labels are computed from what is on screen, at the zoom that is on screen.** That is why
-  // the camera being controlled matters beyond framing: `viewState` is a React value, so the
-  // label set is an ordinary derivation of it. An uncontrolled camera would have needed deck to
-  // report its zoom back through an event before any of this could be decided.
-  const named = useMemo(
-    () => [...streetLabels(baseSegments), ...streetLabels(segments), ...labels],
-    [baseSegments, segments, labels],
+  const cityLayers = useMemo(
+    () => buildingsLayers({ buildings, show: showBuildings }),
+    [buildings, showBuildings],
   );
 
-  // **Quantised, not exact.** `viewState` is a new object on every frame of a pan or a fly-to, and
-  // a label set derived from it recomputes sixty times a second - which rebuilds the layer array
-  // sixty times a second, and the tile layers underneath spend their time being reconciled instead
-  // of drawing. Rounding the camera to a tenth of a zoom level and ~100 m of position gives the
-  // same labels and recomputes only when the view has meaningfully moved.
-  const cameraKey = useMemo(
-    () =>
-      [
-        Math.round(viewState.zoom * 10),
-        Math.round(viewState.longitude * 1000),
-        Math.round(viewState.latitude * 1000),
-      ].join(":"),
-    [viewState.zoom, viewState.longitude, viewState.latitude],
-  );
-
-  const drawnLabels = useMemo(() => {
-    if (!showLabels || named.length === 0) return [];
-    const zoom = viewState.zoom;
-    // The viewport in lon/lat, so only labels the operator can actually see count against the cap.
-    let visibleBounds: Bbox | null = null;
-    if (size) {
-      try {
-        const viewport = new WebMercatorViewport({
-          width: size.width,
-          height: size.height,
-          longitude: viewState.longitude,
-          latitude: viewState.latitude,
-          zoom,
-        });
-        const [[west, south], [east, north]] = viewport.getBounds() as unknown as [
-          [number, number],
-          [number, number],
-        ];
-        visibleBounds = [
-          [west, south],
-          [east, north],
-        ];
-      } catch {
-        visibleBounds = null;
-      }
-    }
-    return visibleLabels({ labels: named, zoom, bounds: visibleBounds });
-    // `cameraKey` is the identity that matters; `viewState` is read for its exact values.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showLabels, named, cameraKey, size]);
-
-  const labelDrawLayers = useMemo(
+  const streetLayers = useMemo(
     () => [
-      ...labelLayers({ enabled: showSatellite && showLabels }),
-      ...labelMarkerLayers(drawnLabels),
-      ...labelTextLayers(drawnLabels),
+      ...dryStreetsLayers({ baseSegments }),
+      ...drainsLayers({
+        drains,
+        show: showDrains,
+        crossFadeMs: drainCrossFadeMs,
+        onHover: onDrainHover,
+      }),
     ],
-    [showSatellite, showLabels, drawnLabels],
+    [baseSegments, drains, showDrains, drainCrossFadeMs, onDrainHover],
   );
+
+  const runLayers = useMemo(
+    () => [
+      ...depthRasterLayers({ frame: frames[step] ?? null, bounds: rasterBounds, show: showRaster }),
+      ...wetStreetsLayers({
+        segments,
+        step,
+        show: showSegments,
+        diffMode,
+        wipeLon,
+        probabilityThresholdCm,
+        passableBelowCm,
+        pickable: Boolean(onSegmentPick),
+        playing,
+        reducedMotion,
+      }),
+      ...hotspotRingsLayers({
+        hotspots,
+        selectedHotspotId,
+        show: showHotspots,
+        reducedMotion,
+      }),
+    ],
+    [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm, onSegmentPick, playing, reducedMotion],
+  );
+
+  const drainFlowLayers = useMemo(
+    () => [
+      ...reversedFlowLayers({ edges: reversedEdges, show: showSurcharge, step, reducedMotion }),
+      ...inletLayers({ inlets, show: showDrains }),
+    ],
+    [reversedEdges, showSurcharge, step, reducedMotion, inlets, showDrains],
+  );
+
+  // Rebuilt on every pulse frame, so kept on its own: a pulse re-uploads nothing but the markers.
+  const markerLayers = useMemo(
+    () => surchargeLayers({ surcharge, show: showSurcharge, pulse, style: surchargeStyle }),
+    [showSurcharge, surcharge, pulse, surchargeStyle],
+  );
+
+  // Reachability under the routes, routes over everything (section 6.7's order), pins above both.
+  // All are small - three polygons and four paths - so they share one memo.
+  const overlayLayers = useMemo(
+    () => [
+      ...isochroneLayers({ isochrones: shownIsochrones }),
+      ...routeLayers({ routes, progress: routeProgress }),
+      ...truthPinLayers({ truthPins }),
+    ],
+    [routes, shownIsochrones, routeProgress, truthPins],
+  );
+
+  const labelDrawLayers = useLabelLayers({
+    baseSegments,
+    segments,
+    labels,
+    showLabels,
+    showSatellite,
+    view: viewState,
+    size,
+  });
 
   const layers = useMemo(
     () => [
@@ -1030,68 +314,31 @@ export function CityMap({
       ...cityLayers,
       ...streetLayers,
       ...runLayers,
-      ...(surchargeLayer ? [surchargeLayer] : []),
-      ...routeLayers,
+      ...drainFlowLayers,
+      ...markerLayers,
+      ...overlayLayers,
       // Labels last: a street name the depth ramp paints over is a name nobody can read.
       ...labelDrawLayers,
     ],
-    [basemapLayers, cityLayers, streetLayers, runLayers, surchargeLayer, routeLayers, labelDrawLayers],
+    [basemapLayers, cityLayers, streetLayers, runLayers, drainFlowLayers, markerLayers, overlayLayers, labelDrawLayers],
   );
+
+  const animate = deckAnimates({
+    reducedMotion,
+    surchargeVisible: showSurcharge ? surcharge.length : 0,
+    reversedVisible: showSurcharge ? reversedEdges.length : 0,
+  });
 
   return (
     <div ref={containerRef} className="absolute inset-0 bg-[var(--ink)]">
       <DeckGL
         viewState={viewState as never}
-        onViewStateChange={
-          interactive
-            ? // deck reports every camera change here, and a controlled view only moves because
-              // this writes it back. `interactionState` is what separates the operator's own
-              // drags and zooms from deck's internal adjustments; only the former take the camera.
-              ((({
-                viewState: next,
-                interactionState: how,
-              }: {
-                viewState: ViewState;
-                interactionState?: {
-                  isDragging?: boolean;
-                  isPanning?: boolean;
-                  isZooming?: boolean;
-                  isRotating?: boolean;
-                };
-              }) => {
-                if (how?.isDragging || how?.isPanning || how?.isZooming || how?.isRotating) {
-                  setOwned(true);
-                }
-                setCamera(next);
-              }) as never)
-            : undefined
-        }
+        onViewStateChange={onViewStateChange as never}
         controller={interactive}
         layers={layers as never}
         pickingRadius={6}
-        getTooltip={
-          onSegmentPick
-            ? // deck's own tooltip, which is one DOM node it owns rather than a React portal
-              // chasing the cursor. 80 ms is the budget (CLAUDE.md 7.2) and this has no render
-              // in its path at all.
-              (({ object }: { object?: SegmentPath }) => {
-                if (!object) return null;
-                const depth = object.depthCm[step] ?? 0;
-                return {
-                  text: `${object.name || "Unnamed road"}\n${depth.toFixed(1)} cm`,
-                  style: {
-                    backgroundColor: "var(--deep)",
-                    color: "var(--text)",
-                    border: "1px solid var(--line)",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    padding: "6px 8px",
-                    whiteSpace: "pre-line",
-                  },
-                };
-              }) as never
-            : undefined
-        }
+        _animate={animate}
+        getTooltip={mapTooltip({ step, streetsPickable: Boolean(onSegmentPick) }) as never}
         onClick={
           onSegmentPick
             ? (({ object, x, y }: { object?: SegmentPath; x: number; y: number }) => {
