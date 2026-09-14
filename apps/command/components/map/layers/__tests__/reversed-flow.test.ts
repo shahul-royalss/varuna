@@ -16,10 +16,8 @@ import {
   FLOW_DASH_MAIN_END,
   FlowDashExtension,
   INLAND_MIN_ZOOM,
-  dashOffset,
   edgesInView,
   flowDashModules,
-  insideDash,
   pointsInView,
   reversedEdgeWidth,
   reversedEdgesAtStep,
@@ -32,10 +30,52 @@ import {
   SurchargePulseExtension,
   deckAnimates,
   loopPhase,
-  pulseRing,
   surchargeLayers,
 } from "../surcharge";
 import type { ReversedEdgePath } from "../types";
+
+// ---- Mirrors of the GLSL, derived from the strings the GPU is actually given --------------------
+//
+// jsdom has no WebGL, so the direction of travel is checked on a TypeScript copy of the shader
+// arithmetic. The copy is not written by hand: its sign and constants are parsed out of the injected
+// source, so editing `+=` to `-=` in FLOW_DASH_MAIN_END, or the pulse growth in PULSE_SHADER, changes
+// what these tests compute and fails them.
+
+const FLOW_DASH_PATTERN =
+  /^vDashOffset ([+-])= flowDash\.phase \* \(instanceDashArrays\.x \+ instanceDashArrays\.y\);$/;
+
+/** +1 or -1: how the injected vertex line moves `vDashOffset` as the phase grows. */
+function injectedDashSign(): number {
+  const match = FLOW_DASH_MAIN_END.match(FLOW_DASH_PATTERN);
+  if (!match)
+    throw new Error(`FLOW_DASH_MAIN_END no longer has the tested shape: ${FLOW_DASH_MAIN_END}`);
+  return match[1] === "+" ? 1 : -1;
+}
+
+/** `vDashOffset` at `phase`, as the injected vertex line computes it. */
+function dashOffset(phase: number, dash: readonly [number, number] = DASH_ARRAY): number {
+  return injectedDashSign() * phase * (dash[0] + dash[1]);
+}
+
+/** deck's fragment test, `mod(vPathPosition.y + offset, unitLength) <= solidLength` with
+ * `offset = vDashOffset` (dashAlignMode 0); the test below asserts deck's source still says so. */
+function insideDash(along: number, phase: number, dash = DASH_ARRAY): boolean {
+  const unit = dash[0] + dash[1];
+  const offset = (((along + dashOffset(phase, dash)) % unit) + unit) % unit;
+  return offset <= dash[0];
+}
+
+/** The pulse ring's radius and alpha multipliers, parsed from the injected shader lines. */
+function pulseRing(phase: number): { scale: number; alpha: number } {
+  const size = PULSE_SHADER.inject["vs:DECKGL_FILTER_SIZE"].match(
+    /^size \*= 1\.0 \+ ([\d.]+) \* surchargePulse\.phase;$/,
+  );
+  const alpha = PULSE_SHADER.inject["fs:DECKGL_FILTER_COLOR"].match(
+    /^color\.a \*= 1\.0 - surchargePulse\.phase;$/,
+  );
+  if (!size || !alpha) throw new Error("PULSE_SHADER no longer has the tested shape");
+  return { scale: 1 + Number(size[1]) * phase, alpha: 1 - phase };
+}
 
 // The tidal edge's real geometry from city/mumbai/map/drains.geojson (MUM-E026920), and two
 // inland pipes: one near Hindmata, one far north at Andheri.
@@ -171,6 +211,8 @@ describe("the dash moves the way the water does", () => {
     // Track the leading edge of the dash that starts at `along = unit`. A point just inside it at
     // phase 0 must be outside it once time has moved on, and the dash must now cover a point
     // nearer path[0] - so the pattern has slid toward the start of the path.
+    // The sign is read from the GLSL line itself, so this also pins what the GPU runs.
+    expect(FLOW_DASH_MAIN_END).toMatch(/vDashOffset \+= flowDash\.phase/);
     const unit = DASH_ARRAY[0] + DASH_ARRAY[1];
     const phaseLater = 0.2; // 320 ms into a 1.6 s loop
     const shift = dashOffset(phaseLater);
@@ -210,8 +252,17 @@ describe("the dash moves the way the water does", () => {
       extension,
     ) as { modules: { name: string; inject?: Record<string, string> }[] };
     const pathStyle = shaders.modules.find((m) => m.name === "pathStyle");
-    expect(pathStyle?.inject?.["vs:#main-end"]).toContain("vDashOffset = 0.0;");
-    expect(pathStyle?.inject?.["vs:#main-end"]).toContain(FLOW_DASH_MAIN_END);
+    const mainEnd = pathStyle?.inject?.["vs:#main-end"] ?? "";
+    expect(mainEnd).toContain("vDashOffset = 0.0;");
+    // Appended after deck's own write, so the phase is added to the offset rather than overwritten.
+    expect(mainEnd.lastIndexOf("vDashOffset = 0.0;")).toBeLessThan(
+      mainEnd.indexOf(FLOW_DASH_MAIN_END),
+    );
+    // The fragment test the insideDash mirror copies, in deck's installed source: at dashAlignMode 0
+    // the offset is vDashOffset and a larger offset slides the pattern toward path[0].
+    const fragment = pathStyle?.inject?.["fs:#main-start"] ?? "";
+    expect(fragment).toContain("offset = vDashOffset;");
+    expect(fragment).toContain("mod(vPathPosition.y + offset, unitLength)");
     expect(shaders.modules.map((m) => m.name)).toContain("flowDash");
   });
 
@@ -338,9 +389,15 @@ describe("the reversed-pipe sentence", () => {
         { id: "b", tidal: false, steps: [], minQ: -1 },
       ],
     });
-    expect(text).toContain("24,014 pipes run backwards in this run.");
-    expect(text).toContain("2 of the 3 it stored can be drawn");
-    expect(text).toContain(`from zoom ${INLAND_MIN_ZOOM}`);
+    expect(text).toBe(
+      "24,014 pipes run backwards in this run. 2 of the 3 it stored can be drawn: tide-locked " +
+        `outfalls at every zoom, inland pipes from zoom ${INLAND_MIN_ZOOM} and in view.`,
+    );
+  });
+
+  it("makes no causal claim about why a pipe runs backwards", () => {
+    const text = reversedFlowSummary({ reversedTotal: 5, reversedEdges: [withPath("a")] });
+    expect(text).not.toMatch(/uphill|because|follow/i);
   });
 
   it("never claims edges are shown when the run carries no geometry", () => {
@@ -349,9 +406,29 @@ describe("the reversed-pipe sentence", () => {
       reversedEdges: [{ id: "t", tidal: true, steps: [1], minQ: -0.77 }],
     });
     expect(text).toBe(
-      "18,380 pipes run backwards in this run. The run carries no pipe paths, so none are drawn; bake it again to draw them.",
+      "18,380 pipes run backwards in this run. This run stores no pipe geometry, so they are counted here but not drawn.",
     );
     expect(text).not.toMatch(/can be drawn|are drawn:/);
+    // Nothing the stage operator cannot do from the console.
+    expect(text).not.toMatch(/bake|make |terminal/i);
+  });
+
+  it("never quotes the stored count as the run's total when the product omits it", () => {
+    const stored = Array.from({ length: 500 }, (_, i) => withPath(`e${i}`));
+    const withGeometry = reversedFlowSummary({ reversedTotal: null, reversedEdges: stored });
+    expect(withGeometry).toBe(
+      "This run does not report how many pipes run backwards. 500 of the 500 it stored can be " +
+        `drawn: tide-locked outfalls at every zoom, inland pipes from zoom ${INLAND_MIN_ZOOM} and in view.`,
+    );
+    expect(withGeometry).not.toMatch(/500 pipes run backwards/);
+    expect(
+      reversedFlowSummary({
+        reversedTotal: null,
+        reversedEdges: [{ id: "t", tidal: true, steps: [1], minQ: -0.77 }],
+      }),
+    ).toBe(
+      "This run reports no reversed-pipe total and stores no pipe geometry, so none are drawn.",
+    );
   });
 
   it("says so when nothing runs backwards", () => {

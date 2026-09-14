@@ -26,8 +26,9 @@ export interface LayerPanelProps {
   onChange: (key: LayerKey, next: boolean) => void;
   /** Counts from the current run, so a row says what it would draw before you turn it on. */
   counts?: Partial<Record<LayerKey, number>>;
-  /** A sentence under a row while that layer is on: what the run holds that the row draws only in
-   * part (the surcharge row quotes the run's reversed-pipe total). */
+  /** A sentence under a row, shown whether or not the layer is on: what the run holds that the row
+   * draws only in part (the surcharge row quotes the run's reversed-pipe total, which is a fact
+   * about the run and does not depend on the toggle). */
   details?: Partial<Record<LayerKey, string>>;
 }
 
@@ -90,7 +91,7 @@ export function LayerPanel({ value, onChange, counts = {}, details = {} }: Layer
           {ROWS.map((row) => {
             const on = value[row.key];
             const count = counts[row.key];
-            const detail = on ? details[row.key] : undefined;
+            const detail = details[row.key];
             return (
               <li key={row.key}>
                 <button
