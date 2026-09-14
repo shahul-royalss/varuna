@@ -11,13 +11,14 @@ of 2 July 2019 for Mumbai, published from pre-computed (baked) artifacts.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import Field, computed_field, field_validator
 
-from varuna_schemas.constants import CITY_CODES, IST, N_STEPS, STEP_MIN
+from varuna_schemas.constants import CITY_CODES, CYCLE_STAGES, IST, N_STEPS, STEP_MIN
 from varuna_schemas.models.common import BBox, Timestamp, VarunaModel
 
 RunMode = Literal["baked", "live"]
@@ -129,6 +130,26 @@ def parse_run_id(run_id: str) -> RunIdParts:
     )
 
 
+def top_level_stage_ms(stage_ms: Mapping[str, int]) -> dict[str, int]:
+    """The entries of ``stage_ms`` that are cycle stages, in cycle order.
+
+    The single rule for what a stage total counts: a key is a stage when it is one of
+    :data:`~varuna_schemas.constants.CYCLE_STAGES`, and everything else in ``stage_ms`` is
+    provenance. The Twin writes ``twin`` (its wall clock) and also ``twin_total_ms``,
+    ``twin_surface_ms``, ``twin_drain_ms``, ``twin_coupling_ms`` and ``twin_hydrology_ms``
+    (time spent inside that wall clock), and a cycle result may add ``total``. Summing every key
+    counted the Twin two and a half times: 189,704 ms for the 09:10 IST baked cycle whose
+    stages took 76,851 ms. An allowlist rather than a denylist, so a sub-timing added
+    later cannot inflate a total until someone deliberately names it a stage.
+    """
+    return {stage: int(stage_ms[stage]) for stage in CYCLE_STAGES if stage in stage_ms}
+
+
+def stage_total_ms(stage_ms: Mapping[str, int]) -> int:
+    """Wall-clock of a cycle in ms: each top-level stage counted once (:func:`top_level_stage_ms`)."""
+    return sum(top_level_stage_ms(stage_ms).values())
+
+
 def is_run_id(value: str) -> bool:
     """True when :func:`parse_run_id` would accept ``value`` (format and a real calendar time)."""
     try:
@@ -222,7 +243,9 @@ class RunMeta(VarunaModel):
     @property
     def total_ms(self) -> int:
         """Sum of stage timings in ms."""
-        return int(sum(self.stage_ms.values()))
+        # Top-level stages only: see stage_total_ms. The docstring above is the OpenAPI
+        # description, so the rule is stated there rather than here.
+        return stage_total_ms(self.stage_ms)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -251,4 +274,6 @@ __all__ = [
     "city_code",
     "is_run_id",
     "parse_run_id",
+    "stage_total_ms",
+    "top_level_stage_ms",
 ]

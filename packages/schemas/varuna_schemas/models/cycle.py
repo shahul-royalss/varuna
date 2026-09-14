@@ -10,7 +10,7 @@ from pydantic import Field, computed_field
 
 from varuna_schemas.constants import STAGE_BUDGET_MS, TOTAL_CYCLE_BUDGET_MS, CycleStage
 from varuna_schemas.models.common import Timestamp, VarunaModel
-from varuna_schemas.models.run import ReplayMode, RunMode
+from varuna_schemas.models.run import ReplayMode, RunMode, stage_total_ms
 
 StageStatus = Literal["started", "finished", "failed", "skipped"]
 
@@ -43,7 +43,8 @@ class CycleStatus(VarunaModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def elapsed_ms(self) -> int:
-        return int(sum(self.stage_ms.values()))
+        # Each top-level stage once; the Twin's sub-timings are provenance (stage_total_ms).
+        return stage_total_ms(self.stage_ms)
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -86,7 +87,8 @@ class CycleLogEntry(VarunaModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def total_ms(self) -> int:
-        return int(sum(self.stage_ms.values()))
+        # Each top-level stage once; the Twin's sub-timings are provenance (stage_total_ms).
+        return stage_total_ms(self.stage_ms)
 
 
 class ComputeRequest(VarunaModel):
