@@ -253,14 +253,17 @@ class CouplingFluxes:
 class TideSeries:
     """Sea stage at the tidal outfalls over the run (CLAUDE.md 10.2, 11.4).
 
-    ``stage_m`` is in the same vertical datum as the DEM. ``source`` is carried so the UI can
-    say whether the series came from a public tide table or is labelled illustrative - rule 7
-    forbids presenting the second as the first.
+    ``stage_m`` is in the same vertical datum as the DEM: :func:`varuna_twin.city.load_tide`
+    converts a chart-datum series when the bundle manifest declares one, and ``datum_note`` says
+    what it did (``None`` when the manifest declared no datum and the series is read as
+    written). ``source`` is carried so the UI can say whether the series came from a public
+    tide table or is labelled illustrative - rule 7 forbids presenting the second as the first.
     """
 
     times: tuple[datetime, ...]
     stage_m: NDArray[np.floating]
     source: str
+    datum_note: str | None = None
 
     def at(self, when: datetime) -> float:
         """Linearly interpolated stage; clamped to the ends outside the series."""

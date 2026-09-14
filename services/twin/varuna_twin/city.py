@@ -32,6 +32,7 @@ from varuna_twin.types import DrainNetwork, TerrainGrid, TideSeries
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from numpy.typing import NDArray
+    from varuna_schemas.models.bundle import TideDatum
 
 log = structlog.get_logger("varuna.twin.city")
 
@@ -299,10 +300,19 @@ def load_tide(bundle: str, *, city: str = "mumbai") -> TideSeries | None:
 
     Returns ``None`` when the bundle carries no tide, which is the honest state for a design
     storm rather than a reason to invent a flat sea.
+
+    **The datum.** ``tide.csv`` keeps the stage as sourced, and a tide table states heights
+    above chart datum while the terrain is in the DEM's frame (EGM2008 for Copernicus GLO-30).
+    When the manifest beside the series declares ``tide_datum`` with a chart-datum stage, the
+    mean-sea-level offset it carries is subtracted here, once, and ``datum_note`` says so. A
+    manifest that declares no datum leaves the series exactly as written, which is what every
+    bundle did before the block existed. A declared block that does not validate raises: a
+    silently wrong datum moves the sea by metres at the boundary.
     """
     import pandas as pd
 
-    path = bundle_dir(bundle) / "tide.csv"
+    root = bundle_dir(bundle)
+    path = root / "tide.csv"
     if not path.is_file():
         log.info("twin.no_tide", bundle=bundle, path=str(path))
         return None
@@ -311,10 +321,25 @@ def load_tide(bundle: str, *, city: str = "mumbai") -> TideSeries | None:
     if frame.empty:
         return None
     source = str(frame["source"].iloc[0]) if "source" in frame.columns else "unlabelled"
+    stage_m = frame["stage_m"].to_numpy(dtype=np.float64)
+
+    datum = _tide_datum(root / "manifest.json")
+    datum_note: str | None = None
+    if datum is not None and datum.offset_to_dem_m != 0.0:
+        stage_m = stage_m - datum.offset_to_dem_m
+        # A chart-datum block cannot validate without its range, so this is never "unknown".
+        low, high = datum.range_m if datum.range_m is not None else (float("nan"),) * 2
+        datum_note = (
+            f"Tide stage converted from {datum.stage_reference} to the DEM's frame by "
+            f"subtracting mean sea level at {datum.offset_to_dem_m:.2f} m above chart datum "
+            f"(range {low:.2f}-{high:.2f} m; {', '.join(datum.source_urls)}). {datum.residual}"
+        )
+
     series = TideSeries(
         times=tuple(pd.to_datetime(frame["ts"]).dt.to_pydatetime()),
-        stage_m=frame["stage_m"].to_numpy(dtype=np.float64),
+        stage_m=stage_m,
         source=source,
+        datum_note=datum_note,
     )
     log.info(
         "twin.tide_loaded",
@@ -323,5 +348,29 @@ def load_tide(bundle: str, *, city: str = "mumbai") -> TideSeries | None:
         min_m=round(float(series.stage_m.min()), 3),
         max_m=round(float(series.stage_m.max()), 3),
         source=source,
+        stage_datum=datum.stage_datum if datum is not None else "undeclared",
+        offset_to_dem_m=datum.offset_to_dem_m if datum is not None else 0.0,
     )
     return series
+
+
+def _tide_datum(manifest_path: Path) -> TideDatum | None:
+    """The manifest's ``tide_datum`` block, or ``None`` when there is no manifest or no block.
+
+    Only the block is validated, not the whole manifest: the Twin needs the datum, and a test
+    bundle that carries a tide and a partial manifest should not fail on fields the solver never
+    reads. An unreadable manifest is treated as declaring nothing and logged.
+    """
+    import json
+
+    from varuna_schemas.models.bundle import TideDatum
+
+    if not manifest_path.is_file():
+        return None
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        log.warning("twin.manifest_unreadable", path=str(manifest_path), error=str(exc)[:200])
+        return None
+    block = payload.get("tide_datum") if isinstance(payload, dict) else None
+    return None if block is None else TideDatum.model_validate(block)

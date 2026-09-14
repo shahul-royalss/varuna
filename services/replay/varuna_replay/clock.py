@@ -35,6 +35,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import inspect
+import json
 import threading
 import time
 from collections.abc import Awaitable, Callable, Iterable
@@ -49,11 +50,12 @@ from varuna_cycle.registry import RunRegistry
 from varuna_schemas.constants import CYCLE_PERIOD_MIN, IST
 from varuna_schemas.models import ReplayClock as ReplayClockState
 from varuna_schemas.models import RunMeta
-from varuna_schemas.models.bundle import BundleManifest
+from varuna_schemas.models.bundle import BundleManifest, TideDatum
 from varuna_schemas.models.run import RunMode
 
 from varuna_replay.bundle import (
     GAUGES_CSV,
+    MANIFEST_NAME,
     RADAR_VARIABLE,
     RADAR_ZARR,
     REPORTS_JSONL,
@@ -289,17 +291,49 @@ def _gauge_events(path: Path, bundle_id: str) -> list[ScheduledEvent]:
     ]
 
 
+def _tide_datum(tide_csv: Path) -> TideDatum | None:
+    """The ``tide_datum`` block of the manifest beside ``tide.csv``, or ``None`` when undeclared.
+
+    A manifest that cannot be read here is reported as undeclared rather than stopping the
+    clock; ``varuna bundle validate`` is what explains a broken manifest. A declared block that
+    does not validate raises, because publishing a stage with the wrong datum label is worse
+    than publishing no tide.
+    """
+    manifest = tide_csv.parent / MANIFEST_NAME
+    try:
+        payload = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    block = payload.get("tide_datum") if isinstance(payload, dict) else None
+    return None if block is None else TideDatum.model_validate(block)
+
+
 def _tide_events(path: Path, bundle_id: str) -> list[ScheduledEvent]:
     """One ``tide.stage`` event per instant; ``source`` carries the tide table or
-    ``illustrative`` so the boundary never claims more than it can (CLAUDE.md 3.2)."""
+    ``illustrative`` so the boundary never claims more than it can (CLAUDE.md 3.2).
+
+    ``stage_m`` is the series as written, which for a tide table is above chart datum. The
+    Twin reads the same series in the DEM's frame (``varuna_twin.city.load_tide``), so every
+    event also carries the datum it is in and, when the manifest declares an offset, the stage
+    in that frame - a screen that shows the tide cannot then disagree with the physics without
+    saying so. ``stage_datum`` is ``None`` when the manifest declares no datum.
+    """
     import pandas as pd
 
+    datum = _tide_datum(path)
+    offset = datum.offset_to_dem_m if datum is not None else None
     frame = pd.read_csv(path)
     events: list[ScheduledEvent] = []
     for row in frame.to_dict("records"):
         ts = _parse_ts(row.get("ts"))
         if ts is None:
             continue
+        stage = _plain(row.get("stage_m"))
+        in_dem_frame = (
+            round(float(stage) - offset, 6)
+            if offset is not None and isinstance(stage, int | float) and stage == stage
+            else None
+        )
         events.append(
             ScheduledEvent(
                 ts=ts,
@@ -308,8 +342,12 @@ def _tide_events(path: Path, bundle_id: str) -> list[ScheduledEvent]:
                     "bundle": bundle_id,
                     "member": TIDE_CSV,
                     "ts": _iso(ts),
-                    "stage_m": _plain(row.get("stage_m")),
+                    "stage_m": stage,
                     "source": _plain(row.get("source")),
+                    "stage_datum": datum.stage_datum if datum is not None else None,
+                    "datum": datum.stage_reference if datum is not None else None,
+                    "offset_to_dem_m": offset,
+                    "stage_dem_frame_m": in_dem_frame,
                 },
             )
         )
