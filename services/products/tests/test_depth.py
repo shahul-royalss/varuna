@@ -224,9 +224,14 @@ def test_wet_segments_json_is_the_row_built_bytes(tmp_path, dtype) -> None:
         dtype
     )
     depth_cm[:, 7] = 5.0  # exactly on the wet edge, which is inclusive
+    depth_cm[3, 7] = -0.0  # prints "-0.0", so it must not share a result with 0.0
     ids = tuple(f"S{k:05d}-000" for k in range(n_seg))
-    # Probabilities in twentieths, as a 20-member stack gives, with certain 0s and 1s among them.
-    p_gt = {t: rng.integers(0, 21, size=(n_steps, n_seg)) / 20.0 for t in (15.0, 30.0, 45.0, 60.0)}
+    # Probabilities in twentieths, as a 20-member stack gives, with certain 0s and 1s among them;
+    # one threshold as integers, and a NaN and a -0.0, each of which prints differently.
+    p_gt = {t: rng.integers(0, 21, size=(n_steps, n_seg)) / 20.0 for t in (15.0, 30.0, 45.0)}
+    p_gt[60.0] = (rng.random((n_steps, n_seg)) < 0.5).astype(np.int64)
+    p_gt[15.0][2, 7] = np.nan
+    p_gt[30.0][5, 7] = -0.0
 
     product = write_wet_segments(tmp_path, depth_cm, ids, _times(n_steps), "TEST-RUN", p_gt=p_gt)
 
