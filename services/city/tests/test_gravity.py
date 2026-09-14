@@ -7,6 +7,8 @@ not its contract.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import geopandas as gpd
 import pandas as pd
 import pytest
@@ -340,3 +342,88 @@ def test_report_section_says_why_when_there_is_no_graph() -> None:
     audit, error = _gravity(SimpleNamespace(), grid, None, None, None)  # type: ignore[arg-type]
     assert audit is None
     assert _gravity_section(audit, error) == ["Not measured: no drain graph loaded."]
+
+
+def test_connectivity_rows_put_the_sill_blocked_share_under_the_topological_row() -> None:
+    from varuna_city.report import _connectivity_rows
+
+    nodes = _nodes(
+        [
+            ("A", 5.0, 3.5, None, 0, 0),
+            ("B", 4.0, 2.5, None, 0, 1),
+            ("H", 9.0, 7.0, None, 0, 2),
+            ("O", 3.0, 1.0, "free", 0, 3),
+        ]
+    )
+    edges = _edges([("A", "B", 100.0, 0.01), ("B", "H", 100.0, 0.003), ("H", "O", 100.0, 0.06)])
+    topological, hydraulic = _connectivity_rows(1.0, audit_gravity(nodes, edges), None)
+    # Every node reaches O, so the topological row is met while half the nodes are blocked.
+    assert "| 100.0 % topologically | met |" in topological
+    assert "hydraulic connectivity" in hydraulic
+    assert "| 50.0 % (2 of 4 nodes sill-blocked; see Drain gravity) | reported |" in hydraulic
+
+
+def test_connectivity_rows_say_why_the_hydraulic_figure_is_missing() -> None:
+    from varuna_city.report import _connectivity_rows
+
+    _, hydraulic = _connectivity_rows(1.0, None, "no drain graph loaded")
+    assert "| not measured (no drain graph loaded) | reported |" in hydraulic
+
+
+def test_cli_audits_a_city_folder_and_compares_outfalls_with_the_tide(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json
+
+    from typer.testing import CliRunner
+    from varuna_city.cli import app
+
+    nodes = _nodes(
+        [
+            ("A", 5.0, 3.5, None, 0, 0),
+            ("B", 4.0, 2.5, None, 0, 1),
+            ("H", 9.0, 7.0, None, 0, 2),
+            ("O", 3.0, 1.0, "free", 0, 3),
+        ]
+    )
+    edges = _edges([("A", "B", 100.0, 0.01), ("B", "H", 100.0, 0.003), ("H", "O", 100.0, 0.06)])
+    city = tmp_path / "city" / "mumbai"
+    city.mkdir(parents=True)
+    nodes.to_parquet(city / "drain_nodes.parquet", index=False)
+    edges.to_parquet(city / "drain_edges.parquet", index=False)
+    bundle = tmp_path / "bundles" / "TEST-BUNDLE"
+    bundle.mkdir(parents=True)
+    pd.DataFrame({"ts": ["t0", "t1"], "stage_m": [0.2, 0.5], "source": ["x", "x"]}).to_csv(
+        bundle / "tide.csv", index=False
+    )
+    monkeypatch.setenv("VARUNA_CITY_DIR", str(tmp_path / "city"))
+    monkeypatch.setenv("VARUNA_BUNDLES_DIR", str(tmp_path / "bundles"))
+
+    out = tmp_path / "audit.json"
+    result = CliRunner().invoke(
+        app,
+        ["audit-gravity", "--city", "mumbai", "--bundle", "TEST-BUNDLE", "--json", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    assert "adverse edges: 1 (33.3 %)" in result.output
+    assert "sill-blocked nodes: 2 (50.0 %)" in result.output
+    written = json.loads(out.read_text(encoding="utf-8"))
+    assert written["sill"]["blocked_nodes"] == 2
+    assert written["outfalls"]["tide_max_m"] == pytest.approx(0.5)
+    # O's invert (1.0 m) stands above the 0.5 m tide maximum.
+    assert written["outfalls"]["by_boundary_type"]["free"]["invert_above_tide_max"] == 1
+    # The audit is read-only: the city folder holds exactly what the test wrote.
+    assert sorted(p.name for p in city.iterdir()) == ["drain_edges.parquet", "drain_nodes.parquet"]
+
+
+def test_cli_names_the_command_that_builds_a_missing_graph(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typer.testing import CliRunner
+    from varuna_city.cli import app
+
+    (tmp_path / "mumbai").mkdir()
+    monkeypatch.setenv("VARUNA_CITY_DIR", str(tmp_path))
+    result = CliRunner().invoke(app, ["audit-gravity", "--city", "mumbai"])
+    assert result.exit_code == 1
+    assert "make city CITY=mumbai" in result.output
