@@ -81,7 +81,9 @@ __all__ = [
     "KernelTerrain",
     "MassBalanceError",
     "StepTally",
+    "SurfaceAdvance",
     "SurfaceRun",
+    "SurfaceStepper",
     "cfl_dt",
     "dry_state",
     "prepare_terrain",
@@ -671,9 +673,9 @@ def run_surface(
         elapsed_ms=round((perf_counter() - started) * 1000.0),
         notes=_notes(kernel, rain, sea_index, n_clamped_low, totals),
     )
-    if (
-        run.error_fraction >= MASS_BALANCE_TOLERANCE
-        and run.volume_in_m3 > MASS_BALANCE_MIN_VOLUME_M3
+    # `not (x < budget)` so a NaN error or a NaN inflow raises instead of comparing false.
+    if not run.error_fraction < MASS_BALANCE_TOLERANCE and not (
+        run.volume_in_m3 <= MASS_BALANCE_MIN_VOLUME_M3
     ):
         raise MassBalanceError(
             f"surface run lost {run.error_fraction:.3%} of {run.volume_in_m3:.1f} m3 "
@@ -690,6 +692,287 @@ def run_surface(
         elapsed_ms=run.elapsed_ms,
     )
     return run
+
+
+# ============================================================================ run-long driver
+_LEDGER_FIELDS = ("rain", "surcharge", "inlet", "tide_in", "tide_out", "created")
+
+
+@dataclass(frozen=True, slots=True)
+class SurfaceAdvance:
+    """What one :meth:`SurfaceStepper.advance` call moved, in cubic metres.
+
+    The same figures :class:`SurfaceRun` reports for one :func:`run_surface` call, summed over
+    the call's sub-steps in the same order, so a caller that adds them up gets the same bits.
+    """
+
+    n_steps: int
+    volume_rain_m3: float
+    volume_surcharge_m3: float
+    volume_inlet_m3: float
+    volume_tide_in_m3: float
+    volume_tide_out_m3: float
+    volume_created_m3: float
+
+
+class SurfaceStepper:
+    """:func:`run_surface` for a caller that advances the same grid thousands of times.
+
+    The coupled run advances the surface once per 5 s sync: 2,160 calls in a three-hour cycle,
+    each covering one or two CFL sub-steps. :func:`run_surface` is correct for that but pays its
+    setup on every call - an ``isfinite`` pass over three full rasters, the sea-cell ``nonzero``,
+    a fresh workspace, two full-grid volume sums and the honesty notes - and on the Mumbai grid
+    that setup cost more than the two kernels it wraps (task P4.6). None of it changes between
+    syncs, so this class does it once:
+
+    * the terrain, the sea-cell index and the scratch workspace are built in the constructor;
+    * the rain raster is validated in :meth:`set_rain`, once per 5-minute step, because that is
+      how often it changes;
+    * the exchange rasters are the coupling kernel's own float64 buffers, so they are not
+      copied or converted - but they are still checked for NaN and infinity on every call, by a
+      sum rather than an ``isfinite`` mask. That check is not optional: a NaN inlet rate does
+      not poison the depth, the capture limiter reads ``NaN < available`` as false and quietly
+      drains the cell instead, so a corrupted exchange would otherwise publish plausible water.
+
+    **Same arithmetic, same bits.** :meth:`advance` runs :func:`run_surface`'s sub-stepping
+    loop: the same :func:`cfl_dt`, the same ``_step``, the same order of tallies. Given the same
+    inputs, ``h``, ``qx`` and ``qy`` after each call are bitwise identical to a :func:`run_surface`
+    call, and so is every volume in the returned :class:`SurfaceAdvance`. The test suite holds it
+    to that, and :func:`run_surface` stays as the public API and the readable specification.
+
+    **The audit, as CLAUDE.md 11.3 words it.** :func:`run_surface` counts its 100 steps per call,
+    and a coupled call takes one or two, so inside the coupled run that audit never fired; the
+    end-of-call check did the work, at two volume sums per call. Here the step count runs across
+    the whole run: at the end of the call in which every ``audit_every``-th sub-step completes,
+    the balance is checked twice - over the window since the previous audit, which keeps the
+    sensitivity of a short check, and over the run so far. :meth:`finish` checks once more. A bug
+    that invents water is therefore caught within about 100 sub-steps (about five simulated
+    minutes on Mumbai) rather than within one call, and it is still caught before the run returns.
+    """
+
+    __slots__ = (
+        "_audit_every",
+        "_audits",
+        "_call_ms",
+        "_dt_max",
+        "_dt_min",
+        "_n_clamped_low",
+        "_n_steps",
+        "_rain",
+        "_rain_seen",
+        "_run",
+        "_run_initial_m3",
+        "_sea_index",
+        "_window",
+        "_window_initial_m3",
+        "_workspace",
+        "kernel",
+        "state",
+    )
+
+    def __init__(
+        self,
+        state: SurfaceState,
+        terrain: TerrainGrid | KernelTerrain,
+        *,
+        sea_mask: NDArray[np.bool_] | None = None,
+        audit_every: int = MASS_BALANCE_EVERY,
+    ) -> None:
+        kernel = prepare_terrain(terrain)
+        shape = kernel.shape
+        for name in ("h", "qx", "qy"):
+            array = getattr(state, name)
+            if array.shape != shape:
+                raise ValueError(f"state.{name} has shape {array.shape}, expected {shape}")
+        self.kernel = kernel
+        self.state = state
+        self._sea_index = _sea_index(sea_mask, kernel)
+        self._workspace = _Workspace(shape)
+        self._rain: NDArray[np.float64] | None = None
+        self._rain_seen = np.zeros(shape, dtype=np.bool_)
+        self._audit_every = int(audit_every)
+        self._audits = 0
+        self._n_steps = 0
+        self._n_clamped_low = 0
+        self._dt_min = float("inf")
+        self._dt_max = 0.0
+        self._call_ms = 0.0
+        self._run_initial_m3 = state.volume_m3(kernel.cell_area_m2)
+        self._window_initial_m3 = self._run_initial_m3
+        self._run = [0.0] * len(_LEDGER_FIELDS)
+        self._window = [0.0] * len(_LEDGER_FIELDS)
+
+    # ------------------------------------------------------------------ inputs
+    def set_rain(self, r_eff_ms: NDArray[np.floating] | float | None) -> None:
+        """Effective rain in m/s per cell for the calls that follow; validated here, once."""
+        rain = _source(r_eff_ms, self.kernel.shape, "r_eff_ms")
+        np.logical_or(self._rain_seen, rain > 0.0, out=self._rain_seen)
+        self._rain = rain
+
+    def _exchange(
+        self, value: NDArray[np.floating] | float | None, name: str
+    ) -> NDArray[np.float64]:
+        """An exchange raster, used in place when it already is what the kernel reads."""
+        if (
+            isinstance(value, np.ndarray)
+            and value.dtype == np.float64
+            and value.shape == self.kernel.shape
+            and value.flags.c_contiguous
+        ):
+            # One reduction instead of an isfinite mask: any NaN or infinity makes the sum
+            # non-finite, and np.add.reduce is not compiled with fastmath, so it keeps NaN.
+            if not np.isfinite(np.add.reduce(value, axis=None)):
+                raise ValueError(f"{name} contains non-finite values; the solver cannot use it")
+            return value
+        return _source(value, self.kernel.shape, name)
+
+    # ------------------------------------------------------------------ stepping
+    @property
+    def n_steps(self) -> int:
+        """CFL sub-steps taken since the stepper was built."""
+        return self._n_steps
+
+    @property
+    def audits(self) -> int:
+        """Mass-balance audits run so far, :meth:`finish` included."""
+        return self._audits
+
+    def advance(
+        self,
+        duration_s: float,
+        *,
+        q_inlet_ms: NDArray[np.floating] | float | None = None,
+        q_surcharge_ms: NDArray[np.floating] | float | None = None,
+        tide_stage_m: float | Callable[[float], float] | None = None,
+        max_dt_s: float = DT_MAX_S,
+    ) -> SurfaceAdvance:
+        """Sub-step the surface ``duration_s`` seconds, exactly as one :func:`run_surface` call.
+
+        Raises:
+            ValueError: no rain was set, an exchange raster is malformed or non-finite, or the
+                grid has sea cells and no stage was given.
+            MassBalanceError: an audit that fell due in this call failed.
+        """
+        started = perf_counter()
+        rain = self._rain
+        if rain is None:
+            raise ValueError("set_rain must be called before advance; the rain has no default")
+        kernel = self.kernel
+        state = self.state
+        inlet = self._exchange(q_inlet_ms, "q_inlet_ms")
+        surcharge = self._exchange(q_surcharge_ms, "q_surcharge_ms")
+        sea_index = self._sea_index
+        if sea_index is not None and tide_stage_m is None:
+            raise ValueError("sea_mask was given without tide_stage_m; the stage sets their level")
+        stage_at = _stage_function(tide_stage_m)
+        workspace = self._workspace
+
+        rain_m3 = 0.0
+        surcharge_m3 = 0.0
+        inlet_m3 = 0.0
+        tide_in_m3 = 0.0
+        tide_out_m3 = 0.0
+        created_m3 = 0.0
+        elapsed_s = 0.0
+        n_steps = 0
+        while elapsed_s < duration_s - _TIME_EPS_S:
+            dt = cfl_dt(state.h, kernel.res_m, max_dt_s)
+            if dt <= DT_MIN_S + _TIME_EPS_S:
+                self._n_clamped_low += 1
+            remaining = duration_s - elapsed_s
+            if dt > remaining:
+                dt = remaining
+            tally = _step(
+                state,
+                kernel,
+                dt,
+                rain,
+                inlet,
+                surcharge,
+                sea_index,
+                stage_at(elapsed_s) if stage_at is not None else None,
+                workspace,
+            )
+            rain_m3 += tally.volume_rain_m3
+            surcharge_m3 += tally.volume_surcharge_m3
+            inlet_m3 += tally.volume_inlet_m3
+            tide_in_m3 += tally.volume_tide_in_m3
+            tide_out_m3 += tally.volume_tide_out_m3
+            created_m3 += tally.volume_created_m3
+            elapsed_s += dt
+            n_steps += 1
+            self._dt_min = min(self._dt_min, dt)
+            self._dt_max = max(self._dt_max, dt)
+
+        call = (rain_m3, surcharge_m3, inlet_m3, tide_in_m3, tide_out_m3, created_m3)
+        run = self._run
+        window = self._window
+        for k, volume in enumerate(call):
+            run[k] += volume
+            window[k] += volume
+        self._n_steps += n_steps
+        if self._audit_every > 0 and self._n_steps // self._audit_every > self._audits:
+            self._audit()
+        self._call_ms += (perf_counter() - started) * 1000.0
+        return SurfaceAdvance(n_steps, *call)
+
+    # ------------------------------------------------------------------ audit and result
+    def _audit(self) -> None:
+        """Check the window since the last audit, then the run so far; reset the window."""
+        stored = self.state.volume_m3(self.kernel.cell_area_m2)
+        _check_ledger(stored, self._window_initial_m3, self._window, self._n_steps, "window")
+        _check_ledger(stored, self._run_initial_m3, self._run, self._n_steps, "run")
+        self._window_initial_m3 = stored
+        self._window = [0.0] * len(_LEDGER_FIELDS)
+        self._audits += 1
+
+    def summary(self) -> SurfaceRun:
+        """The run so far as a :class:`SurfaceRun`, without auditing it."""
+        kernel = self.kernel
+        totals = dict(zip(_LEDGER_FIELDS, self._run, strict=True))
+        rain_seen = self._rain_seen.astype(np.float64)
+        return SurfaceRun(
+            state=self.state,
+            volume_initial_m3=self._run_initial_m3,
+            volume_stored_m3=self.state.volume_m3(kernel.cell_area_m2),
+            volume_rain_m3=totals["rain"],
+            volume_surcharge_m3=totals["surcharge"],
+            volume_inlet_m3=totals["inlet"],
+            volume_tide_in_m3=totals["tide_in"],
+            volume_tide_out_m3=totals["tide_out"],
+            volume_created_m3=totals["created"],
+            n_steps=self._n_steps,
+            dt_min_s=0.0 if self._n_steps == 0 else self._dt_min,
+            dt_max_s=self._dt_max,
+            elapsed_ms=round(self._call_ms),
+            notes=_notes(kernel, rain_seen, self._sea_index, self._n_clamped_low, totals),
+        )
+
+    def finish(self) -> SurfaceRun:
+        """Audit the whole run once more and return it as a :class:`SurfaceRun`."""
+        self._audit()
+        return self.summary()
+
+
+def _check_ledger(
+    stored_m3: float, initial_m3: float, totals: list[float], n_steps: int, span: str
+) -> None:
+    """``|stored - (initial + in - out)| / (initial + in)`` against the 0.1 % budget.
+
+    ``not (error < budget)``, so NaN anywhere in the ledger raises rather than comparing false.
+    """
+    rain, surcharge, inlet, tide_in, tide_out, created = totals
+    total_in = initial_m3 + rain + surcharge + tide_in + created
+    if total_in <= MASS_BALANCE_MIN_VOLUME_M3:
+        return
+    total_out = inlet + tide_out
+    error = abs(stored_m3 - (total_in - total_out)) / total_in
+    if not error < MASS_BALANCE_TOLERANCE:
+        raise MassBalanceError(
+            f"surface mass balance broke over the {span} ending at sub-step {n_steps}: stored "
+            f"{stored_m3:.3f} m3 against in {total_in:.3f} m3 minus out {total_out:.3f} m3, "
+            f"error {error:.3%}; the budget is {MASS_BALANCE_TOLERANCE:.1%}"
+        )
 
 
 # ============================================================================ internals
@@ -844,7 +1127,12 @@ def _audit(
     totals: dict[str, float],
     n_steps: int,
 ) -> None:
-    """The every-100-steps conservation assertion of CLAUDE.md 11.3."""
+    """The every-100-steps conservation assertion of CLAUDE.md 11.3.
+
+    Written as ``not (error < budget)`` rather than ``error >= budget`` on purpose: every
+    comparison with NaN is false, so the second form lets a NaN-poisoned grid pass the one check
+    whose job is to stop a run that means nothing.
+    """
     total_in = (
         initial_m3 + totals["rain"] + totals["surcharge"] + totals["tide_in"] + totals["created"]
     )
@@ -853,7 +1141,7 @@ def _audit(
     total_out = totals["inlet"] + totals["tide_out"]
     stored = state.volume_m3(kernel.cell_area_m2)
     error = abs(stored - (total_in - total_out)) / total_in
-    if error >= MASS_BALANCE_TOLERANCE:
+    if not error < MASS_BALANCE_TOLERANCE:
         raise MassBalanceError(
             f"surface mass balance broke at step {n_steps}: stored {stored:.3f} m3 against "
             f"in {total_in:.3f} m3 minus out {total_out:.3f} m3, error {error:.3%}"
