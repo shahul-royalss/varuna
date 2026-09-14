@@ -337,6 +337,34 @@ def _gravity(
     return audit, None
 
 
+def _connectivity_rows(
+    connectivity: float, gravity: dict[str, Any] | None, error: str | None
+) -> list[str]:
+    """The two connectivity rows of the targets table: topological, then hydraulic.
+
+    The first row counts paths, not gradients. It stays met on a graph whose water cannot reach
+    an outfall without surcharging, so the sill-blocked figure sits directly under it. There is
+    no spec target for the second row, so it carries no verdict.
+    """
+    rows = [
+        "| Drain graph connectivity (every node reaches an outfall) | 100 % "
+        f"| {_pct(connectivity)} topologically | {_verdict(connectivity >= 1.0)} |"
+    ]
+    if gravity is None:
+        measured = f"not measured ({error})"
+    else:
+        sill = gravity["sill"]
+        measured = (
+            f"{_pct(1.0 - float(sill['share']))} ({_fmt(int(sill['blocked_nodes']))} of "
+            f"{_fmt(int(gravity['nodes']))} nodes sill-blocked; see Drain gravity)"
+        )
+    rows.append(
+        "| Drain graph hydraulic connectivity (no downstream invert above a node's own ground) "
+        f"| no spec target | {measured} | reported |"
+    )
+    return rows
+
+
 def _gravity_section(gravity: dict[str, Any] | None, error: str | None) -> list[str]:
     if gravity is None:
         return [f"Not measured: {error}."]
@@ -488,7 +516,6 @@ def write_report(
     drains = stats.get("drains", {})
     connectivity = float(drains.get("connectivity", 0.0))
     gravity, gravity_error = _gravity(config, grid, nodes, edges, hotspots)
-    sill = (gravity or {}).get("sill") or {}
     units = stats.get("units", {})
     segs = stats.get("segments", {})
     dem = stats.get("dem", {})
@@ -522,19 +549,7 @@ def write_report(
         f"| >= 60 % | {_pct(overlap['share'])} of {overlap['register']} points "
         f"({_pct(overlap['sourced_share'])} of the {overlap['sourced']} sourced) "
         f"| {_verdict(overlap['share'] >= OVERLAP_TARGET)} |",
-        f"| Drain graph connectivity (every node reaches an outfall) | 100 % "
-        f"| {_pct(connectivity)} topologically | {_verdict(connectivity >= 1.0)} |",
-        # The row above counts paths, not gradients. It stays met on a graph whose water cannot
-        # reach the sea without surcharging, so the hydraulic figure sits right under it.
-        "| ...hydraulically: nodes with no downstream invert above their own ground "
-        "| no spec target | "
-        + (
-            f"{_pct(1.0 - float(sill['share']))} ({_fmt(int(sill['blocked_nodes']))} of "
-            f"{_fmt(int(gravity['nodes']))} nodes sill-blocked; see Drain gravity) "
-            if gravity
-            else f"not measured ({gravity_error}) "
-        )
-        + "| reported |",
+        *_connectivity_rows(connectivity, gravity, gravity_error),
         f"| Sourced register points inside the AOI | >= 10 | {hs_stats.get('sourced', 0)} "
         f"| {_verdict(int(hs_stats.get('sourced', 0)) >= 10)} |",
         f"| Surface units inside the 0.5-2 ha cap | >= 90 % | "
