@@ -24,7 +24,11 @@ export interface LayerFadeOptions {
  * for a deck.gl layer's `opacity` prop; keep that layer's data and accessors memoised so a frame
  * of the fade changes nothing but the opacity.
  */
-export function useLayerFade(layerId: string, ready: boolean, options: LayerFadeOptions = {}): number {
+export function useLayerFade(
+  layerId: string,
+  ready: boolean,
+  options: LayerFadeOptions = {},
+): number {
   const { durationMs = DUR_MS.layerFade, reduced } = options;
   const progress = useTween(ready ? layerId : null, durationMs, { reduced });
   return ready ? progress : 0;
