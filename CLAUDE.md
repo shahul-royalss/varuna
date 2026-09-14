@@ -618,6 +618,7 @@ Global easing: `cubic-bezier(0.2, 0.8, 0.2, 1)` for UI; springs (`stiffness 400,
 | M23 | Page navigation | None — instant | — | — | — |
 | M24 | Public map bottom sheet | Drag with rubber-band, snap points | `motion` drag | drag | tap to expand |
 | M25 | Replay radar preview | Radar frames loop at 4 fps (25 frames, 6.25 s), pauses on hover, focus and when the tab is hidden | preloaded images drawn to a canvas via rAF | bundle selected | static middle frame |
+| M26 | Landing hero intro (added 2026-09-14; it shipped in P9.1 without a row) | Globe turns 1.4 s to face Mumbai and unrolls into a flat world map over 2.6 s, then cross-fades 900 ms into the M1 city map once that map's frames are decoded; once per load | interpolated d3 projection on an SVG via rAF (`globe-intro.tsx`); CSS opacity transition (`hero.tsx`) | page load | finished flat map, then a cut to M1's static +120 min frame |
 
 ---
 
