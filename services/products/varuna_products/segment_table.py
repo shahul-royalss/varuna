@@ -9,8 +9,8 @@ row dictionaries, one per segment per step, which pandas then has to take apart 
 This module computes the same frame two ways faster, and **it is only worth having if the answer
 is the same bits**. Every function here is tested against the path it replaces with
 ``np.array_equal`` and ``assert_frame_equal(check_exact=True)`` including dtypes and row order,
-on synthetic fields and on the real Mumbai segment index. It is not wired into ``depth.py`` yet
-(task E9 does that); until then nothing in a run changes.
+on synthetic fields and on the real Mumbai segment index. Since task E9 ``depth.segment_forecast``
+is composed from these functions, and the tests hold both to a frozen copy of the row loop.
 
 **Sampling by group.** A segment's depth is the 90th percentile of the cells in its 15 m buffer
 (``depth.SEGMENT_PERCENTILE``). The segments do not all have the same number of cells, which is
@@ -326,16 +326,18 @@ def segment_points_cached(city_root: Path) -> dict[str, tuple[float, float]]:
     first call is still read. A fresh dict is returned each time: a caller that edits its copy
     cannot change what the next cycle is given."""
     table = Path(city_root) / "segments.parquet"
+    # `_read_segment_points` rather than `segment_points`: since E9 the public function *is* this
+    # memo, so calling it here would recurse.
     try:
         stat = table.stat()
     except OSError:
-        return _depth().segment_points(city_root)
+        return _depth()._read_segment_points(city_root)
     key = table.resolve()
     stamp = (int(stat.st_mtime_ns), int(stat.st_size))
     hit = _POINTS_CACHE.get(key)
     if hit is not None and (hit[0], hit[1]) == stamp:
         return dict(hit[2])
-    points = _depth().segment_points(city_root)
+    points = _depth()._read_segment_points(city_root)
     _POINTS_CACHE[key] = (*stamp, points)
     return dict(points)
 
