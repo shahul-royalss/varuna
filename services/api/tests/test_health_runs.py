@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+from varuna_cycle.registry import RunRegistry
 from varuna_schemas.models import RunMeta
 
 
@@ -113,3 +114,31 @@ def test_cycle_status_reflects_last_run(client: TestClient, baked_run: RunMeta) 
     assert body["run_id"] == baked_run.run_id
     assert body["stage_ms"] == baked_run.stage_ms
     assert body["elapsed_ms"] == baked_run.total_ms
+
+
+def test_served_totals_count_each_stage_once(
+    client: TestClient, registry: RunRegistry, run_meta: RunMeta
+) -> None:
+    """The 09:10 IST baked cycle's stage_ms: the Twin's sub-timings must not be summed again."""
+    stage_ms = {
+        "sky": 5978,
+        "twin": 58462,
+        "twin_hydrology_ms": 612,
+        "twin_surface_ms": 18502,
+        "twin_drain_ms": 30215,
+        "twin_coupling_ms": 5242,
+        "twin_total_ms": 58282,
+        "flash": 226,
+        "products": 6619,
+        "pulse": 5566,
+    }
+    top_level = stage_ms["sky"] + stage_ms["twin"] + stage_ms["flash"]
+    top_level += stage_ms["products"] + stage_ms["pulse"]
+    registry.write_meta(run_meta.model_copy(update={"stage_ms": stage_ms}))
+
+    status = client.get("/v1/cycle/status").json()
+    assert status["elapsed_ms"] == top_level == 76_851
+    assert status["stage_ms"] == stage_ms
+    assert client.get("/v1/runs").json()["runs"][0]["total_ms"] == 76_851
+    assert client.get(f"/v1/runs/{run_meta.run_id}").json()["total_ms"] == 76_851
+    assert client.get("/healthz").json()["last_run"]["total_ms"] == 76_851

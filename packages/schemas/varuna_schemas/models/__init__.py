@@ -155,6 +155,8 @@ from varuna_schemas.models.run import (
     city_code,
     is_run_id,
     parse_run_id,
+    stage_total_ms,
+    top_level_stage_ms,
 )
 from varuna_schemas.models.verification import (
     ContingencyTable,
@@ -419,5 +421,7 @@ __all__ = [
     "city_code",
     "is_run_id",
     "parse_run_id",
+    "stage_total_ms",
     "to_ist",
+    "top_level_stage_ms",
 ]
