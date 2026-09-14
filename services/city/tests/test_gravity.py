@@ -302,3 +302,41 @@ def test_summary_lines_render_every_section() -> None:
     assert "adverse edges: 1" in text
     assert "sill-blocked nodes: 0" in text
     assert "tidal OUT-SEA -> O" in text
+
+
+def test_report_section_puts_the_hydraulic_figure_next_to_topology() -> None:
+    from types import SimpleNamespace
+
+    from varuna_city.report import _gravity, _gravity_section
+
+    nodes = _nodes(
+        [
+            ("A", 5.0, 3.5, None, 0, 0),
+            ("B", 4.0, 2.5, None, 0, 1),
+            ("H", 9.0, 7.0, None, 0, 2),
+            ("O", 3.0, 1.0, "free", 0, 3),
+        ]
+    )
+    edges = _edges([("A", "B", 100.0, 0.01), ("B", "H", 100.0, 0.003), ("H", "O", 100.0, 0.06)])
+    config = SimpleNamespace(min_drain_slope=0.003)
+    grid = SimpleNamespace(transform=TRANSFORM, crs="EPSG:32643")
+
+    audit, error = _gravity(config, grid, nodes, edges, None)  # type: ignore[arg-type]
+    assert error is None
+    assert audit is not None
+    text = "\n".join(_gravity_section(audit, error))
+    assert "| Sill-blocked nodes | 2 of 4 (50.0 %)" in text
+    # B (invert 2.5) -> H (invert 7.0) climbs 4.5 m: the sill is an adverse edge.
+    assert "| Adverse edges (downstream invert above upstream) | 1 of 3" in text
+    assert "| free | 1 | 4 |" in text
+
+
+def test_report_section_says_why_when_there_is_no_graph() -> None:
+    from types import SimpleNamespace
+
+    from varuna_city.report import _gravity, _gravity_section
+
+    grid = SimpleNamespace(transform=TRANSFORM, crs="EPSG:32643")
+    audit, error = _gravity(SimpleNamespace(), grid, None, None, None)  # type: ignore[arg-type]
+    assert audit is None
+    assert _gravity_section(audit, error) == ["Not measured: no drain graph loaded."]
