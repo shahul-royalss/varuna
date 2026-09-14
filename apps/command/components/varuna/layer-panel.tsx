@@ -26,6 +26,9 @@ export interface LayerPanelProps {
   onChange: (key: LayerKey, next: boolean) => void;
   /** Counts from the current run, so a row says what it would draw before you turn it on. */
   counts?: Partial<Record<LayerKey, number>>;
+  /** A sentence under a row while that layer is on: what the run holds that the row draws only in
+   * part (the surcharge row quotes the run's reversed-pipe total). */
+  details?: Partial<Record<LayerKey, string>>;
 }
 
 const ROWS: readonly {
@@ -62,7 +65,7 @@ const ROWS: readonly {
  * data is missing or the map is broken. Routes, probability mode and 3D join this list in the
  * phase that builds them.
  */
-export function LayerPanel({ value, onChange, counts = {} }: LayerPanelProps) {
+export function LayerPanel({ value, onChange, counts = {}, details = {} }: LayerPanelProps) {
   const [open, setOpen] = useState(true);
 
   return (
@@ -87,6 +90,7 @@ export function LayerPanel({ value, onChange, counts = {} }: LayerPanelProps) {
           {ROWS.map((row) => {
             const on = value[row.key];
             const count = counts[row.key];
+            const detail = on ? details[row.key] : undefined;
             return (
               <li key={row.key}>
                 <button
@@ -119,6 +123,9 @@ export function LayerPanel({ value, onChange, counts = {} }: LayerPanelProps) {
                   ) : null}
                   {row.shortcut ? <Kbd>{row.shortcut}</Kbd> : null}
                 </button>
+                {detail ? (
+                  <p className="num px-2 pb-1.5 pl-[42px] type-micro text-text-3">{detail}</p>
+                ) : null}
               </li>
             );
           })}
