@@ -16,7 +16,19 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: 1,
-  reporter: process.env.CI ? [["github"], ["html", { open: "never" }]] : [["list"]],
+  // A ceiling on the whole run in CI, under the job's own step limit, so a run that stalls stops
+  // here and still writes its report instead of being killed with nothing to show (ADR-0043).
+  globalTimeout: process.env.CI ? 15 * 60_000 : 0,
+  // In CI: annotations on the diff, a line per test in the log, the HTML report for the artifact,
+  // and the JSON that `tests/e2e/summary.mjs` turns into the job summary.
+  reporter: process.env.CI
+    ? [
+        ["github"],
+        ["list"],
+        ["html", { open: "never" }],
+        ["json", { outputFile: "playwright-results.json" }],
+      ]
+    : [["list"]],
   outputDir: "./test-results",
   use: {
     baseURL: UI_URL,

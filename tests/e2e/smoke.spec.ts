@@ -1,4 +1,4 @@
-import { expect, test, type ConsoleMessage, type Page } from "@playwright/test";
+import { expect, test, type ConsoleMessage, type Page } from "./requirements";
 
 // Phase 0 smoke: the shell renders, the empty state is honest, no console errors.
 // Waits are generous because the first Turbopack compile of a route can take a while.
@@ -19,21 +19,26 @@ function collectConsoleErrors(page: Page): string[] {
 }
 
 test.describe("Phase 0 shell", () => {
-  test("/console shows the empty-state mode banner and the wordmark", async ({ page }) => {
-    const errors = collectConsoleErrors(page);
-    await page.goto("/console", { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+  // Counts console errors, and the map's road and asset layers 404 without a built city.
+  test(
+    "/console shows the empty-state mode banner and the wordmark",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      const errors = collectConsoleErrors(page);
+      await page.goto("/console", { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
 
-    await expect(page.getByText("No runs yet", { exact: false }).first()).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(page.getByText("VARUNA", { exact: false }).first()).toBeVisible({
-      timeout: 30_000,
-    });
+      await expect(page.getByText("No runs yet", { exact: false }).first()).toBeVisible({
+        timeout: 30_000,
+      });
+      await expect(page.getByText("VARUNA", { exact: false }).first()).toBeVisible({
+        timeout: 30_000,
+      });
 
-    // Give lazy panels (replay panel, tokens, map placeholder) time to settle before judging.
-    await page.waitForTimeout(2_000);
-    expect(errors, `console.error entries on /console:\n${errors.join("\n")}`).toEqual([]);
-  });
+      // Give lazy panels (replay panel, tokens, map placeholder) time to settle before judging.
+      await page.waitForTimeout(2_000);
+      expect(errors, `console.error entries on /console:\n${errors.join("\n")}`).toEqual([]);
+    },
+  );
 
   test("/design responds", async ({ page }) => {
     const response = await page.goto("/design", {

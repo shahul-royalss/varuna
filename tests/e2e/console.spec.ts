@@ -11,7 +11,7 @@
  * looking at the map: deck.gl draws into a canvas, so the only readable evidence that `D`
  * reached the drains layer is the control that reports it.
  */
-import { expect, test, type ConsoleMessage, type Page } from "@playwright/test";
+import { expect, test, type ConsoleMessage, type Page } from "./requirements";
 
 /**
  * Wait until a run is actually loaded, not merely until the shell has painted.
@@ -132,21 +132,26 @@ test.describe("P6.13 the keyboard path", () => {
 });
 
 test.describe("P6.13 states and console cleanliness", () => {
-  test("a full scrub across the window raises no console errors", async ({ page }) => {
-    const errors = collectErrors(page);
-    await page.goto("/console");
-    await waitForRun(page);
+  // Counts console errors, and the map's road and asset layers 404 without a built city.
+  test(
+    "a full scrub across the window raises no console errors",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.goto("/console");
+      await waitForRun(page);
 
-    // Walk the whole -60 -> +180 window in 15-minute steps, which is what an operator does
-    // and what the AC means by "a full replay": every step restyles the map from the run.
-    await page.keyboard.press("Home");
-    for (let step = 0; step < 16; step += 1) {
-      await page.keyboard.press("ArrowRight");
-      await page.waitForTimeout(120);
-    }
+      // Walk the whole -60 -> +180 window in 15-minute steps, which is what an operator does
+      // and what the AC means by "a full replay": every step restyles the map from the run.
+      await page.keyboard.press("Home");
+      for (let step = 0; step < 16; step += 1) {
+        await page.keyboard.press("ArrowRight");
+        await page.waitForTimeout(120);
+      }
 
-    expect(errors, `console errors during a full scrub: ${JSON.stringify(errors)}`).toEqual([]);
-  });
+      expect(errors, `console errors during a full scrub: ${JSON.stringify(errors)}`).toEqual([]);
+    },
+  );
 
   test("an unknown run shows an empty state that says what to do, not a blank map", async ({
     page,
