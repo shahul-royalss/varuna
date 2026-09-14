@@ -38,6 +38,7 @@ statement about the file rather than a slogan.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -107,6 +108,11 @@ PROFILE_TOLERANCE: dict[str, float] = {
 An ambulance is the cautious one at 0.2 (CLAUDE.md 7.4): it turns back on a one-in-five chance,
 because the cost of being wrong is a stranded ambulance rather than a longer drive."""
 
+RASTER_WORKERS = 8
+"""Most threads :func:`write_depth_rasters` encodes PNGs on (fewer on a smaller machine).
+
+The count changes how long the rasters take and never their bytes."""
+
 EXCEEDANCE_CM: tuple[float, ...] = (15.0, 30.0, 45.0, 60.0)
 """Depths the parquet carries an exceedance probability for (CLAUDE.md 11.8, 10.3).
 
@@ -150,6 +156,7 @@ def write_depth_rasters(
     crs: str,
     *,
     stat: str = "p50",
+    workers: int | None = None,
 ) -> list[Path]:
     """One PNG per step through the shared ramp, each with its world file.
 
@@ -157,25 +164,46 @@ def write_depth_rasters(
     there is no water rather than the city being covered by a grey sheet. The world file (.pgw)
     carries the metric georeference for anything that reads the PNG as a GIS raster; the console
     uses ``bounds.json`` instead, because a BitmapLayer wants corners in lon/lat.
+
+    **Encoding in parallel, writing in order** (task P10.4). Each step is encoded to bytes on a
+    thread pool - the ramp lookup is NumPy and Pillow's zlib deflate runs without the GIL - and
+    the files are then written one by one in step order. A PNG's bytes depend only on its pixels
+    and the encoder settings, never on which thread made it or when, so the files are identical
+    to encoding one step after another (rule 8; tested per file by sha256). ``workers=1`` is the
+    sequential path.
     """
+    from concurrent.futures import ThreadPoolExecutor
+    from io import BytesIO
+
     from PIL import Image
 
     out = run_dir / "depth"
     out.mkdir(parents=True, exist_ok=True)
     res, _, left, _, _, top = transform
-    written: list[Path] = []
+    n_steps = int(depth_m.shape[0])
+    # World file: pixel size, rotation terms, then the CENTRE of the top-left pixel, which is
+    # half a cell in from the grid's corner. Writing the corner instead is the classic half-pixel
+    # shift and would put every street 15 m north-west of where it is.
+    world = f"{res}\n0.0\n0.0\n{-res}\n{left + res / 2.0}\n{top - res / 2.0}\n"
 
-    for step in range(depth_m.shape[0]):
+    def encode(step: int) -> bytes:
         rgba = depth_array_to_rgba(depth_m[step], alpha=255, dry_alpha=0)
-        path = out / f"{stat}_{step:02d}.png"
-        Image.fromarray(rgba, mode="RGBA").save(path, optimize=True)
-        # World file: pixel size, rotation terms, then the CENTRE of the top-left pixel, which
-        # is half a cell in from the grid's corner. Writing the corner instead is the classic
-        # half-pixel shift and would put every street 15 m north-west of where it is.
-        (out / f"{stat}_{step:02d}.pgw").write_text(
-            f"{res}\n0.0\n0.0\n{-res}\n{left + res / 2.0}\n{top - res / 2.0}\n", encoding="utf-8"
-        )
-        written.append(path)
+        buffer = BytesIO()
+        Image.fromarray(rgba, mode="RGBA").save(buffer, format="PNG", optimize=True)
+        return buffer.getvalue()
+
+    if workers is None:
+        workers = min(RASTER_WORKERS, os.cpu_count() or 1)
+    workers = max(1, min(int(workers), n_steps or 1))
+
+    written: list[Path] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        # `map` yields in submission order whatever order the threads finish in.
+        for step, data in enumerate(pool.map(encode, range(n_steps))):
+            path = out / f"{stat}_{step:02d}.png"
+            path.write_bytes(data)
+            (out / f"{stat}_{step:02d}.pgw").write_text(world, encoding="utf-8")
+            written.append(path)
 
     (out / "bounds.json").write_text(
         json.dumps(depth_bounds(transform, depth_m.shape[1:], crs), indent=2) + "\n",
@@ -305,61 +333,29 @@ def segment_forecast(
     deterministic depth crosses it. Without it every quantile is the same number and every
     exceedance is 0 or 1, which is what a run of one member honestly has to say.
     """
-    import pandas as pd
+    # Column-wise rather than one Python row per segment per step (task P10.4, ADR-0050). The
+    # module is imported here, not at the top, because it reads this module's constants and
+    # `_member_levels` at call time; importing each other at load would leave one half-built.
+    # Every stage below is tested bitwise against the row loop it replaced, frame dtypes and row
+    # order included, so the parquet this frame becomes is the same bytes (rule 8).
+    from varuna_products import segment_table
 
-    segment_ids, offsets, cells = index
+    segment_ids = index[0]
     n_steps = depth_m.shape[0]
     n_seg = len(segment_ids)
-    flat = depth_m.reshape(n_steps, -1)
 
-    depth_cm = np.zeros((n_steps, n_seg), dtype=np.float64)
-    for k in range(n_seg):
-        lo, hi = int(offsets[k]), int(offsets[k + 1])
-        if hi <= lo:
-            continue
-        picked = flat[:, cells[lo:hi]]
-        depth_cm[:, k] = np.percentile(picked, SEGMENT_PERCENTILE, axis=1) * 100.0
+    # The 90th percentile of each segment's buffer cells, segments with equal cell counts taken
+    # in one call. Every profile's threshold is asked of the probability field too, so a profile
+    # added at a depth the parquet does not carry a column for still gets a probabilistic
+    # safe-until; on a single-member run that probability is 0 or 1, so safe-until reduces to
+    # "first step the depth crosses" and reproduces the deterministic answer.
+    depth_cm = segment_table.sample_segments(depth_m, index)
+    statistics = segment_table.ensemble_statistics(depth_cm, member_depth_cm)
+    blobs = segment_table.safe_until_blobs(statistics.prob, times)
+    frame = segment_table.forecast_frame(run_id, segment_ids, times, statistics, blobs)
+    n_members = statistics.n_members
+    p10, p50, p90 = statistics.p10, statistics.p50, statistics.p90
 
-    # Every profile's threshold is asked of the probability field too, so a profile added at a
-    # depth the parquet does not carry a column for still gets a probabilistic safe-until.
-    thresholds = sorted(set(EXCEEDANCE_CM) | set(PROFILE_THRESHOLD_CM.values()))
-    if member_depth_cm is None:
-        n_members = 1
-        p10 = p50 = p90 = depth_cm
-        prob = {t: (depth_cm > t).astype(np.float64) for t in thresholds}
-    else:
-        level = _member_levels(depth_cm, member_depth_cm)
-        n_members = int(level.shape[0])
-        p10, p50, p90 = np.percentile(level, (10.0, 50.0, 90.0), axis=0)
-        prob = {t: (level > t).mean(axis=0, dtype=np.float64) for t in thresholds}
-
-    rows: list[dict[str, object]] = []
-    for k, seg_id in enumerate(segment_ids):
-        safe_until: dict[str, object] = {}
-        for profile, threshold in PROFILE_THRESHOLD_CM.items():
-            # On a single-member run the probability is 1 above the threshold and 0 below it, so
-            # this reduces to "first step the depth crosses" and reproduces the old answer.
-            risky = np.flatnonzero(prob[threshold][:, k] > PROFILE_TOLERANCE[profile])
-            safe_until[profile] = times[int(risky[0])].isoformat() if risky.size else None
-        blob = json.dumps(safe_until)
-        for step in range(n_steps):
-            rows.append(
-                {
-                    "run_id": run_id,
-                    "segment_id": seg_id,
-                    "valid_ts": times[step],
-                    "depth_p10_cm": float(p10[step, k]),
-                    "depth_p50_cm": float(p50[step, k]),
-                    "depth_p90_cm": float(p90[step, k]),
-                    "p_gt_15": float(prob[15.0][step, k]),
-                    "p_gt_30": float(prob[30.0][step, k]),
-                    "p_gt_45": float(prob[45.0][step, k]),
-                    "p_gt_60": float(prob[60.0][step, k]),
-                    "safe_until": blob,
-                }
-            )
-
-    frame = pd.DataFrame.from_records(rows)
     log.info(
         "products.segment_forecast",
         segments=n_seg,
@@ -461,7 +457,14 @@ def write_wet_segments(
     n_steps = depth_cm.shape[0]
     peak = depth_cm.max(axis=0)
     wet = np.flatnonzero(peak >= WET_THRESHOLD_CM)
-    series = {str(segment_ids[k]): [round(float(v), 1) for v in depth_cm[:, k]] for k in wet}
+    # `.tolist()` hands back the same Python floats `float(v)` would, once per column instead of
+    # one NumPy scalar conversion per value; `round` is then applied exactly as before, so the
+    # JSON is the same bytes (rule 8). np.round is deliberately not used: it is not always the
+    # correctly rounded decimal Python's `round` is, and the file would drift in its last digit.
+    series = {
+        str(segment_ids[k]): [round(v, 1) for v in column]
+        for k, column in zip(wet.tolist(), depth_cm[:, wet].T.tolist(), strict=True)
+    }
     product: dict[str, Any] = {
         "run_id": run_id,
         "valid_ts": [t.isoformat() for t in times],
@@ -493,8 +496,8 @@ def write_wet_segments(
         if uncertain:
             product["p_gt"] = {
                 f"{t:g}": {
-                    str(segment_ids[k]): [_probability(v) for v in field[:, j]]
-                    for j, k in enumerate(wet)
+                    str(segment_ids[k]): [_probability(v) for v in column]
+                    for k, column in zip(wet.tolist(), field.T.tolist(), strict=True)
                 }
                 for t, field in fields.items()
             }
@@ -537,7 +540,20 @@ def segment_points(city_root: Path) -> dict[str, tuple[float, float]]:
     The midpoint of the segment's line rather than its bounding-box centre, so the point is on
     the road even where it bends. Used by alerts (the CAP area circle) and by the pump board,
     which has to dispatch a lorry to a place rather than to an id.
+
+    Memoised in-process on ``segments.parquet``'s mtime and size
+    (:func:`varuna_products.segment_table.segment_points_cached`): reading and reprojecting
+    21,296 lines is about a second, and a bake or a live API process was paying it every cycle
+    for geometry that had not changed. A fresh dict is returned each call, and a rewritten table
+    is read again. The first call in a process still pays it.
     """
+    from varuna_products import segment_table
+
+    return segment_table.segment_points_cached(city_root)
+
+
+def _read_segment_points(city_root: Path) -> dict[str, tuple[float, float]]:
+    """:func:`segment_points` without the memo: the midpoints read from the table every call."""
     import geopandas as gpd
 
     table = city_root / "segments.parquet"
