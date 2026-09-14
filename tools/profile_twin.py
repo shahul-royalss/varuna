@@ -180,9 +180,9 @@ class Hooks:
         after: Callable[[tuple, dict, object], None] | None = None,
         before: Callable[[tuple, dict], None] | None = None,
     ) -> None:
-        original = getattr(owner, name, None)
-        if original is None:
-            return
+        # A missing target raises rather than being skipped: a renamed kernel would otherwise
+        # report 0 s for its stage, which reads as a measurement and is not one.
+        original = getattr(owner, name)
         seconds, calls = self.seconds, self.calls
 
         def timed(*args: Any, **kwargs: Any) -> object:
@@ -468,6 +468,7 @@ def micro(
     threads: list[int],
     repeats: int,
     rounds: int,
+    python_repeats: int | None = None,
 ) -> dict:
     """Per-call best and median of each kernel and of the surface wrapper around them.
 
@@ -616,6 +617,7 @@ def micro(
 
     default_threads = int(numba.get_num_threads())
     max_threads = int(getattr(numba.config, "NUMBA_NUM_THREADS"))  # noqa: B009
+    py_repeats = repeats if python_repeats is None else python_repeats
     result: dict[str, Any] = {
         "mode": "micro",
         "grid": list(kt.shape),
@@ -623,6 +625,7 @@ def micro(
         "n_edges": int(network.n_edges),
         "substep_dt_s": dt,
         "repeats": repeats,
+        "python_repeats": py_repeats,
         "rounds": rounds,
         "threads_default": default_threads,
         "rounds_data": [],
@@ -660,14 +663,16 @@ def micro(
             # here: with the kernels stubbed the only write is the sea clamp, which re-imposes
             # the same level every time, so the state is already the snapshot's. The rewind is
             # harness cost, not solver cost, and is reported on its own.
-            entry["harness_reset_ms"] = best_and_median(reset, repeats)
+            # These calls take well under a millisecond, so 25 samples of them are mostly a sample
+            # of the scheduler on a shared machine: they get their own, larger repeat count.
+            entry["harness_reset_ms"] = best_and_median(reset, py_repeats)
             with hooked() as stubs:
                 stubs.replace(swe2d, "_update_flux", _no_kernel)
                 stubs.replace(swe2d, "_update_depth", _no_kernel)
                 reset()
-                entry["run_surface_python_only"] = best_and_median(run_surface_once, repeats)
+                entry["run_surface_python_only"] = best_and_median(run_surface_once, py_repeats)
                 if stepper_once is not None:
-                    entry["stepper_python_only"] = best_and_median(stepper_once, repeats)
+                    entry["stepper_python_only"] = best_and_median(stepper_once, py_repeats)
                 reset()
             entry["drain_sync_5_steps"] = best_and_median(drain_sync, repeats)
             entry["exchange_call"] = best_and_median(exchange, repeats)
@@ -715,6 +720,12 @@ def main(argv: list[str] | None = None) -> int:
     micro_p.add_argument("--threads", type=_parse_threads, default=[1, 2, 4, 8])
     micro_p.add_argument("--repeats", type=int, default=25)
     micro_p.add_argument("--rounds", type=int, default=2)
+    micro_p.add_argument(
+        "--python-repeats",
+        type=int,
+        default=400,
+        help="samples for the sub-millisecond kernels-stubbed calls",
+    )
 
     args = parser.parse_args(argv)
     if args.quiet_logs:
@@ -762,7 +773,13 @@ def main(argv: list[str] | None = None) -> int:
     with np.load(args.snapshot) as data:
         snap = {k: np.asarray(data[k]) for k in data.files}
     report = micro(
-        terrain, network, snap, threads=args.threads, repeats=args.repeats, rounds=args.rounds
+        terrain,
+        network,
+        snap,
+        threads=args.threads,
+        repeats=args.repeats,
+        rounds=args.rounds,
+        python_repeats=args.python_repeats,
     )
     report["snapshot"] = str(args.snapshot)
     report["command"] = sys.argv if argv is None else ["profile_twin.py", *argv]
