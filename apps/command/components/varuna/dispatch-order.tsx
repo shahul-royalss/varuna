@@ -1,12 +1,14 @@
 import { ClipboardList } from "lucide-react";
 
 import { EmptyState } from "@/components/varuna/empty-state";
+import { MinutesFlow } from "@/components/varuna/minutes-flow";
 import { Panel } from "@/components/varuna/panel";
 import { formatMinutes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /** One move of the plan: this pump, from this depot, to this hotspot. */
 export interface DispatchOrderMove {
+  /** Stable per pump, so a new plan for the same pump rolls its figures instead of remounting. */
   id: string;
   /** Pump id, e.g. "P-12". */
   pumpId: string;
@@ -41,7 +43,9 @@ export function describeMove(move: DispatchOrderMove): string {
 
 /**
  * The dispatch order in plain language (CLAUDE.md section 7.6), one line per pump, ready to be
- * read out to the control room. The optimiser that fills it arrives in Phase 8.
+ * read out to the control room. The ETA and the minutes prevented are the optimiser's and roll
+ * when the plan changes (motion M17); the sentence reads exactly as {@link describeMove} does,
+ * and under reduced motion it is that sentence.
  */
 export function DispatchOrder({ order, className }: DispatchOrderProps) {
   const moves = order?.moves ?? [];
@@ -61,8 +65,12 @@ export function DispatchOrder({ order, className }: DispatchOrderProps) {
       ) : (
         <ol className="flex flex-col gap-2">
           {moves.map((move) => (
-            <li key={move.id} className="rounded-control border border-line bg-ink p-3">
-              <p className="type-body text-text">{describeMove(move)}</p>
+            <li key={move.id} className="rounded-control border-line bg-ink border p-3">
+              <p className="num type-body text-text">
+                Move {move.pumpId} from {move.from} to {move.to} now; ETA{" "}
+                <MinutesFlow value={move.etaMinutes} />; prevents about{" "}
+                <MinutesFlow value={move.minutesAvoided} /> above 45 cm.
+              </p>
             </li>
           ))}
         </ol>
