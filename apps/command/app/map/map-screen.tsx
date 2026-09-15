@@ -222,7 +222,8 @@ export function MapScreen() {
 
         <Button
           size="lg"
-          className="absolute right-4 z-30 h-11"
+          // Under the sheet (z-20), so an opened sheet is not read through a button over its rows.
+          className="absolute right-4 z-10 h-11"
           style={{ bottom: 112 }}
           render={<Link href={REPORT_ROUTE} />}
           nativeButton={false}

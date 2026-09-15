@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsClient } from "@/lib/hooks/use-is-client";
 import { cn } from "@/lib/utils";
 import { formatSpeed } from "@/lib/format";
 import { selectSimDateLabel, selectSimTimeLabel, useReplayStore } from "@/lib/stores/replay";
@@ -47,15 +48,20 @@ export function degradedLabel(feeds: readonly string[] | undefined): string {
  */
 export function ModeBanner({ mode: modeProp, label: labelProp, className }: ModeBannerProps) {
   const storeMode = useRunStore((s) => s.mode);
-  const status = useRunStore((s) => s.status);
+  const storeStatus = useRunStore((s) => s.status);
   const currentRun = useRunStore((s) => s.currentRun);
   const speed = useReplayStore((s) => s.speed);
   const dateLabel = useReplayStore(selectSimDateLabel);
   const timeLabel = useReplayStore(selectSimTimeLabel);
 
-  const mode: SystemMode = modeProp ?? storeMode;
-
   const errorMessage = useRunStore((s) => s.errorMessage);
+  // The server render and the hydration pass happen before the registry has been asked, so the
+  // store's initial "none" is not an answer yet. Treat it as loading until the client takes over.
+  const isClient = useIsClient();
+  const status =
+    !isClient && modeProp === undefined && storeStatus === "none" ? "loading" : storeStatus;
+
+  const mode: SystemMode = modeProp ?? storeMode;
 
   let label = labelProp;
   // Only the store's own "none" can be loading or failed; an explicit prop is taken as said.
