@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/varuna/skeleton";
+import { useIsClient } from "@/lib/hooks/use-is-client";
 import { cn } from "@/lib/utils";
 import { formatMs, shortenRunId } from "@/lib/format";
 import { totalStageMs, useRunStore } from "@/lib/stores/run";
@@ -19,7 +20,10 @@ export interface RunStampProps {
  */
 export function RunStamp({ className }: RunStampProps) {
   const run = useRunStore((s) => s.currentRun);
-  const status = useRunStore((s) => s.status);
+  const storeStatus = useRunStore((s) => s.status);
+  // Before hydration the registry has not been asked; the store's initial "none" is no answer.
+  const isClient = useIsClient();
+  const status = !isClient && storeStatus === "none" ? "loading" : storeStatus;
 
   if (!run && status === "loading") {
     // A shimmer while the registry answers: "No run" before it has is a guess.

@@ -133,21 +133,31 @@ const UNREACHABLE_STATUS = new Set([502, 503, 504]);
 /**
  * How long a served score is waited for before the API counts as unreachable.
  *
- * `/v1/verification` scores the event on every request: 33 s on a cold local API and 9-10 s warm,
- * measured 2026-09-15 on the seven demo runs. A tight timeout would therefore fall back on nearly
- * every page load, which is why the chip shows the committed copy in the meantime
- * (`INTERIM_AFTER_MS`) and keeps waiting for the real answer.
+ * `/v1/verification` scores the event on every request: 33 s on a cold local API, 9-10 s warm, and
+ * 67.6 s while the same API was serving a console's run load, measured 2026-09-15 on the seven
+ * demo runs. A tight timeout would fall back on nearly every page load and call a busy API
+ * unreachable, which is why the chip shows the committed copy in the meantime
+ * (`INTERIM_AFTER_MS`) and keeps waiting this long for the real answer.
  */
-export const VERIFICATION_TIMEOUT_MS = 60_000;
+export const VERIFICATION_TIMEOUT_MS = 180_000;
 
 /** How long the chip shimmers before it shows the committed copy while the API is still scoring. */
 export const INTERIM_AFTER_MS = 4_000;
 
+/** Thrown when the ceiling passes: the API may be busy rather than gone, and the copy says which. */
+class VerificationTimeout extends Error {}
+
 async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     return await fetch(url, { signal: controller.signal });
+  } catch (error) {
+    throw timedOut ? new VerificationTimeout() : error;
   } finally {
     clearTimeout(timer);
   }
@@ -201,8 +211,14 @@ export async function fetchServedHeadline(
   let response: Response;
   try {
     response = await fetchWithTimeout(url, timeoutMs);
-  } catch {
-    return { kind: "unreachable", why: "The API is unreachable." };
+  } catch (error) {
+    return {
+      kind: "unreachable",
+      why:
+        error instanceof VerificationTimeout
+          ? `The API did not answer within ${Math.round(timeoutMs / 1000)} s.`
+          : "The API is unreachable.",
+    };
   }
   if (UNREACHABLE_STATUS.has(response.status)) {
     return { kind: "unreachable", why: `The API answered ${response.status}.` };

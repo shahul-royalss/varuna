@@ -13,7 +13,7 @@
  * so it never overwrites a run that is already loaded.
  */
 
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 import { apiUrl } from "@/lib/api/client";
 import { useRunStore, type RunMeta } from "@/lib/stores/run";
@@ -22,7 +22,9 @@ import { useRunStore, type RunMeta } from "@/lib/stores/run";
 type RegistryRun = Omit<RunMeta, "mode" | "replay_mode"> & { mode: string; replay_mode: string };
 
 export function useLatestRun(): void {
-  useEffect(() => {
+  // A layout effect, so "loading" is in the store before the first client paint: the banner's
+  // hydration pass reads loading, and a passive effect would leave one frame of "No runs yet".
+  useLayoutEffect(() => {
     const controller = new AbortController();
     const store = useRunStore.getState;
     // While the registry is being asked, the chrome says so. "No runs yet" before the answer is a

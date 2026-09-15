@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ModeBanner, degradedLabel } from "@/components/varuna/mode-banner";
@@ -78,6 +79,13 @@ describe("ModeBanner", () => {
       "title",
       "The API is unreachable, so the run registry could not be read.",
     );
+  });
+
+  it("renders 'Loading run' on the server, before the registry has been asked", () => {
+    // The store starts at "none"; the server has not asked the registry, so that is no answer.
+    const html = renderToString(<ModeBanner />);
+    expect(html).toContain("Loading run");
+    expect(html).not.toContain("No runs yet");
   });
 
   it("honours explicit props over the stores", () => {
