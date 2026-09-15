@@ -171,8 +171,9 @@ export const isochrones: Isochrone[] = [
 ];
 
 export const truthPins: TruthPin[] = [
-  { id: "P-1", lon: 72.858, lat: 19.032, name: "Gandhi Market", age: 0.5 },
-  { id: "P-2", lon: 72.84, lat: 19.079, name: "Milan subway", age: 1 },
+  // Gandhi Market began dropping at 700 ms on the tests' mocked clock; Milan subway has landed.
+  { id: "P-1", lon: 72.858, lat: 19.032, name: "Gandhi Market", dropStartMs: 700 },
+  { id: "P-2", lon: 72.84, lat: 19.079, name: "Milan subway" },
 ];
 
 export const labels: MapLabel[] = [

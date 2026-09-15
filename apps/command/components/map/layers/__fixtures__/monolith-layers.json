@@ -733,19 +733,25 @@
     "widthUnits": "pixels"
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -754,28 +760,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -794,27 +831,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -1576,19 +1600,25 @@
     "widthUnits": "pixels"
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -1597,28 +1627,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -1637,27 +1698,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -2320,19 +2368,25 @@
     "widthUnits": "pixels"
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -2341,28 +2395,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -2381,27 +2466,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -3016,19 +3088,25 @@
     "stroked": true
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -3037,28 +3115,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -3077,27 +3186,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -3726,19 +3822,25 @@
     "stroked": true
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -3747,28 +3849,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -3787,27 +3920,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -5054,19 +5174,25 @@
     "widthUnits": "pixels"
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -5075,28 +5201,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -5115,27 +5272,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -5917,19 +6061,25 @@
     "widthUnits": "pixels"
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -5938,28 +6088,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -5978,27 +6159,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -6780,19 +6948,25 @@
     "widthUnits": "pixels"
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -6801,28 +6975,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -6841,27 +7046,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -7587,44 +7779,6 @@
     "widthUnits": "pixels"
    },
    {
-    "id": "truth-ripples",
-    "class": "ScatterplotLayer",
-    "async:data": {
-     "length": 1
-    },
-    "filled": false,
-    "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
-    ],
-    "getLineWidth": 2,
-    "getPosition": [
-     [
-      72.858,
-      19.032
-     ]
-    ],
-    "getRadius": [
-     195
-    ],
-    "lineWidthUnits": "pixels",
-    "pickable": false,
-    "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
-   },
-   {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
@@ -7654,21 +7808,12 @@
       19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
@@ -8450,19 +8595,25 @@
     "widthUnits": "pixels"
    },
    {
-    "id": "truth-ripples",
+    "id": "truth-ripple-P-1",
     "class": "ScatterplotLayer",
     "async:data": {
      "length": 1
     },
+    "dropPart": "ripple",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": false,
     "getLineColor": [
-     [
-      45,
-      212,
-      191,
-      110
-     ]
+     45,
+     212,
+     191,
+     220
     ],
     "getLineWidth": 2,
     "getPosition": [
@@ -8471,28 +8622,59 @@
       19.032
      ]
     ],
-    "getRadius": [
-     195
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getLineColor": [
-      0.5
-     ],
-     "getRadius": [
-      0.5
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "truth-pins",
     "class": "ScatterplotLayer",
     "async:data": {
-     "length": 2
+     "length": 1
     },
+    "filled": true,
+    "getFillColor": [
+     255,
+     255,
+     255,
+     255
+    ],
+    "getLineColor": [
+     45,
+     212,
+     191,
+     255
+    ],
+    "getLineWidth": 2,
+    "getPosition": [
+     [
+      72.84,
+      19.079
+     ]
+    ],
+    "getRadius": 70,
+    "lineWidthUnits": "pixels",
+    "pickable": false,
+    "radiusMinPixels": 4,
+    "radiusUnits": "meters",
+    "stroked": true
+   },
+   {
+    "id": "truth-drop-P-1",
+    "class": "ScatterplotLayer",
+    "async:data": {
+     "length": 1
+    },
+    "dropPart": "pin",
+    "dropStartMs": 700,
+    "extensions": [
+     {
+      "class": "TruthDropExtension",
+      "opts": null
+     }
+    ],
     "filled": true,
     "getFillColor": [
      255,
@@ -8511,27 +8693,14 @@
      [
       72.858,
       19.032
-     ],
-     [
-      72.84,
-      19.079
      ]
     ],
-    "getRadius": [
-     54.25,
-     70
-    ],
+    "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
-    "stroked": true,
-    "updateTriggers": {
-     "getRadius": [
-      0.5,
-      1
-     ]
-    }
+    "stroked": true
    },
    {
     "id": "place-labels",
