@@ -80,6 +80,9 @@ export function AlertsScreen() {
   const shownRef = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(NO_FRESH);
   const [batch, setBatch] = useState(0);
+  // The cycle `raised` was loaded for (null before the first load). Between a pick and its answer
+  // the queue on screen still belongs to the previous cycle.
+  const [queueRunId, setQueueRunId] = useState<string | undefined | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -89,6 +92,7 @@ export function AlertsScreen() {
         const nextFresh = freshAlertIds(shownRef.current, next);
         shownRef.current = alertIdentities(next);
         setRaised(next);
+        setQueueRunId(runId);
         setFresh(nextFresh);
         if (nextFresh.size > 0) setBatch((current) => current + 1);
       })
@@ -98,6 +102,7 @@ export function AlertsScreen() {
         if (controller.signal.aborted) return;
         if (shownRef.current !== null) shownRef.current = new Set();
         setRaised([]);
+        setQueueRunId(runId);
         setFresh(NO_FRESH);
       });
     return () => controller.abort();
@@ -112,8 +117,10 @@ export function AlertsScreen() {
     setCapXml(null);
   }, []);
 
-  // The CAP document of whichever alert is selected, defaulting to the worst one raised.
-  const active = selectedId ?? raised[0]?.id ?? null;
+  // The CAP document of whichever alert is selected, defaulting to the worst one raised. Only once
+  // the queue belongs to the picked cycle: asking the new run for an alert id minted by the old
+  // one is a 404, and a console error on every change of cycle.
+  const active = queueRunId === runId ? (selectedId ?? raised[0]?.id ?? null) : null;
   useEffect(() => {
     if (!active) return;
     const controller = new AbortController();
