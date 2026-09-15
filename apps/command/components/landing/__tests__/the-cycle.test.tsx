@@ -97,7 +97,9 @@ describe("TheCycle", () => {
     respond("ok");
     const { container } = render(<TheCycle />);
     act(() => enterViewport());
-    await waitFor(() => expect(timingOf(container, "twin")).toBe(formatMs(committed.stage_ms.twin)));
+    await waitFor(() =>
+      expect(timingOf(container, "twin")).toBe(formatMs(committed.stage_ms.twin)),
+    );
     expect(timingOf(container, "sky")).toBe(formatMs(committed.stage_ms.sky));
     expect(timingOf(container, "flash")).toBe(formatMs(committed.stage_ms.flash));
     expect(timingOf(container, "ingest")).toBe("Not timed");
@@ -132,7 +134,9 @@ describe("TheCycle", () => {
     const { container } = render(<TheCycle />);
     act(() => enterViewport());
     await waitFor(() =>
-      expect(container.querySelectorAll('path[data-beam="track"]')).toHaveLength(CYCLE_BEAMS.length),
+      expect(container.querySelectorAll('path[data-beam="track"]')).toHaveLength(
+        CYCLE_BEAMS.length,
+      ),
     );
     const tracks = [...container.querySelectorAll('path[data-beam="track"]')];
     expect(tracks.every((path) => path.getAttribute("marker-end")?.startsWith("url(#"))).toBe(true);
@@ -145,7 +149,9 @@ describe("TheCycle", () => {
     respond("ok");
     const { container } = render(<TheCycle />);
     await waitFor(() =>
-      expect(container.querySelectorAll('path[data-beam="track"]')).toHaveLength(CYCLE_BEAMS.length),
+      expect(container.querySelectorAll('path[data-beam="track"]')).toHaveLength(
+        CYCLE_BEAMS.length,
+      ),
     );
     expect(container.querySelector('[data-beam="travel"]')).toBeNull();
     act(() => enterViewport());

@@ -35,7 +35,11 @@ export class IntersectionObserverStub {
   enter() {
     const entries = [...this.elements].map(
       (target) =>
-        ({ target, isIntersecting: true, intersectionRatio: 1 }) as unknown as IntersectionObserverEntry,
+        ({
+          target,
+          isIntersecting: true,
+          intersectionRatio: 1,
+        }) as unknown as IntersectionObserverEntry,
     );
     if (entries.length) this.callback(entries, this as unknown as IntersectionObserver);
   }

@@ -83,7 +83,12 @@ describe("the node-to-stage mapping", () => {
 describe("readCycleStatus", () => {
   it("reads the endpoint's shape and drops values that are not numbers", () => {
     const timings = readCycleStatus(
-      { run_id: "r", stage_ms: { sky: 5, twin: "slow" }, budget_ms: { sky: 9 }, total_budget_ms: 15 },
+      {
+        run_id: "r",
+        stage_ms: { sky: 5, twin: "slow" },
+        budget_ms: { sky: 9 },
+        total_budget_ms: 15,
+      },
       "live",
     );
     expect(timings).toMatchObject({ runId: "r", stageMs: { sky: 5 }, totalBudgetMs: 15 });
@@ -148,9 +153,14 @@ describe("beamSegment", () => {
   });
 
   it("draws nothing for unlaid-out or overlapping boxes", () => {
-    expect(beamSegment({ x: 0, y: 0, width: 0, height: 0 }, { x: 9, y: 9, width: 9, height: 9 })).toBeNull();
     expect(
-      beamSegment({ x: 0, y: 0, width: 100, height: 100 }, { x: 50, y: 0, width: 100, height: 100 }),
+      beamSegment({ x: 0, y: 0, width: 0, height: 0 }, { x: 9, y: 9, width: 9, height: 9 }),
+    ).toBeNull();
+    expect(
+      beamSegment(
+        { x: 0, y: 0, width: 100, height: 100 },
+        { x: 50, y: 0, width: 100, height: 100 },
+      ),
     ).toBeNull();
   });
 });
