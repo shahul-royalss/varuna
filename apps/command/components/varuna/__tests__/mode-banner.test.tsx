@@ -57,6 +57,29 @@ describe("ModeBanner", () => {
     );
   });
 
+  it("says the run is loading, not that there are none, while the registry is asked", () => {
+    useRunStore.getState().setStatus("loading");
+    render(<ModeBanner />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Loading run");
+    expect(status).not.toHaveTextContent("No runs yet");
+    expect(status).toHaveAttribute("data-status", "loading");
+  });
+
+  it("says the registry could not be read, and why, instead of 'No runs yet'", () => {
+    useRunStore
+      .getState()
+      .setStatus("error", "The API is unreachable, so the run registry could not be read.");
+    render(<ModeBanner />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Runs unavailable");
+    expect(status).not.toHaveTextContent("No runs yet");
+    expect(status).toHaveAttribute(
+      "title",
+      "The API is unreachable, so the run registry could not be read.",
+    );
+  });
+
   it("honours explicit props over the stores", () => {
     useRunStore.getState().setRun(baseRun);
     render(<ModeBanner mode="live" label="Live · Chennai" />);

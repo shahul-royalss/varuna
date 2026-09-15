@@ -27,13 +27,23 @@ describe("AppShell", () => {
     useUiStore.getState().closeOverlays();
   });
 
-  it("renders the top bar, the rail and the children", () => {
+  it("renders the top bar, the rail and the children", async () => {
+    // An empty registry. The banner reads "Loading run" until it answers, then "No runs yet".
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ runs: [] }), { status: 200 })),
+    );
     renderShell();
     expect(screen.getByText("Map canvas")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Screens" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "VARUNA console" })).toHaveAttribute("href", "/console");
-    expect(screen.getByRole("status")).toHaveTextContent("No runs yet");
+    expect(screen.getByRole("link", { name: "VARUNA console" })).toHaveAttribute(
+      "href",
+      "/console",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Loading run");
+    expect(await screen.findByText("No runs yet")).toBeInTheDocument();
     expect(screen.getByText("No run")).toBeInTheDocument();
+    vi.unstubAllGlobals();
     expect(screen.getByRole("button", { name: "Switch city" })).toHaveTextContent("Mumbai");
   });
 

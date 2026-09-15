@@ -24,16 +24,31 @@ type RegistryRun = Omit<RunMeta, "mode" | "replay_mode"> & { mode: string; repla
 export function useLatestRun(): void {
   useEffect(() => {
     const controller = new AbortController();
+    const store = useRunStore.getState;
+    // While the registry is being asked, the chrome says so. "No runs yet" before the answer is a
+    // claim nobody has checked, and the deployed registry has taken 18 s to answer.
+    if (!store().currentRun) store().setStatus("loading");
+    /** Settle a non-run answer, unless someone drew a run in the meantime. */
+    const settle = (status: "none" | "error", message?: string) => {
+      if (store().currentRun || controller.signal.aborted) return;
+      store().setStatus(status, message ?? null);
+    };
     (async () => {
       try {
         const response = await fetch(apiUrl("/v1/runs?limit=1"), { signal: controller.signal });
-        if (!response.ok) return;
+        if (!response.ok) {
+          settle("error", `The run registry answered HTTP ${response.status}.`);
+          return;
+        }
         const body = (await response.json()) as { runs?: RegistryRun[] };
         const run = body.runs?.[0];
-        if (!run) return;
+        if (!run) {
+          settle("none");
+          return;
+        }
         // Whoever drew a run wins: this is a fallback, not a source of truth.
-        if (useRunStore.getState().currentRun) return;
-        useRunStore.getState().setRun({
+        if (store().currentRun) return;
+        store().setRun({
           run_id: run.run_id,
           city: run.city,
           cycle_ts: run.cycle_ts,
@@ -51,9 +66,13 @@ export function useLatestRun(): void {
           versions: run.versions,
         });
       } catch {
-        // The chrome's empty state already says there is no run and how to make one.
+        settle("error", "The API is unreachable, so the run registry could not be read.");
       }
     })();
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      // Unmounting mid-request must not leave the next screen's banner stuck on "Loading run".
+      if (!store().currentRun && store().status === "loading") store().setStatus("none");
+    };
   }, []);
 }
