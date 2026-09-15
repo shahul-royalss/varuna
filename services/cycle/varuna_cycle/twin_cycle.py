@@ -536,6 +536,8 @@ def run_cycle(
 
     if tide is not None and "illustrative" in tide.source.lower():
         notes.append(f"Tide series is {tide.source}, not a published tide table (rule 7).")
+    if tide is not None and tide.datum_note:
+        notes.append(tide.datum_note)
 
     bounds = depth_bounds(terrain.transform, terrain.shape, terrain.crs)
     meta = RunMeta(

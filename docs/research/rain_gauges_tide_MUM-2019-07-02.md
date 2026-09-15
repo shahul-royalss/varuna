@@ -290,6 +290,34 @@ Typical spring-tide range for Mumbai for a sanity check: **NOT FOUND** with a ci
 nearest defensible anchor in hand is the 4.59-4.92 m high water above (heights above chart datum, datum not stated
 in the sources) - use that, and cite the tide table once obtained rather than quoting a range without a source.
 
+### 3.2 The datum: chart datum to the DEM's frame (verified 2026-09-14)
+
+`tide.csv` stays in **chart datum**, as sourced. That is an assumption, not a finding: neither the 4.92 m nor the
+4.59 m statement names its datum, and tide heights in Indian port tables are conventionally above chart datum. The
+terrain the Twin runs on is not in that frame. Copernicus DEM GLO-30 heights are relative to the EGM2008 geoid -
+source_url: https://dataspace.copernicus.eu/sites/default/files/media/files/2024-06/geo1988-copernicusdem-spe-002_producthandbook_i5.0.pdf,
+which states "The vertical reference datum is the Earth Gravitational Model 2008 (EGM2008; EPSG 3855)."
+
+The offset between the two comes from PSMSL station 43, Bombay (Apollo Bandar):
+
+- source_url: https://psmsl.org/data/obtaining/stations/43.php - the station notes put RLR(1964) 13.0 m below
+  benchmark BM 2(PP)(1), and BM 2PP1 8.522 m above chart datum for data from 1937 onwards. So RLR = chart datum -
+  4.478 m.
+- source_url: https://psmsl.org/data/obtaining/rlr.annual.data/43.rlrdata - annual mean sea level in mm above RLR:
+  7,141 (2015), 7,154 (2017), 7,207 (2020), 7,211 (2024), which is 2.663, 2.676, 2.729 and 2.733 m above chart
+  datum. 2019 has no annual value (2016, 2018, 2019 and 2021-2023 are all missing).
+
+Interpolating 2017 and 2020 gives 2.711 m for 2019. **The bundle uses 2.70 m, range 2.66-2.73 m** (the 2015-2024
+span), and records the derivation, both PSMSL URLs, the DEM's datum with its source and the residual in
+`manifest.json` under `tide_datum`. `varuna_twin.city.load_tide` subtracts the 2.70 m once when the manifest declares
+a chart-datum stage, so in the DEM's frame the 05:40-09:40 IST stage runs from -2.655 m to +1.236 m instead of
+0.045 m to 3.936 m; the replay clock's `tide.stage` events carry the datum label and the converted stage beside the
+sourced one. A bundle with no `tide_datum` is read exactly as written.
+
+**Not quantified:** the separation between the EGM2008 geoid and local mean sea level at Mumbai. The conversion
+puts the stage at mean sea level and treats that as the DEM's frame, so any geoid-to-sea-level offset - and any
+revision of the Apollo Bandar chart datum since PSMSL's note - stays in the tidal boundary as an unmeasured bias.
+
 ---
 
 ## 4. IMD Doppler weather radar, Mumbai
