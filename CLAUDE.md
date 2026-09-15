@@ -1117,7 +1117,7 @@ Tick boxes per the protocol in §0. Task IDs are stable; reference them in commi
 **Rehearsal checklist**
 
 - [ ] Every step reachable by clicks or the command palette; no terminal
-- [ ] The replay is pre-seeked to 06:40 and paused on load; Play is the first click
+- [ ] The replay is pre-seeked to 06:40 and paused on load; Play is the first click (partial, 2026-09-16: `/console` with no `?run=` opens on the 06:40 cycle, paused, instead of the newest run (09:10, the calm cycle after the storm), and the map holds its load until it knows which run to ask for. The API's replay clock still boots at the bundle's 05:40 opening, so the mode banner and the map read different times until one clock drives both. Play at the end of the window used to do nothing on the shared deployed clock; it now starts the window again)
 - [ ] Sound on for the phone mock; phone mock visible on the second screen if available
 - [ ] A physical phone receives the alert only if a real sender is configured; otherwise the on-screen mock is the story
 - [ ] Fallback video ready on both laptops; offline package verified the morning of the finale

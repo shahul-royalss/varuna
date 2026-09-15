@@ -61,6 +61,8 @@ export interface FloodMapProps {
   onLoaded?: (run: RunDepth) => void;
   /** The load's state whenever it changes, for a screen that words its own honesty line. */
   onStatus?: (kind: FloodMapStatusKind) => void;
+  /** Hold the run load until the screen knows which run to ask for; the loading state shows. */
+  deferLoad?: boolean;
   /** The run's ranked hotspots, drawn as 120 m rings (section 6.7). */
   hotspots?: readonly Hotspot[];
   selectedHotspotId?: string | null;
@@ -108,6 +110,7 @@ export function FloodMap({
   step,
   onLoaded,
   onStatus,
+  deferLoad = false,
   hotspots: ranked = [],
   selectedHotspotId = null,
   surcharge: surchargeSet = null,
@@ -133,6 +136,7 @@ export function FloodMap({
   const loadedRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (deferLoad) return;
     const controller = new AbortController();
     let cancelled = false;
 
@@ -169,7 +173,7 @@ export function FloodMap({
       cancelled = true;
       controller.abort();
     };
-  }, [city, runId, attempt, onLoaded]);
+  }, [city, runId, attempt, onLoaded, deferLoad]);
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
 

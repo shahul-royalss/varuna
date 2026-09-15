@@ -93,7 +93,7 @@ STREAM_TOPICS: Final[tuple[str, ...]] = (
 )
 """Bundle streams, in the blueprint's topic names (CLAUDE.md 11.11)."""
 
-END_NOTE: Final[str] = "The replay reached the end of the window. Seek back, then press Play."
+END_NOTE: Final[str] = "The replay reached the end of the window. Press Play to run it again."
 LIVE_NOTE: Final[str] = (
     "Live compute lands in Phase 5 (task P5.6). The clock is triggering cycles; "
     "nothing is computing them yet."
@@ -540,12 +540,17 @@ class ReplayClock:
 
     # ---- controls --------------------------------------------------------
     async def play(self) -> ReplayClockState:
-        """Start advancing. At the end of the window it says so instead of pretending."""
+        """Start advancing. At the end of the window, go back to the start and run it again.
+
+        The clock is shared: one visitor who plays the window to its end must not leave the next
+        one parked at 09:40 with a Play button that does nothing.
+        """
         with self._lock:
             now = self._sim_locked()
             if now >= self.t1:
-                self._note = END_NOTE
-            elif not self._playing:
+                self._rewind_locked()
+                now = self.t0
+            if not self._playing:
                 self._playing = True
                 self._note = None
                 self._anchor(now)
@@ -595,15 +600,18 @@ class ReplayClock:
     async def rewind(self) -> ReplayClockState:
         """Back to the start of the window for a fresh pass: every stream and cycle fires again."""
         with self._lock:
-            self._playing = False
-            self._anchor(self.t0)
-            self._fired_events.clear()
-            self._fired_cycles.clear()
-            self._last_run_id = None
-            self._note = None
-            self._announced_minute = None
+            self._rewind_locked()
         await self.announce()
         return self.snapshot()
+
+    def _rewind_locked(self) -> None:
+        self._playing = False
+        self._anchor(self.t0)
+        self._fired_events.clear()
+        self._fired_cycles.clear()
+        self._last_run_id = None
+        self._note = None
+        self._announced_minute = None
 
     # ---- the loop --------------------------------------------------------
     async def start(self) -> None:
