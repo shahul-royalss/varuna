@@ -40,11 +40,11 @@ from varuna_schemas.paths import bundles_dir, city_dir, repo_root
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from numpy.typing import NDArray
-    from varuna_twin.types import TwinResult
+    from varuna_twin.types import TideSeries, TwinResult
 
 log = structlog.get_logger("varuna.cycle.twin")
 
-__all__ = ["CycleResult", "run_cycle"]
+__all__ = ["CycleResult", "run_cycle", "tide_notes"]
 
 SKY_VERSION = "1.0"
 TWIN_VERSION = "1.0"
@@ -111,6 +111,22 @@ def _is_design_storm(bundle: str) -> bool:
         return bool(getattr(load_manifest(bundle), "design_storm", None))
     except Exception:
         return False
+
+
+def tide_notes(tide: TideSeries | None) -> list[str]:
+    """The run notes the tide contributes: its rule-7 label, then its datum conversion.
+
+    Kept apart from :func:`run_cycle` so the notes a run publishes about its sea boundary can be
+    checked on a bundle's ``tide.csv`` and manifest without a Twin run.
+    """
+    if tide is None:
+        return []
+    notes: list[str] = []
+    if "illustrative" in tide.source.lower():
+        notes.append(f"Tide series is {tide.source}, not a published tide table (rule 7).")
+    if tide.datum_note:
+        notes.append(tide.datum_note)
+    return notes
 
 
 def _design_storm_rain(bundle: str, cycle_ts: datetime | None, city: str, n_steps: int):
@@ -534,10 +550,7 @@ def run_cycle(
             "spatial structure, so nowcasting one says more about the noise model than the storm."
         )
 
-    if tide is not None and "illustrative" in tide.source.lower():
-        notes.append(f"Tide series is {tide.source}, not a published tide table (rule 7).")
-    if tide is not None and tide.datum_note:
-        notes.append(tide.datum_note)
+    notes.extend(tide_notes(tide))
 
     bounds = depth_bounds(terrain.transform, terrain.shape, terrain.crs)
     meta = RunMeta(
