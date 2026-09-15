@@ -719,14 +719,14 @@ def _feature_lonlat(
 
 
 def _check_honesty(
-    report: ValidationReport, manifest: BundleManifest, layout: BundleLayout | None = None
+    report: ValidationReport, manifest: BundleManifest, layout: BundleLayout
 ) -> None:
     report.ran("B9")
     # The tide's vertical datum is a labelled assumption like the calibration basis: a stage
     # above chart datum read as if it were in the DEM's frame floods the coast by metres. B2
     # already validates a declared block; this says out loud when a tide carries none, and
     # when a block describes a tide the bundle does not have.
-    has_tide = layout is not None and layout.tide.exists()
+    has_tide = layout.tide.exists()
     if has_tide and manifest.tide_datum is None:
         report.add(
             "B9",
@@ -735,7 +735,7 @@ def _check_honesty(
             "tide.csv is present but tide_datum is not, so every consumer reads stage_m as "
             "already in the DEM's frame",
         )
-    if layout is not None and not has_tide and manifest.tide_datum is not None:
+    if not has_tide and manifest.tide_datum is not None:
         report.add(
             "B9",
             "error",

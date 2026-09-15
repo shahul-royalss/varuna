@@ -314,6 +314,13 @@ a chart-datum stage, so in the DEM's frame the 05:40-09:40 IST stage runs from -
 0.045 m to 3.936 m; the replay clock's `tide.stage` events carry the datum label and the converted stage beside the
 sourced one. A bundle with no `tide_datum` is read exactly as written.
 
+Two caveats from the same PSMSL pages travel with the number: the station notes say that in 1966 the benchmark was
+changed to BM 5/88, 7.44 m above chart datum, and the rlrdata file flags the 2020 and 2024 annual values - two of the
+four used - `Y`, which source_url: https://psmsl.org/data/obtaining/notes.php defines as a monthly value missing from
+the average or at least 30 missing days in the year; neither changes the 2.70 m or the 2.66-2.73 m range, because the
+flagged means are used as PSMSL publishes them and the RLR series is PSMSL's reduction to one datum across the
+benchmark change.
+
 **Not quantified:** the separation between the EGM2008 geoid and local mean sea level at Mumbai. The conversion
 puts the stage at mean sea level and treats that as the DEM's frame, so any geoid-to-sea-level offset - and any
 revision of the Apollo Bandar chart datum since PSMSL's note - stays in the tidal boundary as an unmeasured bias.
