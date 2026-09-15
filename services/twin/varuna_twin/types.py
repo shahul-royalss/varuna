@@ -33,6 +33,7 @@ Sign conventions that have bitten this kind of model before, fixed here:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
@@ -50,8 +51,10 @@ __all__ = [
     "SurfaceState",
     "TerrainGrid",
     "TideSeries",
+    "TwinFingerprint",
     "TwinInputs",
     "TwinResult",
+    "TwinState",
 ]
 
 GRAVITY = 9.81
@@ -282,14 +285,176 @@ class MassBalance:
     """
 
     volume_in_m3: float
+    """Water that entered the domain **during the run**. Never the water already in it."""
+
     volume_out_m3: float
     volume_stored_m3: float
+    """Water standing at the end of the run, surface plus pipes."""
+
     error_fraction: float
-    """``|stored - (in - out)| / in``; the budget is 1e-3."""
+    """``|(stored_end - stored_start) - (in - out)| / in``; the budget is 1e-3.
+
+    The denominator is the run's own inflow and stays so on a hot start (task P4.2): dividing
+    by ``max(in, stored_start)`` would relax the budget by exactly the ratio of carried water to
+    new water, which on a late cycle of a storm is the case the audit most needs to see. Set to
+    0.0 when the inflow is too small for a ratio to mean anything; :attr:`residual_limit_m3`
+    then carries the check instead."""
+
+    volume_stored_start_m3: float = 0.0
+    """Water standing when the run began: zero on a cold start, the checkpoint on a hot one."""
+
+    residual_m3: float = 0.0
+    """``(stored_end - stored_start) - (in - out)``, signed: positive means water was invented."""
+
+    residual_limit_m3: float | None = None
+    """Set when the inflow was too small for :attr:`error_fraction` to be meaningful, and the
+    audit fell back to an absolute limit on :attr:`residual_m3`. ``None`` means the relative
+    budget applies."""
 
     @property
     def ok(self) -> bool:
+        if self.residual_limit_m3 is not None:
+            return abs(self.residual_m3) <= self.residual_limit_m3
         return self.error_fraction < 1e-3
+
+
+@dataclass(frozen=True, slots=True)
+class TwinFingerprint:
+    """What a :class:`TwinState` must match before a run may resume from it (task P4.2).
+
+    A checkpoint is a set of arrays indexed by cell and by node; loaded against a city that
+    was rebuilt since, it would not fail - it would put water in the wrong places and publish
+    depths from it. So the state carries the identity of the grid and network it was written
+    on, and :meth:`differences` names every field that no longer agrees.
+
+    ``z_invert`` and ``blocked`` are hashed rather than compared by size alone because the
+    rebuilds that matter keep the sizes: a drain regrade (ADR-0048) moves inverts, and the
+    building-burn fix (ADR-0039) changed blocked cells, both on the same 522 x 323 grid and
+    the same node count.
+
+    ``provenance`` is optional and opaque here: key-value strings the caller vouches for, such
+    as the bundle manifest hash, the tide datum and the Twin version. The cycle's checkpoint
+    fills it; the Twin only requires that both sides agree, key for key.
+    """
+
+    shape: tuple[int, int]
+    transform: tuple[float, float, float, float, float, float]
+    crs: str
+    n_nodes: int
+    n_edges: int
+    z_invert_sha256: str
+    blocked_sha256: str
+    provenance: tuple[tuple[str, str], ...] = ()
+    """Sorted ``(key, value)`` pairs, so two fingerprints built from equal mappings are equal."""
+
+    @classmethod
+    def of(
+        cls,
+        terrain: TerrainGrid,
+        network: DrainNetwork,
+        provenance: Mapping[str, str] | None = None,
+    ) -> TwinFingerprint:
+        """The fingerprint of a terrain grid and a drain network, with optional provenance."""
+        import hashlib
+
+        import numpy as np
+
+        def digest(array: NDArray, dtype: str) -> str:
+            data = np.ascontiguousarray(np.asarray(array), dtype=dtype)
+            return hashlib.sha256(data.tobytes()).hexdigest()
+
+        pairs: list[tuple[str, str]] = []
+        for key, value in (provenance or {}).items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                raise TypeError(
+                    f"provenance must map str to str; got {key!r}: {value!r} "
+                    f"({type(key).__name__}: {type(value).__name__})"
+                )
+            pairs.append((key, value))
+        return cls(
+            shape=terrain.shape,
+            transform=tuple(float(v) for v in terrain.transform),  # type: ignore[arg-type]
+            crs=str(terrain.crs),
+            n_nodes=network.n_nodes,
+            n_edges=network.n_edges,
+            # Little-endian float64 and uint8 whatever the rasters were read as, so a city
+            # written as float32 on one run and float64 on the next hashes the same values alike.
+            z_invert_sha256=digest(network.z_invert, "<f8"),
+            blocked_sha256=digest(terrain.blocked, "u1"),
+            provenance=tuple(sorted(pairs)),
+        )
+
+    def differences(self, other: TwinFingerprint) -> tuple[str, ...]:
+        """One sentence per field on which ``self`` (the checkpoint) and ``other`` disagree."""
+        found: list[str] = []
+        for name in ("shape", "transform", "crs", "n_nodes", "n_edges"):
+            mine, theirs = getattr(self, name), getattr(other, name)
+            if mine != theirs:
+                found.append(f"{name}: checkpoint {mine!r}, this run {theirs!r}")
+        for name, what in (
+            ("z_invert_sha256", "drain invert levels"),
+            ("blocked_sha256", "blocked (building) cells"),
+        ):
+            mine, theirs = getattr(self, name), getattr(other, name)
+            if mine != theirs:
+                found.append(
+                    f"{name}: the {what} differ (checkpoint {mine[:12]}, this run {theirs[:12]})"
+                )
+        mine_p, theirs_p = dict(self.provenance), dict(other.provenance)
+        for key in sorted(set(mine_p) | set(theirs_p)):
+            a, b = mine_p.get(key), theirs_p.get(key)
+            if a != b:
+                found.append(
+                    f"provenance[{key!r}]: checkpoint "
+                    f"{'absent' if a is None else repr(a)}, this run "
+                    f"{'absent' if b is None else repr(b)}"
+                )
+        return tuple(found)
+
+
+@dataclass(frozen=True, slots=True)
+class TwinState:
+    """Everything the coupled Twin carries from one instant to the next (task P4.2).
+
+    A run started from this state continues exactly where the run that wrote it stopped: the
+    resume-identity test holds twelve steps in one run array-equal to six plus a six-step resume.
+    That requires every piece of memory the solvers keep, not only the depth:
+
+    * the surface depth and both face fluxes - the local-inertial scheme carries ``q`` forward,
+      so restarting it from rest is a different run;
+    * the drain heads and edge flows;
+    * the pumps' and tanks' filled volume, empty until pump plans are wired but carried now so a
+      plan can hot start without a format change;
+    * the hydrology accumulators - the depression store left to fill and the cumulative rain
+      the SCS curve reads, without which a resumed storm would infiltrate as if it had just begun.
+
+    ``retention_s_mm`` is not here: it is derived from ``cn.tif``, which the fingerprint's grid
+    identity already covers by way of the terrain it is rebuilt from.
+
+    Arrays are float64. The runner copies them in, so resuming never mutates a checkpoint, and
+    the ``final_state`` it returns is read-only.
+    """
+
+    valid_ts: datetime
+    """The instant this state describes; a run resumes from it only when ``t0`` equals it."""
+
+    h: NDArray[np.floating]
+    """``(n_rows, n_cols)`` surface depth in metres."""
+
+    qx: NDArray[np.floating]
+    qy: NDArray[np.floating]
+    drain_head: NDArray[np.floating]
+    """``(n_nodes,)`` hydraulic head in metres."""
+
+    drain_flow: NDArray[np.floating]
+    """``(n_edges,)`` pipe discharge in m3/s."""
+
+    sink_filled_m3: NDArray[np.floating]
+    """``(n_units,)`` volume each pump or tank has taken; length 0 while none are wired."""
+
+    depression_remaining_mm: NDArray[np.floating]
+    cumulative_rain_mm: NDArray[np.floating]
+    fingerprint: TwinFingerprint
 
 
 @dataclass(frozen=True, slots=True)
@@ -313,6 +478,13 @@ class TwinInputs:
     inner_dt_s: float = 1.0
     """Explicit inner step of the 1D solver in seconds (CLAUDE.md 11.4)."""
 
+    initial_state: TwinState | None = None
+    """Resume from this state instead of a dry city with empty pipes. ``None`` is the cold
+    start every run used before task P4.2, and its output is unchanged."""
+
+    provenance: Mapping[str, str] | None = None
+    """Stamped into ``final_state.fingerprint`` and required to match ``initial_state``'s."""
+
 
 @dataclass(frozen=True, slots=True)
 class TwinResult:
@@ -334,6 +506,10 @@ class TwinResult:
 
     times: tuple[datetime, ...]
     mass_balance: MassBalance
+    final_state: TwinState
+    """The state at the last output time, read-only; pass it as the next run's
+    ``initial_state`` to continue this one."""
+
     stage_ms: dict[str, int] = field(default_factory=dict)
     notes: tuple[str, ...] = ()
 
