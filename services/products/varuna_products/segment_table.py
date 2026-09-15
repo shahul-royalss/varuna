@@ -305,7 +305,9 @@ def segment_forecast_columnar(
 
     It does not log; the ``products.segment_forecast`` line stays with its caller, which has the
     statistics it reports. Composed from :func:`sample_segments`, :func:`ensemble_statistics`,
-    :func:`safe_until_blobs` and :func:`forecast_frame` so E9 can take the parts it needs."""
+    :func:`safe_until_blobs` and :func:`forecast_frame`. ``depth.segment_forecast`` composes the
+    same four parts itself, because it logs their statistics; the tests hold both this wrapper and
+    that function to the frozen row loop."""
     depth_cm = sample_segments(depth_m, index)
     statistics = ensemble_statistics(depth_cm, member_depth_cm)
     blobs = safe_until_blobs(statistics.prob, times)

@@ -169,6 +169,9 @@ def detect_anomalies(
     if (at is None) == (end is None):
         msg = "detect_anomalies takes either at= (one snapshot) or end= (a window), not both."
         raise ValueError(msg)
+    if at is not None and start is not None:
+        msg = "detect_anomalies: start= opens a window and only applies with end=, not with at=."
+        raise ValueError(msg)
     if at is None and start is not None and end is not None and start >= end:
         return []
     if not raining or speeds.empty:
@@ -286,7 +289,8 @@ def _score_snapshot(
     slow = dict(zip((str(s) for s in feed.segments[present]), z_min.to_numpy(), strict=True))
 
     # The latest row of each segment: sorted by segment, then snapshot, stable on row order, so a
-    # tie on the snapshot keeps the later row - which is what `sort_values("ts").iloc[-1]` kept.
+    # tie on the snapshot always keeps the later row. The old `sort_values("ts").iloc[-1]` used
+    # quicksort and kept it only while a group was small enough for numpy's insertion sort.
     order = np.lexsort((feed.stamp_code[rows], code))
     block = code[order]
     ends = np.flatnonzero(np.append(block[1:] != block[:-1], True))

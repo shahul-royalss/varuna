@@ -150,7 +150,7 @@ def test_a_missing_id_gets_null_and_is_counted_in_the_notes(tmp_path: Path) -> N
     assert _by_id(product)["MUM-E2"]["path"] is None
     assert product["n_reversed_stored_without_path"] == 1
     assert product["notes"] == [
-        f"Of the 3 stored reversed edges, 1 have no line in {DRAINS_EXPORT}; "
+        f"Of the 3 stored reversed edges, 1 has no line in {DRAINS_EXPORT}; "
         "those carry path null and are not drawn."
     ]
 
