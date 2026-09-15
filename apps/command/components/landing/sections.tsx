@@ -1,9 +1,11 @@
 /**
- * The landing page's static sections (CLAUDE.md 7.1, items 2, 3, 5, 7, 8, 9, 10).
+ * The landing page's sections below the hero (CLAUDE.md 7.1, items 2, 3, 5, 7, 8 and 10 here; 4
+ * and 9 in their own files, re-exported below).
  *
- * Server components: none of them needs state, and the landing page's LCP budget (2.5 s) is
- * easier to keep when most of it ships as HTML. The two that do need the client - the hero's
- * scrub loop and the proof counters - live in their own files.
+ * Server components where they can be: the landing page's LCP budget (2.5 s) is easier to keep
+ * when most of it ships as HTML. The parts that need the client - the hero's scrub loop, the proof
+ * counters, the cycle diagram's beams and timings, and the roadmap's tracing beam - live in their
+ * own files.
  *
  * Every claim here is one the rest of the repo can back: the engine names match `services/`, the
  * data sources match what `services/city` actually downloads, and the landscape table's rows come
@@ -13,10 +15,14 @@
 import Link from "next/link";
 import type { Route } from "next";
 
-const SECTION = "px-6 py-[72px] sm:px-12 lg:px-24 lg:py-[120px]";
-const H2 = "max-w-[24ch] font-display text-h1 font-semibold tracking-display text-text";
-const LEAD = "mt-4 max-w-[68ch] text-h3 text-text-2";
-const BODY = "max-w-[72ch] text-body text-text-2";
+import { ENGINE_DIAGRAMS, type EngineName } from "@/components/landing/engine-diagrams";
+import { BODY, H2, LEAD, SECTION } from "@/components/landing/styles";
+
+// The cycle diagram (item 4, motion M3) and the roadmap (item 9, motion M5) live in their own
+// files: the cycle is a client component that fetches its timings, and the roadmap carries the
+// tracing beam. Re-exported so the page imports every section from one place.
+export { TheCycle } from "@/components/landing/the-cycle";
+export { Roadmap } from "@/components/landing/roadmap";
 
 /* ---- 2. The gap ------------------------------------------------------------------------- */
 
@@ -31,14 +37,7 @@ function GapDiagram() {
     >
       <rect x="8" y="20" width="200" height="180" fill="var(--deep)" stroke="var(--line)" />
       {[1, 2, 3].map((i) => (
-        <line
-          key={`v${i}`}
-          x1={8 + i * 50}
-          y1="20"
-          x2={8 + i * 50}
-          y2="200"
-          stroke="var(--line)"
-        />
+        <line key={`v${i}`} x1={8 + i * 50} y1="20" x2={8 + i * 50} y2="200" stroke="var(--line)" />
       ))}
       {[1, 2, 3].map((i) => (
         <line
@@ -88,14 +87,14 @@ export function TheGap() {
         <div>
           <h2 className={H2}>Forecasts stop at 12 km. Streets flood at 30 m.</h2>
           <p className={LEAD}>
-            India&apos;s operational rainfall forecasts resolve a city as a handful of grid cells.
-            A cell covering all of Dadar gets one number.
+            India&apos;s operational rainfall forecasts resolve a city as a handful of grid cells. A
+            cell covering all of Dadar gets one number.
           </p>
           <p className={`${BODY} mt-4`}>
             Water does not arrive at that resolution. It arrives on the road under a rail bridge
-            that sits half a metre below its neighbours, through a drain nobody has surveyed, at
-            an hour the tide happens to be high. A ward-level warning cannot tell an ambulance
-            which underpass to avoid, because it does not know underpasses exist.
+            that sits half a metre below its neighbours, through a drain nobody has surveyed, at an
+            hour the tide happens to be high. A ward-level warning cannot tell an ambulance which
+            underpass to avoid, because it does not know underpasses exist.
           </p>
           <p className={`${BODY} mt-4`}>
             VARUNA models the city at 30 m, couples the surface to a drain network inferred from
@@ -125,7 +124,8 @@ const WAYS = [
   {
     title: "Tidal lock",
     body: "A high tide holds the outfall shut. The drains have capacity and nowhere to put it, so the water comes back up through the manholes.",
-    example: "Mumbai's coastal outfalls at spring high tide, which is why the tide table is on the console.",
+    example:
+      "Mumbai's coastal outfalls at spring high tide, which is why the tide table is on the console.",
   },
   {
     title: "Invisible drainage",
@@ -157,84 +157,84 @@ export function FourWays() {
   );
 }
 
-/* ---- 4. The five-minute cycle ------------------------------------------------------------ */
-
-const STAGES = [
-  { n: 1, name: "Ingest", job: "Radar frames, gauges, tide, traffic, reports" },
-  { n: 2, name: "Sky", job: "Z–R, gauge merge, optical flow, 20-member STEPS ensemble" },
-  { n: 3, name: "Twin", job: "2D shallow water on 30 m terrain, coupled to the 1D drain graph" },
-  { n: 4, name: "Flash", job: "Reduced-order emulator for sub-second what-if" },
-  { n: 5, name: "Pulse", job: "EnKF over pipe blockage, from traffic and citizen reports" },
-  { n: 6, name: "Products", job: "Segment depths, hotspots, alerts, pumps, routes" },
-];
-
-export function TheCycle() {
-  return (
-    <section className={SECTION}>
-      <div className="mx-auto max-w-[1200px]">
-        <h2 className={H2}>Every five minutes, the whole city again</h2>
-        <p className={LEAD}>
-          A cycle is a pipeline with a budget. Each stage&apos;s measured time is on the console&apos;s
-          own status bar, because a forecast that arrives late is a forecast nobody used.
-        </p>
-        <ol className="mt-10 grid gap-px overflow-hidden rounded-panel border border-line bg-line md:grid-cols-2 lg:grid-cols-3">
-          {STAGES.map((stage) => (
-            <li key={stage.name} className="bg-deep p-5">
-              <p className="num text-micro text-text-3">Stage {stage.n}</p>
-              <p className="mt-1 text-h3 text-text">{stage.name}</p>
-              <p className="mt-2 text-small text-text-2">{stage.job}</p>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </section>
-  );
-}
-
 /* ---- 5. Six engines ---------------------------------------------------------------------- */
 
-const ENGINES = [
+const ENGINES: { name: EngineName; job: string; why: string; span: string }[] = [
   {
     name: "Pulse",
     job: "The city reveals its own drains",
     why: "Every flood is an experiment somebody already ran. A traffic feed collapsing on one street and not its neighbour is a measurement of a pipe nobody has surveyed, and an ensemble Kalman filter turns a monsoon's worth of them into a blockage map.",
-    span: "lg:col-span-2 lg:row-span-2",
+    span: "md:col-span-2 lg:col-span-3 lg:row-span-2",
   },
   {
     name: "Twin",
     job: "Surface and sewer, solved together",
     why: "Local-inertial shallow water at 30 m, coupled to a head-driven 1D drain model through inlet capture and surcharge. The manhole that fountains is the same manhole the drain solver pressurised.",
-    span: "lg:col-span-2",
+    span: "lg:col-span-3",
   },
   {
     name: "Flash",
     job: "Three hours of city in milliseconds",
     why: "A reservoir cascade calibrated to the Twin's own runs, so a what-if answers while the question is still on screen. Its measured error is printed beside every answer.",
+    span: "lg:col-span-3",
+  },
+  {
+    name: "Sky",
+    job: "Radar into a rain ensemble",
+    why: "pySTEPS on calibrated reflectivity: 20 members, three hours, five-minute steps.",
     span: "lg:col-span-2",
   },
-  { name: "Sky", job: "Radar into a rain ensemble", why: "pySTEPS on calibrated reflectivity: 20 members, three hours, five-minute steps.", span: "" },
-  { name: "Route", job: "Prediction into an ambulance route", why: "Time-dependent Dijkstra, costed at the depth the vehicle will meet when it arrives.", span: "" },
-  { name: "Command", job: "One screen at three in the morning", why: "Depth on streets, alerts, pumps, reachability - and a label on every simplification.", span: "" },
+  {
+    name: "Route",
+    job: "Prediction into an ambulance route",
+    why: "Time-dependent Dijkstra, costed at the depth the vehicle will meet when it arrives.",
+    span: "lg:col-span-2",
+  },
+  {
+    name: "Command",
+    job: "One screen at three in the morning",
+    why: "Depth on streets, alerts, pumps, reachability - and a label on every simplification.",
+    span: "lg:col-span-2",
+  },
 ];
 
+/**
+ * The second sentence is revealed on hover or keyboard focus where the device can hover (7.1), and
+ * always shown where it cannot, so a phone never hides it. The reveal is an instant switch, not a
+ * transition: section 8 has no row for it, and 7.1 rules out a scale bounce. It stays in the
+ * accessibility tree either way, because it is hidden with opacity and not removed.
+ */
 export function SixEngines() {
   return (
     <section className={SECTION}>
       <div className="mx-auto max-w-[1200px]">
         <h2 className={H2}>Six engines</h2>
-        <div className="mt-10 grid gap-4 lg:grid-cols-3">
-          {ENGINES.map((engine) => (
-            <article
-              key={engine.name}
-              className={`group flex flex-col rounded-panel border border-line bg-deep p-5 ${engine.span}`}
-            >
-              <p className="font-display text-h2 font-semibold tracking-display text-text">
-                {engine.name}
-              </p>
-              <p className="mt-1 text-h3 text-text-2">{engine.job}</p>
-              <p className="mt-4 text-small text-text-3">{engine.why}</p>
-            </article>
-          ))}
+        <div className="mt-10 grid gap-4 md:grid-cols-2 lg:grid-cols-6">
+          {ENGINES.map((engine) => {
+            const Diagram = ENGINE_DIAGRAMS[engine.name];
+            return (
+              <article
+                key={engine.name}
+                data-engine={engine.name}
+                tabIndex={0}
+                className={`group flex flex-col rounded-panel border border-line bg-deep p-5 outline-none focus-visible:ring-2 focus-visible:ring-tide ${engine.span}`}
+              >
+                <div className="mb-4">
+                  <Diagram />
+                </div>
+                <p className="font-display text-h2 font-semibold tracking-display text-text">
+                  {engine.name}
+                </p>
+                <p className="mt-1 text-h3 text-text-2">{engine.job}</p>
+                <p
+                  data-engine-why
+                  className="mt-4 text-small text-text-2 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-focus-within:opacity-100 [@media(hover:hover)]:group-hover:opacity-100"
+                >
+                  {engine.why}
+                </p>
+              </article>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -252,6 +252,18 @@ const LANDSCAPE = [
   { system: "VARUNA", scale: "Street, 30 m, 0–3 h", drains: "Inferred and learned", learns: "Yes" },
 ];
 
+const LANDSCAPE_COLUMNS = [
+  { key: "scale", label: "Resolution and horizon" },
+  { key: "drains", label: "Drainage" },
+  { key: "learns", label: "Learns from events" },
+] as const;
+
+/**
+ * A table from `sm` up, and one short definition list per system below it, so a 390 px phone reads
+ * the same comparison without scrolling sideways (7.1 AC). Both are in the HTML and CSS picks one,
+ * so there is no layout shift and no script; the table keeps its own overflow container for any
+ * width where it still does not fit.
+ */
 export function Landscape() {
   return (
     <section className={SECTION}>
@@ -261,11 +273,29 @@ export function Landscape() {
           The strategic layer tells a city that a ward will flood tomorrow. VARUNA is the tactical
           layer: which street, how deep, and when, for the next three hours.
         </blockquote>
-        <div className="mt-10 overflow-x-auto">
+        <ul
+          data-landscape="list"
+          className="mt-10 flex flex-col divide-y divide-line border-t border-line sm:hidden"
+        >
+          {LANDSCAPE.map((row) => (
+            <li key={row.system} className="py-4">
+              <p className="text-body text-text">{row.system}</p>
+              <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+                {LANDSCAPE_COLUMNS.map((column) => (
+                  <div key={column.key} className="contents">
+                    <dt className="text-small text-text-3">{column.label}</dt>
+                    <dd className="text-small text-text-2">{row[column.key]}</dd>
+                  </div>
+                ))}
+              </dl>
+            </li>
+          ))}
+        </ul>
+        <div data-landscape="table" className="mt-10 hidden overflow-x-auto sm:block">
           <table className="w-full min-w-[560px] border-collapse">
             <thead>
               <tr className="border-b border-line text-left">
-                {["System", "Resolution and horizon", "Drainage", "Learns from events"].map((h) => (
+                {["System", ...LANDSCAPE_COLUMNS.map((column) => column.label)].map((h) => (
                   <th key={h} className="px-3 py-3 text-small font-medium text-text-2">
                     {h}
                   </th>
@@ -276,9 +306,11 @@ export function Landscape() {
               {LANDSCAPE.map((row) => (
                 <tr key={row.system} className="border-b border-line last:border-b-0">
                   <td className="px-3 py-3 text-body text-text">{row.system}</td>
-                  <td className="px-3 py-3 text-body text-text-2">{row.scale}</td>
-                  <td className="px-3 py-3 text-body text-text-2">{row.drains}</td>
-                  <td className="px-3 py-3 text-body text-text-2">{row.learns}</td>
+                  {LANDSCAPE_COLUMNS.map((column) => (
+                    <td key={column.key} className="px-3 py-3 text-body text-text-2">
+                      {row[column.key]}
+                    </td>
+                  ))}
                 </tr>
               ))}
             </tbody>
@@ -293,14 +325,46 @@ export function Landscape() {
 
 const SOURCES = [
   { name: "Copernicus GLO-30 DEM", status: "Public", note: "30 m terrain, downloaded per city" },
-  { name: "OpenStreetMap", status: "Public", note: "Roads, buildings, waterways, hospitals, stations" },
-  { name: "ESA WorldCover", status: "Public", note: "10 m land cover, for imperviousness and runoff" },
-  { name: "BMC and news archives", status: "Public", note: "29 sourced ground-truth pins, each with a URL" },
-  { name: "IMD Doppler radar volumes", status: "Requested from MoES", note: "The prototype reconstructs the storm instead" },
-  { name: "BMC drain GIS", status: "Requested from MoES", note: "The prototype infers the network and learns it" },
-  { name: "Radar reflectivity frames", status: "Synthetic in the prototype", note: "Storm designer calibrated to published gauge totals" },
-  { name: "Traffic speeds and citizen reports", status: "Synthetic in the prototype", note: "Labelled everywhere they appear on screen" },
-  { name: "Mobile pump inventory", status: "Synthetic in the prototype", note: "Twelve pumps at plausible depots, labelled" },
+  {
+    name: "OpenStreetMap",
+    status: "Public",
+    note: "Roads, buildings, waterways, hospitals, stations",
+  },
+  {
+    name: "ESA WorldCover",
+    status: "Public",
+    note: "10 m land cover, for imperviousness and runoff",
+  },
+  {
+    name: "BMC and news archives",
+    status: "Public",
+    note: "29 sourced ground-truth pins, each with a URL",
+  },
+  {
+    name: "IMD Doppler radar volumes",
+    status: "Requested from MoES",
+    note: "The prototype reconstructs the storm instead",
+  },
+  {
+    name: "BMC drain GIS",
+    status: "Requested from MoES",
+    note: "The prototype infers the network and learns it",
+  },
+  {
+    name: "Radar reflectivity frames",
+    status: "Synthetic in the prototype",
+    note: "Storm designer calibrated to published gauge totals",
+  },
+  {
+    name: "Traffic speeds and citizen reports",
+    status: "Synthetic in the prototype",
+    note: "Labelled everywhere they appear on screen",
+  },
+  {
+    name: "Mobile pump inventory",
+    status: "Synthetic in the prototype",
+    note: "Twelve pumps at plausible depots, labelled",
+  },
 ];
 
 export function DataSources() {
@@ -331,50 +395,7 @@ export function DataSources() {
   );
 }
 
-/* ---- 9. Roadmap -------------------------------------------------------------------------- */
-
-const ROADMAP = [
-  {
-    tier: "V1",
-    title: "This prototype",
-    body: "One AOI of Mumbai, reconstructed radar, inferred drains, a learning blockage map, routes and alerts. Every simplification labelled.",
-  },
-  {
-    tier: "V10",
-    title: "A pilot city",
-    body: "Real IMD volumes, the ward's own drain GIS, LiDAR at the chronic spots, 5 m nests, a GNN surrogate, and a monsoon of assimilated observations behind the blockage map.",
-  },
-  {
-    tier: "V100",
-    title: "Every city that wants one",
-    body: "City-in-a-box from open data in an afternoon, a public map in three languages, and a routing feed navigation apps and transit operators consume directly.",
-  },
-];
-
-export function Roadmap() {
-  return (
-    <section className={SECTION}>
-      <div className="mx-auto max-w-[1200px]">
-        <h2 className={H2}>V1, V10, V100</h2>
-        <ol className="mt-10 flex flex-col border-l border-line">
-          {ROADMAP.map((stage) => (
-            <li key={stage.tier} className="relative pb-10 pl-8 last:pb-0">
-              <span
-                aria-hidden="true"
-                className="absolute left-0 top-1.5 h-2 w-2 -translate-x-1/2 rounded-full bg-tide"
-              />
-              <p className="num text-micro text-tide">{stage.tier}</p>
-              <p className="mt-1 text-h3 text-text">{stage.title}</p>
-              <p className={`${BODY} mt-2`}>{stage.body}</p>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </section>
-  );
-}
-
-/* ---- 10. Footer -------------------------------------------------------------------------- */
+/* ---- 10. Team and footer ---------------------------------------------------------------- */
 
 const LINKS = [
   { href: "/console", label: "Command console" },
@@ -385,12 +406,59 @@ const LINKS = [
   { href: "/verify", label: "Verification" },
   { href: "/map", label: "Public map" },
   { href: "/onboard", label: "City onboarding" },
+  { href: "/api", label: "API explorer" },
 ];
+
+/** The public repository, as `git remote -v` names it. */
+export const REPOSITORY_URL = "https://github.com/shahul-royalss/varuna";
+
+/**
+ * The six roles from the blueprint, section 12.1, each with what it owns in this prototype. The
+ * names of the people in them are not in the repository, so none are shown: a role with an
+ * invented name is exactly the placeholder section 6.9 bans (and rule 7 applies to people too).
+ */
+export const TEAM_ROLES = [
+  {
+    role: "Nowcast lead (Sky)",
+    owns: "Radar QC, Z–R, gauge merging, the pySTEPS ensemble and rain verification",
+  },
+  {
+    role: "Hydrodynamics lead (Twin 2D)",
+    owns: "DEM conditioning, the shallow-water solver, boundaries and mass balance",
+  },
+  {
+    role: "Drainage and assimilation lead (graph and Pulse)",
+    owns: "Drain synthesis, the EnKF, the traffic-anomaly detector and the drain-health product",
+  },
+  {
+    role: "ML lead (Flash)",
+    owns: "Training runs, the reduced-order emulator, uncertainty and attribution",
+  },
+  {
+    role: "Backend and infrastructure lead (Route and platform)",
+    owns: "The bus, FastAPI, routing, tiles and CI",
+  },
+  {
+    role: "Frontend and product lead (Command and pitch)",
+    owns: "The console, the public map, the demo script and the verification report",
+  },
+] as const;
 
 export function Footer() {
   return (
     <footer className="border-t border-line px-6 py-12 sm:px-12 lg:px-24">
       <div className="mx-auto flex max-w-[1200px] flex-col gap-8">
+        <div>
+          <p className="text-h3 text-text">Team VIT, in six roles</p>
+          <dl className="mt-4 grid gap-x-8 gap-y-3 md:grid-cols-2 lg:grid-cols-3">
+            {TEAM_ROLES.map((entry) => (
+              <div key={entry.role}>
+                <dt className="text-small font-medium text-text">{entry.role}</dt>
+                <dd className="text-small text-text-2">{entry.owns}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
         <nav aria-label="Screens" className="flex flex-wrap gap-x-6 gap-y-2">
           {LINKS.map((link) => (
             <Link
@@ -403,10 +471,17 @@ export function Footer() {
               {link.label}
             </Link>
           ))}
+          <a
+            href={REPOSITORY_URL}
+            className="text-small text-text-2 underline"
+            rel="noopener noreferrer"
+          >
+            Source on GitHub
+          </a>
         </nav>
         <p className="max-w-[72ch] text-small text-text-3">
-          VARUNA · Smart India Hackathon 2026 · Problem statement SIH26085, Ministry of Earth
-          Sciences · Team VIT. Every number on these screens comes from a run the engines computed;
+          VARUNA, for the Smart India Hackathon 2026: problem statement SIH26085, Ministry of Earth
+          Sciences, Team VIT. Every number on these screens comes from a run the engines computed;
           every simplification against the blueprint is listed in the repository and labelled where
           it is visible.
         </p>

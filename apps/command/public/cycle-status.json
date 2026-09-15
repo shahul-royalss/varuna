@@ -1,0 +1,42 @@
+{
+  "run_id": "MUM-20190702T0340Z-sky1.0-twin1.0-flash0.1-baked",
+  "stage": "idle",
+  "stage_ms": {
+    "sky": 5978,
+    "twin": 58462,
+    "twin_hydrology_ms": 612,
+    "twin_surface_ms": 18502,
+    "twin_drain_ms": 30215,
+    "twin_coupling_ms": 5242,
+    "twin_total_ms": 58282,
+    "flash": 226,
+    "products": 6619,
+    "pulse": 5566
+  },
+  "started_at": null,
+  "finished_at": null,
+  "cycle_ts": "2019-07-02T09:10:00+05:30",
+  "mode": "baked",
+  "replay_mode": "replay",
+  "bundle": "MUM-2019-07-02",
+  "budget_ms": {
+    "decode": 500,
+    "sky": 5000,
+    "twin": 8000,
+    "flash": 300,
+    "pulse": 3000,
+    "products": 2000,
+    "route": 2000,
+    "alerts": 500,
+    "publish": 200
+  },
+  "total_budget_ms": 15000,
+  "degraded_feeds": [],
+  "error": null,
+  "elapsed_ms": 76851,
+  "busy": false,
+  "fallback": {
+    "written_by": "tools/write_cycle_status.py",
+    "from_run_json": "demo/runs/MUM-20190702T0340Z-sky1.0-twin1.0-flash0.1-baked/run.json"
+  }
+}

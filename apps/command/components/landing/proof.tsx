@@ -7,13 +7,19 @@
  * so the landing page still shows real figures when the API is unreachable - which, on a venue's
  * network the morning of the finale, it may well be (CLAUDE.md 17).
  *
+ * Each number rolls to its value the first time it scrolls into view (M4's "in view" trigger), and
+ * is simply there under reduced motion (M4's "instant"). Rolling on arrival rather than on fetch
+ * is the point: the section is far below the fold, and a count that finished while nobody was
+ * looking is not a motion anyone saw.
+ *
  * The numbers are not flattering, and they are shown as they are. A CSI of 0.22 next to an honest
  * account of what it means is worth more in front of MoES scientists than a rounder number nobody
  * can reproduce (rule 6).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import NumberFlow from "@number-flow/react";
+import { useInView } from "motion/react";
 
 import { apiUrl } from "@/lib/api/client";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
@@ -38,7 +44,10 @@ function read(body: Record<string, unknown>): Proof {
   };
 }
 
-function Figure({
+/** Where the proof footnote points: the limitations on /verify (7.10 AC). */
+export const LIMITATIONS_HREF = "/verify#limitations";
+
+export function Figure({
   value,
   suffix,
   label,
@@ -52,16 +61,24 @@ function Figure({
   decimals?: number;
 }) {
   const reducedMotion = usePrefersReducedMotion();
+  const ref = useRef<HTMLParagraphElement>(null);
+  const inView = useInView(ref, { once: true, amount: 0.6 });
+  const rounded = value === null ? null : Number(value.toFixed(decimals));
   return (
     <div className="flex flex-col gap-2">
-      <p className="num font-display text-display font-semibold tracking-display text-text">
-        {value === null ? (
+      <p
+        ref={ref}
+        data-figure={label}
+        className="num font-display text-display font-semibold tracking-display text-text"
+      >
+        {rounded === null ? (
           "—"
         ) : reducedMotion ? (
-          value.toFixed(decimals)
+          rounded.toFixed(decimals)
         ) : (
           <NumberFlow
-            value={Number(value.toFixed(decimals))}
+            // Held at zero until the figure is on screen, then rolled to the fetched value once.
+            value={inView ? rounded : 0}
             format={{ minimumFractionDigits: decimals, maximumFractionDigits: decimals }}
           />
         )}
@@ -129,8 +146,8 @@ export function Proof() {
         <p className="mt-10 max-w-[72ch] text-small text-text-3">
           Computed on a reconstructed replay of 2 July 2019 against sourced ground truth. The
           numbers are what the model achieved, not what we would like it to achieve.{" "}
-          <a href="/verify" className="text-tide underline">
-            See how we score ourselves
+          <a href={LIMITATIONS_HREF} className="text-tide underline">
+            See how we score ourselves, and where we fall short
           </a>
           .
         </p>
