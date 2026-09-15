@@ -45,6 +45,19 @@ describe("PumpBoard", () => {
     expect(screen.getByText(PUMP_ACTIONS_HELPER)).toBeInTheDocument();
   });
 
+  it("says every pump is assigned, not that none loaded, when the pool is empty after a plan", () => {
+    const columns = DEFAULT_PUMP_COLUMNS.map((column, i) =>
+      i === 0 ? { ...column, pumps: [{ ...PUMP, status: "moving" as const }] } : column,
+    );
+    render(<PumpBoard pumps={[]} columns={columns} onAssign={() => {}} />);
+
+    expect(screen.getByText("Every pump is assigned")).toBeInTheDocument();
+    expect(
+      screen.getByText("Drag a pump back here to take it off its hotspot."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("No pumps loaded yet")).not.toBeInTheDocument();
+  });
+
   it("renders a pump card in the available column when the inventory has pumps", () => {
     render(<PumpBoard pumps={[PUMP]} columns={DEFAULT_PUMP_COLUMNS} />);
 
