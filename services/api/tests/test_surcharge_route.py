@@ -53,7 +53,7 @@ def _seed_run(data: Path) -> dict:
                 "path": None,
             },
         ],
-        "notes": ["Of the 2 stored reversed edges, 1 have no line in map/drains.geojson."],
+        "notes": ["Of the 2 stored reversed edges, 1 has no line in map/drains.geojson."],
     }
     (run / "node_surcharge.json").write_text(json.dumps(product), encoding="utf-8")
     return product

@@ -123,7 +123,9 @@ def attach_edge_paths(
     line for its id, or when the export's endpoints are not this edge's nodes in either order: a
     line joined by id to a different pipe would be drawn in the wrong place, which is worse than
     drawing nothing. The orientation is the edge's own, so a dash animated from ``path[0]`` to
-    ``path[-1]`` runs downhill and a reversed flow runs it the other way.
+    ``path[-1]`` runs from ``from_node`` to ``to_node`` and a reversed flow runs it the other way.
+    That is the direction the graph assigns, not necessarily downhill: ADR-0048 measured 38.2 % of
+    Mumbai's edges falling uphill in it.
     """
     missing = 0
     disagreeing = 0
@@ -157,6 +159,10 @@ def _city_root_for(run_id: str) -> Path | None:
         return None
 
 
+def _have(count: int) -> str:
+    return "has" if count == 1 else "have"
+
+
 def _path_notes(n_stored: int, has_export: bool, n_missing: int, n_disagreeing: int) -> list[str]:
     """What the product says about reversed edges it could not give a line to (rule 6)."""
     if not has_export:
@@ -168,9 +174,12 @@ def _path_notes(n_stored: int, has_export: bool, n_missing: int, n_disagreeing: 
         ]
     parts = []
     if n_missing:
-        parts.append(f"{n_missing} have no line in {DRAINS_EXPORT}")
+        parts.append(f"{n_missing} {_have(n_missing)} no line in {DRAINS_EXPORT}")
     if n_disagreeing:
-        parts.append(f"{n_disagreeing} have a line whose endpoints are not the edge's own nodes")
+        parts.append(
+            f"{n_disagreeing} {_have(n_disagreeing)} a line whose endpoints are not the edge's own "
+            "nodes"
+        )
     if not parts:
         return []
     return [

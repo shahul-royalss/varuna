@@ -64,7 +64,7 @@ def digest(*parts: Any) -> str:
 
 
 def _fingerprint(sources: Iterable[Path]) -> tuple[Any, ...]:
-    out = []
+    out: list[tuple[Any, ...]] = []
     for path in sources:
         try:
             stat = path.stat()

@@ -355,6 +355,8 @@ def test_one_snapshot_or_a_window_but_not_both() -> None:
         traffic.detect_anomalies(speeds)
     with pytest.raises(ValueError, match="either at="):
         traffic.detect_anomalies(speeds, at=stamps[-1], end=stamps[-1])
+    with pytest.raises(ValueError, match="only applies with end="):
+        traffic.detect_anomalies(speeds, at=stamps[-1], start=stamps[0])
     assert traffic.detect_anomalies(speeds, start=stamps[-1], end=stamps[-1]) == []
     assert traffic.detect_anomalies(speeds, at=stamps[-1], raining=False) == []
 
