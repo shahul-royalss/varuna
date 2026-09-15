@@ -10,7 +10,7 @@ import { BottomSheet } from "@/components/varuna/bottom-sheet";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { LanguageToggle } from "@/components/varuna/language-toggle";
 import { Skeleton } from "@/components/varuna/skeleton";
-import { FloodMap } from "@/components/map/flood-map";
+import { FloodMap, type FloodMapStatusKind } from "@/components/map/flood-map";
 import type { RunDepth } from "@/lib/api/run-depth";
 import { apiUrl } from "@/lib/api/client";
 import { PublicLegend } from "@/components/varuna/public-legend";
@@ -87,10 +87,20 @@ export function nearbyStreets(
   return rows.slice(0, limit);
 }
 
+/** Why the map has no run to draw: nothing baked yet, or the load failed. */
+export type ForecastProblem = "empty" | "error" | null;
+
 /** The honesty line (CLAUDE.md 7.11), timed from the run the map is actually drawing. */
-export function honestyLine(cycleTs: string | null | undefined): string {
-  if (!cycleTs) return "Loading the forecast from the last VARUNA run";
-  return `Forecast from the last VARUNA run at ${formatIst(cycleTs)}; updates every 5 minutes`;
+export function honestyLine(
+  cycleTs: string | null | undefined,
+  problem: ForecastProblem = null,
+): string {
+  if (cycleTs) {
+    return `Forecast from the last VARUNA run at ${formatIst(cycleTs)}; updates every 5 minutes`;
+  }
+  if (problem === "empty") return "No VARUNA run yet; the map fills after the first run";
+  if (problem === "error") return "The forecast did not load; check the connection and reload";
+  return "Loading the forecast from the last VARUNA run";
 }
 
 /** Saved locations live in this browser only; there is no account behind the public map. */
@@ -132,6 +142,10 @@ export function MapScreen() {
   const [names, setNames] = useState<Map<string, string> | null>(null);
   const [namesFailed, setNamesFailed] = useState(false);
   const onLoaded = useCallback((loaded: RunDepth) => setRun(loaded), []);
+  const [problem, setProblem] = useState<ForecastProblem>(null);
+  const onStatus = useCallback((kind: FloodMapStatusKind) => {
+    setProblem(kind === "empty" || kind === "error" ? kind : null);
+  }, []);
 
   // Street names, from the city's own segment layer. The run carries depths per `segment_id` and
   // nothing else; a list of ids would be useless to a commuter.
@@ -199,7 +213,7 @@ export function MapScreen() {
           <LanguageToggle />
         </div>
         <p className="num type-micro text-text-3 mt-2" data-slot="honesty-line">
-          {honestyLine(run?.provenance.cycleTs)}
+          {honestyLine(run?.provenance.cycleTs, problem)}
         </p>
         <div className="mt-3">
           <VehicleSelector value={profile} onValueChange={setProfile} />
@@ -213,6 +227,7 @@ export function MapScreen() {
         <FloodMap
           step={step}
           onLoaded={onLoaded}
+          onStatus={onStatus}
           passableBelowCm={STOPS_AT_CM[profile]}
           showRaster={false}
           showBuildings={false}
@@ -234,6 +249,17 @@ export function MapScreen() {
 
         <BottomSheet containerHeight={sheetHeight} title="Streets to avoid">
           <div className="flex flex-col gap-5">
+            {/* The floating button sits under an opened sheet, so the sheet carries its own. */}
+            <Button
+              size="lg"
+              variant="outline"
+              className="h-11 self-start"
+              render={<Link href={REPORT_ROUTE} />}
+              nativeButton={false}
+            >
+              <Umbrella aria-hidden="true" />
+              Report water
+            </Button>
             {nearby.length === 0 ? (
               <EmptyState
                 size="sm"

@@ -145,4 +145,11 @@ if [ "${BUILD_ON_BOOT}" = "1" ]; then
 fi
 
 log "starting the API on :${PORT}"
+# Score the event once in the background after the API is up, so the first visitor's top bar and
+# the landing page read a kept score instead of starting the sweep themselves (routers/verify.py).
+(
+  sleep 45
+  uv run python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:${PORT}/v1/verification', timeout=900).read()" >/dev/null 2>&1 \
+    && log "verification scored and kept" || log "verification warm-up did not finish; the first request will score it"
+) &
 exec uv run uvicorn varuna_api.main:app --host 0.0.0.0 --port "${PORT}" --proxy-headers
