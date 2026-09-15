@@ -17,7 +17,7 @@ import {
   Waypoints,
   Wrench,
 } from "lucide-react";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -90,6 +90,16 @@ function LoadingRows({ label }: { label: string }) {
   );
 }
 
+/*
+ * Item values, in one place: cmdk matches the search against them and the controlled selection
+ * names an item by them, so the two must never drift apart. Each carries the id, so two facilities
+ * that share a name ("Bandra Fire Brigade" is in the asset layer twice) stay two items.
+ */
+const hotspotValue = (h: { id: string; name: string }) => `hotspot ${h.name} ${h.id}`;
+const facilityValue = (f: { id: string; name: string }) => `facility ${f.name} ${f.id}`;
+const pipeValue = (p: { id: string; street: string | null }) => `pipe ${p.id} ${p.street ?? ""}`;
+const screenValue = (item: { label: string }) => `screen ${item.label}`;
+
 function failure(what: string, error: Error | null): string {
   const reason = error?.message ? ` (${error.message.replace(/\.$/, "")})` : "";
   return `${what} did not load${reason}. Screens still open; open the palette again to retry.`;
@@ -110,6 +120,8 @@ export function CommandPalette({ onSelectHotspot }: CommandPaletteProps) {
   const setOpen = useUiStore((s) => s.setCommandPaletteOpen);
   const currentRun = useRunStore((s) => s.currentRun);
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState("");
+  const listRef = useRef<HTMLDivElement>(null);
 
   const { runs, hotspots, facilities, pipes } = usePaletteData({
     enabled: open,
@@ -123,9 +135,38 @@ export function CommandPalette({ onSelectHotspot }: CommandPaletteProps) {
   // else the newest in the registry.
   const activeRunId = currentRun?.run_id || hotspots.data?.runId || runList[0]?.run_id || undefined;
 
-  // Every session of the palette starts with an empty query.
+  /*
+   * The lists arrive in whatever order the API answers, and cmdk selects the first item that
+   * registers - the Console screen, or a fire station if facilities come back first - then keeps
+   * that selection while the hotspot ranking lands above it, scrolled out of view. With nothing typed
+   * the selection follows the first item in list order instead, so Enter on a fresh palette is the
+   * top-ranked hotspot. Adjusted during render rather than in an effect (React's "adjusting state
+   * when a prop changes").
+   */
+  const facilityList = facilities.data ?? [];
+  const pipeList = pipes.data ?? [];
+  const firstValue = hotspotList[0]
+    ? hotspotValue(hotspotList[0])
+    : facilityList[0]
+      ? facilityValue(facilityList[0])
+      : pipeList[0]
+        ? pipeValue(pipeList[0])
+        : screenValue(NAV_ITEMS[0]!);
+  const [anchor, setAnchor] = useState(firstValue);
+  if (anchor !== firstValue) {
+    setAnchor(firstValue);
+    if (search === "") setSelected(firstValue);
+  }
+  useEffect(() => {
+    if (open && search === "" && listRef.current) listRef.current.scrollTop = 0;
+  }, [open, search, firstValue]);
+
+  // Every session of the palette starts with an empty query on the first item.
   const handleOpenChange = (next: boolean) => {
-    if (!next) setSearch("");
+    if (!next) {
+      setSearch("");
+      setSelected(firstValue);
+    }
     setOpen(next);
   };
 
@@ -188,13 +229,13 @@ export function CommandPalette({ onSelectHotspot }: CommandPaletteProps) {
       description="Jump to a hotspot, facility, pipe, screen or run, or start an action"
       className="motion-reduce:animate-none sm:max-w-lg"
     >
-      <Command label="Command palette" loop>
+      <Command label="Command palette" loop value={selected} onValueChange={setSelected}>
         <CommandInput
           placeholder="Jump to a hotspot, facility, pipe, screen or action"
           value={search}
           onValueChange={setSearch}
         />
-        <CommandList className="max-h-96">
+        <CommandList ref={listRef} className="max-h-96">
           <CommandEmpty className="text-text-3">
             Nothing matches. Try a hotspot, a hospital, a pipe id or a screen name.
           </CommandEmpty>
@@ -212,7 +253,7 @@ export function CommandPalette({ onSelectHotspot }: CommandPaletteProps) {
             {hotspotList.map((hotspot) => (
               <CommandItem
                 key={hotspot.id}
-                value={`hotspot ${hotspot.name} ${hotspot.id}`}
+                value={hotspotValue(hotspot)}
                 data-href={paletteHref.hotspot(hotspot.id, activeRunId)}
                 onSelect={() =>
                   pickHotspot({ id: hotspot.id, name: hotspot.name, depthCm: hotspot.peakDepthCm })
@@ -232,15 +273,15 @@ export function CommandPalette({ onSelectHotspot }: CommandPaletteProps) {
             {facilities.isError ? (
               <StatusRow>{failure("Facilities", facilities.error)}</StatusRow>
             ) : null}
-            {facilities.isSuccess && facilities.data.length === 0 ? (
+            {facilities.isSuccess && facilityList.length === 0 ? (
               <StatusRow>This city has no hospitals or fire stations in its asset layer.</StatusRow>
             ) : null}
-            {(facilities.data ?? []).map((facility) => {
+            {facilityList.map((facility) => {
               const Icon = facility.kind === "fire_station" ? FireExtinguisher : Hospital;
               return (
                 <CommandItem
                   key={facility.id}
-                  value={`facility ${facility.name} ${facility.id}`}
+                  value={facilityValue(facility)}
                   keywords={["reachability"]}
                   data-href={paletteHref.facility(facility.id, activeRunId)}
                   onSelect={() => go(paletteHref.facility(facility.id, activeRunId))}
@@ -258,13 +299,13 @@ export function CommandPalette({ onSelectHotspot }: CommandPaletteProps) {
           <CommandGroup heading="Pipes by blockage" forceMount={pipes.isError || undefined}>
             {pipes.isLoading ? <LoadingRows label="Loading pipes" /> : null}
             {pipes.isError ? <StatusRow>{failure("Pipes", pipes.error)}</StatusRow> : null}
-            {pipes.isSuccess && (pipes.data ?? []).length === 0 ? (
+            {pipes.isSuccess && pipeList.length === 0 ? (
               <StatusRow>This run has no drain-health product, so no pipe is ranked.</StatusRow>
             ) : null}
-            {(pipes.data ?? []).map((pipe) => (
+            {pipeList.map((pipe) => (
               <CommandItem
                 key={pipe.id}
-                value={`pipe ${pipe.id} ${pipe.street ?? ""}`}
+                value={pipeValue(pipe)}
                 keywords={["drain", "blockage"]}
                 data-href={paletteHref.pipe(pipe.id, activeRunId)}
                 onSelect={() => go(paletteHref.pipe(pipe.id, activeRunId))}
@@ -287,7 +328,7 @@ export function CommandPalette({ onSelectHotspot }: CommandPaletteProps) {
             {NAV_ITEMS.map((item) => (
               <CommandItem
                 key={item.id}
-                value={`screen ${item.label}`}
+                value={screenValue(item)}
                 keywords={[item.id]}
                 data-href={item.href}
                 onSelect={() => go(item.href)}

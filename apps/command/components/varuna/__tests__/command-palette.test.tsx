@@ -338,6 +338,31 @@ describe("CommandPalette", () => {
     ).toBeInTheDocument();
   });
 
+  it("selects the top-ranked hotspot when the ranking lands after the other lists", async () => {
+    // Hold the ranking back until facilities have rendered, the order a slow hotspots read gives.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const answer = stubFetch(API);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("/v1/nowcast/hotspots")) await gate;
+        return answer(input);
+      }),
+    );
+    renderWithProviders(<CommandPalette />);
+
+    await screen.findByText("King Edward Memorial (KEM) Hospital, Parel");
+    release();
+    await screen.findByText(HINDMATA);
+    await waitFor(() => expect(itemFor(HINDMATA)).toHaveAttribute("aria-selected", "true"));
+
+    key("Enter");
+    expect(push).toHaveBeenLastCalledWith(paletteHref.hotspot("MUM-HS-01", RUN_0840));
+  });
+
   it("jumps to a hotspot by name with Enter", async () => {
     useRunStore.getState().setRun(RUN);
     await openWithApi();
