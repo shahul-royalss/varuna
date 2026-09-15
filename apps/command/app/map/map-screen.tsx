@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/varuna/bottom-sheet";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { LanguageToggle } from "@/components/varuna/language-toggle";
+import { Skeleton } from "@/components/varuna/skeleton";
 import { FloodMap } from "@/components/map/flood-map";
 import type { RunDepth } from "@/lib/api/run-depth";
 import { apiUrl } from "@/lib/api/client";
@@ -17,7 +18,6 @@ import { VehicleSelector, type PublicProfile } from "@/components/varuna/vehicle
 import { Wordmark } from "@/components/varuna/wordmark";
 import { useIsClient } from "@/lib/hooks";
 import { formatIst } from "@/lib/format";
-import { useRunStore } from "@/lib/stores/run";
 
 const REPORT_ROUTE = "/report" as Route;
 const SAVED_KEY = "varuna.map.saved-locations";
@@ -35,9 +35,62 @@ const STOPS_AT_CM: Record<PublicProfile, number> = {
 /** Streets listed in the sheet. More than this and nobody scrolls to the bottom on a phone. */
 const NEARBY_LIMIT = 12;
 
+/** What OSM calls a road with no `name` tag. 52.6 % of Mumbai's segments have none, and the
+ * segment layer's `ward` is empty for every one of them, so there is nothing truer to print. */
+export const UNNAMED_ROAD = "Unnamed road";
+
 interface SavedLocation {
   id: string;
   name: string;
+}
+
+export interface NearbyStreet {
+  id: string;
+  /** The OSM name, `UNNAMED_ROAD` when OSM has none, or null while the names are still loading. */
+  name: string | null;
+  peakCm: number;
+  /** Last step still passable for this vehicle, as IST; null when it is impassable already. */
+  passableUntil: string | null;
+}
+
+/**
+ * The streets a run wets worst for one vehicle, with the last time each is still passable.
+ *
+ * `names` is null while the city's segment layer is loading: a row then carries no name rather
+ * than "Unnamed road", which would be a claim about OSM made before OSM was read.
+ */
+export function nearbyStreets(
+  run: Pick<RunDepth, "depthCm" | "validTs">,
+  stopsAtCm: number,
+  names: ReadonlyMap<string, string> | null,
+  limit = NEARBY_LIMIT,
+): NearbyStreet[] {
+  const rows: NearbyStreet[] = [];
+  for (const [id, series] of run.depthCm) {
+    const peak = series.length ? Math.max(...series) : 0;
+    // Only streets this vehicle would have to think about: half its stopping depth or more.
+    if (peak < stopsAtCm * 0.5) continue;
+    const firstOver = series.findIndex((cm) => cm >= stopsAtCm);
+    rows.push({
+      id,
+      name: names === null ? null : (names.get(id) ?? UNNAMED_ROAD),
+      peakCm: peak,
+      passableUntil:
+        firstOver < 0
+          ? formatIst(run.validTs[run.validTs.length - 1] ?? "")
+          : firstOver === 0
+            ? null
+            : formatIst(run.validTs[firstOver - 1] ?? run.validTs[0] ?? ""),
+    });
+  }
+  rows.sort((a, b) => b.peakCm - a.peakCm);
+  return rows.slice(0, limit);
+}
+
+/** The honesty line (CLAUDE.md 7.11), timed from the run the map is actually drawing. */
+export function honestyLine(cycleTs: string | null | undefined): string {
+  if (!cycleTs) return "Loading the forecast from the last VARUNA run";
+  return `Forecast from the last VARUNA run at ${formatIst(cycleTs)}; updates every 5 minutes`;
 }
 
 /** Saved locations live in this browser only; there is no account behind the public map. */
@@ -69,15 +122,15 @@ export function MapScreen() {
   const stageRef = useRef<HTMLDivElement>(null);
   const isClient = useIsClient();
 
-  const currentRun = useRunStore((state) => state.currentRun);
-  const runTime = currentRun ? formatIst(currentRun.cycle_ts) : null;
-
   // The public map does not scrub: a commuter wants now, and "now" is the run's first step. The
   // "passable until" times below are what carries the forecast instead, which is the form the
   // question actually takes on a phone ("can I still get home?").
   const step = 0;
+  // The run the map drew. The public map has no app shell and so no run store behind it: the
+  // honesty line and the save button read this run, not a registry row the map never loaded.
   const [run, setRun] = useState<RunDepth | null>(null);
-  const [names, setNames] = useState<Map<string, string>>(() => new Map());
+  const [names, setNames] = useState<Map<string, string> | null>(null);
+  const [namesFailed, setNamesFailed] = useState(false);
   const onLoaded = useCallback((loaded: RunDepth) => setRun(loaded), []);
 
   // Street names, from the city's own segment layer. The run carries depths per `segment_id` and
@@ -85,7 +138,10 @@ export function MapScreen() {
   useEffect(() => {
     const controller = new AbortController();
     fetch(apiUrl("/v1/city/mumbai/layers/segments"), { signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : { features: [] }))
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
       .then((geojson: { features?: { properties?: Record<string, unknown> }[] }) => {
         const map = new Map<string, string>();
         for (const feature of geojson.features ?? []) {
@@ -96,40 +152,16 @@ export function MapScreen() {
         }
         setNames(map);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!controller.signal.aborted) setNamesFailed(true);
+      });
     return () => controller.abort();
   }, []);
 
-  /** The streets this run wets worst, with the last time each is still passable for the vehicle. */
-  const nearby = useMemo(() => {
-    if (!run) return [];
-    const stops = STOPS_AT_CM[profile];
-    const rows: {
-      id: string;
-      name: string;
-      peakCm: number;
-      passableUntil: string | null;
-    }[] = [];
-    for (const [id, series] of run.depthCm) {
-      const peak = series.length ? Math.max(...series) : 0;
-      // Only streets this vehicle would have to think about: half its stopping depth or more.
-      if (peak < stops * 0.5) continue;
-      const firstOver = series.findIndex((cm) => cm >= stops);
-      rows.push({
-        id,
-        name: names.get(id) ?? "Unnamed road",
-        peakCm: peak,
-        passableUntil:
-          firstOver < 0
-            ? formatIst(run.validTs[run.validTs.length - 1] ?? "")
-            : firstOver === 0
-              ? null
-              : formatIst(run.validTs[firstOver - 1] ?? run.validTs[0] ?? ""),
-      });
-    }
-    rows.sort((a, b) => b.peakCm - a.peakCm);
-    return rows.slice(0, NEARBY_LIMIT);
-  }, [run, profile, names]);
+  const nearby = useMemo(
+    () => (run ? nearbyStreets(run, STOPS_AT_CM[profile], names) : []),
+    [run, profile, names],
+  );
 
   useEffect(() => {
     const node = stageRef.current;
@@ -151,24 +183,23 @@ export function MapScreen() {
   }, []);
 
   const saveCurrent = useCallback(() => {
-    if (!currentRun) return;
+    if (!run) return;
     const entry: SavedLocation = {
       id: `loc-${Date.now()}`,
       name: `Saved at ${formatIst(new Date().toISOString())}`,
     };
     persist([entry, ...saved].slice(0, 8));
-  }, [currentRun, persist, saved]);
+  }, [run, persist, saved]);
 
   return (
     <main className="flex h-full min-h-0 flex-col">
-      <header className="shrink-0 border-b border-line bg-deep px-4 py-3">
+      <header className="border-line bg-deep shrink-0 border-b px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <Wordmark size="sm" withMark />
           <LanguageToggle />
         </div>
-        <p className="mt-2 type-micro text-text-3">
-          Forecast from the last VARUNA run - updates every 5 minutes
-          {runTime ? <span className="num"> - run at {runTime} IST</span> : null}
+        <p className="num type-micro text-text-3 mt-2" data-slot="honesty-line">
+          {honestyLine(run?.provenance.cycleTs)}
         </p>
         <div className="mt-3">
           <VehicleSelector value={profile} onValueChange={setProfile} />
@@ -191,7 +222,8 @@ export function MapScreen() {
 
         <Button
           size="lg"
-          className="absolute right-4 z-30 h-11"
+          // Under the sheet (z-20), so an opened sheet is not read through a button over its rows.
+          className="absolute right-4 z-10 h-11"
           style={{ bottom: 112 }}
           render={<Link href={REPORT_ROUTE} />}
           nativeButton={false}
@@ -209,18 +241,26 @@ export function MapScreen() {
                 description="The public map fills after the first run."
               />
             ) : (
-              <ul className="divide-y divide-line rounded-panel border border-line">
+              <ul className="divide-line rounded-panel border-line divide-y border">
                 {nearby.map((street) => (
                   <li key={street.id} className="flex items-center justify-between gap-3 px-3 py-3">
-                    <span className="min-w-0">
-                      <span className="block truncate type-small text-text">{street.name}</span>
-                      <span className="num block type-micro text-text-2">
+                    <span className="min-w-0 flex-1">
+                      {street.name !== null ? (
+                        <span className="type-small text-text block truncate">{street.name}</span>
+                      ) : namesFailed ? (
+                        <span className="type-small text-text-2 block truncate">
+                          Street name unavailable
+                        </span>
+                      ) : (
+                        <Skeleton className="my-0.5 h-3.5 w-3/4" />
+                      )}
+                      <span className="num type-micro text-text-2 block">
                         {street.passableUntil
                           ? `Passable until ${street.passableUntil}`
                           : "Impassable now"}
                       </span>
                     </span>
-                    <span className="num shrink-0 type-small text-text-2">
+                    <span className="num type-small text-text-2 shrink-0">
                       {street.peakCm.toFixed(0)} cm
                     </span>
                   </li>
@@ -230,17 +270,16 @@ export function MapScreen() {
 
             <section aria-labelledby="saved-locations" className="space-y-2">
               <div className="flex items-center justify-between gap-2">
-                <h2 id="saved-locations" className="type-small font-medium text-text">
+                <h2 id="saved-locations" className="type-small text-text font-medium">
                   Saved locations
                 </h2>
+                {/* 44 px, the public map's touch target floor (CLAUDE.md 6.5, 7.11). */}
                 <Button
-                  size="sm"
                   variant="outline"
+                  className="h-11 px-3"
                   onClick={saveCurrent}
-                  disabled={!currentRun}
-                  title={
-                    currentRun ? undefined : "Available once a run has scored the streets around you"
-                  }
+                  disabled={!run}
+                  title={run ? undefined : "Available once a run has scored the streets around you"}
                 >
                   <BookmarkPlus aria-hidden="true" />
                   Save this location
@@ -248,18 +287,21 @@ export function MapScreen() {
               </div>
               {!isClient || saved.length === 0 ? (
                 <p className="type-micro text-text-3">
-                  {currentRun
+                  {run
                     ? "Save a location to get its passable-until time first."
                     : "Available once a run has scored the streets around you."}
                 </p>
               ) : (
-                <ul className="divide-y divide-line rounded-panel border border-line">
+                <ul className="divide-line rounded-panel border-line divide-y border">
                   {saved.map((location) => (
-                    <li key={location.id} className="flex items-center justify-between gap-2 px-3 py-2">
-                      <span className="min-w-0 truncate type-small text-text">{location.name}</span>
+                    <li
+                      key={location.id}
+                      className="flex items-center justify-between gap-2 px-3 py-1"
+                    >
+                      <span className="type-small text-text min-w-0 truncate">{location.name}</span>
                       <Button
-                        size="icon-sm"
                         variant="ghost"
+                        className="size-11"
                         aria-label={`Remove ${location.name}`}
                         onClick={() => persist(saved.filter((item) => item.id !== location.id))}
                       >

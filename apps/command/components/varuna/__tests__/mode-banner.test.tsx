@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ModeBanner, degradedLabel } from "@/components/varuna/mode-banner";
@@ -55,6 +56,36 @@ describe("ModeBanner", () => {
     expect(degradedLabel(["radar", "traffic"])).toBe(
       "Degraded: radar and traffic offline, using gauges and satellite",
     );
+  });
+
+  it("says the run is loading, not that there are none, while the registry is asked", () => {
+    useRunStore.getState().setStatus("loading");
+    render(<ModeBanner />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Loading run");
+    expect(status).not.toHaveTextContent("No runs yet");
+    expect(status).toHaveAttribute("data-status", "loading");
+  });
+
+  it("says the registry could not be read, and why, instead of 'No runs yet'", () => {
+    useRunStore
+      .getState()
+      .setStatus("error", "The API is unreachable, so the run registry could not be read.");
+    render(<ModeBanner />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Runs unavailable");
+    expect(status).not.toHaveTextContent("No runs yet");
+    expect(status).toHaveAttribute(
+      "title",
+      "The API is unreachable, so the run registry could not be read.",
+    );
+  });
+
+  it("renders 'Loading run' on the server, before the registry has been asked", () => {
+    // The store starts at "none"; the server has not asked the registry, so that is no answer.
+    const html = renderToString(<ModeBanner />);
+    expect(html).toContain("Loading run");
+    expect(html).not.toContain("No runs yet");
   });
 
   it("honours explicit props over the stores", () => {

@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { CitySwitcher } from "@/components/varuna/city-switcher";
 import { ModeBanner } from "@/components/varuna/mode-banner";
 import { RunStamp } from "@/components/varuna/run-stamp";
-import { VerificationChip } from "@/components/varuna/verification-chip";
+import { ServedVerificationChip } from "@/components/varuna/verification-chip";
 import { Wordmark } from "@/components/varuna/wordmark";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/stores/ui";
@@ -33,14 +33,14 @@ export function TopBar({ className }: TopBarProps) {
   return (
     <header
       className={cn(
-        "flex h-top-bar shrink-0 items-center gap-3 border-b border-line bg-deep px-3",
+        "h-top-bar border-line bg-deep flex shrink-0 items-center gap-3 border-b px-3",
         className,
       )}
     >
       <Link
         href={CONSOLE_HREF}
         aria-label="VARUNA console"
-        className="flex shrink-0 items-center rounded-control px-1"
+        className="rounded-control flex shrink-0 items-center px-1"
       >
         <Wordmark size="sm" withMark />
       </Link>
@@ -50,7 +50,7 @@ export function TopBar({ className }: TopBarProps) {
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <ModeBanner />
         <RunStamp className="hidden lg:inline-flex" />
-        <VerificationChip className="hidden xl:inline-flex" />
+        <ServedVerificationChip className="hidden xl:inline-flex" />
       </div>
 
       <div className="flex shrink-0 items-center gap-1">
@@ -66,7 +66,7 @@ export function TopBar({ className }: TopBarProps) {
             }
           >
             <Search aria-hidden="true" className="size-5" strokeWidth={1.75} />
-            <kbd className="rounded-[4px] border border-line bg-well px-1.5 font-sans text-micro text-text-2">
+            <kbd className="border-line bg-well text-micro text-text-2 rounded-[4px] border px-1.5 font-sans">
               Ctrl K
             </kbd>
           </TooltipTrigger>
@@ -88,7 +88,7 @@ export function TopBar({ className }: TopBarProps) {
           </TooltipTrigger>
           <TooltipContent>
             Keyboard shortcuts
-            <kbd className="rounded-[4px] border border-line bg-well px-1 font-sans text-micro text-text-2">
+            <kbd className="border-line bg-well text-micro text-text-2 rounded-[4px] border px-1 font-sans">
               ?
             </kbd>
           </TooltipContent>

@@ -1,5 +1,6 @@
 "use client";
 
+import { useIsClient } from "@/lib/hooks/use-is-client";
 import { cn } from "@/lib/utils";
 import { formatSpeed } from "@/lib/format";
 import { selectSimDateLabel, selectSimTimeLabel, useReplayStore } from "@/lib/stores/replay";
@@ -37,9 +38,7 @@ const STYLES: Record<SystemMode, { dot: string; text: string; surface: string }>
 export function degradedLabel(feeds: readonly string[] | undefined): string {
   const list = feeds && feeds.length > 0 ? feeds : ["radar"];
   const joined =
-    list.length === 1
-      ? list[0]
-      : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
+    list.length === 1 ? list[0] : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
   return `Degraded: ${joined} offline, using gauges and satellite`;
 }
 
@@ -49,18 +48,34 @@ export function degradedLabel(feeds: readonly string[] | undefined): string {
  */
 export function ModeBanner({ mode: modeProp, label: labelProp, className }: ModeBannerProps) {
   const storeMode = useRunStore((s) => s.mode);
-  const status = useRunStore((s) => s.status);
+  const storeStatus = useRunStore((s) => s.status);
   const currentRun = useRunStore((s) => s.currentRun);
   const speed = useReplayStore((s) => s.speed);
   const dateLabel = useReplayStore(selectSimDateLabel);
   const timeLabel = useReplayStore(selectSimTimeLabel);
 
+  const errorMessage = useRunStore((s) => s.errorMessage);
+  // The server render and the hydration pass happen before the registry has been asked, so the
+  // store's initial "none" is not an answer yet. Treat it as loading until the client takes over.
+  const isClient = useIsClient();
+  const status =
+    !isClient && modeProp === undefined && storeStatus === "none" ? "loading" : storeStatus;
+
   const mode: SystemMode = modeProp ?? storeMode;
 
   let label = labelProp;
+  // Only the store's own "none" can be loading or failed; an explicit prop is taken as said.
+  const registryFailed = labelProp === undefined && mode === "none" && status === "error";
   if (label === undefined) {
     if (mode === "none") {
-      label = status === "loading" ? "Loading run" : "No runs yet";
+      // "No runs yet" is an answer from the registry. Before it has answered, or when it could not
+      // be read, the banner says that instead of claiming the city has never been run.
+      label =
+        status === "loading"
+          ? "Loading run"
+          : status === "error"
+            ? "Runs unavailable"
+            : "No runs yet";
     } else if (mode === "live") {
       label = "Live";
     } else if (mode === "degraded") {
@@ -78,24 +93,27 @@ export function ModeBanner({ mode: modeProp, label: labelProp, className }: Mode
       role="status"
       aria-live="polite"
       data-mode={mode}
+      data-status={labelProp === undefined && mode === "none" ? status : undefined}
+      title={registryFailed ? (errorMessage ?? undefined) : undefined}
       className={cn("inline-flex min-w-0 items-center gap-2", className)}
     >
       <span
         // The key restarts the one-shot pulse each time the banner enters the degraded state.
         key={mode === "degraded" ? "degraded" : "steady"}
         className={cn(
-          "inline-flex h-7 min-w-0 items-center gap-2 rounded-chip border px-3 text-small font-medium",
-          "transition-[background-color,color,border-color] duration-300 ease-ui",
+          "rounded-chip text-small inline-flex h-7 min-w-0 items-center gap-2 border px-3 font-medium",
+          "ease-ui transition-[background-color,color,border-color] duration-300",
           style.surface,
           style.text,
           mode === "degraded" && "banner-pulse-once motion-reduce:animate-none",
         )}
       >
-        <span aria-hidden="true" className={cn("size-2 shrink-0 rounded-chip", style.dot)} />
+        <span aria-hidden="true" className={cn("rounded-chip size-2 shrink-0", style.dot)} />
         <span className="num truncate">{label}</span>
+        {registryFailed && errorMessage ? <span className="sr-only">. {errorMessage}</span> : null}
       </span>
       {baked ? (
-        <span className="inline-flex h-7 items-center rounded-chip border border-status-baked/40 bg-status-baked/10 px-2.5 text-small font-medium text-status-baked">
+        <span className="rounded-chip border-status-baked/40 bg-status-baked/10 text-small text-status-baked inline-flex h-7 items-center border px-2.5 font-medium">
           baked
         </span>
       ) : null}
