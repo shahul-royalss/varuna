@@ -644,6 +644,7 @@ def build_reconstruction_bundle(
         event_date=evidence.EVENT_DATE,
         description=evidence.DESCRIPTION,
         tide_source="illustrative",
+        tide_datum=evidence.tide_datum(),
         ground_truth_n=len(features),
         calibration=_calibration_numbers(
             calibration,

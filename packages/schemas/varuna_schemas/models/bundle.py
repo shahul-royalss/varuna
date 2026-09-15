@@ -150,6 +150,81 @@ class DesignStorm(VarunaModel):
     )
 
 
+StageDatum = Literal["chart_datum", "dem"]
+"""The vertical datum ``tide.csv``'s ``stage_m`` is written in: above chart datum as a tide table
+states heights, or already in the DEM's frame."""
+
+
+class TideDatum(VarunaModel):
+    """The vertical datum of ``tide.csv`` and the offset that puts it in the DEM's frame.
+
+    A tide table states heights above **chart datum**, a low-water reference, while the Twin's
+    terrain is a Copernicus GLO-30 surface whose heights are relative to the EGM2008 geoid. At
+    Mumbai the two differ by about the whole mean tide, so a stage read in the wrong datum
+    floods the coastal boundary cells by metres. This block names the datum the series is in,
+    the offset to mean sea level with the benchmark arithmetic behind it, the sources it was
+    read from, and the residual that is still not quantified.
+
+    Consumers subtract :attr:`offset_to_dem_m` from ``stage_m``; a bundle without this block is
+    read as written, which is what it did before the block existed.
+    """
+
+    stage_datum: StageDatum = Field(
+        description=(
+            "The datum stage_m is written in. 'chart_datum' means a consumer in the DEM's frame "
+            "subtracts msl_above_chart_datum_m; 'dem' means the stage is already in that frame."
+        )
+    )
+    stage_reference: str = Field(
+        min_length=8, description="The datum in UI-ready words, including what is assumed."
+    )
+    msl_above_chart_datum_m: float | None = Field(
+        default=None, description="Mean sea level above chart datum at the tide station, metres."
+    )
+    range_m: tuple[float, float] | None = Field(
+        default=None,
+        description="The span of mean sea level above chart datum the sources support, metres.",
+    )
+    derivation: str = Field(
+        min_length=20, description="The benchmark arithmetic the offset comes from, step by step."
+    )
+    source_urls: list[HttpUrlStr] = Field(
+        min_length=1, description="Where the benchmark relation and the annual means were read."
+    )
+    dem_datum: str = Field(
+        min_length=8, description="The DEM's vertical datum, as its source says."
+    )
+    dem_datum_source_url: HttpUrlStr = Field(description="Where the DEM's datum is stated.")
+    residual: str = Field(
+        min_length=8, description="What the conversion does not account for, said out loud."
+    )
+
+    @model_validator(mode="after")
+    def _offset_is_declared(self) -> TideDatum:
+        if self.stage_datum == "chart_datum":
+            if self.msl_above_chart_datum_m is None or self.range_m is None:
+                msg = (
+                    "a chart-datum stage needs msl_above_chart_datum_m and range_m, or no "
+                    "consumer can put it in the DEM's frame"
+                )
+                raise ValueError(msg)
+            low, high = self.range_m
+            if not low <= self.msl_above_chart_datum_m <= high:
+                msg = (
+                    f"msl_above_chart_datum_m {self.msl_above_chart_datum_m} lies outside "
+                    f"range_m [{low}, {high}]"
+                )
+                raise ValueError(msg)
+        return self
+
+    @property
+    def offset_to_dem_m(self) -> float:
+        """Metres to subtract from ``stage_m`` to read it in the DEM's frame."""
+        if self.stage_datum == "chart_datum" and self.msl_above_chart_datum_m is not None:
+            return self.msl_above_chart_datum_m
+        return 0.0
+
+
 class BundleManifest(VarunaModel):
     """``bundles/<ID>/manifest.json``."""
 
@@ -172,6 +247,13 @@ class BundleManifest(VarunaModel):
     event_date: date | None = None
     description: str | None = None
     tide_source: TideSourceKind | None = None
+    tide_datum: TideDatum | None = Field(
+        default=None,
+        # Left out of the JSON when absent, so a bundle that carries no tide - the design
+        # storms - serialises exactly as it did before the block existed (rule 8).
+        exclude_if=lambda value: value is None,
+        description="The vertical datum of tide.csv and the offset into the DEM's frame.",
+    )
     ground_truth_n: int = Field(default=0, ge=0, description="Sourced pins inside the AOI.")
     calibration: dict[str, float] = Field(
         default_factory=dict,
@@ -268,7 +350,9 @@ __all__ = [
     "DesignStorm",
     "GroundTruthKind",
     "GroundTruthPin",
+    "StageDatum",
     "StormCellSpec",
     "StormDesign",
+    "TideDatum",
     "TideSourceKind",
 ]

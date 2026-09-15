@@ -31,7 +31,7 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 
 from varuna_schemas.constants import IST
-from varuna_schemas.models.bundle import BundleSource
+from varuna_schemas.models.bundle import BundleSource, TideDatum
 
 BUNDLE_ID = "MUM-2019-07-02"
 CITY = "mumbai"
@@ -167,6 +167,92 @@ TIDE_PERIOD_MIN = 745.2
 """The M2 semi-diurnal period, 12 h 25.2 min. One constituent, because one sourced height
 cannot support more."""
 
+# ------------------------------------------------------------------ the tide datum
+PSMSL_STATION_URL = "https://psmsl.org/data/obtaining/stations/43.php"
+"""PSMSL station 43, Bombay (Apollo Bandar): the benchmark notes the conversion rests on."""
+
+PSMSL_RLR_ANNUAL_URL = "https://psmsl.org/data/obtaining/rlr.annual.data/43.rlrdata"
+"""PSMSL station 43 annual mean sea level, millimetres above the station's RLR datum."""
+
+RLR_BELOW_BENCHMARK_M = 13.0
+"""Station page note (1991-06-11): 'Bombay (Apollo B) 500/041 RLR(1964) is 13.0m below BM
+2(PP)(1)'."""
+
+BENCHMARK_ABOVE_CHART_DATUM_M = 8.522
+"""Station page note (2010-09-16): 'For data 1937 onwards the datum was Chart Datum with BM 2PP1
+being 8.522m above this'."""
+
+RLR_ANNUAL_MSL_MM: dict[int, int] = {2015: 7141, 2017: 7154, 2020: 7207, 2024: 7211}
+"""Annual mean sea level in mm above RLR, from the rlrdata file. 2016, 2018, 2019 and 2021-2023
+are -99999 (no value), so 2019 itself is not in the record."""
+
+MSL_ABOVE_CHART_DATUM_M = 2.70
+"""Mean sea level above chart datum at Apollo Bandar used for 2 July 2019. Interpolating the
+bracketing annual means (2017, 2020) gives 2.711 m; 2.70 m is the value used, one centimetre
+below that and inside the span of the four recent annual means."""
+
+MSL_ABOVE_CHART_DATUM_RANGE_M = (2.66, 2.73)
+"""The span of mean sea level above chart datum over the 2015-2024 annual means, rounded."""
+
+COPERNICUS_DEM_HANDBOOK_URL = (
+    "https://dataspace.copernicus.eu/sites/default/files/media/files/2024-06/"
+    "geo1988-copernicusdem-spe-002_producthandbook_i5.0.pdf"
+)
+"""The Copernicus DEM product handbook, which states the DEM's vertical datum."""
+
+
+def rlr_above_chart_datum_m() -> float:
+    """Where RLR sits relative to chart datum: BM 2PP1 above chart datum, minus RLR below it."""
+    return round(BENCHMARK_ABOVE_CHART_DATUM_M - RLR_BELOW_BENCHMARK_M, 3)
+
+
+def msl_above_chart_datum_for(year: int) -> float:
+    """One year's annual mean sea level, re-expressed above chart datum."""
+    return round(RLR_ANNUAL_MSL_MM[year] / 1000.0 + rlr_above_chart_datum_m(), 3)
+
+
+TIDE_DATUM_DERIVATION = (
+    "PSMSL station 43 (Bombay, Apollo Bandar): RLR(1964) is 13.0 m below BM 2(PP)(1), and BM "
+    "2PP1 is 8.522 m above chart datum for data from 1937 onwards, so RLR = chart datum - "
+    "4.478 m. Annual mean sea level in mm above RLR: 7,141 (2015), 7,154 (2017), 7,207 (2020), "
+    "7,211 (2024), which is 2.663, 2.676, 2.729 and 2.733 m above chart datum. 2019 has no "
+    "annual value; interpolating 2017 and 2020 gives 2.711 m. The bundle uses 2.70 m, with "
+    "the 2015-2024 span of 2.66-2.73 m as its range."
+)
+
+TIDE_STAGE_REFERENCE = (
+    "chart datum (assumed: the 4.92 m civic statement does not name its datum; taken as the "
+    "Apollo Bandar chart datum PSMSL documents)"
+)
+
+TIDE_DEM_DATUM = (
+    "Copernicus DEM GLO-30 heights are relative to the EGM2008 geoid. The product handbook: "
+    '"The vertical reference datum is the Earth Gravitational Model 2008 (EGM2008; EPSG 3855)."'
+)
+
+TIDE_DATUM_RESIDUAL = (
+    "Not quantified: the separation between the EGM2008 geoid, the DEM's datum, and local mean "
+    "sea level at Mumbai. The conversion puts the stage at mean sea level and treats that as "
+    "the DEM's frame, so any geoid-to-sea-level offset stays in the tidal boundary as an "
+    "unmeasured bias, as does any revision of the chart datum since PSMSL's note."
+)
+
+
+def tide_datum() -> TideDatum:
+    """``manifest.tide_datum`` for the reconstruction: chart datum, converted to mean sea level."""
+    return TideDatum(
+        stage_datum="chart_datum",
+        stage_reference=TIDE_STAGE_REFERENCE,
+        msl_above_chart_datum_m=MSL_ABOVE_CHART_DATUM_M,
+        range_m=MSL_ABOVE_CHART_DATUM_RANGE_M,
+        derivation=TIDE_DATUM_DERIVATION,
+        source_urls=[PSMSL_STATION_URL, PSMSL_RLR_ANNUAL_URL],
+        dem_datum=TIDE_DEM_DATUM,
+        dem_datum_source_url=COPERNICUS_DEM_HANDBOOK_URL,
+        residual=TIDE_DATUM_RESIDUAL,
+    )
+
+
 # ------------------------------------------------------------------ the honesty labels
 CALIBRATION_BASIS = (
     "Inferred, not measured. No hourly or three-hourly hyetograph exists for any Mumbai "
@@ -296,7 +382,11 @@ TIDE_BASIS = (
     "tide inside 05:40-09:40 IST - a stage rising from about 0.0 m to about 3.9 m, and the "
     "tide-locked outfall that follows from it - is a modelled consequence of that one "
     "anchor, not a record of the morning. What would settle it: the Survey of India or "
-    "INCOIS tide table for Mumbai (Apollo Bandar), 2019."
+    "INCOIS tide table for Mumbai (Apollo Bandar), 2019. DATUM: tide.csv stays in chart "
+    "datum, as sourced. manifest.tide_datum carries mean sea level at 2.70 m above chart datum "
+    "(PSMSL station 43), which the Twin subtracts to read the stage in the DEM's frame, where "
+    "the same window runs from about -2.7 m to about +1.2 m; the separation between the DEM's "
+    "EGM2008 geoid and local mean sea level is not quantified."
 )
 
 GAUGE_BASIS = (
