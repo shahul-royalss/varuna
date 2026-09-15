@@ -17,6 +17,8 @@ export interface RunAlert {
   headline: string;
   instruction: string | null;
   areaDesc: string;
+  /** "hotspot" for a chronic spot from the register, "segment" for any other street. */
+  scope: string;
   hotspotId: string | null;
   lon: number | null;
   lat: number | null;
@@ -47,6 +49,7 @@ interface RawAlert {
   headline?: string;
   instruction?: string | null;
   area_desc?: string;
+  scope?: string;
   hotspot_id?: string | null;
   lon?: number | null;
   lat?: number | null;
@@ -91,6 +94,7 @@ export async function loadAlerts(
       headline: a.headline ?? "",
       instruction: a.instruction ?? null,
       areaDesc: a.area_desc ?? "",
+      scope: a.scope ?? (a.hotspot_id ? "hotspot" : "segment"),
       hotspotId: a.hotspot_id ?? null,
       lon: a.lon ?? null,
       lat: a.lat ?? null,

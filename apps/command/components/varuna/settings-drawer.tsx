@@ -57,7 +57,9 @@ export function SettingsDrawer() {
               />
             </div>
             <p className="type-small text-text-3">
-              Plays when the phone mock receives an alert. Off by default; switch it on for the demo.
+              A short chime when new alerts reach the phone mock in the alert centre. Off by
+              default; switch it on for the demo. The browser lets it play after your next click or
+              key press, and it stays silent when your system asks for reduced motion.
             </p>
           </Section>
 
