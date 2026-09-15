@@ -217,7 +217,11 @@ TIDE_DATUM_DERIVATION = (
     "4.478 m. Annual mean sea level in mm above RLR: 7,141 (2015), 7,154 (2017), 7,207 (2020), "
     "7,211 (2024), which is 2.663, 2.676, 2.729 and 2.733 m above chart datum. 2019 has no "
     "annual value; interpolating 2017 and 2020 gives 2.711 m. The bundle uses 2.70 m, with "
-    "the 2015-2024 span of 2.66-2.73 m as its range."
+    "the 2015-2024 span of 2.66-2.73 m as its range. The same PSMSL pages carry two caveats: "
+    "in 1966 the benchmark was changed to BM 5/88, 7.44 m above chart datum, and the 2020 and "
+    "2024 annual values carry the 'Y' missing-days flag; neither changes the 2.70 m or the "
+    "2.66-2.73 m range, because the flagged means are used as PSMSL publishes them and the RLR "
+    "series is PSMSL's reduction to one datum across the benchmark change."
 )
 
 TIDE_STAGE_REFERENCE = (
