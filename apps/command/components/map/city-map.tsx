@@ -300,9 +300,9 @@ export function CityMap({
     () => [
       ...isochroneLayers({ isochrones: shownIsochrones }),
       ...routeLayers({ routes, progress: routeProgress }),
-      ...truthPinLayers({ truthPins }),
+      ...truthPinLayers({ truthPins, reducedMotion }),
     ],
-    [routes, shownIsochrones, routeProgress, truthPins],
+    [routes, shownIsochrones, routeProgress, truthPins, reducedMotion],
   );
 
   const labelDrawLayers = useLabelLayers({

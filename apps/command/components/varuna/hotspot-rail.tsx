@@ -2,19 +2,59 @@
 
 import { useEffect, useRef } from "react";
 import { Flame, Hospital, TrainFront, Warehouse } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 
 import type { GroundTruthPin } from "@/lib/api/ground-truth";
 import type { FacilityKind, Hotspot } from "@/lib/api/hotspots";
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Sparkline } from "@/components/varuna/sparkline";
+import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
+import { formatPinTime } from "@/lib/hooks/use-truth-pins";
+import { DUR, tween } from "@/lib/motion";
 import { formatIstTime } from "@/lib/stores/time";
 import { cn } from "@/lib/utils";
+
+/** A ticker pin, with the replay clock it was listed against when the console knows it. */
+export type TickerPin = GroundTruthPin & { clockTs?: string };
+
+/** Motion M18's ticker row: slides down 8 px into place while it fades in, on the catalogue easing
+ * over the micro duration. Exported so the tests read the same values the row is given. */
+export const TICKER_ROW_FROM = { opacity: 0, y: -8 } as const;
+export const TICKER_ROW_TO = { opacity: 1, y: 0 } as const;
+export const TICKER_ROW_TRANSITION = tween(DUR.micro);
+
+/**
+ * One "As it happened" row. A pin from a different day than the replay clock carries its date -
+ * six of the 2 July bundle's pins are from 1 July, and "11:52" beside an 08:45 clock would read as
+ * an event still to come.
+ */
+function TickerRow({ pin }: { pin: TickerPin }) {
+  return (
+    <>
+      <span className="num text-text">{formatPinTime(pin.ts, pin.clockTs)}</span> · {pin.name}
+      {pin.depthPhrase ? ` · ${pin.depthPhrase}` : ""}
+      {pin.sourceUrl ? (
+        <>
+          {" · "}
+          <a
+            href={pin.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-tide underline underline-offset-2"
+          >
+            source
+          </a>
+        </>
+      ) : null}
+    </>
+  );
+}
 
 export interface HotspotRailProps {
   /** Sourced pins the replay clock has passed, newest first (task P6.12). Each carries the URL
    * it was read from, which is the whole point of showing them. */
-  truthPins?: readonly GroundTruthPin[];
+  truthPins?: readonly TickerPin[];
   hotspots: readonly Hotspot[];
   /** Current step on the time bar; the chip shows the depth *now*, not at the peak. */
   step: number;
@@ -71,6 +111,7 @@ export function HotspotRail({
   loading = false,
 }: HotspotRailProps) {
   const listRef = useRef<HTMLOListElement>(null);
+  const reducedMotion = usePrefersReducedMotion();
 
   // Keep the selected row in view when the selection comes from the map rather than the rail.
   useEffect(() => {
@@ -196,27 +237,33 @@ export function HotspotRail({
           <p className="mt-2 type-micro text-text-3">
             Ground-truth pins appear as the replay clock passes them.
           </p>
-        ) : (
+        ) : reducedMotion ? (
+          // Section 8's fallback for M18's ticker: the row is simply there.
           <ol className="mt-2 space-y-2">
             {truthPins.slice(0, 8).map((pin) => (
               <li key={pin.id} className="type-micro text-text-2">
-                <span className="num text-text">{formatIstTime(pin.ts)}</span> · {pin.name}
-                {pin.depthPhrase ? ` · ${pin.depthPhrase}` : ""}
-                {pin.sourceUrl ? (
-                  <>
-                    {" · "}
-                    <a
-                      href={pin.sourceUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-tide underline underline-offset-2"
-                    >
-                      source
-                    </a>
-                  </>
-                ) : null}
+                <TickerRow pin={pin} />
               </li>
             ))}
+          </ol>
+        ) : (
+          <ol className="mt-2 space-y-2">
+            {/* `initial={false}`: rows already passed when the ticker first shows do not slide in;
+                only a pin the clock passes while the operator watches does (motion M18). */}
+            <AnimatePresence initial={false}>
+              {truthPins.slice(0, 8).map((pin) => (
+                <motion.li
+                  key={pin.id}
+                  layout="position"
+                  initial={TICKER_ROW_FROM}
+                  animate={TICKER_ROW_TO}
+                  transition={TICKER_ROW_TRANSITION}
+                  className="type-micro text-text-2"
+                >
+                  <TickerRow pin={pin} />
+                </motion.li>
+              ))}
+            </AnimatePresence>
           </ol>
         )}
       </section>

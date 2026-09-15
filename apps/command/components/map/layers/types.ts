@@ -77,8 +77,12 @@ export interface TruthPin {
   lon: number;
   lat: number;
   name: string;
-  /** 0 to 1: how far through its drop animation this pin is (motion M18). */
-  age: number;
+  /**
+   * `performance.now()` at which this pin began to drop (motion M18). Absent for a pin that has
+   * landed, or that was already passed when the clock was first read; `Infinity` for a pin the
+   * clock has just passed whose first frame has not arrived yet, which draws nothing.
+   */
+  dropStartMs?: number;
 }
 
 /** Where to fly. `key` changes on every request, so clicking the same row twice flies again. */

@@ -138,6 +138,52 @@ describe("MO1 seams draw nothing yet", () => {
     }
   });
 
+  it("a dropping pin costs CityMap no renders either: deck draws the drop (M18)", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    try {
+      render(
+        <CityMap
+          {...fx.consoleProps({
+            routes: [],
+            isochrones: [],
+            reversedEdges: [],
+            surcharge: [],
+            truthPins: [
+              { id: "P-1", lon: 72.858, lat: 19.032, name: "Gandhi Market", dropStartMs: 1 },
+            ],
+          })}
+        />,
+      );
+      const ids = (renders.at(-1)?.layers as { id: string }[]).map((layer) => layer.id);
+      expect(ids).toContain("truth-drop-P-1");
+      expect(ids).toContain("truth-ripple-P-1");
+      let rounds = 0;
+      while (frames.length > 0 && rounds < 10) {
+        const queue = frames.splice(0);
+        act(() => {
+          for (const callback of queue) callback(performance.now() + 16 * (rounds + 1));
+        });
+        rounds += 1;
+      }
+      // The drop is the layer's own: CityMap queues no frame for it and does not render again.
+      // (The hook that stamps the pin is checked for the same thing in use-truth-pins.test.ts.)
+      expect(frames).toHaveLength(0);
+      expect(rounds).toBeLessThanOrEqual(1);
+      const settled = renders.length;
+      act(() => {
+        for (const callback of frames.splice(0)) callback(performance.now() + 300);
+      });
+      expect(renders.length).toBe(settled);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("each builder ignores its seam argument", () => {
     const same = (a: unknown[], b: unknown[]) =>
       expect(serializeLayers(a)).toEqual(serializeLayers(b));
