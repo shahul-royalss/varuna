@@ -1,7 +1,7 @@
 "use client";
 
 import { BellOff, Send } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   Table,
@@ -26,8 +26,10 @@ import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PhoneMock, type PhoneMessage } from "@/components/varuna/phone-mock";
+import { alertIdentities, alertIdentity, freshAlertIds } from "@/lib/alert-identity";
 import { formatIst } from "@/lib/format";
 import { loadAlerts, loadCap, type RunAlert } from "@/lib/api/alerts";
+import { useAlertChime } from "@/lib/sound";
 
 /** One line of the delivery log: which channel carried an alert, whether it landed, and when. */
 export interface DeliveryLogRow {
@@ -50,11 +52,18 @@ const QUEUE_EMPTY_HINT: Record<AlertLevel, string> = {
     "Watch raises when P(> 15 cm) stays at or above 0.6 for two cycles. Press Play on the replay to fill the queue.",
 };
 
+const NO_FRESH: ReadonlySet<string> = new Set();
+
 /**
  * Alert centre (CLAUDE.md section 7.5). Three columns: the queue grouped by level, the CAP 1.2
  * document of the selected alert, and the ward officer's phone with the delivery log and the
- * escalation matrix. Phase 0 has no runs, so every column shows its empty state; the state
- * machine, CAP generation and the WhatsApp mock arrive in Phase 8.
+ * escalation matrix. With no run baked every column shows its empty state.
+ *
+ * Motion M16: when a cycle brings alerts the queue did not show a moment ago, those cards slide
+ * in, the phone pops them and shakes once, and the chime plays if sound is on. "New" is decided
+ * by `freshAlertIds` on the cycle-independent identity (scope, place, level), because alert ids
+ * carry the run and would call every card new on every cycle. The first queue the screen shows
+ * is not news, so nothing moves on load; on the replay the trigger is a change of cycle.
  */
 export function AlertsScreen() {
   const [raised, setRaised] = useState<RunAlert[]>([]);
@@ -66,14 +75,35 @@ export function AlertsScreen() {
   // queue is nearly empty. The operator picks the cycle here as they do on the console; the row
   // of cycles is the morning's own escalation.
   const [runId, setRunId] = useState<string | undefined>(undefined);
+  // The identities of the queue on screen (null until one has been shown), the ids in the current
+  // queue that were not in it, and a counter that moves on with each batch of those.
+  const shownRef = useRef<Set<string> | null>(null);
+  const [fresh, setFresh] = useState<ReadonlySet<string>>(NO_FRESH);
+  const [batch, setBatch] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
     loadAlerts(runId, controller.signal)
-      .then((set) => setRaised(set?.alerts ?? []))
-      .catch(() => setRaised([]));
+      .then((set) => {
+        const next = set?.alerts ?? [];
+        const nextFresh = freshAlertIds(shownRef.current, next);
+        shownRef.current = alertIdentities(next);
+        setRaised(next);
+        setFresh(nextFresh);
+        if (nextFresh.size > 0) setBatch((current) => current + 1);
+      })
+      .catch(() => {
+        // A superseded request is not an empty queue: treating it as one would make every alert
+        // of the next cycle look new.
+        if (controller.signal.aborted) return;
+        if (shownRef.current !== null) shownRef.current = new Set();
+        setRaised([]);
+        setFresh(NO_FRESH);
+      });
     return () => controller.abort();
   }, [runId]);
+
+  useAlertChime(batch);
 
   // A new cycle is a new queue, so the selected alert and its CAP go with it.
   const pickCycle = useCallback((next: string) => {
@@ -98,7 +128,8 @@ export function AlertsScreen() {
     [],
   );
 
-  const alerts: AlertSummary[] = raised.map((a) => ({
+  const alerts: (AlertSummary & { identity: string })[] = raised.map((a) => ({
+    identity: alertIdentity(a),
     id: a.id,
     level: a.level,
     headline: a.headline,
@@ -118,11 +149,18 @@ export function AlertsScreen() {
     { id: `${a.id}-wa`, channel: "WhatsApp mock", status: "Delivered", time: a.raisedTs },
   ]);
 
-  const phoneMessages: PhoneMessage[] = raised.slice(0, 4).map((a) => ({
-    id: a.id,
-    time: a.raisedTs,
-    text: a.instruction ? `${a.headline}. ${a.instruction}` : a.headline,
-  }));
+  // The phone carries the newest news: alerts that just arrived come first, then the worst of the
+  // rest, so the message that pops is the one the batch brought.
+  const phoneMessages: PhoneMessage[] = [
+    ...raised.filter((a) => fresh.has(a.id)),
+    ...raised.filter((a) => !fresh.has(a.id)),
+  ]
+    .slice(0, 4)
+    .map((a) => ({
+      id: a.id,
+      time: a.raisedTs,
+      text: a.instruction ? `${a.headline}. ${a.instruction}` : a.headline,
+    }));
 
   return (
     <AppShell>
@@ -136,11 +174,7 @@ export function AlertsScreen() {
           <CyclePicker currentRunId={runId} onPick={pickCycle} />
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,0.9fr)]">
-            <Panel
-              title="Queue"
-              description="Grouped by level, newest first."
-              className="min-w-0"
-            >
+            <Panel title="Queue" description="Grouped by level, newest first." className="min-w-0">
               <div className="flex flex-col gap-5">
                 {ALERT_LEVELS.map((level) => {
                   const group = alerts.filter((alert) => alert.level === level);
@@ -153,7 +187,7 @@ export function AlertsScreen() {
                         </span>
                       </div>
                       {group.length === 0 ? (
-                        <div className="rounded-control border border-line bg-ink">
+                        <div className="rounded-control border-line bg-ink border">
                           <EmptyState
                             size="sm"
                             icon={BellOff}
@@ -164,9 +198,12 @@ export function AlertsScreen() {
                       ) : (
                         <ul className="flex flex-col gap-3">
                           {group.map((alert) => (
-                            <li key={alert.id}>
+                            // Keyed by identity, not id: a street still warned about at the same
+                            // level keeps its card across cycles, so only new cards slide in.
+                            <li key={alert.identity}>
                               <AlertCard
                                 alert={alert}
+                                entering={fresh.has(alert.id)}
                                 selected={alert.id === active}
                                 onSelect={(id) => setSelectedId(id)}
                                 onAcknowledge={(id) => acknowledge(id)}
@@ -187,7 +224,11 @@ export function AlertsScreen() {
               className="min-w-0"
             >
               <div className="flex min-h-[520px] flex-col">
-                <CapViewer xml={capXml} filename={`${active ?? "alert"}.cap.xml`} className="flex-1" />
+                <CapViewer
+                  xml={capXml}
+                  filename={`${active ?? "alert"}.cap.xml`}
+                  className="flex-1"
+                />
               </div>
             </Panel>
 
@@ -196,7 +237,7 @@ export function AlertsScreen() {
                 title="Ward officer's phone"
                 description="The WhatsApp card as the ward officer receives it."
               >
-                <PhoneMock messages={phoneMessages} />
+                <PhoneMock messages={phoneMessages} freshIds={fresh} popKey={batch} />
               </Panel>
 
               <Panel title="Delivery log" description="Channel, status and time for each send.">
