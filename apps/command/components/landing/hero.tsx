@@ -37,6 +37,7 @@ const FloodMap = dynamic(
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/varuna/wordmark";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
+import { DUR, presetFor } from "@/lib/motion";
 
 /** Steps in a run: 36 five-minute frames, three hours (CLAUDE.md 10.3). */
 const N_STEPS = 36;
@@ -84,16 +85,20 @@ function useScrubLoop(enabled: boolean): number {
   return enabled ? step : STILL_STEP;
 }
 
-const COPY_STAGGER_S = 0.06;
-
-function BlurFade({ children, index }: { children: React.ReactNode; index: number }) {
+/**
+ * Motion M2: the hero copy's blur-fade entrance, once, 60 ms apart. The values are the catalogue's
+ * (`presetFor("M2")` and `DUR.staggerCopy` in lib/motion.ts), not local literals, so the parity
+ * test on section 8 covers them. Under reduced motion the copy is simply there (M2's "instant").
+ */
+export function BlurFade({ children, index }: { children: React.ReactNode; index: number }) {
   const reducedMotion = usePrefersReducedMotion();
   if (reducedMotion) return <>{children}</>;
+  const { initial, animate, transition } = presetFor("M2", false);
   return (
     <motion.div
-      initial={{ opacity: 0, filter: "blur(8px)", y: 8 }}
-      animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
-      transition={{ duration: 0.5, delay: index * COPY_STAGGER_S, ease: [0.2, 0.8, 0.2, 1] }}
+      initial={initial}
+      animate={animate}
+      transition={{ ...transition, delay: index * DUR.staggerCopy }}
     >
       {children}
     </motion.div>
