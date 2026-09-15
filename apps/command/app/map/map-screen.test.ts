@@ -43,4 +43,16 @@ describe("honestyLine", () => {
   it("does not name a time before a run has loaded", () => {
     expect(honestyLine(null)).not.toMatch(/\d/);
   });
+
+  it("stops claiming to load once the map knows there is nothing to draw", () => {
+    expect(honestyLine(null, "empty")).toBe("No VARUNA run yet; the map fills after the first run");
+    expect(honestyLine(null, "error")).toBe(
+      "The forecast did not load; check the connection and reload",
+    );
+    expect(honestyLine(null, "error")).not.toMatch(/loading/i);
+  });
+
+  it("keeps the run's time when a later reload fails", () => {
+    expect(honestyLine("2019-07-02T06:40:00+05:30", "error")).toMatch(/06:40/);
+  });
 });

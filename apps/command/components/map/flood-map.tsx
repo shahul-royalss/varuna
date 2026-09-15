@@ -50,12 +50,17 @@ type Status =
   | { kind: "empty"; message: string }
   | { kind: "error"; message: string };
 
+/** The load states a screen can react to: loading, ready, empty (nothing baked) or error. */
+export type FloodMapStatusKind = Status["kind"];
+
 export interface FloodMapProps {
   city?: string;
   runId?: string;
   /** Current step, owned by the time bar so keyboard and play share one clock. */
   step: number;
   onLoaded?: (run: RunDepth) => void;
+  /** The load's state whenever it changes, for a screen that words its own honesty line. */
+  onStatus?: (kind: FloodMapStatusKind) => void;
   /** The run's ranked hotspots, drawn as 120 m rings (section 6.7). */
   hotspots?: readonly Hotspot[];
   selectedHotspotId?: string | null;
@@ -102,6 +107,7 @@ export function FloodMap({
   runId,
   step,
   onLoaded,
+  onStatus,
   hotspots: ranked = [],
   selectedHotspotId = null,
   surcharge: surchargeSet = null,
@@ -166,6 +172,10 @@ export function FloodMap({
   }, [city, runId, attempt, onLoaded]);
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
+
+  useEffect(() => {
+    onStatus?.(status.kind);
+  }, [status.kind, onStatus]);
 
   // The city's context layers, fetched *after* the run so they never delay the flood. Buildings
   // are 11 MB and the drain graph is 18 MB; putting either on the critical path would mean

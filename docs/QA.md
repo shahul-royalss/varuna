@@ -106,6 +106,30 @@ layer panel says so: "This run stores no pipe geometry, so they are counted here
 The count it quotes is the run's own, 18,380–24,014 reversed pipes per cycle, not the 500 it
 stores.
 
+## "Do the other animations do what the catalogue says?"
+
+Measured 15 September 2026 by the agent that built each one, in Playwright against `next dev` at
+1440 × 900 with other work running. The alerts motion was reviewed and passed; the other three
+reviews were cut off by a session limit, so treat these as the builders' own measurements.
+
+- **M16, alerts.** Moving the cycle picker from 06:40 to 08:40 slid 57 of 60 cards in from 12 px
+  above, popped four phone bubbles and shook the phone once (peak 3.98 px, 80–348 ms after the
+  queue changed), with one chime per batch. Under reduced motion: no translate, no shake, no sound,
+  and no audio context created. The 60-card commit produces 170–440 ms long tasks in a development
+  build, which cost the 180 ms and 300 ms motions frames (ADR-0057).
+- **M17, pumps.** Optimise at 08:40 flew pump P-05 to Jijamata Road (moving 223–439 ms after the
+  click, settled by 1,206 ms) and fired 9 NumberFlow animations, ending on "Minutes above 45 cm:
+  0 min with the plan, 1 h 40 min without". Under reduced motion the card was already in place on
+  the first sampled frame, with no number animation. Dragging a pump changed no figure.
+- **M18, ground-truth pins.** A drop changes only a 31 px box around the pin for 450 ms, then the
+  canvas is still and deck makes no further clear in the next 3 s. It costs 3 renders of the pin
+  hook and 0 of `CityMap`; the old hook re-rendered the console every frame for 600 ms. Under
+  reduced motion: 0 changed pixels.
+- **M3 and M5, landing.** The cycle diagram's beams travel only in view, and the stage times under
+  each node come from `/v1/cycle/status`. Production-build LCP: 976 ms median over 7 warm runs
+  after the change against 1,344 ms before, CLS 0 both times, with 24 and 12 python processes
+  running.
+
 ## "Is the radar real?"
 
 No, and the bundle says so on its face. The replay radar is a storm-designer reconstruction,
