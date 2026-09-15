@@ -42,12 +42,69 @@ drain step is the wall, and it needs parallelising, which its scatter-adds curre
 
 A whole cycle, counting each stage once, took **64.8–147.2 s** across the seven baked cycles.
 Figures of 155–359 s that appeared earlier counted the Twin's internal sub-timings on top of its
-own wall clock (ADR-0046). The products stage has a column-wise segment table ready that turns
-8.5 s into 0.97 s for 20 members, bitwise equal, not yet wired in; with the raster, parquet and
-wet-segment writers section 11.8 counts, products would still be 3.6 s against 2 s (ADR-0050).
+own wall clock (ADR-0046).
+
+**Products** have 2 s in CLAUDE.md 11.8, and that includes the writers. Since 15 September the
+column-wise segment table is wired in, the 36 depth PNGs encode on eight threads and the
+wet-segment layer rounds each distinct value once; every one of the 08:40 cycle's 75 depth
+products is byte-identical to before and to the shipped bake (ADR-0051). Measured on the 08:40
+inputs with 12 falling to 10 python processes running (i5-1155G7):
+
+| Item | Before | After |
+|---|---|---|
+| Segment forecast, 20 members | 6.86–8.46 s | 0.75–1.04 s |
+| 36 depth PNGs | 0.95–1.22 s | 0.27–0.36 s |
+| `segments_wet.json` | 0.89–1.27 s | 0.45–0.59 s |
+| Segment sampling points | 0.31–0.61 s on every call | 0.35 s first call, 0.001 s after |
+| `segment_forecast.parquet` write | 0.39–0.45 s | 0.39–0.47 s (unchanged code) |
+| Hotspot ranking · surcharge product · street series | not re-timed | 0.28–0.30 · 0.32–0.35 · 0.10–0.11 s |
+
+Together that is about **2.7 s warm and 3.6 s cold, down from about 10.5–13 s: the 2 s budget is
+still missed.** A real bake of 08:40 records `stage_ms.products` as 3,009 ms, but that timer closes
+before the writers run, so it cannot be read against the budget. Under heavier load (21 falling to
+18 processes) the segment forecast went from 12.5–21.5 s to 1.41–1.67 s. These figures predate the
+reversed-edge geometry join, which adds a one-time 1.1 s parse to the first cycle in a process
+(ADR-0052); the two have not been timed together.
+
+**Pulse** has 3 s in 11.6. Traffic detection is vectorised and three static city joins are cached
+in process, with every observation and posterior hash identical at all seven demo cycles
+(ADR-0054). Old and new code interleaved in one process: at 09:10 with 19–21 python processes,
+13.67–16.64 s before, **6.18 s cold** and 3.56–4.97 s warm after; at 08:40 with 15–17 processes,
+11.52–14.75 s before, 6.51 s cold and 2.15–2.16 s warm. An independent review at 09:10 with 10
+processes measured **1.47–1.65 s warm** against 5.75–5.96 s for the old code. So the budget is
+**met warm at the lower process count and missed cold**, and no cold figure exists without other
+agents' processes running. The warm remainder is the ES-MDA update (1.12–2.45 s) and the
+drain-health product (0.85–1.37 s).
 
 What this costs the demo: nothing. The replay is baked and publishes in under 200 ms. It costs a
 *live* cycle, which is why "Compute live" is a moment in the demo and not the default.
+
+## "Does the map keep up?"
+
+Not reliably, once the surcharge markers pulse. The pulse (M8) and the reversed-flow dash (M9) run
+on deck.gl's animation clock as shader uniforms, so an animation frame costs **0** React renders
+where the old pulse cost 12.5 a second, and under reduced motion the canvas is byte-still
+(ADR-0053). The price is that deck redraws the whole map every frame while a marker is in view.
+
+Measured 15 September 2026 in headed Chromium on the demo laptop's Iris Xe (D3D11), full `/console`
+at 1440 × 900, on a `next dev` build, with 10–12 python processes from other work running:
+
+| Console state | Mean fps, 10 s samples | p95 frame |
+|---|---|---|
+| Surcharge on, pulse animating | 43.7 · 58.3 · 56.2 | 33.9 · 17.2 · 32.9 ms |
+| Surcharge layer off | 59.7 · 60.0 | 17.1 · 17.0 ms |
+| Reduced motion, surcharge on, settled | 60.0 | 16.9 ms |
+
+CLAUDE.md 14 asks for 55 fps. This is **marginal, not met**, and the budget stays unticked. It was
+taken on a development build under contention, so the next step is the same measurement on a
+production build with nothing else running; if the pulse still pulls it under 55, the two loops
+move to a second, small canvas so a pulse frame stops redrawing the city.
+
+The dash is not visible yet. Every stored reversed edge in the seven committed runs lacks its line
+(0 of 500 in each), because the geometry join landed after they were baked (ADR-0052), and the
+layer panel says so: "This run stores no pipe geometry, so they are counted here but not drawn."
+The count it quotes is the run's own, 18,380–24,014 reversed pipes per cycle, not the 500 it
+stores.
 
 ## "Is the radar real?"
 
@@ -71,6 +128,23 @@ the truth field. Against the reconstruction's truth it carries 0.955 of the rain
 and 1.106 over 05:40–09:40, hourly 0.80–1.46, so the three-hour agreement is errors cancelling. It
 trails truth by about one 15-minute gauge interval, because the merge anchors on each station's
 newest reading.
+
+## "What datum is the tide in?"
+
+Chart datum in the file, the terrain's datum in the solver. `tide.csv` keeps the sourced heights,
+0.045–3.936 m across the demo window, and the Twin subtracts **2.70 m**: mean sea level above chart
+datum at Apollo Bandar, from PSMSL station 43 (range 2.66–2.73 m over 2015–2024; 2019 has no annual
+value and interpolates to 2.711 m). The boundary therefore runs −2.655 to +1.236 m in the DEM's
+frame (ADR-0055). Regenerating the bundle changed only `manifest.json` — 95 of 96 files
+byte-identical, 13 rules, 0 warnings.
+
+Three things to say with it. The civic 4.92 m statement names no datum, so reading it as chart
+datum is an assumption. The offset between the DEM's EGM2008 geoid and local mean sea level is
+**not quantified**, so it stays in the boundary as an unmeasured bias. And the baked runs predate
+the conversion: whether the tide-locked outfall still reverses has not been measured, and the
+drain-graph fix in progress no longer places an outfall at Mahim, where the only stored tidal
+reversed edge was (nearest node 1,049 m in its rebuild), so that claim waits for a measurement on
+the regraded graph.
 
 ## "Where is the drain GIS?"
 
