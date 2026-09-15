@@ -196,6 +196,22 @@ async def test_the_clock_stops_at_the_end_of_the_window_and_says_so(
     assert await clock.poll() == []
 
 
+async def test_play_at_the_end_runs_the_window_again_from_the_start(
+    make_clock: Callable[..., ReplayClock], fake: FakeMonotonic
+) -> None:
+    # The clock is shared by every visitor: one who plays to the end must not strand the next.
+    clock = make_clock(speed=60, mode="live")
+    await clock.play()
+    fake.advance(600)
+    await clock.poll()
+    assert clock.note == END_NOTE
+
+    await clock.play()
+    assert clock.sim_time == T0
+    assert clock.playing is True
+    assert clock.note is None
+
+
 # --------------------------------------------------------------------------- publication
 async def test_a_paused_clock_publishes_nothing(
     make_clock: Callable[..., ReplayClock], fake: FakeMonotonic

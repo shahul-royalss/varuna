@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FloodMap } from "@/components/map/flood-map";
 import type { Isochrone } from "@/components/map/city-map";
+import { apiUrl } from "@/lib/api/client";
 import type { RunDepth } from "@/lib/api/run-depth";
 import { loadDrainHealth, type DrainHealth } from "@/lib/api/drains";
 import { loadHotspots, type Hotspot, type HotspotSet } from "@/lib/api/hotspots";
@@ -27,6 +28,8 @@ import { useTruthPins } from "@/lib/hooks/use-truth-pins";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
 import { TimeBar } from "@/components/varuna/time-bar";
+import { openingRunId, type RunSummary } from "@/lib/opening-run";
+import { DEFAULT_SIM_TIME } from "@/lib/stores/replay";
 import { useRunStore } from "@/lib/stores/run";
 import { useUiStore } from "@/lib/stores/ui";
 
@@ -55,6 +58,9 @@ function formatStep(iso: string | undefined): string {
 
 /** Motion M7: 5-minute steps advance about three a second while playing. */
 const PLAY_INTERVAL_MS = 320;
+
+/** How long the console waits for the run registry before opening on the API's default run. */
+const OPENING_LOOKUP_MS = 4_000;
 
 /** How many learned pipes to ask for. The cycle writes the 6,000 worst by blockage, which is what
  * `/drains` asks for too, so the console's Drains mode and the X-ray colour the same set. */
@@ -108,6 +114,34 @@ export function ConsoleScreen() {
       ? undefined
       : (new URLSearchParams(window.location.search).get("run") ?? undefined),
   );
+  // With no `?run=`, open on the cycle the demo script starts from (CLAUDE.md 15, 06:40) rather
+  // than the newest run the API would pick, which on the replay is the calm one after the storm.
+  // The map holds its load for the moment it takes to read the registry, so nobody watches 09:10
+  // load and then swap. If the registry is slow or has no 06:40 run, the API's default stands.
+  const [openingResolved, setOpeningResolved] = useState(false);
+  const mapReady = runParam !== undefined || openingResolved;
+  useEffect(() => {
+    if (runParam !== undefined || openingResolved) return;
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), OPENING_LOOKUP_MS);
+    fetch(apiUrl("/v1/runs"), { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : { runs: [] }))
+      .then((body: { runs?: RunSummary[] }) => {
+        const opening = openingRunId(body.runs ?? [], DEFAULT_SIM_TIME);
+        if (opening && !cancelled) setRunParam(opening);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        window.clearTimeout(timer);
+        if (!cancelled) setOpeningResolved(true);
+      });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [runParam, openingResolved]);
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
   // The loaded set is stamped with the run it belongs to, which is what lets "loading" be
@@ -350,6 +384,7 @@ export function ConsoleScreen() {
         <MapSlot legendClearsRightPanel={replayPanelOpen} />
         <FloodMap
           runId={runParam}
+          deferLoad={!mapReady}
           step={step}
           onLoaded={handleLoaded}
           hotspots={hotspots?.hotspots ?? []}
