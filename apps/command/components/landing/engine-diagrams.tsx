@@ -41,7 +41,13 @@ function PulseDiagram() {
     [7, 3],
   ];
   return (
-    <svg {...SVG} viewBox="0 0 256 112" className="h-28 w-auto max-w-full" data-diagram="Pulse">
+    <svg
+      {...SVG}
+      viewBox="0 0 256 112"
+      // Pulse is the largest tile (7.1), so its picture takes the tile's width rather than a corner.
+      className="h-auto w-full max-w-[520px]"
+      data-diagram="Pulse"
+    >
       {pipes.map(([a, b]) => (
         <line
           key={`${a}-${b}`}

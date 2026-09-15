@@ -17,14 +17,16 @@ vi.mock("motion/react", async (importOriginal) => {
   const actual = await importOriginal<typeof import("motion/react")>();
   const { createElement, forwardRef } = await import("react");
   const MotionDiv = actual.motion.div as unknown as React.ComponentType<Record<string, unknown>>;
-  const Div = forwardRef<HTMLDivElement, Record<string, unknown>>(function RecordingDiv(props, ref) {
-    return createElement(MotionDiv, {
-      ...props,
-      ref,
-      "data-initial": JSON.stringify(props.initial ?? null),
-      "data-transition": JSON.stringify(props.transition ?? null),
-    });
-  });
+  const Div = forwardRef<HTMLDivElement, Record<string, unknown>>(
+    function RecordingDiv(props, ref) {
+      return createElement(MotionDiv, {
+        ...props,
+        ref,
+        "data-initial": JSON.stringify(props.initial ?? null),
+        "data-transition": JSON.stringify(props.transition ?? null),
+      });
+    },
+  );
   return {
     ...actual,
     motion: new Proxy(actual.motion, {
