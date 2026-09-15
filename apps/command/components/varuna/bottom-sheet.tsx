@@ -67,19 +67,16 @@ export function BottomSheet({
   const reduced = usePrefersReducedMotion();
   const height = heightFor(snap, containerHeight);
 
-  const onDragEnd = useCallback(
-    (_event: unknown, info: PanInfo) => {
-      setSnap((current) => snapForDrag(current, info.offset.y, info.velocity.y));
-    },
-    [],
-  );
+  const onDragEnd = useCallback((_event: unknown, info: PanInfo) => {
+    setSnap((current) => snapForDrag(current, info.offset.y, info.velocity.y));
+  }, []);
 
   return (
     <motion.div
       role="dialog"
       aria-label={title}
       className={cn(
-        "absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden rounded-t-panel border-t border-line bg-deep",
+        "rounded-t-panel border-line bg-deep absolute inset-x-0 bottom-0 z-20 flex flex-col overflow-hidden border-t",
         className,
       )}
       animate={{ height }}
@@ -94,16 +91,16 @@ export function BottomSheet({
         type="button"
         aria-label={`${title}, ${SNAP_LABEL[snap].toLowerCase()}. Tap to expand or collapse`}
         onClick={() => setSnap(nextSnap(snap))}
-        className="flex w-full shrink-0 flex-col items-center gap-2 px-4 pt-2 pb-3 focus-visible:ring-2 focus-visible:ring-tide focus-visible:outline-none"
+        className="focus-visible:ring-tide flex min-h-11 w-full shrink-0 flex-col items-center gap-2 px-4 pt-2 pb-3 focus-visible:ring-2 focus-visible:outline-none"
       >
-        <span aria-hidden="true" className="h-1 w-10 rounded-chip bg-line-strong" />
-        <span className="w-full text-left type-small font-medium text-text">{title}</span>
+        <span aria-hidden="true" className="rounded-chip bg-line-strong h-1 w-10" />
+        <span className="type-small text-text w-full text-left font-medium">{title}</span>
       </button>
       {/* Focusable: the sheet scrolls, and on the public map its contents are street names
           rather than controls, so there is nothing inside to tab to (WCAG 2.1.1). */}
       <div
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto px-4 pb-4 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
+        className="focus-visible:ring-tide/50 min-h-0 flex-1 overflow-y-auto px-4 pb-4 focus-visible:ring-3 focus-visible:outline-none"
       >
         {children}
       </div>

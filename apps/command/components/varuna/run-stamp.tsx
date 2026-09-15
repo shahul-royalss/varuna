@@ -4,6 +4,7 @@ import { Copy } from "lucide-react";
 import { toast } from "sonner";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Skeleton } from "@/components/varuna/skeleton";
 import { cn } from "@/lib/utils";
 import { formatMs, shortenRunId } from "@/lib/format";
 import { totalStageMs, useRunStore } from "@/lib/stores/run";
@@ -18,6 +19,22 @@ export interface RunStampProps {
  */
 export function RunStamp({ className }: RunStampProps) {
   const run = useRunStore((s) => s.currentRun);
+  const status = useRunStore((s) => s.status);
+
+  if (!run && status === "loading") {
+    // A shimmer while the registry answers: "No run" before it has is a guess.
+    return (
+      <span
+        className={cn("inline-flex h-7 w-56 items-center", className)}
+        data-slot="run-stamp"
+        data-state="loading"
+        aria-busy="true"
+      >
+        <span className="sr-only">Loading the run</span>
+        <Skeleton className="h-3 w-full" />
+      </span>
+    );
+  }
 
   if (!run) {
     return (
@@ -53,7 +70,7 @@ export function RunStamp({ className }: RunStampProps) {
             data-slot="run-stamp"
             onClick={() => void copy()}
             className={cn(
-              "group inline-flex h-7 min-w-0 items-center gap-2 rounded-control border border-line bg-well/40 px-2.5",
+              "group rounded-control border-line bg-well/40 inline-flex h-7 min-w-0 items-center gap-2 border px-2.5",
               "text-small text-text-2 hover:bg-well hover:text-text",
               className,
             )}
@@ -61,17 +78,23 @@ export function RunStamp({ className }: RunStampProps) {
         }
       >
         <span className="text-text-3">run</span>
-        <span className="num truncate font-mono text-small text-text">{shortenRunId(run.run_id)}</span>
+        <span className="num text-small text-text truncate font-mono">
+          {shortenRunId(run.run_id)}
+        </span>
         <span
           className={cn(
-            "inline-flex h-5 items-center rounded-chip border px-1.5 text-micro font-medium",
+            "rounded-chip text-micro inline-flex h-5 items-center border px-1.5 font-medium",
             chipClass,
           )}
         >
           {run.replay_mode}
         </span>
         {ms !== null ? <span className="num text-text-2">{formatMs(ms)}</span> : null}
-        <Copy aria-hidden="true" className="size-4 text-text-3 group-hover:text-text-2" strokeWidth={1.75} />
+        <Copy
+          aria-hidden="true"
+          className="text-text-3 group-hover:text-text-2 size-4"
+          strokeWidth={1.75}
+        />
       </TooltipTrigger>
       <TooltipContent>
         <span className="font-mono">{run.run_id}</span>
