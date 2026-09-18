@@ -53,6 +53,18 @@ class RouteRequest(VarunaModel):
     alternates: int = Field(default=2, ge=0, le=2, description="Number of alternates to return.")
     origin_name: str | None = None
     destination_name: str | None = None
+    spread: bool = Field(
+        default=True,
+        description="Return up to three safe corridors and an assignment (TECH_SPEC 3.2-3.3).",
+    )
+    trip_id: str | None = Field(
+        default=None,
+        description=(
+            "The client's own stable id for this trip, so the corridor assignment survives a "
+            "reload. Nothing is stored against it; None means the request is not spread."
+        ),
+    )
+    explain: bool = Field(default=True, description="Include structured reasons.")
 
     @property
     def effective_risk_tolerance(self) -> float:
@@ -76,6 +88,13 @@ class AvoidedSegment(VarunaModel):
     threshold_cm: int = Field(gt=0, description="Profile threshold applied.")
     p_exceed: Probability = Field(description="P(depth > threshold) at reached_ts.")
     depth_p50_cm: float | None = Field(default=None, ge=0)
+    closed_reason: str | None = Field(
+        default=None,
+        description=(
+            "Set when an authority closed the street rather than the forecast refusing it; the "
+            "officer's own words, never a sentence composed by the API."
+        ),
+    )
 
 
 class RouteResult(VarunaModel):
@@ -97,6 +116,60 @@ class RouteResult(VarunaModel):
     )
 
 
+class Corridor(VarunaModel):
+    """One of up to three safe roads a request may be spread across (TECH_SPEC 3.3, task D-08).
+
+    The corridors are real - each is a different road and each clears the profile's threshold on
+    this run. The ``share`` is **policy**: demand is not measured anywhere in this prototype, and
+    every response that carries corridors also carries that disclosure in ``notes``.
+    """
+
+    id: str = Field(description="Stable per road: a digest of the corridor's segment sequence.")
+    label: Literal["A", "B", "C"]
+    route: RouteResult
+    share: Probability = Field(description="Fraction of requests policy sends this way.")
+    assigned: bool = Field(description="True on the corridor this request was assigned to.")
+    capacity_score: float = Field(
+        ge=0, description="sum(lanes * (1 - congestion_proxy(depth))) over the corridor's edges."
+    )
+    max_p_exceed: Probability | None = Field(
+        default=None, description="Highest P(impassable) met on this corridor."
+    )
+
+
+ReasonKind = Literal["avoided", "design", "timing", "closure"]
+"""The four reasons a route can give for going the way it did (UI_SPEC 4)."""
+
+
+class RouteReason(VarunaModel):
+    """One structured reason. **Never prose** - the frontend words it (TECH_SPEC 3.2).
+
+    Fields not relevant to a ``kind`` are absent. A reason whose number is missing is not
+    emitted at all, so a screen never has to soften one into "this road may flood".
+    """
+
+    kind: ReasonKind
+    segment_id: IdStr
+    name: str
+    depth_cm: float | None = Field(default=None, ge=0)
+    threshold_cm: float | None = Field(default=None, gt=0)
+    at: Timestamp | None = Field(default=None, description="The instant the number belongs to.")
+    probability: Probability | None = None
+    dry_until: Timestamp | None = Field(
+        default=None, description="timing: last step under 5 cm on the road actually taken."
+    )
+    dry_below_cm: float | None = Field(default=None, gt=0)
+    design_intensity_mm_h: float | None = Field(
+        default=None, gt=0, description="design: what the drain under this street was sized for."
+    )
+    forecast_peak_mm_h: float | None = Field(
+        default=None, ge=0, description="design: this run's peak AOI-mean rain, not local rain."
+    )
+    reason: str | None = Field(default=None, description="closure: the officer's own words.")
+    user: str | None = Field(default=None, description="closure: who entered it.")
+    until: Timestamp | None = Field(default=None, description="closure: expiry, if one was set.")
+
+
 class RouteResponse(VarunaModel):
     """Response of ``POST /v1/route`` (blueprint 9.3 shape, with the naive route for comparison)."""
 
@@ -111,6 +184,22 @@ class RouteResponse(VarunaModel):
     )
     avoided: list[AvoidedSegment] = Field(default_factory=list)
     alternates: list[RouteResult] = Field(default_factory=list)
+    corridors: list[Corridor] = Field(
+        default_factory=list, description="Up to three safe roads and the share policy gives each."
+    )
+    reasons: list[RouteReason] = Field(
+        default_factory=list, description="Structured, never prose; the frontend words them."
+    )
+    trip_id: str | None = Field(
+        default=None, description="Echoed back so a client can confirm which id was assigned."
+    )
+    notes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Honesty labels that must travel with the answer: which probability answered, the "
+            "spreading disclosure, and any authority closure applied (CLAUDE.md rule 6)."
+        ),
+    )
     confidence: RouteConfidence
     confidence_note: str = Field(description="e.g. 'high (lead 30 min)'.")
     explanation: str | None = Field(
@@ -207,13 +296,16 @@ class RoadCondition(VarunaModel):
 
 __all__ = [
     "AvoidedSegment",
+    "Corridor",
     "Isochrone",
     "ReachMinutes",
     "ReachabilityResponse",
+    "ReasonKind",
     "RoadCondition",
     "RoadStatus",
     "RouteConfidence",
     "RouteLabel",
+    "RouteReason",
     "RouteRequest",
     "RouteResponse",
     "RouteResult",

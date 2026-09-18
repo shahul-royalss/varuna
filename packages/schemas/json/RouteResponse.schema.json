@@ -4,6 +4,19 @@
       "additionalProperties": false,
       "description": "A segment the naive route uses that VARUNA avoids, with why.",
       "properties": {
+        "closed_reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set when an authority closed the street rather than the forecast refusing it; the officer's own words, never a sentence composed by the API.",
+          "title": "Closed Reason"
+        },
         "depth_p50_cm": {
           "anyOf": [
             {
@@ -55,6 +68,72 @@
         "p_exceed"
       ],
       "title": "AvoidedSegment",
+      "type": "object"
+    },
+    "Corridor": {
+      "additionalProperties": false,
+      "description": "One of up to three safe roads a request may be spread across (TECH_SPEC 3.3, task D-08).\n\nThe corridors are real - each is a different road and each clears the profile's threshold on\nthis run. The ``share`` is **policy**: demand is not measured anywhere in this prototype, and\nevery response that carries corridors also carries that disclosure in ``notes``.",
+      "properties": {
+        "assigned": {
+          "description": "True on the corridor this request was assigned to.",
+          "title": "Assigned",
+          "type": "boolean"
+        },
+        "capacity_score": {
+          "description": "sum(lanes * (1 - congestion_proxy(depth))) over the corridor's edges.",
+          "minimum": 0,
+          "title": "Capacity Score",
+          "type": "number"
+        },
+        "id": {
+          "description": "Stable per road: a digest of the corridor's segment sequence.",
+          "title": "Id",
+          "type": "string"
+        },
+        "label": {
+          "enum": [
+            "A",
+            "B",
+            "C"
+          ],
+          "title": "Label",
+          "type": "string"
+        },
+        "max_p_exceed": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Highest P(impassable) met on this corridor.",
+          "title": "Max P Exceed"
+        },
+        "route": {
+          "$ref": "#/$defs/RouteResult"
+        },
+        "share": {
+          "description": "Fraction of requests policy sends this way.",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Share",
+          "type": "number"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "route",
+        "share",
+        "assigned",
+        "capacity_score"
+      ],
+      "title": "Corridor",
       "type": "object"
     },
     "LineString": {
@@ -109,6 +188,187 @@
         "coordinates"
       ],
       "title": "LineString",
+      "type": "object"
+    },
+    "RouteReason": {
+      "additionalProperties": false,
+      "description": "One structured reason. **Never prose** - the frontend words it (TECH_SPEC 3.2).\n\nFields not relevant to a ``kind`` are absent. A reason whose number is missing is not\nemitted at all, so a screen never has to soften one into \"this road may flood\".",
+      "properties": {
+        "at": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The instant the number belongs to.",
+          "title": "At"
+        },
+        "depth_cm": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Depth Cm"
+        },
+        "design_intensity_mm_h": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "design: what the drain under this street was sized for.",
+          "title": "Design Intensity Mm H"
+        },
+        "dry_below_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dry Below Cm"
+        },
+        "dry_until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "timing: last step under 5 cm on the road actually taken.",
+          "title": "Dry Until"
+        },
+        "forecast_peak_mm_h": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "design: this run's peak AOI-mean rain, not local rain.",
+          "title": "Forecast Peak Mm H"
+        },
+        "kind": {
+          "enum": [
+            "avoided",
+            "design",
+            "timing",
+            "closure"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "probability": {
+          "anyOf": [
+            {
+              "maximum": 1.0,
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Probability"
+        },
+        "reason": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "closure: the officer's own words.",
+          "title": "Reason"
+        },
+        "segment_id": {
+          "minLength": 1,
+          "title": "Segment Id",
+          "type": "string"
+        },
+        "threshold_cm": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Threshold Cm"
+        },
+        "until": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "closure: expiry, if one was set.",
+          "title": "Until"
+        },
+        "user": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "closure: who entered it.",
+          "title": "User"
+        }
+      },
+      "required": [
+        "kind",
+        "segment_id",
+        "name"
+      ],
+      "title": "RouteReason",
       "type": "object"
     },
     "RouteResult": {
@@ -245,6 +505,14 @@
       "title": "Confidence Note",
       "type": "string"
     },
+    "corridors": {
+      "description": "Up to three safe roads and the share policy gives each.",
+      "items": {
+        "$ref": "#/$defs/Corridor"
+      },
+      "title": "Corridors",
+      "type": "array"
+    },
     "depart_at": {
       "format": "date-time",
       "title": "Depart At",
@@ -275,6 +543,14 @@
       "default": null,
       "description": "Shortest route ignoring the forecast."
     },
+    "notes": {
+      "description": "Honesty labels that must travel with the answer: which probability answered, the spreading disclosure, and any authority closure applied (CLAUDE.md rule 6).",
+      "items": {
+        "type": "string"
+      },
+      "title": "Notes",
+      "type": "array"
+    },
     "profile": {
       "enum": [
         "ambulance",
@@ -286,6 +562,14 @@
       ],
       "title": "Profile",
       "type": "string"
+    },
+    "reasons": {
+      "description": "Structured, never prose; the frontend words them.",
+      "items": {
+        "$ref": "#/$defs/RouteReason"
+      },
+      "title": "Reasons",
+      "type": "array"
     },
     "risk_tolerance": {
       "maximum": 1.0,
@@ -299,6 +583,19 @@
     "run_id": {
       "title": "Run Id",
       "type": "string"
+    },
+    "trip_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Echoed back so a client can confirm which id was assigned.",
+      "title": "Trip Id"
     },
     "valid_ts": {
       "description": "Cycle time of the run used (IST).",

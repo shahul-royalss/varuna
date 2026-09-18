@@ -26,11 +26,11 @@ def _diamond() -> RoadGraph:
      \\-> 2  -> 3      via "Long Marg",  150 s + 150 s
     """
     arcs = [
-        # (tail, head, segment, length_m, seconds, name)
-        (0, 1, "SHORT-A", 500.0, 60.0, "Short Marg"),
-        (0, 2, "LONG-A", 1250.0, 150.0, "Long Marg"),
-        (1, 3, "SHORT-B", 500.0, 60.0, "Short Marg"),
-        (2, 3, "LONG-B", 1250.0, 150.0, "Long Marg"),
+        # (tail, head, segment, length_m, seconds, name, lanes)
+        (0, 1, "SHORT-A", 500.0, 60.0, "Short Marg", 2.0),
+        (0, 2, "LONG-A", 1250.0, 150.0, "Long Marg", 1.0),
+        (1, 3, "SHORT-B", 500.0, 60.0, "Short Marg", 2.0),
+        (2, 3, "LONG-B", 1250.0, 150.0, "Long Marg", 1.0),
     ]
     tails = np.array([a[0] for a in arcs], dtype=np.int64)
     indptr = np.zeros(5, dtype=np.int64)
@@ -47,6 +47,7 @@ def _diamond() -> RoadGraph:
         edge_time_s=np.array([a[4] for a in arcs]),
         edge_name=[a[5] for a in arcs],
         edge_tail=tails,
+        edge_lanes=np.array([a[6] for a in arcs], dtype=np.float64),
     )
 
 
