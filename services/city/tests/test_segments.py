@@ -7,7 +7,7 @@ import networkx as nx
 import numpy as np
 import pytest
 from rasterio.transform import Affine
-from shapely.geometry import Point, Polygon
+from shapely.geometry import LineString, Point, Polygon
 from varuna_city.segments import (
     _as_int,
     build_segments,
@@ -186,3 +186,45 @@ def test_lane_count_does_not_depend_on_set_iteration_order() -> None:
     assert _as_int({"unknown"}) is None
     assert _as_int(None) is None
     assert _as_int("2") == 2
+
+
+def test_a_way_with_several_osm_names_is_stored_as_one_street_plus_its_aliases(tmp_path) -> None:
+    """D-03: 95 of Mumbai's segments carried a stringified Python list as their name.
+
+    Both shapes are built here because both occur: a live OSMnx fetch hands over a real list,
+    and the GeoPackage cache every later build reads has no list type, so the same value comes
+    back as text. The second is what `city/mumbai` actually holds. The written table is read back
+    through GeoParquet, because `name_aliases` is a list column and one that cannot survive the
+    round trip would be worse than no column at all.
+    """
+    edges = gpd.GeoDataFrame(
+        {
+            "u": [1, 2, 1],
+            "v": [2, 3, 3],
+            "key": [0, 0, 0],
+            "osmid": [1, 2, 3],
+            "highway": ["primary", "residential", "service"],
+            "name": [["Tilak Bridge", "Tilak Road"], "['Sion Road', 'Gandhi Market Road']", None],
+            "oneway": [False, False, False],
+        },
+        geometry=[
+            LineString([(ORIGIN_X, ORIGIN_Y), (ORIGIN_X + 300.0, ORIGIN_Y)]),
+            LineString([(ORIGIN_X + 300.0, ORIGIN_Y), (ORIGIN_X + 300.0, ORIGIN_Y - 400.0)]),
+            LineString([(ORIGIN_X, ORIGIN_Y), (ORIGIN_X + 300.0, ORIGIN_Y - 400.0)]),
+        ],
+        crs=CRS,
+    )
+
+    segments = build_segments(edges, crs=CRS).set_index("segment_id")
+    segments.to_parquet(tmp_path / "segments.parquet")
+    back = gpd.read_parquet(tmp_path / "segments.parquet")
+
+    assert [v for v in segments["name"] if v is not None and str(v).startswith("[")] == []
+    assert segments.loc["S1-000", "name"] == "Tilak Bridge"
+    assert list(segments.loc["S1-000", "name_aliases"]) == ["Tilak Road"]
+    assert segments.loc["S2-000", "name"] == "Sion Road"
+    assert list(segments.loc["S2-000", "name_aliases"]) == ["Gandhi Market Road"]
+    assert segments["name"].isna()["S3-000"]  # unnamed stays empty, never "Unnamed road"
+    assert list(segments.loc["S3-000", "name_aliases"]) == []
+    # The list column survives GeoParquet, which is the only reason it is worth writing.
+    assert [list(v) for v in back["name_aliases"]] == [["Tilak Road"], ["Gandhi Market Road"], []]
