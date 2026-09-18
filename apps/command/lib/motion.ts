@@ -153,6 +153,8 @@ export const DUR_MS = {
   isochroneMorph: 300,
   radarLoop: 6250,
   globeTurn: 1400,
+  globeApproach: 1600,
+  globeArrive: 1000,
   globeUnroll: 2600,
   heroHandover: 900,
 } as const;
@@ -198,7 +200,8 @@ export type MotionId =
   | "M23"
   | "M24"
   | "M25"
-  | "M26";
+  | "M26"
+  | "M27";
 
 /** Framer props for one motion; spread onto a `motion.*` element. */
 export interface MotionPreset {
@@ -498,6 +501,15 @@ export const M: Readonly<Record<MotionId, MotionSpec>> = {
     trigger: "page load",
     reduced: "finished flat map, then a cut to M1's static +120 min frame",
     durations: ["globeTurn", "globeUnroll", "heroHandover"],
+  },
+  M27: {
+    id: "M27",
+    where: "Citizen dashboard entry",
+    motion:
+      "The vector Earth turns 1.4 s to bring India to the meridian, the frame approaches India over 1.6 s as the sphere flattens, then narrows to the Mumbai AOI over 1.0 s and cross-fades 900 ms into the dashboard map, which is mounted and framed on the same bounds behind it; once per session, and skippable",
+    trigger: "opening the dashboard",
+    reduced: "static Mumbai frame, then a cut to the framed map",
+    durations: ["globeTurn", "globeApproach", "globeArrive", "heroHandover"],
   },
 };
 

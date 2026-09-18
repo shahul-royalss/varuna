@@ -154,6 +154,9 @@ VARUNA is a self-correcting digital twin of a city's water — sky, surface and 
 | `/report` | Citizen report flow | P0 |
 | `/api` | API explorer (Scalar/Swagger) | P1 |
 | `/design` | Internal design-system page (tokens, components, states) | P0 (internal) |
+| `/dashboard` | Citizen dashboard: Google basemap, VARUNA water and routes over it, plain-language reasons, live weather (`PRD.md` 3.1) | P0 |
+| `/authority` | Ward officer's desk: closures, pump status, dispatch, alert actions, the citizen inbox (`PRD.md` 3.2) | P0 |
+| `/rural` | Low-bandwidth text advisory, server-rendered, no client JavaScript (`PRD.md` 3.3) | P0 |
 
 
 ---
@@ -619,6 +622,7 @@ Global easing: `cubic-bezier(0.2, 0.8, 0.2, 1)` for UI; springs (`stiffness 400,
 | M24 | Public map bottom sheet | Drag with rubber-band, snap points | `motion` drag | drag | tap to expand |
 | M25 | Replay radar preview | Radar frames loop at 4 fps (25 frames, 6.25 s), pauses on hover, focus and when the tab is hidden | preloaded images drawn to a canvas via rAF | bundle selected | static middle frame |
 | M26 | Landing hero intro (added 2026-09-14; it shipped in P9.1 without a row) | Globe turns 1.4 s to face Mumbai and unrolls into a flat world map over 2.6 s, then cross-fades 900 ms into the M1 city map once that map's frames are decoded; once per load | interpolated d3 projection on an SVG via rAF (`globe-intro.tsx`); CSS opacity transition (`hero.tsx`) | page load | finished flat map, then a cut to M1's static +120 min frame |
+| M27 | Citizen dashboard entry (added 2026-09-19 for `/dashboard`, `UI_SPEC.md` 2) | The vector Earth turns 1.4 s to bring India to the meridian, the frame approaches India over 1.6 s as the sphere flattens, then narrows to the Mumbai AOI over 1.0 s and cross-fades 900 ms into the dashboard map, which is mounted and framed on the same bounds behind it; once per session, and skippable | the same interpolated d3 projection as M26 (`globe-intro.tsx`) with a third act; CSS opacity transition to the dashboard map | opening the dashboard | static Mumbai frame, then a cut to the framed map |
 
 ---
 
