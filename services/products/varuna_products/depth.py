@@ -64,6 +64,7 @@ __all__ = [
     "depth_bounds",
     "segment_cell_index",
     "segment_forecast",
+    "segment_name_aliases",
     "segment_names",
     "write_depth_rasters",
     "write_wet_segments",
@@ -548,15 +549,67 @@ def segment_names(city_root: Path) -> dict[str, str]:
 
     Only named ways. A road with no name in OSM is left out rather than given a placeholder, so
     nothing downstream has to decide whether "Unnamed road" came from the map or from us.
+
+    Normalised on the way out (:func:`varuna_products.names.street_name`). A way that OSM gives
+    several names is stored by an old build as the text ``"['Dr Ambedkar Road', 'Kalachowki
+    Road']"``, and that string was reaching alert headlines and the pump board; one of the two
+    it reaches is on the demo route. The build no longer writes it, and this repairs the city
+    already on disk without a rebuild.
     """
+    return {
+        segment_id: primary for segment_id, (primary, _) in _names_and_aliases(city_root).items()
+    }
+
+
+def segment_name_aliases(city_root: Path) -> dict[str, tuple[str, ...]]:
+    """Segment id to the *other* names its way carries, for the segments that have any.
+
+    The names :func:`segment_names` did not pick. Kept rather than dropped (rule 6): a headline
+    needs one street, and somebody searching may know it by the other one. Read from the
+    ``name_aliases`` column when the city was built with it, and recovered from the stored value
+    otherwise, so both generations of city answer the same question.
+    """
+    return {
+        segment_id: aliases
+        for segment_id, (_, aliases) in _names_and_aliases(city_root).items()
+        if aliases
+    }
+
+
+def _names_and_aliases(city_root: Path) -> dict[str, tuple[str, tuple[str, ...]]]:
+    """Every named segment as ``id -> (name, aliases)``, from either generation of city table."""
     import pandas as pd
+
+    from varuna_products.names import split_names
 
     table = city_root / "segments.parquet"
     if not table.is_file():
         return {}
-    frame = pd.read_parquet(table, columns=["segment_id", "name"])
+    columns = ["segment_id", "name"]
+    if _has_column(table, "name_aliases"):
+        columns.append("name_aliases")
+    frame = pd.read_parquet(table, columns=columns)
     named = frame[frame["name"].notna()]
-    return {str(k): str(v) for k, v in zip(named["segment_id"], named["name"], strict=True)}
+    stored = named["name_aliases"] if "name_aliases" in named.columns else [None] * len(named)
+
+    out: dict[str, tuple[str, tuple[str, ...]]] = {}
+    for segment_id, value, extra in zip(named["segment_id"], named["name"], stored, strict=True):
+        primary, aliases = split_names(value)
+        if primary is None:
+            continue  # a name that is only whitespace, or an empty stored list
+        if extra is not None and len(extra):
+            # A city built with the column: those aliases are authoritative, and the stored name
+            # is already a single street, so nothing was recovered from it above.
+            aliases = tuple(str(a) for a in extra)
+        out[str(segment_id)] = (primary, aliases)
+    return out
+
+
+def _has_column(table: Path, column: str) -> bool:
+    """Whether ``table`` carries ``column``, without reading a row of it."""
+    import pyarrow.parquet as pq
+
+    return column in pq.read_schema(table).names
 
 
 def segment_points(city_root: Path) -> dict[str, tuple[float, float]]:

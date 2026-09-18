@@ -44,7 +44,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 log = structlog.get_logger("varuna.cycle.twin")
 
-__all__ = ["CycleResult", "run_cycle", "tide_notes"]
+__all__ = ["CycleResult", "aoi_hyetograph", "pump_benefit_notes", "run_cycle", "tide_notes"]
 
 SKY_VERSION = "1.0"
 TWIN_VERSION = "1.0"
@@ -85,6 +85,27 @@ NO_MEMBER_AXIS_NOTE = (
 
 FLASH_MODEL_PATHS = ("data/train/flash_lite.npz", "demo/flash_lite.npz")
 """Where the fitted emulator is looked for, in order - the same two places `/v1/whatif` looks."""
+
+PUMP_BENEFIT_NOTES = {
+    "emulator": (
+        "Pump benefit is the emulator re-run with the pump's outflow (CLAUDE.md 11.10), so it "
+        "saturates: a pump removes only the water the storm actually ponded at that junction."
+    ),
+    "reduced_model": (
+        "Pump benefit is the bathtub estimate, not a physics run: the fitted emulator was not on "
+        "disk for this cycle, so the fallback lowers the junction at the pump's rated rate and "
+        "ignores the inflow still arriving. It overstates a pump at a spot that is still filling."
+    ),
+    "mixed": (
+        "Pump benefit is the emulator for most assignments and the bathtub estimate for the rest, "
+        "because some candidate street has no segment the fitted emulator knows."
+    ),
+}
+"""``pump_plan.benefit_model`` -> the run note that says which model produced the number.
+
+The board prints `benefit_label` beside the figure, and this puts the same fact in the run's own
+provenance, where `/v1/runs` and the run stamp read it - the two cannot drift, because both are
+keyed on the plan's own `benefit_model` (rule 6)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +148,28 @@ def tide_notes(tide: TideSeries | None) -> list[str]:
     if tide.datum_note:
         notes.append(tide.datum_note)
     return notes
+
+
+def aoi_hyetograph(rain_cube: NDArray[np.floating]) -> list[float]:
+    """The storm this cycle is running on, as AOI-mean mm/h per step.
+
+    One list, computed once, used twice: it is what `run.json` keeps as ``rain_aoi_mm_h``
+    (CLAUDE.md 10.3) *and* what the pump plan is priced against. They were the same number
+    computed in one place and not passed to the other, which is how every shipped pump benefit
+    came from the bathtub fallback while the run beside it carried the storm that would have
+    driven the emulator. Rounding here rather than only on the way into `run.json` means the plan
+    is priced on exactly the series a later `rain_for_run` reads back, so re-optimising a run on
+    disk cannot quietly disagree with the plan the cycle wrote.
+    """
+    return [round(float(v), 3) for v in rain_cube.mean(axis=(1, 2))]
+
+
+def pump_benefit_notes(plan: dict[str, Any]) -> list[str]:
+    """The run note naming the model behind the pump plan's "minutes above 45 cm avoided"."""
+    if not plan.get("assignments"):
+        return []  # no pump was worth sending this cycle; there is no benefit to attribute
+    note = PUMP_BENEFIT_NOTES.get(str(plan.get("benefit_model")))
+    return [note] if note else []
 
 
 def _design_storm_rain(bundle: str, cycle_ts: datetime | None, city: str, n_steps: int):
@@ -502,8 +545,19 @@ def run_cycle(
         {sid: list(depth_cm[:, k]) for k, sid in enumerate(index[0])}, names, points
     )
     alerts = build_alerts(hotspots, run_id, cycle_ts, twin.times, mode, streets=street_depths)
+    # The storm the Twin was driven by, handed to the plan so the benefit is the emulator
+    # re-run with the pump's outflow rather than the bathtub fallback (CLAUDE.md 11.10). The
+    # plan never reads it back off disk - a first bake would find nothing and a re-bake would
+    # find what it had just written, and rule 8 asks for byte-identical bakes.
+    rain_aoi_mm_h = aoi_hyetograph(rain_cube)
     pump_plan = build_pump_plan(
-        hotspots, city_dir(city), run_id, STEP_MIN, street_depths, dict(STREET_POINTS)
+        hotspots,
+        city_dir(city),
+        run_id,
+        STEP_MIN,
+        street_depths,
+        dict(STREET_POINTS),
+        rain_mm_h=rain_aoi_mm_h,
     )
     surcharge = surcharge_product(
         twin.q_surcharge, twin.edge_flow, network, terrain.transform, terrain.crs, run_id
@@ -551,6 +605,7 @@ def run_cycle(
         )
 
     notes.extend(tide_notes(tide))
+    notes.extend(pump_benefit_notes(pump_plan))
 
     bounds = depth_bounds(terrain.transform, terrain.shape, terrain.crs)
     meta = RunMeta(
@@ -584,7 +639,8 @@ def run_cycle(
         notes=notes,
         # The storm, one number per step. What-if scales this to answer "what if it rains 30 %
         # harder", and without it stored the endpoint can only answer questions about pipes.
-        rain_aoi_mm_h=[round(float(v), 3) for v in rain_cube.mean(axis=(1, 2))],
+        # The same list the pump plan was priced on, so the two cannot disagree.
+        rain_aoi_mm_h=rain_aoi_mm_h,
     )
 
     def _write(tmp: Path) -> None:
