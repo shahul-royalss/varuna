@@ -1946,6 +1946,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "pyyaml" },
+    { name = "structlog" },
     { name = "truststore" },
 ]
 
@@ -1955,6 +1956,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.8" },
     { name = "pydantic-settings", specifier = ">=2.4" },
     { name = "pyyaml", specifier = ">=6" },
+    { name = "structlog", specifier = ">=24" },
     { name = "truststore", specifier = ">=0.10" },
 ]
 
