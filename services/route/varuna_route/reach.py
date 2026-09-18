@@ -172,8 +172,13 @@ def _sweep(
         for e in range(int(graph.indptr[node]), int(graph.indptr[node + 1])):
             cost = graph.edge_time_s[e] / speed
             if depths is not None:
-                depth = depths.depth_at(graph.edge_segment[e], step)
-                if _exceedance(depth, vehicle.depth_cm) >= vehicle.risk_tolerance:
+                segment_id = graph.edge_segment[e]
+                depth = depths.depth_at(segment_id, step)
+                # The run's own exceedance since task D-01, so an isochrone shrinks on the same
+                # criterion a route diverts on rather than on a threshold comparison beside it.
+                if _exceedance(depths, segment_id, vehicle.depth_cm, step) >= (
+                    vehicle.risk_tolerance
+                ):
                     continue
                 cost *= _phi(depth, vehicle.depth_cm)
             nxt = int(graph.head[e])

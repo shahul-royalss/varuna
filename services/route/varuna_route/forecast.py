@@ -7,17 +7,24 @@ this loads: only the segments the run ever wetted (1,498 of 21,296 on the 2 July
 the same information for routing purposes because a segment that never reaches 5 cm never changes
 anybody's route.
 
-**What the probabilities are worth.** A baked run is deterministic - ``ensemble_n`` is 1, because
-Phase 7's 50-member products are not built - so ``P(h > threshold)`` here is 0 or 1 and the risk
-tolerance has nothing to bite on. The router still carries the tolerance through, because the
-interface is what it will be once the ensemble lands; every response says which it got
-(CLAUDE.md 6, and the note is printed on screen, not buried).
+**What the probabilities are worth (corrected 2026-09-19, task D-01).** This docstring used to
+say "a baked run is deterministic - ``ensemble_n`` is 1", and the router computed
+``P(h > threshold)`` as a hard 1 or 0 from the median depth. That stopped being true at the
+2026-09-13 re-bake, which put 20 members through the emulator and wrote each wet segment's
+``p_gt`` series at 15/30/45/60 cm into ``segments_wet.json`` (``write_wet_segments``). Every
+probability the router printed was therefore 1.0 or 0.0 over a run that knew better, and
+``risk_tolerance`` had nothing to bite on - it was a placebo.
+
+So :meth:`SegmentDepths.exceedance` reads ``p_gt`` when the run carries it and falls back to the
+median-depth step function only when it does not (a one-member run, or a bake older than that
+change). Which of the two answered is on the response as a note, not buried: a probability that
+is really a threshold comparison must not be read as an ensemble's opinion (CLAUDE.md 6).
 """
 
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
@@ -51,6 +58,26 @@ class SegmentDepths:
 
     ensemble_n: int
 
+    rain_aoi_mm_h: tuple[float, ...] = ()
+    """The run's AOI-mean rain per forecast step, straight off ``run.json``.
+
+    Carried here so a route can say what this cycle's rain peaks at beside what the drain under
+    the street was designed for (PRD 3.4). It is an **AOI mean**, not the rain over one junction,
+    and every response that quotes it says so."""
+
+    p_gt: dict[float, dict[str, list[float]]] = field(default_factory=dict)
+    """``{threshold_cm: {segment_id: [P(h > threshold) per step]}}``, empty when the run has none.
+
+    Exactly the ``p_gt`` block ``segments_wet.json`` carries: the four thresholds of the depth
+    ramp, over the segments the run wetted. The cycle writes it only when some value lies
+    strictly between 0 and 1, so its presence is itself the claim that this run measured a
+    spread."""
+
+    @property
+    def has_exceedance(self) -> bool:
+        """True when the run carries per-member exceedance rather than a threshold comparison."""
+        return bool(self.p_gt)
+
     @property
     def valid_ts(self) -> datetime:
         """When the forecast starts."""
@@ -72,6 +99,23 @@ class SegmentDepths:
         if not series:
             return 0.0
         return series[step] if step < len(series) else series[-1]
+
+    def exceedance(self, segment_id: str, threshold_cm: float, step: int) -> float:
+        """``P(depth > threshold_cm)`` on a segment at a step.
+
+        From the run's own ``p_gt`` where it has one - which is where ``risk_tolerance`` gets
+        something to weigh - and otherwise from the median depth, which makes it 1 or 0 by
+        construction. A segment the run never wetted is absent from both and cannot exceed
+        anything, so it scores 0.
+        """
+        by_segment = self.p_gt.get(float(threshold_cm))
+        if by_segment is not None:
+            series = by_segment.get(segment_id)
+            if series is not None:
+                return series[step] if step < len(series) else series[-1]
+            if segment_id not in self.depth_cm:
+                return 0.0
+        return 1.0 if self.depth_at(segment_id, step) > threshold_cm else 0.0
 
     def peak(self, segment_id: str) -> float:
         series = self.depth_cm.get(segment_id)
@@ -136,10 +180,21 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         raise ValueError(msg)
 
     ensemble_n = 1
+    rain: tuple[float, ...] = ()
     meta_path = path / "run.json"
     if meta_path.is_file():
         meta = json.loads(meta_path.read_text(encoding="utf-8"))
         ensemble_n = int(meta.get("ensemble_n", 1) or 1)
+        rain = tuple(float(v) for v in (meta.get("rain_aoi_mm_h") or []))
+
+    # `{"15": {segment_id: [...]}}` on the wire; keyed by float here so a profile's threshold
+    # (15.0, 30.0, 45.0, 60.0 cm - the depth ramp) looks itself up without string formatting.
+    p_gt = {
+        float(threshold): {
+            str(sid): [float(v) for v in series] for sid, series in by_segment.items()
+        }
+        for threshold, by_segment in (wet.get("p_gt") or {}).items()
+    }
 
     depths = SegmentDepths(
         run_id=str(wet.get("run_id", path.name)),
@@ -148,6 +203,8 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         n_steps=n_steps,
         n_total=int(wet.get("n_segments_total", len(depth))),
         ensemble_n=ensemble_n,
+        rain_aoi_mm_h=rain,
+        p_gt=p_gt,
     )
     log.info(
         "route.depths_loaded",
@@ -155,6 +212,8 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         wet=len(depth),
         total=depths.n_total,
         steps=n_steps,
+        ensemble_n=ensemble_n,
+        p_gt=sorted(p_gt),
     )
     return depths
 

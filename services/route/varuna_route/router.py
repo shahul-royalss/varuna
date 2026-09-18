@@ -19,6 +19,18 @@ than trusting the argument.
 
 **Alternates** are the same search with the chosen edges penalised threefold, which is the
 standard cheap way to get a genuinely different road rather than a detour of one block.
+
+**The probability is the run's** (task D-01). ``P(h > theta_v)`` used to be a threshold
+comparison on the median depth, so it was 1 or 0 and ``risk_tolerance`` was a placebo. It now
+comes from :meth:`varuna_route.forecast.SegmentDepths.exceedance`, which reads the 20-member
+``p_gt`` series the cycle writes and falls back to the comparison only for a run that has no
+spread. Everything else about the search is unchanged.
+
+**Closures beat the forecast** (task D-06). A street an authority has closed is impassable
+whatever the water is doing, so the VARUNA search skips it and the reason travels with the
+answer. The naive route does **not** honour closures, for the same reason it does not honour
+water: it is the comparison - what a navigation app that knows neither would do - and a closure
+the naive way walks into is exactly the thing the explanation exists to name.
 """
 
 from __future__ import annotations
@@ -36,6 +48,8 @@ from varuna_route.profiles import Profile, profile
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Iterable
+
+    from varuna_route.ops_overlay import OpsOverlay
 
 log = structlog.get_logger("varuna.route.router")
 
@@ -67,14 +81,9 @@ def _phi(depth_cm: float, threshold_cm: float) -> float:
     return 1.0 + (MAX_SLOWDOWN - 1.0) * min((depth_cm - DRY_CM) / span, 1.0)
 
 
-def _exceedance(depth_cm: float, threshold_cm: float) -> float:
-    """P(depth > threshold) on a deterministic run: 1 or 0.
-
-    Not a placeholder for a probability - it *is* the probability this run supports, because it
-    has one member. When Phase 7's 50-member products land this reads their `p_gt_*` column and
-    nothing else in the router changes.
-    """
-    return 1.0 if depth_cm > threshold_cm else 0.0
+def _exceedance(depths: SegmentDepths, segment_id: str, threshold_cm: float, step: int) -> float:
+    """``P(depth > threshold)`` for one segment at one step, from the run (task D-01)."""
+    return depths.exceedance(segment_id, threshold_cm, step)
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +96,11 @@ class Leg:
     seconds: float
     depth_cm: float
     arrive: datetime
+    probability: float = 0.0
+    """``P(depth > this profile's threshold)`` on this edge at :attr:`arrive`."""
+
+    lanes: float = 1.0
+    """Lanes in this direction, for the corridor capacity score (:mod:`varuna_route.spread`)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +112,9 @@ class Avoided:
     depth_cm: float
     probability: float
     at: datetime
+    closed_reason: str | None = None
+    """Set when the street was refused because an authority closed it, not because of water."""
+
     path: tuple[tuple[float, float], ...] = ()
     """The street's own geometry, so the map can draw what the detour went around.
 
@@ -139,6 +156,14 @@ class RouteResult:
     avoided: list[Avoided] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     ms: float = 0.0
+    corridors: list[Any] = field(default_factory=list)
+    """:class:`varuna_route.spread.Corridor` objects; typed loosely to keep the import lazy and
+    the module cycle (router -> spread -> router) out of import time."""
+
+    reasons: list[dict[str, Any]] = field(default_factory=list)
+    """Structured reasons, never prose (:mod:`varuna_route.reasons`, TECH_SPEC 3.2)."""
+
+    trip_id: str | None = None
 
 
 def _search(
@@ -152,6 +177,7 @@ def _search(
     avoid_water: bool,
     penalised: set[int] | None = None,
     record_blocked: dict[int, tuple[float, float, datetime]] | None = None,
+    closed: frozenset[str] = frozenset(),
 ) -> list[int] | None:
     """Time-dependent Dijkstra from ``source``, returning the out-edge indices of the path.
 
@@ -180,8 +206,10 @@ def _search(
             cost = free
 
             if avoid_water:
+                if segment_id in closed:
+                    continue
                 depth = depths.depth_at(segment_id, step)
-                p = _exceedance(depth, vehicle.depth_cm)
+                p = _exceedance(depths, segment_id, vehicle.depth_cm, step)
                 if p >= vehicle.risk_tolerance:
                     if record_blocked is not None and e not in record_blocked:
                         record_blocked[e] = (depth, p, arrive_here)
@@ -251,6 +279,8 @@ def _build_route(
                 seconds=seconds,
                 depth_cm=depth,
                 arrive=depart + timedelta(seconds=elapsed),
+                probability=_exceedance(depths, segment_id, vehicle.depth_cm, step),
+                lanes=float(graph.edge_lanes[e]),
             )
         )
 
@@ -311,6 +341,10 @@ def plan(
     risk_tolerance: float | None = None,
     city: str = "mumbai",
     run_id: str | None = None,
+    spread: bool = True,
+    trip_id: str | None = None,
+    explain: bool = True,
+    overlay: OpsOverlay | None = None,
 ) -> RouteResult:
     """Route from one point to another, naively and around the forecast water.
 
@@ -322,8 +356,18 @@ def plan(
         risk_tolerance: override the profile's default acceptance of exceedance probability.
         city: which built city to route on.
         run_id: which run's forecast to route against; defaults to the newest baked one.
+        spread: return up to three safe corridors and an assignment (task D-08).
+        trip_id: the client's stable id for this trip, so the assignment survives a reload.
+        explain: build the structured reasons (:mod:`varuna_route.reasons`).
+        overlay: authority closures to honour; ``None`` reads the city's own ops log at
+            ``depart_at``. Tests pass one explicitly.
     """
     from time import perf_counter
+
+    from varuna_route import ops_overlay as ops
+    from varuna_route.reasons import build_reasons
+    from varuna_route.spread import corridors as build_corridors
+    from varuna_route.spread import spreading_note
 
     started = perf_counter()
     graph = load_graph(city)
@@ -344,11 +388,26 @@ def plan(
     target = graph.nearest_node(*destination)
 
     notes: list[str] = []
-    if depths.ensemble_n <= 1:
+    if depths.has_exceedance:
         notes.append(
-            "This run is deterministic (one member), so a street is either predicted impassable "
-            "or it is not, and the risk tolerance has nothing to weigh. It is carried through for "
-            "when the 50-member products land."
+            f"Probabilities are this run's own, across {depths.ensemble_n} members; the risk "
+            f"tolerance applied is {base.risk_tolerance:.2f}."
+        )
+    else:
+        notes.append(
+            f"This run carries no per-member exceedance ({depths.ensemble_n} member(s), and no "
+            "p_gt in its segment forecast), so a street is either predicted impassable or it is "
+            "not and the risk tolerance has nothing to weigh."
+        )
+
+    if overlay is None:
+        overlay = ops.active(city, at=depart)
+    closed = overlay.closed_segment_ids
+    if closed:
+        notes.append(
+            f"{len(closed)} street(s) closed by an authority are treated as impassable whatever "
+            "the forecast says. Closures are an append-only overlay read at request time; no "
+            "forecast product was changed."
         )
 
     if source == target:
@@ -376,6 +435,7 @@ def plan(
         vehicle=base,
         avoid_water=True,
         record_blocked=blocked,
+        closed=closed,
     )
 
     naive = (
@@ -396,22 +456,33 @@ def plan(
         )
 
     # What the naive route walks into and VARUNA does not: the honest content of "avoided".
+    # What the naive route walks into and VARUNA does not, refused on exactly the criterion the
+    # search used: the run's own probability against the profile's tolerance, or an authority's
+    # closure. Listing "depth over the threshold" instead would name streets the search happily
+    # took (a 20-member run can put 35 cm on a street at probability 0.1) and miss ones it
+    # refused, so the list would disagree with the route beside it.
     avoided: list[Avoided] = []
+    closed_on_naive: list[tuple[str, str]] = []
     if naive is not None:
         chosen = {leg.segment_id for leg in (varuna.legs if varuna else ())}
         seen: set[str] = set()
         for leg in naive.legs:
             if leg.segment_id in chosen or leg.segment_id in seen:
                 continue
-            if leg.depth_cm > base.depth_cm:
+            closure_reason = overlay.reason_for(leg.segment_id)
+            refused = closure_reason is not None or leg.probability >= base.risk_tolerance
+            if refused:
                 seen.add(leg.segment_id)
+                if closure_reason is not None:
+                    closed_on_naive.append((leg.segment_id, leg.name or "Unnamed road"))
                 avoided.append(
                     Avoided(
                         segment_id=leg.segment_id,
                         name=leg.name or "Unnamed road",
                         depth_cm=leg.depth_cm,
-                        probability=_exceedance(leg.depth_cm, base.depth_cm),
+                        probability=leg.probability,
                         at=leg.arrive,
+                        closed_reason=closure_reason,
                         path=_segment_path(graph, leg.segment_id),
                     )
                 )
@@ -430,6 +501,7 @@ def plan(
                 vehicle=base,
                 avoid_water=True,
                 penalised=used,
+                closed=closed,
             )
             if not more or set(more) == used:
                 break
@@ -437,6 +509,38 @@ def plan(
                 _build_route(graph, depths, more, depart=depart, vehicle=base, source=source)
             )
             used |= set(more)
+
+    corridors: list[Any] = []
+    if spread and varuna is not None:
+        corridors = build_corridors(
+            [varuna, *alternates],
+            depths,
+            base,
+            trip_id=trip_id,
+            closed_segment_ids=closed,
+        )
+        note = spreading_note(len(corridors), spread=spread, trip_id=trip_id)
+        if note:
+            notes.append(note)
+
+    reasons: list[dict[str, Any]] = []
+    if explain:
+        assigned = next((c.route for c in corridors if c.assigned), varuna)
+        reasons = build_reasons(
+            avoided=avoided,
+            route=assigned,
+            depths=depths,
+            vehicle=base,
+            city=city,
+            overlay=overlay,
+            closed_on_naive=closed_on_naive,
+        )
+        if any(r["kind"] == "design" for r in reasons):
+            notes.append(
+                "The design intensity is the drain under that street, from the inferred drain "
+                "graph; the peak rain beside it is this run's AOI mean, not the rain over that "
+                "one junction."
+            )
 
     ms = (perf_counter() - started) * 1000.0
     log.info(
@@ -448,6 +552,9 @@ def plan(
         varuna_min=round(varuna.minutes, 1) if varuna else None,
         avoided=len(avoided),
         blocked_edges=len(blocked),
+        closed=len(closed),
+        corridors=len(corridors),
+        reasons=len(reasons),
     )
     return RouteResult(
         run_id=depths.run_id,
@@ -459,6 +566,9 @@ def plan(
         avoided=avoided,
         notes=notes,
         ms=ms,
+        corridors=corridors,
+        reasons=reasons,
+        trip_id=trip_id,
     )
 
 
@@ -491,12 +601,27 @@ def as_dict(result: RouteResult) -> dict[str, Any]:
                 "segment_id": a.segment_id,
                 "name": a.name,
                 "depth_cm": round(float(a.depth_cm), 1),
-                "probability": a.probability,
+                "probability": round(float(a.probability), 3),
                 "at": a.at.isoformat(),
+                "closed_reason": a.closed_reason,
                 "path": [[round(x, 6), round(y, 6)] for x, y in a.path],
             }
             for a in result.avoided
         ],
+        "corridors": [
+            {
+                "id": c.id,
+                "label": c.label,
+                "route": route(c.route),
+                "share": round(float(c.share), 4),
+                "assigned": bool(c.assigned),
+                "capacity_score": round(float(c.capacity_score), 2),
+                "max_probability": round(float(c.max_probability), 3),
+            }
+            for c in result.corridors
+        ],
+        "reasons": result.reasons,
+        "trip_id": result.trip_id,
         "notes": result.notes,
         "ms": round(result.ms, 1),
     }
