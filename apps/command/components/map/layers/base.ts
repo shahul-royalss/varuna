@@ -13,13 +13,18 @@ import type { BuildingPolygon, SegmentPath } from "./types";
 export interface BuildingsLayerOptions {
   buildings: readonly BuildingPolygon[];
   show: boolean;
+  /** 0 to 1 opacity, for the onboarding wizard's layer stack (motion M19). 1 everywhere else. */
+  fade?: number;
 }
 
-export function buildingsLayers({ buildings, show }: BuildingsLayerOptions): unknown[] {
-  if (!show || buildings.length === 0) return [];
+export function buildingsLayers({ buildings, show, fade = 1 }: BuildingsLayerOptions): unknown[] {
+  if (!show || buildings.length === 0 || fade <= 0) return [];
   return [
     new PolygonLayer<BuildingPolygon>({
       id: "buildings",
+      // Only when it is fading: the equivalence fixtures record the props deck is handed, and a
+      // layer at full opacity must hand it exactly what it did before M19 existed.
+      ...(fade < 1 ? { opacity: fade } : {}),
       data: buildings as BuildingPolygon[],
       getPolygon: (d) => d,
       filled: true,
@@ -35,17 +40,20 @@ export function buildingsLayers({ buildings, show }: BuildingsLayerOptions): unk
 
 export interface DryStreetsLayerOptions {
   baseSegments: readonly SegmentPath[];
+  /** 0 to 1 opacity, for the onboarding wizard's layer stack (motion M19). 1 everywhere else. */
+  fade?: number;
 }
 
 /**
  * The whole street network, dim. This is the geography the operator orients by, and it is the
  * same 21,296 segments the city pipeline derived - not a tile service's idea of Mumbai.
  */
-export function dryStreetsLayers({ baseSegments }: DryStreetsLayerOptions): unknown[] {
-  if (baseSegments.length === 0) return [];
+export function dryStreetsLayers({ baseSegments, fade = 1 }: DryStreetsLayerOptions): unknown[] {
+  if (baseSegments.length === 0 || fade <= 0) return [];
   return [
     new PathLayer<SegmentPath>({
       id: "streets-dry",
+      ...(fade < 1 ? { opacity: fade } : {}),
       data: baseSegments as SegmentPath[],
       getPath: (d) => d.path,
       getColor: DRY_STREET,
