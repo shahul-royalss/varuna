@@ -457,7 +457,10 @@ export function ConsoleScreen() {
             to its cap and `overflow-y-auto` gives the wheel something to move; `overscroll-contain`
             stops the scroll chaining out of the column when it reaches the end, which is what
             would hand the gesture to the map behind it. */}
-        <div className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] min-h-0 w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain">
+        <div
+          data-testid="console-map-column"
+          className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] min-h-0 w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain"
+        >
           {/* The chips are 414 px of clock times in a 380 px column, so they wrap to a second row
               rather than spilling over the map (UI_SPEC 8). */}
           <CyclePicker
