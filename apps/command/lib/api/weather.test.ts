@@ -106,15 +106,18 @@ describe("weatherFromBody", () => {
 
 describe("loadWeather", () => {
   it("returns a reading and asks for the city it was given", async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(body()));
-    vi.stubGlobal("fetch", fetchMock);
+    const asked: string[] = [];
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+      asked.push(String(input));
+      return jsonResponse(body());
+    });
 
     const state = await loadWeather("mumbai");
 
     expect(state.kind).toBe("ready");
     if (state.kind !== "ready") throw new Error("expected a reading");
     expect(state.weather.current.temperatureC).toBe(28.4);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toContain("/v1/weather?city=mumbai");
+    expect(asked[0]).toContain("/v1/weather?city=mumbai");
   });
 
   it("turns a 404 into unavailable carrying the API's sentence, and no temperature", async () => {
