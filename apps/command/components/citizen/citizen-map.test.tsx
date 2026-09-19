@@ -5,10 +5,10 @@ import type { RouteCorridor, RouteLeg, RoutePlan } from "@/lib/api/route";
 
 import { CitizenMap, routeLines, STOPS_AT_CM } from "./citizen-map";
 
-// The fallback path renders the console's own map, which would fetch a run, decode thirty-six
-// PNGs and ask for a WebGL context. None of that is what this file is testing.
-vi.mock("@/components/map/flood-map", () => ({
-  FloodMap: () => <div data-testid="flood-map" />,
+// The fallback path renders VARUNA's own deck.gl map, which would ask jsdom for a WebGL context.
+// What this file tests is which path runs and what it says, not what deck draws.
+vi.mock("@/components/map/city-map", () => ({
+  CityMap: () => <div data-testid="varuna-map" />,
 }));
 
 const KEY = "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY";
@@ -44,14 +44,14 @@ describe("CitizenMap without a Google key", () => {
     vi.stubEnv(KEY, "");
     render(<CitizenMap profile="car" />);
 
-    expect(await screen.findByTestId("flood-map")).toBeInTheDocument();
+    expect(await screen.findByTestId("varuna-map")).toBeInTheDocument();
     expect(screen.getByText(/showing VARUNA's own map/)).toBeInTheDocument();
   });
 
   it("logs nothing - an absent key is a configuration, not an error", async () => {
     vi.stubEnv(KEY, "undefined");
     render(<CitizenMap profile="two-wheeler" />);
-    await screen.findByTestId("flood-map");
+    await screen.findByTestId("varuna-map");
 
     expect(errors).toEqual([]);
     expect(warnings).toEqual([]);

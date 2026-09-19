@@ -27,14 +27,17 @@ import { ScatterplotLayer } from "@deck.gl/layers";
 import { APIProvider, Map as GoogleMap, useMap } from "@vis.gl/react-google-maps";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { FloodMap } from "@/components/map/flood-map";
+import { CityMap } from "@/components/map/city-map";
 import { cityBounds } from "@/components/map/basemap";
+import { EmptyState } from "@/components/varuna/empty-state";
+import { Skeleton } from "@/components/varuna/skeleton";
+import { loadFacilityLabels, type FacilityLabel } from "@/lib/api/city-layers";
 import { routeLayers, useRouteProgress } from "@/components/map/layers/routes";
 import { wetStreetsLayers } from "@/components/map/layers/streets";
 import type { RouteLine } from "@/components/map/layers/types";
 import { TRUTH_FILL, TRUTH_RING } from "@/components/map/layers/palette";
 import type { PublicProfile } from "@/components/varuna/vehicle-selector";
-import { useCitizenRun, type CitizenRun } from "@/lib/maps/citizen-run";
+import { useCitizenRun, type CitizenRun, type CitizenRunState } from "@/lib/maps/citizen-run";
 import { toLatLngBounds, useGoogleFit, type FittableMap } from "@/lib/maps/fit";
 import {
   GOOGLE_BOOTSTRAP_TIMEOUT_MS,
@@ -86,6 +89,11 @@ export interface CitizenMapProps {
 
 /** The step a citizen sees: now. The "passable until" times carry the forecast instead. */
 const NOW_STEP = 0;
+
+/** Stable empties, so `CityMap`'s memos are not rebuilt by a fresh `[]` on every render. */
+const NO_FRAMES: readonly (ImageBitmap | null)[] = [];
+const NO_SURCHARGE: readonly [] = [];
+const NO_HOTSPOTS: readonly [] = [];
 
 /**
  * Which lines to draw, and in what character.
@@ -187,6 +195,33 @@ function GoogleLayers({
   return null;
 }
 
+/**
+ * What the map shows when it has no run to draw.
+ *
+ * Named states, not a blank rectangle (CLAUDE.md 6.11): the load, an empty state carrying the
+ * API's own sentence about which command produces a run, and an error that says what failed. A
+ * skeleton, never a spinner (6.9).
+ */
+function RunState({ state }: { state: CitizenRunState }) {
+  if (state.kind === "ready") return null;
+  return (
+    <div className="bg-ink/90 absolute inset-0 z-20 flex items-center justify-center p-6">
+      {state.kind === "loading" ? (
+        <div className="w-[260px]">
+          <Skeleton className="h-2 w-full rounded-full" />
+          <p className="type-small text-text-2 mt-3">Loading the streets around you</p>
+        </div>
+      ) : (
+        <EmptyState
+          size="sm"
+          title={state.kind === "empty" ? "No forecast yet" : "The forecast did not load"}
+          description={state.message}
+        />
+      )}
+    </div>
+  );
+}
+
 /** One sentence, always present, saying which basemap the reader is looking at. */
 function FallbackNotice({ reason }: { reason: GoogleFallbackReason }) {
   return (
@@ -243,6 +278,22 @@ export function CitizenMap({
   );
   const layers = useCitizenLayers(run, profile, routes, picked);
 
+  // Named places, so the map says "KEM Hospital" rather than showing an unlabelled junction. A
+  // few hundred points, unlike the building and drain layers, which this screen never loads.
+  const [facilities, setFacilities] = useState<readonly FacilityLabel[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    loadFacilityLabels(city, controller.signal)
+      .then(setFacilities)
+      // A map without names is still a map; nothing here is worth an error state.
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [city]);
+  const labels = useMemo(
+    () => facilities.map((f) => ({ id: f.id, text: f.text, lon: f.lon, lat: f.lat, kind: f.kind })),
+    [facilities],
+  );
+
   const bounds = useMemo(() => cityBounds(city), [city]);
   // Resolved inside the component, not at module scope, so a theme override reaches the tiles.
   const styles = useMemo(() => darkMapStyle(), []);
@@ -262,16 +313,30 @@ export function CitizenMap({
     const reason: GoogleFallbackReason = fallback ?? "no-key";
     return (
       <div className={cn("bg-ink absolute inset-0", className)} data-slot="citizen-map">
-        <FloodMap
-          city={city}
-          runId={runId}
-          step={NOW_STEP}
+        {/* VARUNA's own map, over Esri's aerial imagery, built from the same layer modules the
+            Google path uses - so the water, the chosen route and the dimmed corridors are
+            identical either way, and the fallback is a different basemap rather than a lesser
+            answer. The depth raster and the building footprints stay off: 36 decoded frames and
+            11 MB of footprints are an operator's load, not a phone's. */}
+        <CityMap
+          frames={NO_FRAMES}
+          rasterBounds={null}
+          baseSegments={run?.baseSegments ?? []}
+          segments={run?.segments ?? []}
+          surcharge={NO_SURCHARGE}
+          hotspots={NO_HOTSPOTS}
+          routes={routes}
+          labels={labels}
           passableBelowCm={STOPS_AT_CM[profile]}
+          step={NOW_STEP}
+          bounds={bounds}
           showRaster={false}
-          showBuildings
+          showBuildings={false}
           showSurcharge={false}
-          showHotspots
+          showHotspots={false}
+          showSatellite
         />
+        <RunState state={state} />
         <FallbackNotice reason={reason} />
       </div>
     );
