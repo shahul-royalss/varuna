@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 /**
  * Whether a scroll container has content out of sight above or below it.
@@ -13,10 +13,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
  *
  * It is a layout fact, not an animation: nothing here moves, so there is nothing for
  * `prefers-reduced-motion` to switch off.
+ *
+ * The container is held in state rather than a ref, so the observer is set up by an effect that
+ * depends on the node and nothing is read during render.
  */
 export interface ScrollEdges {
   /** Attach to the scroll container. */
-  ref: (node: HTMLElement | null) => void;
+  attach: (node: HTMLElement | null) => void;
   /** Content is hidden above the top edge. */
   above: boolean;
   /** Content is hidden below the bottom edge. */
@@ -27,50 +30,40 @@ export interface ScrollEdges {
 const EPSILON = 2;
 
 export function useScrollEdges(): ScrollEdges {
+  const [node, setNode] = useState<HTMLElement | null>(null);
   const [edges, setEdges] = useState({ above: false, below: false });
-  const nodeRef = useRef<HTMLElement | null>(null);
-
-  const measure = useCallback(() => {
-    const node = nodeRef.current;
-    if (!node) return;
-    const above = node.scrollTop > EPSILON;
-    const below = node.scrollTop + node.clientHeight < node.scrollHeight - EPSILON;
-    setEdges((current) =>
-      current.above === above && current.below === below ? current : { above, below },
-    );
-  }, []);
-
-  // A single observer, re-pointed as the node changes, so toggling a layer on - which changes the
-  // column's height without any scrolling - re-measures too.
-  const observerRef = useRef<ResizeObserver | null>(null);
-  const ref = useCallback(
-    (node: HTMLElement | null) => {
-      observerRef.current?.disconnect();
-      nodeRef.current = node;
-      if (!node) return;
-      const observer = new ResizeObserver(measure);
-      observer.observe(node);
-      for (const child of Array.from(node.children)) observer.observe(child);
-      observerRef.current = observer;
-      measure();
-    },
-    [measure],
-  );
 
   useEffect(() => {
-    const node = nodeRef.current;
+    // Before the column is attached the initial "nothing is hidden" is already right, and there
+    // is no element to measure.
     if (!node) return;
+    const measure = () => {
+      const above = node.scrollTop > EPSILON;
+      const below = node.scrollTop + node.clientHeight < node.scrollHeight - EPSILON;
+      setEdges((current) =>
+        current.above === above && current.below === below ? current : { above, below },
+      );
+    };
+    // The children too: toggling a layer on changes the column's height without any scrolling,
+    // and an affordance that only appears after a scroll is an affordance nobody sees.
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    for (const child of Array.from(node.children)) observer.observe(child);
     node.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
+    // The first measurement waits a frame rather than running in the effect body: a synchronous
+    // setState there cascades a second render before the browser has painted the first.
+    const first = requestAnimationFrame(measure);
     return () => {
+      cancelAnimationFrame(first);
+      observer.disconnect();
       node.removeEventListener("scroll", measure);
       window.removeEventListener("resize", measure);
     };
-  }, [measure]);
+    // Re-runs when the column's contents change identity, which is what adds and removes rows.
+  }, [node]);
 
-  useEffect(() => () => observerRef.current?.disconnect(), []);
-
-  return { ref, above: edges.above, below: edges.below };
+  return { attach: setNode, above: edges.above, below: edges.below };
 }
 
 /**
