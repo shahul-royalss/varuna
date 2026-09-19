@@ -150,6 +150,15 @@ export interface CityMapProps {
   inlets?: readonly InletPoint[];
   /** The console's pulsing manholes or `/drains`' static rings (PU8). */
   surchargeStyle?: SurchargeStyle;
+  /**
+   * Per-layer opacity, 0 to 1, for the onboarding wizard's layer stack (motion M19, task D-21).
+   *
+   * The wizard is the one screen where layers arrive one at a time, as the pipeline writes them,
+   * and M19 asks each to fade in over 400 ms as its step completes. Every other screen leaves
+   * this unset and every layer draws at 1, exactly as before. Drive it with `useLayerFade`, which
+   * holds the catalogue's duration and its reduced-motion branch.
+   */
+  layerFade?: { streets?: number; buildings?: number; drains?: number; raster?: number };
 }
 
 export function CityMap({
@@ -190,6 +199,7 @@ export function CityMap({
   onDrainHover,
   inlets = [],
   surchargeStyle = "pulse",
+  layerFade,
 }: CityMapProps) {
   const interactive = mode !== "hero";
   const reducedMotion = usePrefersReducedMotion();
@@ -230,27 +240,40 @@ export function CityMap({
     [showSatellite, showRaster],
   );
 
+  // Each layer's M19 opacity, read out here so the memos below depend on a number rather than on
+  // an object identity a parent would recreate every render.
+  const fadeStreets = layerFade?.streets ?? 1;
+  const fadeBuildings = layerFade?.buildings ?? 1;
+  const fadeDrains = layerFade?.drains ?? 1;
+  const fadeRaster = layerFade?.raster ?? 1;
+
   const cityLayers = useMemo(
-    () => buildingsLayers({ buildings, show: showBuildings }),
-    [buildings, showBuildings],
+    () => buildingsLayers({ buildings, show: showBuildings, fade: fadeBuildings }),
+    [buildings, showBuildings, fadeBuildings],
   );
 
   const streetLayers = useMemo(
     () => [
-      ...dryStreetsLayers({ baseSegments }),
+      ...dryStreetsLayers({ baseSegments, fade: fadeStreets }),
       ...drainsLayers({
         drains,
         show: showDrains,
         crossFadeMs: drainCrossFadeMs,
         onHover: onDrainHover,
+        fade: fadeDrains,
       }),
     ],
-    [baseSegments, drains, showDrains, drainCrossFadeMs, onDrainHover],
+    [baseSegments, drains, showDrains, drainCrossFadeMs, onDrainHover, fadeStreets, fadeDrains],
   );
 
   const runLayers = useMemo(
     () => [
-      ...depthRasterLayers({ frame: frames[step] ?? null, bounds: rasterBounds, show: showRaster }),
+      ...depthRasterLayers({
+        frame: frames[step] ?? null,
+        bounds: rasterBounds,
+        show: showRaster,
+        fade: fadeRaster,
+      }),
       ...wetStreetsLayers({
         segments,
         step,
@@ -270,7 +293,25 @@ export function CityMap({
         reducedMotion,
       }),
     ],
-    [frames, step, rasterBounds, segments, hotspots, selectedHotspotId, showRaster, showSegments, showHotspots, passableBelowCm, diffMode, wipeLon, probabilityThresholdCm, onSegmentPick, playing, reducedMotion],
+    [
+      frames,
+      step,
+      rasterBounds,
+      segments,
+      hotspots,
+      selectedHotspotId,
+      showRaster,
+      showSegments,
+      showHotspots,
+      passableBelowCm,
+      diffMode,
+      wipeLon,
+      probabilityThresholdCm,
+      onSegmentPick,
+      playing,
+      reducedMotion,
+      fadeRaster,
+    ],
   );
 
   // What the camera can see, for the reversed-flow zoom gate and the redraw gate (M8, M9).
@@ -327,7 +368,16 @@ export function CityMap({
       // Labels last: a street name the depth ramp paints over is a name nobody can read.
       ...labelDrawLayers,
     ],
-    [basemapLayers, cityLayers, streetLayers, runLayers, drainFlowLayers, markerLayers, overlayLayers, labelDrawLayers],
+    [
+      basemapLayers,
+      cityLayers,
+      streetLayers,
+      runLayers,
+      drainFlowLayers,
+      markerLayers,
+      overlayLayers,
+      labelDrawLayers,
+    ],
   );
 
   const animate = deckAnimates({
@@ -348,9 +398,9 @@ export function CityMap({
         getTooltip={mapTooltip({ step, streetsPickable: Boolean(onSegmentPick) }) as never}
         onClick={
           onSegmentPick
-            ? (({ object, x, y }: { object?: SegmentPath; x: number; y: number }) => {
+            ? ((({ object, x, y }: { object?: SegmentPath; x: number; y: number }) => {
                 onSegmentPick(object ? { segment: object, x, y } : null);
-              }) as never
+              }) as never)
             : undefined
         }
       />

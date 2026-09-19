@@ -2,7 +2,8 @@
 
 import { MapPinned } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { Route } from "next";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { CityMap } from "@/components/map/city-map";
@@ -27,8 +28,19 @@ import {
   type OnboardJob,
   type OnboardStepId,
 } from "@/lib/api/onboard";
-import { allSegments, type GeoSegment } from "@/lib/api/run-depth";
+import {
+  allSegments,
+  joinSegments,
+  loadRunDepth,
+  type GeoSegment,
+  type RunDepth,
+} from "@/lib/api/run-depth";
 import { apiUrl } from "@/lib/api/client";
+import { useLayerFade } from "@/lib/hooks/use-layer-fade";
+import { OnboardLayers, type WizardLayerId, type WizardLayerState } from "./onboard-layers";
+
+/** The shape `/v1/city/{city}/layers/segments` returns, as the two readers below want it. */
+type SegmentCollection = Parameters<typeof allSegments>[0];
 
 /** The city the wizard builds on stage (CLAUDE.md 3.3's `CHN-SOUTH`). */
 const CITY = "chennai";
@@ -54,6 +66,21 @@ const STEP_OF: Record<OnboardStepId, OnboardingStepId> = {
   infer_drains: "drains",
   build_graph: "graph",
   first_forecast: "forecast",
+};
+
+/**
+ * Which step writes each map layer, as the index of that step in `ONBOARDING_STEP_IDS`.
+ *
+ * The wizard tries a layer as soon as its step has completed, and again on every later step, so a
+ * layer appears the moment the pipeline has actually written it rather than at a time this screen
+ * has decided looks good. In practice `varuna_city.export` writes the map GeoJSONs near the end
+ * of the build, so most of the stack lands within a few seconds of each other - the order is the
+ * pipeline's, not a script's.
+ */
+const LAYER_AFTER: Record<Exclude<WizardLayerId, "depth">, number> = {
+  streets: ONBOARDING_STEP_IDS.indexOf("fetch"),
+  buildings: ONBOARDING_STEP_IDS.indexOf("fetch"),
+  drains: ONBOARDING_STEP_IDS.indexOf("drains"),
 };
 
 /**
@@ -97,20 +124,59 @@ function toLines(job: OnboardJob | null): LogLine[] {
 }
 
 /**
- * City-in-a-box wizard (CLAUDE.md 7.9, tasks P9.5 and P9.6).
+ * How far the build has got, as an index into `ONBOARDING_STEP_IDS`, or -1 before it starts.
+ *
+ * A finished build counts as past every step, including one that a reopened tab never watched:
+ * the layers are on disk and the map must draw them.
+ */
+export function reachedStepIndex(job: OnboardJob | null): number {
+  if (!job || job.status === "none") return -1;
+  if (job.status === "finished" || job.built) return ONBOARDING_STEP_IDS.length;
+  const current = ONBOARDING_STEP_IDS.indexOf(STEP_OF[job.step] ?? "area");
+  // The step it is on has not finished, so only the ones before it have written anything.
+  return current;
+}
+
+/**
+ * Where the finish card's button goes (task D-21).
+ *
+ * The city alone is not enough. `/console` opens on the cycle the demo script starts from, and
+ * that rule is about Mumbai's 2 July replay; a Chennai console with no run named would fall back
+ * to whatever the API calls newest for Chennai, which before this build existed was nothing at
+ * all. Naming this build's own first run is what makes the card land on the water it just made.
+ */
+export function consoleHref(city: string, runId: string | null): string {
+  const params = new URLSearchParams({ city });
+  if (runId) params.set("run", runId);
+  return `/console?${params.toString()}`;
+}
+
+/**
+ * City-in-a-box wizard (CLAUDE.md 7.9, tasks P9.5, P9.6 and D-21).
  *
  * Every line in the log comes from `services/city` and every step's status comes from the job, so
  * a judge watching this is watching the pipeline rather than an animation. The map stacks the
- * layers as they are written: roads first, then buildings, then the inferred drain graph.
+ * layers as the build writes them - roads, buildings, the inferred drain graph, and finally the
+ * first forecast's depth - each fading in over 400 ms (motion M19).
  */
 export function OnboardScreen() {
   const [job, setJob] = useState<OnboardJob | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
-  const [segments, setSegments] = useState<GeoSegment[]>([]);
-  const [buildings, setBuildings] = useState<[number, number][][]>([]);
-  const [drains, setDrains] = useState<DrainPath[]>([]);
-  const loadedFor = useRef<string | null>(null);
+  // The city's own segment layer, kept as it arrived: `allSegments` draws the whole network and
+  // `joinSegments` colours the subset the first forecast wetted, and both want this shape.
+  const [roads, setRoads] = useState<SegmentCollection | null>(null);
+  const [buildings, setBuildings] = useState<[number, number][][] | null>(null);
+  const [drains, setDrains] = useState<DrainPath[] | null>(null);
+  const [depth, setDepth] = useState<RunDepth | null>(null);
+  const [show, setShow] = useState<Record<WizardLayerId, boolean>>({
+    streets: true,
+    buildings: true,
+    drains: true,
+    depth: true,
+  });
+  /** Which (job, layer) pairs have already been asked for, so a poll does not refetch. */
+  const asked = useRef(new Set<string>());
 
   // Rejoin a build already in flight, so reopening the tab does not look like nothing happened.
   useEffect(() => {
@@ -137,34 +203,77 @@ export function OnboardScreen() {
     };
   }, [job?.jobId, job?.status]);
 
-  // Chennai's layers, once the build has written them. Keyed on the job so a second run reloads.
-  const built = job?.built || job?.status === "finished";
-  useEffect(() => {
-    if (!built) return;
-    const key = job?.jobId ?? "existing";
-    if (loadedFor.current === key) return;
-    loadedFor.current = key;
+  const reached = reachedStepIndex(job);
+  const jobKey = job?.jobId ?? (job?.built ? "existing" : "none");
+  const firstRunId = job?.firstRunId ?? null;
 
+  // Ask for each layer once its step has completed. A layer the pipeline has not written yet
+  // answers 404; that is not an error here, it is "not yet", and the next step tries again.
+  useEffect(() => {
+    if (reached < 0) return;
     const controller = new AbortController();
-    (async () => {
-      const [roads, footprints, pipes] = await Promise.all([
-        fetch(apiUrl(`/v1/city/${CITY}/layers/segments`), { signal: controller.signal })
-          .then((r) => (r.ok ? r.json() : { features: [] }))
-          .catch(() => ({ features: [] })),
-        loadBuildings(CITY, controller.signal).catch(() => []),
-        loadDrains(CITY, controller.signal).catch(() => []),
-      ]);
-      setSegments(allSegments(roads));
-      setBuildings(footprints);
-      setDrains(pipes.slice(0, MAP_EDGE_LIMIT));
-    })();
+    const once = (layer: string, load: () => Promise<void>) => {
+      const key = `${jobKey}:${layer}`;
+      if (asked.current.has(key)) return;
+      asked.current.add(key);
+      void load().catch(() => {
+        // Not written yet (or the request was aborted): forget the attempt so a later step retries.
+        asked.current.delete(key);
+      });
+    };
+
+    if (reached > LAYER_AFTER.streets) {
+      once("streets", async () => {
+        const response = await fetch(apiUrl(`/v1/city/${CITY}/layers/segments`), {
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error(`segments ${response.status}`);
+        setRoads((await response.json()) as SegmentCollection);
+      });
+    }
+    if (reached > LAYER_AFTER.buildings) {
+      once("buildings", async () => {
+        setBuildings(await loadBuildings(CITY, controller.signal));
+      });
+    }
+    if (reached > LAYER_AFTER.drains) {
+      once("drains", async () => {
+        const pipes = await loadDrains(CITY, controller.signal);
+        if (pipes.length === 0) throw new Error("drains not written yet");
+        setDrains(pipes.slice(0, MAP_EDGE_LIMIT));
+      });
+    }
+    if (firstRunId) {
+      once("depth", async () => {
+        setDepth(await loadRunDepth(firstRunId, controller.signal, undefined, CITY));
+      });
+    }
     return () => controller.abort();
-  }, [built, job?.jobId]);
+  }, [reached, jobKey, firstRunId]);
+
+  const segments = useMemo<GeoSegment[] | null>(() => (roads ? allSegments(roads) : null), [roads]);
+  // The first forecast's own wet streets, coloured by its depth.
+  const wet = useMemo(
+    () => (depth && roads ? joinSegments(roads, depth.depthCm) : []),
+    [depth, roads],
+  );
+
+  // Motion M19: each layer fades in over 400 ms when it arrives, and instantly under reduced
+  // motion. A reopened tab whose layers are already loaded reads 1 at once and does not replay.
+  const fadeStreets = useLayerFade("streets", (segments?.length ?? 0) > 0 && show.streets);
+  const fadeBuildings = useLayerFade("buildings", (buildings?.length ?? 0) > 0 && show.buildings);
+  const fadeDrains = useLayerFade("drains", (drains?.length ?? 0) > 0 && show.drains);
+  const fadeDepth = useLayerFade("depth", depth !== null && show.depth);
 
   const start = useCallback(async () => {
     setStarting(true);
     setError(null);
     try {
+      asked.current.clear();
+      setRoads(null);
+      setBuildings(null);
+      setDrains(null);
+      setDepth(null);
       setJob(await startOnboard(CITY, DESIGN_STORM));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -175,139 +284,157 @@ export function OnboardScreen() {
 
   const running = job?.status === "running" || job?.status === "queued" || starting;
   const finished = job?.status === "finished";
-  const hasLayers = segments.length > 0 || drains.length > 0;
+  const hasLayers = (segments?.length ?? 0) > 0 || (drains?.length ?? 0) > 0;
+
+  const layerState: Record<WizardLayerId, WizardLayerState> = {
+    streets: { on: show.streets, count: segments?.length },
+    buildings: { on: show.buildings, count: buildings?.length },
+    drains: { on: show.drains, count: drains?.length },
+    depth: { on: show.depth, count: depth ? depth.depthCm.size : undefined },
+  };
 
   return (
     <AppShell>
-      <div className="h-full min-h-0 overflow-y-auto">
-        <div className="mx-auto flex max-w-[1400px] flex-col gap-6 p-6">
+      <div className="flex h-full min-h-0 flex-col lg:flex-row">
+        <div
+          // Focusable: until a build has run this column scrolls and holds only one button, so a
+          // keyboard user could not otherwise reach the bottom of it (WCAG 2.1.1, P10.3).
+          tabIndex={0}
+          role="region"
+          aria-label="Onboarding steps and log"
+          className="focus-visible:ring-tide/50 border-line flex min-h-0 shrink-0 flex-col gap-4 overflow-y-auto border-b p-6 focus-visible:ring-3 focus-visible:outline-none lg:w-[420px] lg:border-r lg:border-b-0"
+        >
           <PageHeader
             title="City in a box"
             description="Open data in, digital twin out. Chennai in minutes."
             honesty="Inferred drain graph"
-            actions={
-              <div className="flex flex-col items-end gap-1">
-                <Button onClick={() => void start()} disabled={running} aria-busy={running}>
-                  <MapPinned aria-hidden="true" />
-                  {running ? "Building Chennai" : "Start onboarding Chennai"}
-                </Button>
-                <p className="max-w-[52ch] text-right type-micro text-text-3">
-                  {running
-                    ? `Step ${Math.round((job?.progress ?? 0) * 100)} %, ${Math.round(job?.elapsedS ?? 0)} s elapsed.`
-                    : "Runs from city/cache/chennai: terrain, roads and land cover are already downloaded."}
-                </p>
-              </div>
-            }
           />
+          <div className="flex flex-col gap-1">
+            <Button onClick={() => void start()} disabled={running} aria-busy={running}>
+              <MapPinned aria-hidden="true" />
+              {running ? "Building Chennai" : "Start onboarding Chennai"}
+            </Button>
+            <p className="type-micro text-text-3 max-w-[52ch]">
+              {running
+                ? `Step ${Math.round((job?.progress ?? 0) * 100)} %, ${Math.round(job?.elapsedS ?? 0)} s elapsed.`
+                : "Runs from city/cache/chennai: terrain, roads and land cover are already downloaded."}
+            </p>
+          </div>
 
           {error ? (
-            <p className="rounded-control border border-line bg-well p-3 type-small text-text-2">
+            <p className="rounded-control border-line bg-well type-small text-text-2 border p-3">
               {error}
             </p>
           ) : null}
 
-          <div className="grid min-h-0 gap-4 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-            <div className="flex min-w-0 flex-col gap-4">
-              <PanelErrorBoundary title="Onboarding steps">
-                <Panel
-                  title="Steps"
-                  description="Every step reports its own progress and elapsed time."
-                >
-                  <OnboardingSteps steps={toSteps(job)} />
-                </Panel>
-              </PanelErrorBoundary>
+          <PanelErrorBoundary title="Onboarding steps">
+            <Panel
+              title="Steps"
+              description="Every step reports its own progress and elapsed time."
+            >
+              <OnboardingSteps steps={toSteps(job)} />
+            </Panel>
+          </PanelErrorBoundary>
 
-              <PanelErrorBoundary title="Pipeline log">
-                <Panel
-                  title="Pipeline log"
-                  description="Real lines from services/city, never scripted copy."
-                >
-                  <LogStream
-                    lines={toLines(job)}
-                    emptyDescription="Logs stream here when the wizard runs."
-                  />
-                </Panel>
-              </PanelErrorBoundary>
+          <PanelErrorBoundary title="Pipeline log">
+            <Panel
+              title="Pipeline log"
+              description="Real lines from services/city, never scripted copy."
+            >
+              <LogStream
+                lines={toLines(job)}
+                emptyDescription="Logs stream here when the wizard runs."
+              />
+            </Panel>
+          </PanelErrorBoundary>
 
-              <Panel
-                title="Finish card"
-                description="What the wizard shows when the first forecast lands."
-              >
-                <div
-                  className={
-                    finished
-                      ? "space-y-3 rounded-control border border-line bg-well p-4"
-                      : "space-y-3 rounded-control border border-line bg-well p-4 opacity-60"
-                  }
+          <Panel
+            title="Finish card"
+            description="What the wizard shows when the first forecast lands."
+          >
+            <div
+              className={
+                finished
+                  ? "rounded-control border-line bg-well space-y-3 border p-4"
+                  : "rounded-control border-line bg-well space-y-3 border p-4 opacity-60"
+              }
+            >
+              <p className="type-body text-text-2 max-w-[52ch]">
+                First forecast, uncalibrated. VARUNA learns Chennai&apos;s drains from the next
+                monsoon.
+              </p>
+              {finished && firstRunId ? (
+                <p className="type-micro text-text-3">
+                  First run <span className="num">{firstRunId}</span>, built in{" "}
+                  <span className="num">{Math.round(job?.elapsedS ?? 0)}</span> s.
+                </p>
+              ) : null}
+              {finished ? (
+                // `Button` does not take `asChild`, so a link that looks like a button is a link
+                // carrying the button's own classes - and it stays a real anchor, which is what
+                // middle-click and "open in new tab" need.
+                //
+                <Link
+                  href={consoleHref(CITY, firstRunId) as Route}
+                  className="rounded-control border-line type-small text-text hover:bg-well focus-visible:ring-tide/50 inline-flex h-8 items-center gap-2 border bg-transparent px-3 focus-visible:ring-3"
                 >
-                  <p className="max-w-[52ch] type-body text-text-2">
-                    First forecast, uncalibrated. VARUNA learns Chennai&apos;s drains from the next
-                    monsoon.
-                  </p>
-                  {finished && job?.firstRunId ? (
-                    <p className="type-micro text-text-3">
-                      First run <span className="num">{job.firstRunId}</span>, built in{" "}
-                      <span className="num">{Math.round(job.elapsedS)}</span> s.
-                    </p>
-                  ) : null}
-                  {finished ? (
-                    // `Button` does not take `asChild`, so a link that looks like a button is a
-                    // link carrying the button's own classes - and it stays a real anchor, which
-                    // is what middle-click and "open in new tab" need.
-                    <Link
-                      href={`/console?city=${CITY}`}
-                      className="inline-flex h-8 items-center gap-2 rounded-control border border-line bg-transparent px-3 type-small text-text hover:bg-well focus-visible:ring-3 focus-visible:ring-tide/50"
-                    >
-                      Open Chennai console
-                    </Link>
-                  ) : (
-                    <Button variant="outline" size="sm" disabled aria-disabled="true">
-                      Open Chennai console
-                    </Button>
-                  )}
-                  <p className="type-micro text-text-3">
-                    The city switcher lists Chennai once the wizard has written city/chennai.
-                  </p>
-                </div>
-              </Panel>
+                  Open Chennai console
+                </Link>
+              ) : (
+                <Button variant="outline" size="sm" disabled aria-disabled="true">
+                  Open Chennai console
+                </Button>
+              )}
+              <p className="type-micro text-text-3">
+                The city switcher lists Chennai once the build has written its map layers.
+              </p>
             </div>
-
-            <PanelErrorBoundary title="Onboarding map">
-              <Panel
-                title="Chennai, Velachery to T. Nagar"
-                description="Each completed step stacks its layer here: terrain, roads, drains, then the first depth forecast."
-                className="min-h-[32rem] overflow-hidden"
-              >
-                <div className="relative h-full min-h-[26rem] overflow-hidden rounded-control border border-line">
-                  {hasLayers ? (
-                    <CityMap
-                      frames={[]}
-                      rasterBounds={null}
-                      baseSegments={segments}
-                      segments={[]}
-                      surcharge={[]}
-                      hotspots={[]}
-                      buildings={buildings}
-                      drains={drains}
-                      bounds={CHENNAI_BOUNDS}
-                      showDrains={drains.length > 0}
-                      showRaster={false}
-                      showSurcharge={false}
-                      step={0}
-                    />
-                  ) : (
-                    <MapSlot
-                      emptyState={{
-                        title: "No Chennai layers yet",
-                        description: "Press Start onboarding Chennai.",
-                      }}
-                    />
-                  )}
-                </div>
-              </Panel>
-            </PanelErrorBoundary>
-          </div>
+          </Panel>
         </div>
+
+        <PanelErrorBoundary title="Onboarding map">
+          <div className="relative min-h-[24rem] min-w-0 flex-1">
+            {hasLayers ? (
+              <>
+                <CityMap
+                  frames={depth && show.depth ? depth.frames : []}
+                  rasterBounds={depth && show.depth ? depth.bounds : null}
+                  baseSegments={show.streets ? (segments ?? []) : []}
+                  segments={show.depth ? wet : []}
+                  surcharge={[]}
+                  hotspots={[]}
+                  buildings={show.buildings ? (buildings ?? []) : []}
+                  drains={show.drains ? (drains ?? []) : []}
+                  bounds={CHENNAI_BOUNDS}
+                  showDrains={(drains?.length ?? 0) > 0 && show.drains}
+                  showRaster={depth !== null && show.depth}
+                  showSurcharge={false}
+                  showBuildings={(buildings?.length ?? 0) > 0 && show.buildings}
+                  step={0}
+                  layerFade={{
+                    streets: fadeStreets,
+                    buildings: fadeBuildings,
+                    drains: fadeDrains,
+                    raster: fadeDepth,
+                  }}
+                />
+                <div className="absolute top-4 left-4">
+                  <OnboardLayers
+                    value={layerState}
+                    onChange={(key, next) => setShow((s) => ({ ...s, [key]: next }))}
+                  />
+                </div>
+              </>
+            ) : (
+              <MapSlot
+                emptyState={{
+                  title: "No Chennai layers yet",
+                  description: "Press Start onboarding Chennai.",
+                }}
+              />
+            )}
+          </div>
+        </PanelErrorBoundary>
       </div>
     </AppShell>
   );
