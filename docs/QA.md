@@ -455,3 +455,82 @@ That last one is tested, not asserted: all 272 committed demo CAP documents vali
 vendored OASIS CAP-v1.2.xsd and carry `Exercise`, and generated CAP validates in baked, replay and
 live modes with `Actual` only in live (`services/products/tests/test_cap_schema.py`, 14 tests,
 passing with outbound sockets denied; ADR-0045, measured 14 September 2026 at 78f6c0b).
+
+## "If everyone follows your safe route, don't you just move the jam?"
+
+Yes, and the prototype answers it rather than pretending the question does not arise. A route
+request comes back with up to three corridors - the VARUNA route and its alternates, each one
+genuinely under the vehicle's depth threshold on this run - and the request is assigned to one
+deterministically by hashing the client's own `trip_id`, so a reader who reloads is not sent
+somewhere else while a population spreads across the three.
+
+Be exact about what is real: **the corridors are real and the split is a policy.** There are no
+live traffic counts in this prototype, so demand is unmeasured, and the screen and the response's
+`notes` both say so in the same words. The share comes from each corridor's own bottleneck - its
+narrowest leg, with the fraction of capacity the water has taken - divided by its travel time.
+
+Measured on the 08:40 demo run, a car from Babasaheb Worlikar Fire Station to Chembur Fire
+Station (2026-09-19, `b6271e6`):
+
+| Corridor | ETA | Share |
+|---|---|---|
+| A | 13.5 min | 0.4343 |
+| B | 18.4 min | 0.3197 |
+| C | 23.9 min | 0.2460 |
+
+**This is the second answer to that question, and the first one was wrong.** `TECH_SPEC.md` 3.3
+originally defined the capacity as a *sum* over the corridor's edges, and a sum rewards length:
+the same trip gave 0.4038 to the 23.9-minute corridor and 0.2458 to the 13.5-minute one - most
+drivers sent the slowest way for no gain in safety, which is worse advice than not spreading at
+all. It was found by running the request against a real run rather than by reading the code. A
+road is as wide as its narrowest point, so the minimum replaced the sum, and the travel time
+divides it because a corridor that holds a vehicle twice as long absorbs half the flow.
+
+## "How fast is a route, really?"
+
+Against section 14's 300 ms budget, on the 08:40 demo run, an Intel i5-1155G7 laptop:
+
+| Trip | Before 2026-09-19 | After (`983513e`) |
+|---|---|---|
+| KEM to Sion, ambulance (the demo trip) | 531.5-561.9 ms | **67.6-102.5 ms** |
+| Worli to Chembur, car, 3 corridors + reasons | 1,953-2,533 ms | **215.3-218.3 ms** |
+| First request after a restart | - | 1.5-1.6 s (loading the run's 6,492 wet segments; cached after) |
+
+The "before" column is the cost of making the probability real (task D-01). ADR-0028 had
+measured 85 ms on a router whose `P(h > threshold)` was a comparison against the median depth;
+reading the run's own 20-member `p_gt` series put a dict resolution and a `timedelta` in a loop
+that runs twenty thousand times a route. cProfile named it, the fix hoists the tables above the
+loop and answers the step question by integer division on seconds the search already holds, and
+the KEM-to-Sion response is identical field for field apart from `ms`.
+
+## "Is the weather on the dashboard live?"
+
+The weather is, and nothing else on the screen is - which is why they are labelled separately and
+never share an axis. `GET /v1/weather` proxies Open-Meteo (CC BY 4.0, no key) for the city's AOI
+centre. Measured by the implementer on the laptop: **1,260.7-1,465.0 ms uncached**, about 1.1 s
+of it Open-Meteo, and **5.2-21.8 ms cached**, so the wire is touched once per fifteen minutes per
+city. Offline, or when Open-Meteo fails, the last good copy is served with its real age and a
+note; only a first request with no copy at all refuses.
+
+On the deployed API, 2026-09-19 13:30 IST: 29.0 °C, light drizzle, 78 % humidity, wind 7.8 km/h,
+with the next four hours' rain and probability. `grid_offset_km` reads 2.45, so the answer is for
+a model cell 2.45 km from the AOI centre and the dialog says so.
+
+Everything else - streets, depths, drains, routes, alerts, pumps, tide - is the reconstructed
+replay of 2 July 2019.
+
+## "Why doesn't the citizen dashboard use Google's map?"
+
+It does, and on this key it cannot yet. The dashboard draws VARUNA's water and routes over Google
+Maps through `@vis.gl/react-google-maps`, with deck.gl **overlaid** rather than interleaved
+(Google's context has no multisampling, and interleaved aliases every route line) and a dark
+style built at runtime from `tokens.json`, so the map matches the depth ramp exactly.
+
+Measured 2026-09-19: the supplied browser key carries an HTTP-referrer restriction whose list
+contains neither development origin. Maps JS v3.66.4d answers `RefererNotAllowedMapError` for
+both `http://127.0.0.1:8899/probe.html` and `http://localhost:3000/probe.html`, with
+`google.maps` loaded and zero tiles drawn. Until `https://varuna-dhrishta.vercel.app/*` and
+`http://localhost:3000/*` are added to that list in the Google Cloud Console (`TASKS.md` D-25),
+the dashboard runs on its labelled fallback - VARUNA's own Esri-and-deck renderer, the same one
+the console uses - and says so on screen. Nothing on the dashboard depends on Google being
+reachable (ADR-0059).
