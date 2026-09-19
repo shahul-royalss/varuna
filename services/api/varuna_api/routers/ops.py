@@ -441,6 +441,15 @@ def post_closure(body: ClosureRequest, _gate: OpsWrite) -> dict[str, Any]:
             "there is nothing honest to print without one.",
         )
     until = _time(body.until, "until")
+    if until is not None and not body.reopen and until <= datetime.now(IST):
+        # Accepting it would append a closure that `active` drops on the way back out: the
+        # officer would see "0 closed" beside their own entry and have no idea why.
+        raise api_error(
+            422,
+            "closure_already_expired",
+            f"That closure expires at {until.isoformat()}, which has already passed, so it "
+            "would close nothing. Give a later `until`, or omit it to close until reopened.",
+        )
     entry = _append(
         city,
         {
@@ -619,6 +628,7 @@ def _optimise(run_id: str | None, city: str, solver: str) -> dict[str, Any]:
 
     streets: dict[str, list[float]] = {}
     points: dict[str, tuple[float, float]] = {}
+    segments_readable = True
     wet = path / "segments_wet.json"
     try:
         if wet.is_file():
@@ -635,16 +645,27 @@ def _optimise(run_id: str | None, city: str, solver: str) -> dict[str, Any]:
                 "was a candidate; named streets were not."
             )
     except (OSError, ValueError, KeyError) as error:
+        segments_readable = False
         notes.append(
             f"Street candidates were skipped: the city's segment table could not be read "
             f"({error}). Only the chronic hotspot register was considered."
         )
 
     rain = rain_for_run(path.name)
+    if rain and not segments_readable:
+        # The emulator prices a candidate by slicing itself down to that candidate's road
+        # segments, which it finds through the same table that just failed to read. Handing it
+        # the storm anyway would make it raise mid-plan; withholding it falls back to the
+        # bathtub model, which needs no city at all, and the label says which one ran.
+        rain = None
+        notes.append(
+            "The emulator was not used: it prices a pump on the candidate's own road segments "
+            "and this city's segment table could not be read."
+        )
     if not rain:
         notes.append(
-            "This run stored no AOI hyetograph, so the benefit is the bathtub estimate rather "
-            "than the emulator; benefit_model says so."
+            "The benefit is the bathtub estimate rather than the emulator; benefit_model and "
+            "benefit_label say so beside every number."
         )
     statuses, depots = _pump_overrides(city)
 
