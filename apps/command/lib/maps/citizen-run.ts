@@ -16,7 +16,7 @@
 import { useEffect, useState } from "react";
 
 import { apiUrl } from "@/lib/api/client";
-import { joinSegments, pivotExceedance, type GeoSegment } from "@/lib/api/run-depth";
+import { allSegments, joinSegments, pivotExceedance, type GeoSegment } from "@/lib/api/run-depth";
 
 /** The run the citizen map is drawing, for the header's stamp and honesty line. */
 export interface CitizenRunProvenance {
@@ -34,6 +34,13 @@ export interface CitizenRun {
   bounds: [number, number, number, number];
   /** Wet streets with their depth series, ready for `wetStreetsLayers`. */
   segments: GeoSegment[];
+  /**
+   * Every road in the city, with no depth attached: the geography the water sits on.
+   *
+   * Drawn in the dry colour under the wet streets, which is what stops a citizen map being three
+   * orange lines floating in a black rectangle.
+   */
+  baseSegments: GeoSegment[];
   /** segment_id -> depth in cm per step, for the "streets near you" list. */
   depthCm: Map<string, number[]>;
   /** ISO valid time of each step. */
@@ -96,6 +103,7 @@ export async function loadCitizenRun(
 
   const depthCm = new Map(Object.entries(forecast.depth_cm ?? {}));
   const segments = joinSegments(geojson, depthCm, pivotExceedance(forecast.p_gt));
+  const baseSegments = allSegments(geojson);
 
   return {
     provenance: {
@@ -108,6 +116,7 @@ export async function loadCitizenRun(
     },
     bounds: bounds.bounds?.wgs84 ?? [0, 0, 0, 0],
     segments,
+    baseSegments,
     depthCm,
     validTs: forecast.valid_ts ?? [],
   };

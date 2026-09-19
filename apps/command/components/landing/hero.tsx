@@ -121,7 +121,7 @@ export function Hero() {
 
   return (
     <section
-      className="relative min-h-dvh w-full overflow-hidden bg-ink"
+      className="bg-ink relative min-h-dvh w-full overflow-hidden"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -158,7 +158,7 @@ export function Hero() {
           80 % ink across the whole width is just a dark rectangle over a photograph. */}
       <div
         aria-hidden="true"
-        className="absolute inset-0 bg-gradient-to-r from-ink from-15% via-ink/70 via-40% to-transparent to-60%"
+        className="from-ink via-ink/70 absolute inset-0 bg-gradient-to-r from-15% via-40% to-transparent to-60%"
       />
 
       <div className="relative flex min-h-dvh items-center px-6 py-16 sm:px-12 lg:px-24">
@@ -167,12 +167,12 @@ export function Hero() {
             <Wordmark size="lg" />
           </BlurFade>
           <BlurFade index={1}>
-            <h1 className="max-w-[14ch] font-display text-display font-semibold tracking-display sm:text-hero">
+            <h1 className="font-display text-display tracking-display sm:text-hero max-w-[14ch] font-semibold">
               Every street. Three hours early.
             </h1>
           </BlurFade>
           <BlurFade index={2}>
-            <p className="max-w-[54ch] text-h3 text-text-2">
+            <p className="text-h3 text-text-2 max-w-[54ch]">
               VARUNA turns Doppler radar into street-by-street flood depth for the next three hours,
               learns the city&apos;s hidden drains from every flood, and routes emergency services
               around what is coming.
@@ -193,7 +193,22 @@ export function Hero() {
               </Button>
             </div>
           </BlurFade>
+          {/* UI_SPEC 1: the way in for everybody who is not an operator. Underlined as well as
+              tinted, because colour alone is not a link (CLAUDE.md 6.10). */}
           <BlurFade index={4}>
+            <p className="text-small text-text-2">
+              Are you not an operator?{" "}
+              <Link
+                href="/dashboard"
+                className="text-tide underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--tide)]"
+              >
+                Open the citizen dashboard
+              </Link>
+            </p>
+          </BlurFade>
+          {/* Index 5, not 4: the dashboard link above is a new step in M2's 60 ms stagger, and
+              two lines sharing an index would enter together rather than in order. */}
+          <BlurFade index={5}>
             <p className="text-small text-text-3">
               SIH 2026 · PS SIH26085 · Ministry of Earth Sciences
             </p>
@@ -204,7 +219,7 @@ export function Hero() {
       {/* The readout, so the loop is legibly a forecast and not an animation. */}
       <div
         hidden={!handedOver}
-        className="pointer-events-none absolute bottom-6 right-6 rounded-control border border-line bg-ink/70 px-3 py-2 max-lg:hidden"
+        className="rounded-control border-line bg-ink/70 pointer-events-none absolute right-6 bottom-6 border px-3 py-2 max-lg:hidden"
       >
         <p className="num text-small text-text-2">
           {String(6 + Math.floor((40 + step * 5) / 60)).padStart(2, "0")}:
