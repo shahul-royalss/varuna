@@ -36,13 +36,16 @@ export interface DrainsLayerOptions {
   crossFadeMs?: number;
   /** Seam for PU8: hovering a pipe on `/drains`. **Not applied yet** - the pipes stay unpickable. */
   onHover?: (pick: DrainPick | null) => void;
+  /** 0 to 1 opacity, for the onboarding wizard's layer stack (motion M19). 1 everywhere else. */
+  fade?: number;
 }
 
-export function drainsLayers({ drains, show }: DrainsLayerOptions): unknown[] {
-  if (!show || drains.length === 0) return [];
+export function drainsLayers({ drains, show, fade = 1 }: DrainsLayerOptions): unknown[] {
+  if (!show || drains.length === 0 || fade <= 0) return [];
   return [
     new PathLayer<DrainPath, PathStyleExtensionProps<DrainPath>>({
       id: "drains",
+      ...(fade < 1 ? { opacity: fade } : {}),
       data: drains as DrainPath[],
       getPath: (d) => d.path,
       getColor: (d) => drainColour(d.beta),
