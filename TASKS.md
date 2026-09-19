@@ -76,16 +76,16 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
 
 ## Wave 2 — authority desk and rural advisory
  (2026-09-19, 19bfc19 - three acts on the catalogue's durations, once per session, skippable, with a reduced-motion cut. **The budget is missed: 41.2-42.1 fps against section 14's 55**, measured on a harness with nothing else on screen, so the real dashboard will be slower.)
-- [ ] **D-15 `/authority`.** Passphrase gate, the two columns of UI_SPEC §6, the citizen inbox and
+- [x] **D-15 `/authority`.** Passphrase gate, the two columns of UI_SPEC §6, the citizen inbox and
   the ops log. *Accepts:* closing a street changes the next route on screen; marking a pump
   unavailable removes it from the next optimise; an acknowledgement survives a reload; every
-  right-column action says it changed no forecast.
-- [ ] **D-16 `/rural`.** Server-rendered advisory, no client JavaScript, under 30 KB, print
+  right-column action says it changed no forecast. (2026-09-19, ecedc80 - **the loop was driven in a browser by the lead, not only by its implementer**: typing segment S618477973-001 and "Slab collapsed outside Bharatmata; police barricade across both carriageways" into the desk wrote one ops-log entry, and the next KEM-to-Sion ambulance route went from 5.6 min / 5,121 m with nothing avoided to 6.1 min / 5,241 m avoiding Dr Babasaheb Ambedkar Marg (Vincent Road), carrying the officer's own words as `closed_reason`. The gate's four states all render; the passphrase lives in one header and sessionStorage. **On the deployed API `VARUNA_OPS_PASSPHRASE` is deliberately unset**, so the desk there says it is read-only, as PRD 6 intends.)
+- [x] **D-16 `/rural`.** Server-rendered advisory, no client JavaScript, under 30 KB, print
   stylesheet, share link carrying the query. *Accepts:* measured transfer size with JS disabled;
   the "what we do not know" block is present; the same numbers as the dashboard for the same trip.
 
 ## Wave 3 — repairs the demo path needs
-
+ (2026-09-19, ecedc80 - **4,281 bytes in its worst state, 13.9 % of the 30 KB budget**, measured with JavaScript disabled: no script, stylesheet, font, image or inline handler, and Next ships no client bundle to the route. An unknown place is refused with the register's nearest names rather than an estimate, and the share link carries the run id so a forward reproduces the page.)
 - [x] **D-17 Layers panel scrolls.** The floating column gets `min-h-0` and `overflow-y-auto`;
   `LayerPanel` drops `overflow-hidden`. *Accepts:* a test at 1366 × 768 asserts the panel scrolls
   and that every row is reachable; the cycle picker no longer overflows its column; the
