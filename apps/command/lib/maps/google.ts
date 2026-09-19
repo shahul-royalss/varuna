@@ -36,7 +36,30 @@ export function googleMapsKey(): string | null {
 export const GOOGLE_BOOTSTRAP_TIMEOUT_MS = 4_000;
 
 /** Why the citizen map is drawing VARUNA's own basemap rather than Google's. */
-export type GoogleFallbackReason = "no-key" | "timeout" | "error";
+export type GoogleFallbackReason = "no-key" | "timeout" | "error" | "refused";
+
+/**
+ * Install Google's authentication-failure callback, returning a function that removes it.
+ *
+ * This is the only way an application hears about `RefererNotAllowedMapError` and its siblings.
+ * The script loads, `google.maps` exists and `<Map>` mounts happily, so neither the bootstrap
+ * timeout nor the provider's `onError` fires - and what the reader gets is Google's own grey
+ * surface reading "This page didn't load Google Maps correctly", which is somebody else's error
+ * message on our screen. Measured on 2026-09-19 at `http://localhost:3000/dashboard`, where the
+ * supplied key's referrer list does not include the origin (ADR-0059).
+ *
+ * Google looks the callback up by name on `window` at the moment it fails, so it is a global and
+ * there can be only one; the previous value is restored on teardown rather than deleted.
+ */
+export function onGoogleAuthFailure(handler: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+  const target = window as typeof window & { gm_authFailure?: () => void };
+  const previous = target.gm_authFailure;
+  target.gm_authFailure = handler;
+  return () => {
+    if (target.gm_authFailure === handler) target.gm_authFailure = previous;
+  };
+}
 
 /**
  * The notice shown beside the fallback map, one sentence per cause.
@@ -51,6 +74,9 @@ export function googleFallbackNotice(reason: GoogleFallbackReason): string {
   }
   if (reason === "timeout") {
     return "Google Maps did not load in time; showing VARUNA's own map.";
+  }
+  if (reason === "refused") {
+    return "Google refused this key for this address; showing VARUNA's own map.";
   }
   return "Google Maps did not load; showing VARUNA's own map.";
 }

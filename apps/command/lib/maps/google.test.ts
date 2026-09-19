@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { googleFallbackNotice, googleMapsKey } from "./google";
+import { googleFallbackNotice, googleMapsKey, onGoogleAuthFailure } from "./google";
 
 const NAME = "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY";
 
@@ -40,12 +40,57 @@ describe("googleFallbackNotice", () => {
     );
     expect(googleFallbackNotice("timeout")).toContain("did not load in time");
     expect(googleFallbackNotice("error")).toContain("VARUNA's own map");
+    expect(googleFallbackNotice("refused")).toBe(
+      "Google refused this key for this address; showing VARUNA's own map.",
+    );
   });
 
   it("never says only that something went wrong (CLAUDE.md 6.8)", () => {
-    for (const reason of ["no-key", "timeout", "error"] as const) {
+    for (const reason of ["no-key", "timeout", "error", "refused"] as const) {
       expect(googleFallbackNotice(reason)).not.toMatch(/something went wrong/i);
       expect(googleFallbackNotice(reason)).toMatch(/VARUNA's own map/);
     }
+  });
+});
+
+describe("onGoogleAuthFailure", () => {
+  const target = window as typeof window & { gm_authFailure?: () => void };
+
+  afterEach(() => {
+    delete target.gm_authFailure;
+  });
+
+  it("installs the global Google looks up by name when a key is refused", () => {
+    const handler = vi.fn();
+    onGoogleAuthFailure(handler);
+
+    // Exactly how Google calls it: by name, off window, with no arguments.
+    target.gm_authFailure?.();
+
+    expect(handler).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores whatever was there before, rather than deleting it", () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    target.gm_authFailure = first;
+
+    const remove = onGoogleAuthFailure(second);
+    expect(target.gm_authFailure).toBe(second);
+    remove();
+
+    expect(target.gm_authFailure).toBe(first);
+  });
+
+  it("leaves a newer handler alone when an older one is torn down", () => {
+    const older = vi.fn();
+    const newer = vi.fn();
+    const removeOlder = onGoogleAuthFailure(older);
+    onGoogleAuthFailure(newer);
+
+    removeOlder();
+
+    // Two maps mounting and unmounting must not leave the page deaf to an auth failure.
+    expect(target.gm_authFailure).toBe(newer);
   });
 });

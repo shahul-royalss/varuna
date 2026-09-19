@@ -73,7 +73,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Acknowledge */
+        /**
+         * Acknowledge an alert (recorded in the ops log)
+         * @description Record that an officer has seen this alert, and answer with the alert as it now reads.
+         *
+         *     The response is the product's own alert with the ops log folded in - not a model of one -
+         *     because the queue carries fields the drafted ``Alert`` schema forbids, the same reason
+         *     ``/v1/route`` serves its own flatter shape (ADR-0027).
+         */
         post: operations["alert_ack_v1_alerts__alert_id__ack_post"];
         delete?: never;
         options?: never;
@@ -90,8 +97,36 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Escalate */
+        /**
+         * Escalate an alert up the matrix (recorded in the ops log)
+         * @description Escalate to the next step of the matrix. ``escalate_to`` names it; the log keeps who.
+         */
         post: operations["alert_escalate_v1_alerts__alert_id__escalate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/cities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Cities VARUNA has a config for, and which are built
+         * @description The city switcher's rows (CLAUDE.md 7.2, task D-09).
+         *
+         *     The switcher used to carry Mumbai and a hard-coded disabled Chennai, which meant it could not
+         *     tell the jury the truth after the wizard ran: Chennai was built and the row still said
+         *     "Onboard first". This reads the configs and the files on disk instead, so the row changes
+         *     when the pipeline does.
+         */
+        get: operations["cities_v1_cities_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -488,6 +523,101 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A run's alerts with the desk's state applied
+         * @description The alert queue as the authority desk sees it: the run's own alerts, plus their state.
+         *
+         *     ``GET /v1/alerts`` serves the product untouched and is not this endpoint's to change - it
+         *     belongs to the depth router - so the desk reads the overlaid queue here and an
+         *     acknowledgement survives a reload.
+         */
+        get: operations["ops_alerts_v1_ops_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/closures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Streets an authority has closed
+         * @description The live closure set, folded from the log and with expiries applied at ``at``.
+         */
+        get: operations["get_closures_v1_ops_closures_get"];
+        put?: never;
+        /**
+         * Close or reopen a street
+         * @description Close a street, or reopen one. Both are appends; nothing is ever deleted.
+         *
+         *     A closure beats the forecast: the router treats the segment as impassable whatever the depth
+         *     says, and the reason the officer typed comes back on the route as a structured reason for
+         *     the screen to word (TECH_SPEC 3.2).
+         */
+        post: operations["post_closure_v1_ops_closures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The append-only authority log
+         * @description Every authority edit for a city, newest first - the audit trail the desk is judged on.
+         */
+        get: operations["ops_log_v1_ops_log_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/pumps/{pump_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a pump's status
+         * @description Mark a pump available, unavailable, or moved to a new depot.
+         *
+         *     An unavailable pump is not assigned by the next optimise. A moved one still is, from the
+         *     point given here - see ``varuna_products.pumps.ASSIGNABLE_STATES``.
+         */
+        post: operations["post_pump_status_v1_ops_pumps__pump_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/pumps": {
         parameters: {
             query?: never;
@@ -521,7 +651,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Dispatch pumps (creates the order, alert and phone-mock message) */
+        /**
+         * Dispatch the plan (records the order; sends no lorry)
+         * @description Record a dispatch order for the current plan, and return it in plain language.
+         *
+         *     202 rather than 200: the order is accepted and recorded, and nothing downstream of this
+         *     prototype moves because of it. The inventory is synthetic, and the response says so.
+         */
         post: operations["pumps_dispatch_v1_pumps_dispatch_post"];
         delete?: never;
         options?: never;
@@ -538,7 +674,14 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Optimise assignments */
+        /**
+         * Re-run the greedy optimiser on demand
+         * @description Assign the fleet to the places that flood, honouring what the desk has marked.
+         *
+         *     Gated with the writes even though it stores nothing: it is one of the desk's acts, and the
+         *     greedy re-prices every candidate through the emulator, which is not something an
+         *     unauthenticated caller should be able to ask for thirty times a second.
+         */
         post: operations["pumps_optimise_v1_pumps_optimise_post"];
         delete?: never;
         options?: never;
@@ -997,160 +1140,27 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
-         * Alert
-         * @description One alert as stored in ``alerts.json`` and served by ``GET /v1/alerts``.
-         */
-        Alert: {
-            /** Acknowledged By */
-            acknowledged_by?: string | null;
-            /** Acknowledged Ts */
-            acknowledged_ts?: string | null;
-            /** Active */
-            readonly active: boolean;
-            /**
-             * Area Desc
-             * @description e.g. 'Ward F/North, Hindmata'.
-             */
-            area_desc: string;
-            /**
-             * Cap Path
-             * @description Relative path of the CAP XML inside the run directory.
-             */
-            cap_path?: string | null;
-            /**
-             * Cap Status
-             * @description Exercise on replay, Actual when live.
-             * @enum {string}
-             */
-            cap_status: "Actual" | "Exercise";
-            /**
-             * Channels
-             * @description Channels the alert was sent to.
-             */
-            channels?: ("dashboard" | "cap" | "whatsapp" | "sms")[];
-            /** Cleared Ts */
-            cleared_ts?: string | null;
-            /** Escalated To */
-            escalated_to?: ("ward_officer" | "control_room" | "police_traffic" | "transit" | "public") | null;
-            /**
-             * Headline
-             * @description e.g. 'Hindmata junction: depth likely above 45 cm from 18:20 to 20:00'.
-             */
-            headline: string;
-            /** History */
-            history?: components["schemas"]["AlertStateChange"][];
-            /**
-             * Hotspot Id
-             * @description Hotspot register id, if any.
-             */
-            hotspot_id?: string | null;
-            /**
-             * Id
-             * @description Also the CAP identifier stem, e.g. VARUNA-MUM-20190702T1745-FN-0031.
-             */
-            id: string;
-            /**
-             * Instruction
-             * @description Route hint and pump plan, e.g. 'Avoid Hindmata and Parel TT ...'.
-             */
-            instruction?: string | null;
-            /**
-             * Level
-             * @enum {string}
-             */
-            level: "watch" | "moderate" | "severe";
-            /**
-             * Persists Cycles
-             * @description Consecutive cycles above the raise probability (hysteresis).
-             */
-            persists_cycles: number;
-            /** @description CAP area polygon (WGS84). */
-            polygon?: components["schemas"]["Polygon"] | null;
-            /**
-             * Pumps
-             * @description Pumps dispatched for this alert.
-             */
-            pumps?: string[];
-            /**
-             * Raised Ts
-             * Format: date-time
-             */
-            raised_ts: string;
-            /**
-             * Run Id
-             * @description Run that raised (or last updated) the alert.
-             */
-            run_id: string;
-            /**
-             * Scope
-             * @enum {string}
-             */
-            scope: "segment" | "ward" | "facility";
-            /**
-             * Scope Id
-             * @description Segment, ward or facility id the alert is about.
-             */
-            scope_id?: string | null;
-            /**
-             * State
-             * @default raised
-             * @enum {string}
-             */
-            state: "raised" | "acknowledged" | "escalated" | "cleared";
-            /**
-             * Threshold Cm
-             * @description Depth threshold that defines the level (15 / 30 / 45 cm).
-             */
-            threshold_cm: number;
-            /**
-             * Trigger P
-             * @description P(depth > threshold) at the trigger cycle.
-             */
-            trigger_p: number;
-            /**
-             * Window From
-             * @description Start of the exceedance window.
-             */
-            window_from?: string | null;
-            /**
-             * Window To
-             * @description End of the exceedance window.
-             */
-            window_to?: string | null;
-        };
-        /**
          * AlertActionRequest
-         * @description Body of ``POST /v1/alerts/{id}/ack`` and ``/escalate``.
+         * @description Body of ``POST /v1/alerts/{id}/ack`` and ``/escalate`` (served by ``varuna_api.routers.ops``).
          */
         AlertActionRequest: {
+            /**
+             * City
+             * @description Whose ops log records it; default VARUNA_CITY.
+             */
+            city?: string | null;
+            /**
+             * Escalate To
+             * @description Step of the escalation matrix (blueprint 6.10). Ignored by /ack.
+             * @default control_room
+             * @enum {string}
+             */
+            escalate_to: "ward_officer" | "control_room" | "police_traffic" | "transit" | "public";
             /** Note */
             note?: string | null;
             /**
              * User
              * @description Operator name or id shown in the alert log.
-             */
-            user: string;
-        };
-        /**
-         * AlertStateChange
-         * @description One entry of the alert's audit log (acknowledge and escalate are logged with user and time).
-         */
-        AlertStateChange: {
-            /** Note */
-            note?: string | null;
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "raised" | "acknowledged" | "escalated" | "cleared";
-            /**
-             * Ts
-             * Format: date-time
-             */
-            ts: string;
-            /**
-             * User
-             * @description Operator id or 'system'.
              */
             user: string;
         };
@@ -1190,6 +1200,44 @@ export interface components {
              * @description e.g. 'AOI 3-hour accumulation target 15:00-21:00 IST'.
              */
             used_for?: string | null;
+        };
+        /**
+         * ClosureRequest
+         * @description Body of ``POST /v1/ops/closures``.
+         */
+        ClosureRequest: {
+            /**
+             * City
+             * @description Defaults to VARUNA_CITY.
+             */
+            city?: string | null;
+            /**
+             * Reason
+             * @description Why, in the officer's own words. Required to close: a closure with no reason reaches the citizen screen with nothing to say after the comma, and UI_SPEC 4 refuses to soften it into 'closed'.
+             * @default
+             */
+            reason: string;
+            /**
+             * Reopen
+             * @description Lift the closure instead of making one.
+             * @default false
+             */
+            reopen: boolean;
+            /**
+             * Segment Id
+             * @description The segment the officer is closing or reopening.
+             */
+            segment_id: string;
+            /**
+             * Until
+             * @description ISO 8601 expiry with an offset; omit for until-reopened.
+             */
+            until?: string | null;
+            /**
+             * User
+             * @default ward officer
+             */
+            user: string;
         };
         /**
          * ComputeRequest
@@ -1506,27 +1554,6 @@ export interface components {
             /** Version */
             version: string;
         };
-        /**
-         * HotspotPumpBenefit
-         * @description Per-hotspot outcome of a plan: minutes above 45 cm before and after.
-         */
-        HotspotPumpBenefit: {
-            /** Assigned Pumps */
-            assigned_pumps?: string[];
-            /**
-             * Excess Volume M3
-             * @description Inflow minus drain outflow over the horizon.
-             */
-            excess_volume_m3: number;
-            /** Hotspot Id */
-            hotspot_id: string;
-            /** Hotspot Name */
-            hotspot_name: string;
-            /** Minutes Above 45 After */
-            minutes_above_45_after: number;
-            /** Minutes Above 45 Before */
-            minutes_above_45_before: number;
-        };
         /** LineString */
         LineString: {
             /** Coordinates */
@@ -1711,48 +1738,27 @@ export interface components {
             type: "Polygon";
         };
         /**
-         * PumpAssignment
-         * @description One pump sent to one hotspot (blueprint 9.1 ``pump_assignment``).
-         */
-        PumpAssignment: {
-            /**
-             * Arrive Ts
-             * @description Expected arrival (IST).
-             */
-            arrive_ts?: string | null;
-            /**
-             * Eta Min
-             * @description Travel time from the depot in minutes.
-             */
-            eta_min: number;
-            /**
-             * Expected Benefit Min
-             * @description Minutes above 45 cm avoided at the hotspot (emulator estimate).
-             */
-            expected_benefit_min: number;
-            /** Hotspot Id */
-            hotspot_id: string;
-            /** Hotspot Name */
-            hotspot_name: string;
-            /**
-             * Order Text
-             * @description Plain-language order, e.g. 'Move P-12 from Parel depot to Hindmata now; ETA 25 min; prevents about 40 min above 45 cm'.
-             */
-            order_text: string;
-            /** Pump Id */
-            pump_id: string;
-            /** Run Id */
-            run_id: string;
-        };
-        /**
          * PumpDispatchRequest
-         * @description Body of ``POST /v1/pumps/dispatch``: dispatch a plan or explicit assignments.
+         * @description Body of ``POST /v1/pumps/dispatch``: dispatch the current plan, or named pumps of it.
+         *
+         *     The draft took a ``plan_id`` and a list of assignments. Neither survived contact with the
+         *     served endpoint (task D-07): no plan is stored under an addressable id, so a ``plan_id``
+         *     could only ever be a string nothing could look up, and accepting assignments from the client
+         *     would let a caller dispatch benefit figures the optimiser never produced. The desk names the
+         *     pumps; the API re-solves and dispatches what *it* assigned.
          */
         PumpDispatchRequest: {
-            /** Assignments */
-            assignments?: components["schemas"]["PumpAssignment"][];
-            /** Plan Id */
-            plan_id?: string | null;
+            /** City */
+            city?: string | null;
+            /** Note */
+            note?: string | null;
+            /**
+             * Pump Ids
+             * @description Empty = every assignment in the current plan.
+             */
+            pump_ids?: string[];
+            /** Run Id */
+            run_id?: string | null;
             /**
              * User
              * @default control room
@@ -1761,9 +1767,14 @@ export interface components {
         };
         /**
          * PumpOptimiseRequest
-         * @description Body of ``POST /v1/pumps/optimise``.
+         * @description Body of ``POST /v1/pumps/optimise`` (served by ``varuna_api.routers.ops``).
          */
         PumpOptimiseRequest: {
+            /**
+             * City
+             * @description Which built city's fleet; default VARUNA_CITY.
+             */
+            city?: string | null;
             /**
              * Hotspot Ids
              * @description Empty = every hotspot.
@@ -1779,54 +1790,28 @@ export interface components {
             solver: "greedy" | "milp";
         };
         /**
-         * PumpPlan
-         * @description ``pump_plan.json`` and the response of ``POST /v1/pumps/optimise``.
+         * PumpStatusRequest
+         * @description Body of ``POST /v1/ops/pumps/{pump_id}/status``.
          */
-        PumpPlan: {
-            /** Assignments */
-            assignments?: components["schemas"]["PumpAssignment"][];
-            /** Benefits */
-            benefits?: components["schemas"]["HotspotPumpBenefit"][];
+        PumpStatusRequest: {
+            /** City */
+            city?: string | null;
+            /** Lat */
+            lat?: number | null;
+            /** Lon */
+            lon?: number | null;
+            /** Note */
+            note?: string | null;
             /**
-             * Dispatched
-             * @description True once 'Dispatch pumps' was pressed.
-             * @default false
-             */
-            dispatched: boolean;
-            /** Dispatched By */
-            dispatched_by?: string | null;
-            /** Dispatched Ts */
-            dispatched_ts?: string | null;
-            /** Run Id */
-            run_id: string;
-            /**
-             * Solve Ms
-             * @description Solver wall-clock in ms (budget 1000).
-             */
-            solve_ms: number;
-            /**
-             * Solver
-             * @description greedy in the prototype; milp is P1.
+             * Status
              * @enum {string}
              */
-            solver: "greedy" | "milp";
+            status: "available" | "unavailable" | "moved";
             /**
-             * Synthetic Inventory
-             * @description Whether the inventory is synthetic (labelled in the UI).
-             * @default true
+             * User
+             * @default ward officer
              */
-            synthetic_inventory: boolean;
-            /**
-             * Total Benefit Min
-             * @description Total minutes above 45 cm avoided across hotspots.
-             */
-            readonly total_benefit_min: number;
-            /**
-             * Valid Ts
-             * Format: date-time
-             * @description Cycle time the plan was solved for (IST).
-             */
-            valid_ts: string;
+            user: string;
         };
         /**
          * RadarAccumulation
@@ -2985,6 +2970,8 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
                 level?: ("severe" | "moderate" | "watch") | null;
             };
             header?: never;
@@ -3019,6 +3006,8 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
             };
             header?: never;
             path: {
@@ -3050,8 +3039,13 @@ export interface operations {
     };
     alert_ack_v1_alerts__alert_id__ack_post: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                run_id?: string | null;
+            };
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
             path: {
                 alert_id: string;
             };
@@ -3069,7 +3063,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Alert"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -3079,23 +3075,19 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
     };
     alert_escalate_v1_alerts__alert_id__escalate_post: {
         parameters: {
-            query?: never;
-            header?: never;
+            query?: {
+                run_id?: string | null;
+            };
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
             path: {
                 alert_id: string;
             };
@@ -3113,7 +3105,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["Alert"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -3125,13 +3119,26 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
+        };
+    };
+    cities_v1_cities_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -3246,6 +3253,8 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
                 min_beta?: number;
                 limit?: number;
             };
@@ -3281,6 +3290,8 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
             };
             header?: never;
             path?: never;
@@ -3347,6 +3358,8 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
                 limit?: number;
             };
             header?: never;
@@ -3525,6 +3538,8 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
             };
             header?: never;
             path?: never;
@@ -3649,6 +3664,8 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
             };
             header?: never;
             path?: never;
@@ -3682,6 +3699,8 @@ export interface operations {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
             };
             header?: never;
             path?: never;
@@ -3812,10 +3831,196 @@ export interface operations {
             };
         };
     };
+    ops_alerts_v1_ops_alerts_get: {
+        parameters: {
+            query?: {
+                run_id?: string | null;
+                city?: string | null;
+                level?: ("severe" | "moderate" | "watch") | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_closures_v1_ops_closures_get: {
+        parameters: {
+            query?: {
+                city?: string | null;
+                /** @description Evaluate expiries at this time. */
+                at?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_closure_v1_ops_closures_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClosureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ops_log_v1_ops_log_get: {
+        parameters: {
+            query?: {
+                city?: string | null;
+                limit?: number;
+                /** @description Filter to one entry kind. */
+                kind?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_pump_status_v1_ops_pumps__pump_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
+            path: {
+                pump_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PumpStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     pumps_v1_pumps_get: {
         parameters: {
             query?: {
                 run_id?: string | null;
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
             };
             header?: never;
             path?: never;
@@ -3848,7 +4053,10 @@ export interface operations {
     pumps_dispatch_v1_pumps_dispatch_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3864,7 +4072,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PumpPlan"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -3876,21 +4086,15 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
-                };
-            };
         };
     };
     pumps_optimise_v1_pumps_optimise_post: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -3906,7 +4110,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PumpPlan"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -3916,15 +4122,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };

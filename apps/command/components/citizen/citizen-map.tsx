@@ -43,6 +43,7 @@ import {
   GOOGLE_BOOTSTRAP_TIMEOUT_MS,
   googleFallbackNotice,
   googleMapsKey,
+  onGoogleAuthFailure,
   type GoogleFallbackReason,
 } from "@/lib/maps/google";
 import { darkMapStyle } from "@/lib/maps/google-style";
@@ -249,6 +250,8 @@ export function CitizenMap({
   const [apiKey] = useState(() => googleMapsKey());
   const [fallback, setFallback] = useState<GoogleFallbackReason | null>(apiKey ? null : "no-key");
   const [loaded, setLoaded] = useState(false);
+  /** Google has actually painted tiles. Until then its map is covered: see the return below. */
+  const [tilesDrawn, setTilesDrawn] = useState(false);
   const [picked, setPicked] = useState<MapPoint | null>(null);
 
   const state = useCitizenRun(city, runId);
@@ -271,6 +274,16 @@ export function CitizenMap({
 
   const onError = useCallback(() => setFallback((current) => current ?? "error"), []);
   const onLoad = useCallback(() => setLoaded(true), []);
+  const onTiles = useCallback(() => setTilesDrawn(true), []);
+
+  // An auth failure is the one Google error that arrives through neither `onError` nor the
+  // timeout: the script loads and the map mounts, then Google paints its own grey surface over
+  // our screen. `gm_authFailure` is how it tells us, and it is how the reader gets VARUNA's map
+  // instead of somebody else's error message.
+  useEffect(() => {
+    if (!apiKey) return;
+    return onGoogleAuthFailure(() => setFallback((current) => current ?? "refused"));
+  }, [apiKey]);
 
   const routes = useMemo(
     () => routeLines(route, corridors, selectedCorridorId),
@@ -357,10 +370,22 @@ export function CitizenMap({
           zoomControl
           clickableIcons={false}
           onClick={onPickPoint ? pick : undefined}
+          onTilesLoaded={onTiles}
         >
           <GoogleLayers layers={layers} bounds={bounds} />
         </GoogleMap>
       </APIProvider>
+      {/* Google's own failure surface is white, centred and says "Oops! Something went wrong" -
+          somebody else's error message, in somebody else's palette, on the one screen a citizen
+          opens during a storm. It appears before `gm_authFailure` reaches us, so the swap to
+          VARUNA's map cannot be fast enough to hide it. This covers Google's map until it has
+          actually drawn tiles: the reader sees the app's own background and a skeleton, then
+          either Google's tiles or VARUNA's map, and never an error that is not ours. */}
+      {tilesDrawn ? null : (
+        <div className="bg-ink absolute inset-0" aria-hidden>
+          <Skeleton className="size-full rounded-none" />
+        </div>
+      )}
     </div>
   );
 }
