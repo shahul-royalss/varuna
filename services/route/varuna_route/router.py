@@ -639,7 +639,7 @@ def as_dict(result: RouteResult) -> dict[str, Any]:
                 "route": route(c.route),
                 "share": round(float(c.share), 4),
                 "assigned": bool(c.assigned),
-                "capacity_score": round(float(c.capacity_score), 2),
+                "capacity_score": round(float(c.capacity_score), 4),
                 "max_probability": round(float(c.max_probability), 3),
             }
             for c in result.corridors

@@ -10,22 +10,26 @@ against the run's own exceedance. The *split* is not a traffic model. There are 
 this prototype, so demand is unmeasured and the share is a policy this module states out loud in
 the response's ``notes`` (CLAUDE.md rule 6). No screen may call it a modelled traffic volume.
 
-**The capacity score**, from TECH_SPEC 3.3 verbatim::
+**The capacity score**::
 
-    capacity_score(c) = sum over edges of lanes * (1 - congestion_proxy(depth))
+    capacity_score(c) = min over edges of lanes * (1 - congestion_proxy(depth)) / minutes(c)
 
 ``congestion_proxy`` is the router's own ``phi(h)`` slowdown and nothing new: a road whose
 traversal time is multiplied by ``phi`` passes ``1 / phi`` of the vehicles it would pass dry, so
 the fraction of capacity water has taken is ``1 - 1 / phi`` - zero on a dry road, two thirds at
 the depth where the profile stops. No traffic model is invented anywhere in this file.
 
-Two consequences of implementing the specified formula literally, both stated rather than
-patched:
+TECH_SPEC 3.3 first wrote that as a **sum** over edges, and the sum was wrong in effect: it
+rewards length, so on the 08:40 demo run a Worli-to-Chembur car trip gave its largest share,
+0.4038, to the 23.9-minute corridor while the equally safe 13.5-minute one took 0.2458 - most
+drivers sent the slowest way for no gain in safety. The minimum is used instead, because a road
+is as wide as its narrowest point, and it is divided by the corridor's travel time, because a
+corridor that holds each vehicle twice as long absorbs half the flow at the same width. The spec
+is corrected to match.
 
-1. It is a **sum over edges**, so a longer corridor accumulates more score than a short one of
-   the same width and wetness. The policy therefore leans toward long dry detours.
-2. Lane counts are OSM's where OSM has them and a class default on the 90.8 % of Mumbai segments
-   where it does not (:data:`varuna_route.graph.CLASS_LANES`).
+One thing to know about the inputs: lane counts are OSM's where OSM has them and a class default
+on the 90.8 % of Mumbai segments where it does not
+(:data:`varuna_route.graph.CLASS_LANES`).
 
 **Assignment is deterministic**: ``sha256(trip_id)`` picks a point in ``[0, 1)`` and the
 cumulative shares pick the corridor. The same trip id always lands on the same road - a reader
@@ -83,6 +87,10 @@ class Corridor:
     """Highest ``P(depth > threshold)`` met on this corridor, at the time it is reached."""
 
 
+_MIN_MINUTES = 1.0 / 60.0
+"""A second, as the floor on a corridor's travel time, so the capacity is never divided by nothing."""
+
+
 def congestion_proxy(depth_cm: float, threshold_cm: float) -> float:
     """Fraction of a road's capacity the water has taken: ``1 - 1 / phi(h)``.
 
@@ -93,10 +101,26 @@ def congestion_proxy(depth_cm: float, threshold_cm: float) -> float:
 
 
 def capacity_score(route: Route, threshold_cm: float) -> float:
-    """``sum over edges of lanes * (1 - congestion_proxy(depth))`` (TECH_SPEC 3.3)."""
-    return sum(
+    """How much traffic a corridor can absorb: its bottleneck lanes, per minute it holds a car.
+
+    **Corrected 2026-09-19, measured.** TECH_SPEC 3.3 first said "sum over edges of lanes times
+    what the water has left of them", and a sum over edges rewards length: on the 08:40 demo run
+    a Worli-to-Chembur car trip put its largest share, 0.4038, on the 23.9-minute corridor while
+    the equally safe 13.5-minute one took 0.2458. That is a policy that sends most drivers the
+    slowest way for no gain in safety, which is worse advice than not spreading at all.
+
+    A road is as wide as its narrowest point, so the capacity is the **minimum** over the legs
+    rather than the sum - that alone makes the score length-independent. It is then divided by
+    the corridor's own travel time, because a corridor that holds each vehicle twice as long
+    absorbs half the flow at the same width. Both factors are quantities the run and the graph
+    already carry; no traffic model is invented, and the split remains a stated policy (ADR-0060).
+    """
+    if not route.legs:
+        return 0.0
+    bottleneck = min(
         leg.lanes * (1.0 - congestion_proxy(leg.depth_cm, threshold_cm)) for leg in route.legs
     )
+    return max(bottleneck, 0.0) / max(route.minutes, _MIN_MINUTES)
 
 
 def unit_interval(trip_id: str) -> float:

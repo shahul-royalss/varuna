@@ -152,8 +152,12 @@ Additive response fields:
 1. Plan the VARUNA route (existing time-dependent Dijkstra).
 2. Plan up to two alternates by penalising used edges x3 (existing).
 3. Keep only corridors whose max P(depth > threshold_profile) < risk_tolerance.
-4. capacity_score(c) = sum over edges of lanes * (1 - congestion_proxy(depth))
+4. capacity_score(c) = min over edges of lanes * (1 - congestion_proxy(depth)) / minutes(c)
    congestion_proxy is the router's own phi(h) slowdown, so no new model is invented.
+   Corrected 2026-09-19: this said "sum over edges", and a sum rewards length - measured on the
+   08:40 run, a Worli-to-Chembur car trip gave 0.4038 to the 23.9-minute corridor and 0.2458 to
+   an equally safe 13.5-minute one. A road is as wide as its narrowest point, and a corridor that
+   holds a vehicle twice as long absorbs half the flow.
 5. share(c) = capacity_score(c) / sum(capacity_score)
 6. assignment = weighted choice keyed by sha256(trip_id) -> deterministic per trip,
    uniform over the population, reproducible in tests.
