@@ -173,6 +173,53 @@ test.describe("P6.13 states and console cleanliness", () => {
   });
 });
 
+test.describe("the console's address bar", () => {
+  /** The run id the stamp is showing, straight off the screen. */
+  async function stampedRun(page: Page): Promise<string> {
+    const stamp = page.getByText(/MUM-\d{8}T\d{4}Z/).first();
+    await expect(stamp).toBeVisible({ timeout: 30_000 });
+    return (await stamp.textContent()) ?? "";
+  }
+
+  /**
+   * Chunk INTEGRATE, defect 2: the query string used to be read once, in a `useState`
+   * initialiser, so a client-side navigation between two console URLs changed nothing at all.
+   * Picking a cycle is that navigation - it is a `router.replace` now - and this asserts the
+   * console follows it rather than only reading the URL it was mounted with.
+   */
+  test(
+    "picking a cycle navigates, and the console follows the navigation",
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      await page.goto("/console");
+      const opening = await stampedRun(page);
+      expect(page.url()).not.toContain("run=");
+
+      // Any cycle chip other than the one already showing.
+      const chips = page.getByRole("button", { name: /^Forecast from / });
+      await expect(chips.first()).toBeVisible({ timeout: 30_000 });
+      const other = chips.filter({ hasNot: page.locator('[aria-current="true"]') });
+      await other.last().click();
+
+      await expect.poll(() => page.url(), { timeout: 30_000 }).toContain("run=");
+      await expect.poll(() => stampedRun(page), { timeout: 60_000 }).not.toBe(opening);
+
+      // And the run the URL names is the run on screen, not a second lookup's answer.
+      const named = decodeURIComponent(new URL(page.url()).searchParams.get("run") ?? "");
+      expect(named).not.toBe("");
+      expect((await stampedRun(page)).replace(/\s/g, "")).toContain(named.slice(0, 20));
+
+      // The discriminating half: a real `next/link` navigation back to `/console`, with no run.
+      // The old initialiser read `window.location` once, so the console stayed pinned to the
+      // cycle it had; read from the router, it goes back to the opening cycle the demo starts
+      // from (CLAUDE.md 15).
+      await page.getByRole("link", { name: "Console", exact: true }).click();
+      await expect.poll(() => page.url(), { timeout: 30_000 }).not.toContain("run=");
+      await expect.poll(() => stampedRun(page), { timeout: 60_000 }).toBe(opening);
+    },
+  );
+});
+
 test.describe("P6.14 the viewports 6.11 fixes", () => {
   const VIEWPORTS = [
     { name: "1366 x 768 laptop", width: 1366, height: 768 },

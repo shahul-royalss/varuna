@@ -13,6 +13,8 @@ import {
   DROP_SHADER,
   RIPPLE_ALPHA,
   RIPPLE_RADIUS_M,
+  TRUTH_MAX_PX,
+  TRUTH_MIN_PX,
   TRUTH_RADIUS_M,
   TruthDropExtension,
   pinDropFrame,
@@ -173,6 +175,25 @@ describe("the layers", () => {
 
   it("draws nothing without pins", () => {
     expect(truthPinLayers({ truthPins: [] })).toEqual([]);
+  });
+
+  // Chunk INTEGRATE, defect 3: at z19 over Hindmata - 0.28 m per pixel - an uncapped 70 m radius
+  // put a 248 px opaque white disc over the junction, the imagery and the streets the pin is
+  // there to corroborate. A pin is a marker, not an area, so it stops growing at a marker's size.
+  it("caps every pin and ripple in pixels, so a pin never covers what it marks", () => {
+    const layers = truthPinLayers({ truthPins: [pin("P-1", 500), pin("P-2")] });
+    const drawn = serializeLayers(layers) as Record<string, unknown>[];
+    expect(drawn).toHaveLength(3);
+    for (const layer of drawn) {
+      expect(layer).toMatchObject({
+        radiusUnits: "meters",
+        radiusMinPixels: TRUTH_MIN_PX,
+        radiusMaxPixels: TRUTH_MAX_PX,
+      });
+    }
+    // A ceiling that is not a marker's size would let the disc come back by another route.
+    expect(TRUTH_MAX_PX).toBeLessThanOrEqual(16);
+    expect(TRUTH_MAX_PX).toBeGreaterThan(TRUTH_MIN_PX);
   });
 });
 
