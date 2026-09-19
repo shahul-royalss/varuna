@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { FloodMap } from "@/components/map/flood-map";
@@ -28,7 +29,8 @@ import { useTruthPins } from "@/lib/hooks/use-truth-pins";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
 import { TimeBar } from "@/components/varuna/time-bar";
-import { openingRunId, type RunSummary } from "@/lib/opening-run";
+import { fetchOpeningRunId } from "@/lib/opening-run";
+import { DEFAULT_CITY, cityFromSearch } from "@/lib/city";
 import { DEFAULT_SIM_TIME } from "@/lib/stores/replay";
 import { useRunStore } from "@/lib/stores/run";
 import { useUiStore } from "@/lib/stores/ui";
@@ -59,14 +61,48 @@ function formatStep(iso: string | undefined): string {
 /** Motion M7: 5-minute steps advance about three a second while playing. */
 const PLAY_INTERVAL_MS = 320;
 
-/** How long the console waits for the run registry before opening on the API's default run. */
-const OPENING_LOOKUP_MS = 4_000;
-
 /** How many learned pipes to ask for. The cycle writes the 6,000 worst by blockage, which is what
  * `/drains` asks for too, so the console's Drains mode and the X-ray colour the same set. */
 const LEARNED_EDGE_LIMIT = 6000;
 
+/**
+ * The console, behind the Suspense boundary `useSearchParams` needs.
+ *
+ * Without it `next build` refuses the route: a client component reading the query string cannot be
+ * prerendered, and Next asks for the boundary rather than opting the whole page into client
+ * rendering. The fallback is the empty map slot the console shows before its run has loaded anyway.
+ */
 export function ConsoleScreen() {
+  return (
+    <Suspense
+      fallback={
+        <AppShell>
+          <div className="relative h-full min-h-0 w-full">
+            <MapSlot />
+          </div>
+        </AppShell>
+      }
+    >
+      <ConsoleView />
+    </Suspense>
+  );
+}
+
+function ConsoleView() {
+  const router = useRouter();
+  // The query string, read through `useSearchParams` rather than `window.location`.
+  //
+  // It used to be read once, in a `useState` initialiser. Under the App Router that runs while the
+  // router is still mid-navigation, so a `next/link` to `/console?run=<id>` landed with no run and
+  // fell back to the newest - and a second link, from one console URL to another, never changed
+  // anything at all, because an initialiser runs once per mount. This hook is the router's own
+  // value and re-renders when it changes, which is what makes a navigation land where it points.
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
+  const pinnedRun = searchParams.get("run") ?? undefined;
+  // Which city this console is of. Only read by the fetches, never rendered, so the server's
+  // Mumbai and a client's `?city=` can never disagree on screen.
+  const city = cityFromSearch(search);
   const replayPanelOpen = useUiStore((s) => s.replayPanelOpen);
   const [skyPanelOpen, setSkyPanelOpen] = useState(false);
   const [run, setRun] = useState<RunDepth | null>(null);
@@ -83,7 +119,9 @@ export function ConsoleScreen() {
       const p = loaded.provenance;
       setStoreRun({
         run_id: p.runId,
-        city: "mumbai",
+        // The city the console is of, not a literal: a Chennai run in the store as "mumbai" is
+        // how the top bar ends up naming the wrong city over the right water.
+        city,
         cycle_ts: p.cycleTs ?? "",
         mode: p.mode === "live" ? "live" : "replay",
         replay_mode: p.mode === "live" ? "live" : "baked",
@@ -99,49 +137,35 @@ export function ConsoleScreen() {
       // way; the icon rail brings it back.
       setReplayPanelOpen(false);
     },
-    [setReplayPanelOpen, setStoreRun],
-  );
-  // `?run=<id>` pins the console to one baked run. The demo script (CLAUDE.md 15) opens the
-  // console on a specific cycle, and without this the map always shows the newest run - which,
-  // once the storm has passed, is the calm one.
-  //
-  // Read lazily in the initialiser rather than in an effect: it is a value the first render can
-  // already know, and setting state from an effect body would cascade a second render for
-  // something that never changes afterwards. `window` is guarded because this component is
-  // pre-rendered on the server.
-  const [runParam, setRunParam] = useState<string | undefined>(() =>
-    typeof window === "undefined"
-      ? undefined
-      : (new URLSearchParams(window.location.search).get("run") ?? undefined),
+    [city, setReplayPanelOpen, setStoreRun],
   );
   // With no `?run=`, open on the cycle the demo script starts from (CLAUDE.md 15, 06:40) rather
   // than the newest run the API would pick, which on the replay is the calm one after the storm.
   // The map holds its load for the moment it takes to read the registry, so nobody watches 09:10
-  // load and then swap. If the registry is slow or has no 06:40 run, the API's default stands.
-  const [openingResolved, setOpeningResolved] = useState(false);
-  const mapReady = runParam !== undefined || openingResolved;
+  // load and then swap. If the registry is slow or has no run at the opening, the API's default
+  // stands - and that default is now per city too, so a city with nothing baked gets its own
+  // empty state rather than another city's water.
+  //
+  // The lookup is stamped with the city it asked about, which is what lets "still looking" be
+  // derived rather than tracked: a result for a different city is, by definition, stale.
+  const [opening, setOpening] = useState<{ city: string; runId?: string } | null>(null);
   useEffect(() => {
-    if (runParam !== undefined || openingResolved) return;
+    if (pinnedRun !== undefined || opening?.city === city) return;
     let cancelled = false;
     const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), OPENING_LOOKUP_MS);
-    fetch(apiUrl("/v1/runs"), { signal: controller.signal })
-      .then((response) => (response.ok ? response.json() : { runs: [] }))
-      .then((body: { runs?: RunSummary[] }) => {
-        const opening = openingRunId(body.runs ?? [], DEFAULT_SIM_TIME);
-        if (opening && !cancelled) setRunParam(opening);
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        window.clearTimeout(timer);
-        if (!cancelled) setOpeningResolved(true);
-      });
+    fetchOpeningRunId(city, DEFAULT_SIM_TIME, apiUrl, controller.signal).then((runId) => {
+      if (!cancelled) setOpening({ city, runId });
+    });
     return () => {
       cancelled = true;
-      window.clearTimeout(timer);
       controller.abort();
     };
-  }, [runParam, openingResolved]);
+  }, [city, pinnedRun, opening?.city]);
+
+  // The URL wins over the lookup: `?run=` is the operator saying which cycle, and a stale answer
+  // from a lookup that ran before they said it must not outrank them.
+  const runParam = pinnedRun ?? (opening?.city === city ? opening.runId : undefined);
+  const mapReady = pinnedRun !== undefined || opening?.city === city;
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(false);
   // The loaded set is stamped with the run it belongs to, which is what lets "loading" be
@@ -276,15 +300,20 @@ export function ConsoleScreen() {
   // count so choosing the same row after panning away flies back rather than doing nothing.
   // Switching cycle resets the scrub: step 12 of the 06:40 forecast is not step 12 of the 08:40
   // one, and carrying the index across would silently change what the readout means.
-  const pickCycle = useCallback((runId: string) => {
-    setRunParam(runId);
-    setSelectedHotspotId(null);
-    setStep(0);
-    setPlaying(false);
-    const url = new URL(window.location.href);
-    url.searchParams.set("run", runId);
-    window.history.replaceState(null, "", url);
-  }, []);
+  const pickCycle = useCallback(
+    (runId: string) => {
+      setSelectedHotspotId(null);
+      setStep(0);
+      setPlaying(false);
+      // Through the router, not `window.history`: the run the map loads is now derived from
+      // `useSearchParams`, so the address bar is the single place a cycle is chosen and the back
+      // button means what it says.
+      const next = new URLSearchParams(search);
+      next.set("run", runId);
+      router.replace(`/console?${next.toString()}`, { scroll: false });
+    },
+    [router, search],
+  );
 
   const selectHotspot = useCallback((hotspot: Hotspot) => {
     setSelectedHotspotId(hotspot.id);
@@ -383,6 +412,9 @@ export function ConsoleScreen() {
             floats over it. `MapSlot` stays behind it as the legend and attribution host. */}
         <MapSlot legendClearsRightPanel={replayPanelOpen} />
         <FloodMap
+          // Passed rather than left to the map's own `currentCity()`: that reads `window` during
+          // render, which is the same staleness the run parameter had.
+          city={city}
           runId={runParam}
           deferLoad={!mapReady}
           step={step}
@@ -463,11 +495,17 @@ export function ConsoleScreen() {
         >
           {/* The chips are 414 px of clock times in a 380 px column, so they wrap to a second row
               rather than spilling over the map (UI_SPEC 8). */}
-          <CyclePicker
-            currentRunId={run?.provenance.runId}
-            onPick={pickCycle}
-            className="w-full flex-wrap"
-          />
+          {/* Only on the default city. `CyclePicker` reads `/v1/runs` with no city, which answers
+              with Mumbai's cycles whoever asks - so on `?city=chennai` every chip was a Mumbai run
+              waiting to be pinned to a Chennai map. Better no picker than a wrong one
+              (CLAUDE.md 17); the chips come back for every city once the component takes one. */}
+          {city === DEFAULT_CITY ? (
+            <CyclePicker
+              currentRunId={run?.provenance.runId}
+              onPick={pickCycle}
+              className="w-full flex-wrap"
+            />
+          ) : null}
           {pick && run ? (
             <SegmentPopover
               pick={pick}
