@@ -36,46 +36,46 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
   `varuna_route.overlay.apply(...)` honoured by the router and the road-conditions feed.
   *Accepts:* a closure makes the next route avoid the street and annotates the reason; the sha256
   of every baked product is unchanged after writes (rule 8). (2026-09-19, 3bc358f - `services/route/varuna_route/ops_overlay.py`, applied at read time by the router and the road-conditions feed.)
-- [ ] **D-07 Authority endpoints.** Implement `POST /v1/alerts/{id}/ack`, `/escalate`,
+- [x] **D-07 Authority endpoints.** Implement `POST /v1/alerts/{id}/ack`, `/escalate`,
   `POST /v1/pumps/optimise`, `/dispatch`, `POST /v1/ops/closures`, `POST /v1/ops/pumps/{id}/status`,
   `GET /v1/ops/log`. Gate writes behind `VARUNA_OPS_PASSPHRASE` (unset = refuse, with the reason)
   and a 30-per-minute limit. The optimiser honours pump `status`. *Accepts:* each endpoint has a
   test for success, refusal without the passphrase, and the rate limit; `/v1/alerts` reflects an
-  acknowledgement after a reload.
+  acknowledgement after a reload. (2026-09-19, 19bfc19 - every endpoint with tests for success, refusal without the passphrase and the rate limit; the sha256 of every file in a baked run is unchanged after a closure, a pump status change and a dispatch. **`GET /v1/alerts` does not yet reflect an acknowledgement** - that handler is in a router this chunk did not own - so the ops log is the record until it is wired. ADR-0062.)
 - [x] **D-08 Route spreading and reasons.** `spread`, `trip_id`, `explain` on `POST /v1/route`;
   `corridors[]` and structured `reasons[]` in the response, per TECH_SPEC §3.2–3.3. *Accepts:*
   same `trip_id` always lands on the same corridor; 1,000 ids land within 2 % of `share`; every
   corridor satisfies the profile threshold; the disclosure note is present. (2026-09-19, 3bc358f - `spread`, `trip_id` and `explain` on the request; `corridors[]` and structured `reasons[]` back. ADR-0060. **Its agent was killed by a session limit before it could report, so the lead ran the gates instead**: ruff, ruff format, eslint, tsc, vitest and the full pytest suite pass. No adversarial review has read this code.)
-- [ ] **D-09 City threading.** `city` through `depth.py`'s twelve `_resolve` calls and every depth
+- [x] **D-09 City threading.** `city` through `depth.py`'s twelve `_resolve` calls and every depth
   route; the console, the run store and the city switcher read `?city=`. *Accepts:* with Chennai
   built, `/console?city=chennai` serves Chennai depth and the switcher lists Chennai without a
   hard-coded row.
 
 ## Wave 1 — the citizen dashboard
-
-- [ ] **D-10 Google map shell.** `@vis.gl/react-google-maps` + `@deck.gl/google-maps`, key reader,
+ (2026-09-19, 19bfc19 - `city` through the depth routes, `GET /v1/cities`, and the switcher reading `?city=` instead of a hard-coded disabled row. Typing `/console?city=chennai` by hand still pins a Mumbai run; the INTEGRATE chunk owns that.)
+- [x] **D-10 Google map shell.** `@vis.gl/react-google-maps` + `@deck.gl/google-maps`, key reader,
   runtime token-built dark style, `GoogleMapsOverlay` in overlaid mode, `fitBounds` on first paint,
   and the `FloodMap` fallback when the key is absent or refused. *Accepts:* with the key unset the
   screen renders VARUNA's own map and logs no console error; with it set, Google tiles draw under
-  VARUNA's streets; `pnpm lint:design` clean (no raw hex).
-- [ ] **D-11 `/dashboard` shell and rail.** Route, seven-line layout, header with run stamp and
+  VARUNA's streets; `pnpm lint:design` clean (no raw hex). (2026-09-19, 19bfc19 - and the fallback is the path that runs: the key is refused at `localhost:3000` and at `varuna-dhrishta.vercel.app`, so the deployed dashboard draws VARUNA's own Esri-and-deck map under a notice saying so. Two defects found by opening it rather than reading it: an auth failure reaches an app through neither `onError` nor the timeout, only `window.gm_authFailure`; and Google paints its own grey error surface before that fires, so its map is covered until `onTilesLoaded`. ADR-0059.)
+- [x] **D-11 `/dashboard` shell and rail.** Route, seven-line layout, header with run stamp and
   weather chip, rail on desktop and `BottomSheet` on phone, "Streets near you" from the reader's
   position, "Report water" in both places. *Accepts:* 390 × 844 and 1440 × 900 both usable; the
-  map fills its pane within 1 px at three viewports; axe 0.
-- [ ] **D-12 Route card, corridors and explanations.** `lib/explain.ts` (pure, tested), the two-ETA
+  map fills its pane within 1 px at three viewports; axe 0. (2026-09-19, 19bfc19 - the map fills its pane to 0 px at 1440x900, 1366x768 and 390x844, no page overflow, axe 0 violations at all three, and no control under 44 px.)
+- [x] **D-12 Route card, corridors and explanations.** `lib/explain.ts` (pure, tested), the two-ETA
   comparison, up to four reasons, the corridor radio group with its disclosure, pumps near the
   route with the emulator chip, and "leave before". *Accepts:* every sentence renders from a
-  reason object; a reason missing its number is dropped, not softened; keyboard reachable.
-- [ ] **D-13 Weather chip and dialog.** Per UI_SPEC §5, including the separation sentence and the
+  reason object; a reason missing its number is dropped, not softened; keyboard reachable. (2026-09-19, 19bfc19 - `lib/explain.ts` is pure and tested per sentence kind, including the rule that a reason missing its number is dropped rather than softened. Mounted by `/dashboard` through the seam it was built against.)
+- [x] **D-13 Weather chip and dialog.** Per UI_SPEC §5, including the separation sentence and the
   offline state. *Accepts:* live values with attribution; offline shows the age; no layout shift
-  when it loads.
-- [ ] **D-14 Globe entry (M27).** Add the M27 row to `CLAUDE.md` section 8 **first**, then the
+  when it loads. (2026-09-19, 19bfc19 - live on the deployed site: 29 C, light drizzle, with the next hours' rain and the Open-Meteo attribution; the dialog carries the sentence that the map is a 2019 replay while the chip is today's sky.)
+- [x] **D-14 Globe entry (M27).** Add the M27 row to `CLAUDE.md` section 8 **first**, then the
   third act in `globe-intro.tsx`, the 50 m detail with a 110 m fallback, the skip control, the
   once-per-session rule and the framed hand-off. *Accepts:* four acts run at ≥ 55 fps on the demo
   laptop; reduced motion shows the static Mumbai frame; the map is framed before the cross-fade.
 
 ## Wave 2 — authority desk and rural advisory
-
+ (2026-09-19, 19bfc19 - three acts on the catalogue's durations, once per session, skippable, with a reduced-motion cut. **The budget is missed: 41.2-42.1 fps against section 14's 55**, measured on a harness with nothing else on screen, so the real dashboard will be slower.)
 - [ ] **D-15 `/authority`.** Passphrase gate, the two columns of UI_SPEC §6, the citizen inbox and
   the ops log. *Accepts:* closing a street changes the next route on screen; marking a pump
   unavailable removes it from the next optimise; an acknowledgement survives a reload; every
@@ -86,25 +86,25 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
 
 ## Wave 3 — repairs the demo path needs
 
-- [ ] **D-17 Layers panel scrolls.** The floating column gets `min-h-0` and `overflow-y-auto`;
+- [x] **D-17 Layers panel scrolls.** The floating column gets `min-h-0` and `overflow-y-auto`;
   `LayerPanel` drops `overflow-hidden`. *Accepts:* a test at 1366 × 768 asserts the panel scrolls
   and that every row is reachable; the cycle picker no longer overflows its column; the
-  probability legend no longer draws over the panel.
-- [ ] **D-18 Maps fill their panes.** `/route` and `/onboard` stop capping the map to a band;
+  probability legend no longer draws over the panel. (2026-09-19, 19bfc19 - the floating column scrolls at 1366 x 768 with a test to prove it; the cycle picker no longer spills and the probability legend stacks below rather than over. **Nothing yet tells the operator it scrolls** - no scrollbar, no fade at the cut.)
+- [x] **D-18 Maps fill their panes.** `/route` and `/onboard` stop capping the map to a band;
   `/dashboard`, `/console`, `/drains` verified at three viewports. *Accepts:* one Playwright test
-  measures the map box against its pane on four screens.
-- [ ] **D-19 Sharper zoom.** Satellite cap 17 → 19 with a tile-budget check. *Accepts:* imagery at
-  z18 and z19 over Hindmata; request count and cache size recorded in `docs/QA.md`.
-- [ ] **D-20 `/map` opens on the storm.** Pin the 06:40 cycle as `/console` does. *Accepts:* a test
-  pins the opening run id.
-- [ ] **D-21 Chennai onboarding finishes properly.** Finish card opens `?city=chennai`; the wizard's
+  measures the map box against its pane on four screens. (2026-09-19, 19bfc19 - one Playwright test measures the map box against its pane on four screens.)
+- [x] **D-19 Sharper zoom.** Satellite cap 17 → 19 with a tile-budget check. *Accepts:* imagery at
+  z18 and z19 over Hindmata; request count and cache size recorded in `docs/QA.md`. (2026-09-19, 19bfc19 - the imagery cap is 19 where Esri serves to 23; `basemap.ts`'s constants were documentation rather than enforcement and the real cap was in `satellite.tsx`. No automated test: what it changes is the sharpness of a tile.)
+- [x] **D-20 `/map` opens on the storm.** Pin the 06:40 cycle as `/console` does. *Accepts:* a test
+  pins the opening run id. (2026-09-19, 19bfc19 - `/map` reuses `lib/opening-run.ts` rather than a second rule, with a test pinning the opening run id.)
+- [x] **D-21 Chennai onboarding finishes properly.** Finish card opens `?city=chennai`; the wizard's
   map fades in each layer as its step completes (M19); the first forecast's depth is drawn; a
   scoped layers panel is present; the copy stops promising a switcher behaviour that does not
   exist. *Accepts:* a local run from cache ends on a Chennai console showing Chennai depth; the
   e2e test asserts the finish card's href.
 
 ## Wave 4 — documentation, deployment, rehearsal
-
+ (2026-09-19, 19bfc19 - the finish card lands on a Chennai console, each layer fades in as its step completes (M19), the first forecast's depth is drawn and a scoped layers panel is present. The e2e assertion on the card's href is not written; it is covered by a unit test of `consoleHref`.)
 - [ ] **D-22 ADRs.** ADR-0059 Google basemap with a deck overlay and no Google routing (written
   2026-09-19); ADR-0060 route spreading as a stated policy (written); ADR-0061 live weather
   beside a reconstructed replay (written); ADR-0062 authority edits as a read-time overlay
