@@ -29,7 +29,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 log = structlog.get_logger("varuna.route.graph")
 
-__all__ = ["CLASS_SPEED_KMH", "RoadGraph", "load_graph"]
+__all__ = ["CLASS_LANES", "CLASS_SPEED_KMH", "RoadGraph", "load_graph"]
 
 CLASS_SPEED_KMH: dict[str, float] = {
     "motorway": 60.0,
@@ -54,6 +54,31 @@ weather, not a 60 km/h arterial. The city pipeline already writes a `speed_kmh` 
 that is preferred; this fills in where it did not."""
 
 DEFAULT_SPEED_KMH = 20.0
+
+CLASS_LANES: dict[str, float] = {
+    "motorway": 3.0,
+    "motorway_link": 1.0,
+    "trunk": 3.0,
+    "trunk_link": 1.0,
+    "primary": 2.0,
+    "primary_link": 1.0,
+    "secondary": 2.0,
+    "secondary_link": 1.0,
+    "tertiary": 2.0,
+    "tertiary_link": 1.0,
+    "residential": 1.0,
+    "living_street": 1.0,
+    "unclassified": 1.0,
+    "service": 1.0,
+}
+"""Lanes **per direction** by road class, used where OSM gives no count.
+
+It gives one on 19,344 of Mumbai's 21,296 segments (90.8 %), because that is how many carry no
+`lanes` tag. The number only ever weights one corridor's spare capacity against another's
+(:mod:`varuna_route.spread`), never a travel time, so a class default is a stated policy rather
+than a measurement - and it is listed as such in `docs/SIMPLIFICATIONS.md`."""
+
+DEFAULT_LANES = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +112,13 @@ class RoadGraph:
     edge_tail: NDArray[np.int64]
     """Origin node of each out-edge - the inverse of the CSR index, for path reconstruction."""
 
+    edge_lanes: NDArray[np.float64]
+    """Lanes in this direction of travel.
+
+    OSM's ``lanes`` counts both directions of a two-way street, and this graph gives a two-way
+    street two directed edges, so the tagged count is halved (floor one) rather than given to each
+    direction whole. Where OSM tags nothing, :data:`CLASS_LANES` fills in by road class."""
+
     @property
     def n_nodes(self) -> int:
         return int(self.lon.size)
@@ -116,6 +148,17 @@ def _speed_kmh(road_class: object, given: object) -> float:
     if math.isfinite(value) and value > 1.0:
         return value
     return CLASS_SPEED_KMH.get(str(road_class), DEFAULT_SPEED_KMH)
+
+
+def _lanes(road_class: object, given: object, *, oneway: bool) -> float:
+    """Lanes in one direction of travel, from OSM where it says and by class where it does not."""
+    try:
+        total = float(given)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        total = float("nan")
+    if math.isfinite(total) and total >= 1.0:
+        return total if oneway else max(1.0, math.floor(total / 2.0))
+    return CLASS_LANES.get(str(road_class), DEFAULT_LANES)
 
 
 def _endpoints(geometry: object) -> tuple[tuple[float, float], tuple[float, float]] | None:
@@ -159,9 +202,10 @@ def load_graph(city: str = "mumbai") -> RoadGraph:
     classes = frame["class"].astype(str).tolist()
     speeds = frame["speed_kmh"].tolist()
     names = frame["name"].tolist() if "name" in frame.columns else [None] * n_segments
+    lane_counts = frame["lanes"].tolist() if "lanes" in frame.columns else [None] * n_segments
     geoms = frame.geometry.tolist()
 
-    raw: list[tuple[int, int, str, float, float, str]] = []
+    raw: list[tuple[int, int, str, float, float, str, float]] = []
     coords: dict[int, tuple[float, float]] = {}
     for i in range(n_segments):
         ends = _endpoints(geoms[i])
@@ -174,10 +218,12 @@ def load_graph(city: str = "mumbai") -> RoadGraph:
 
         length = lengths[i]
         seconds = length / max(_speed_kmh(classes[i], speeds[i]) / 3.6, 0.5)
-        name = names[i] if isinstance(names[i], str) else ""
-        raw.append((u, v, segment_ids[i], length, seconds, name))
+        raw_name = names[i]
+        name: str = raw_name if isinstance(raw_name, str) else ""
+        lanes = _lanes(classes[i], lane_counts[i], oneway=bool(oneways[i]))
+        raw.append((u, v, segment_ids[i], length, seconds, name, lanes))
         if not oneways[i]:
-            raw.append((v, u, segment_ids[i], length, seconds, name))
+            raw.append((v, u, segment_ids[i], length, seconds, name, lanes))
 
     node_ids = np.array(sorted(coords), dtype=np.int64)
     index = {int(nid): j for j, nid in enumerate(node_ids)}
@@ -203,6 +249,7 @@ def load_graph(city: str = "mumbai") -> RoadGraph:
         edge_time_s=np.array([a[4] for a in arcs], dtype=np.float64),
         edge_name=[a[5] for a in arcs],
         edge_tail=tails,
+        edge_lanes=np.array([a[6] for a in arcs], dtype=np.float64),
     )
     log.info(
         "route.graph_built",

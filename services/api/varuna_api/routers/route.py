@@ -55,14 +55,30 @@ def _when(value: Any, field: str) -> datetime | None:
         ) from None
 
 
+def _flag(value: Any, field: str, *, default: bool) -> bool:
+    """A boolean body field that refuses anything that is not one, rather than guessing."""
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    raise api_error(422, "bad_flag", f"{field} must be true or false, got {value!r}.")
+
+
 @router.post("/route", summary="Route around the forecast water, beside what a naive router does")
 def route(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
     """Plan one trip.
 
-    Body: ``{origin, destination, depart_at?, profile?, risk_tolerance?, run_id?}``.
+    Body: ``{origin, destination, depart_at?, profile?, risk_tolerance?, run_id?, spread?,
+    trip_id?, explain?}``.
 
     Returns both routes, because the comparison is the product: a dispatcher who only sees the
     safe route has no way to judge whether the detour was worth it.
+
+    ``spread`` (default true) adds ``corridors[]`` - up to three safe roads with the share of
+    traffic the policy gives each, and the one this request is assigned to. ``trip_id`` makes
+    that assignment stable for a trip, so a reader who reloads is not sent somewhere else; it is
+    the client's own random id and nothing is stored against it. ``explain`` (default true) adds
+    ``reasons[]``, which is structured data - the frontend writes the sentences (TECH_SPEC 3.2).
     """
     from varuna_route.profiles import PROFILES
     from varuna_route.router import as_dict, plan
@@ -78,14 +94,33 @@ def route(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         )
 
     tolerance = body.get("risk_tolerance")
+    if tolerance is not None:
+        try:
+            tolerance = float(tolerance)
+        except (TypeError, ValueError):
+            raise api_error(
+                422, "bad_tolerance", "risk_tolerance must be a number between 0 and 1."
+            ) from None
+        if not 0.0 <= tolerance <= 1.0:
+            raise api_error(
+                422, "bad_tolerance", f"risk_tolerance must be between 0 and 1, got {tolerance}."
+            )
+
+    trip_id = body.get("trip_id")
+    if trip_id is not None and not str(trip_id).strip():
+        trip_id = None
+
     try:
         result = plan(
             origin,
             destination,
             depart_at=_when(body.get("depart_at"), "depart_at"),
             vehicle=vehicle,
-            risk_tolerance=float(tolerance) if tolerance is not None else None,
+            risk_tolerance=tolerance,
             run_id=body.get("run_id"),
+            spread=_flag(body.get("spread"), "spread", default=True),
+            trip_id=str(trip_id) if trip_id is not None else None,
+            explain=_flag(body.get("explain"), "explain", default=True),
         )
     except FileNotFoundError as error:
         raise api_error(404, "no_run", str(error)) from error
@@ -150,6 +185,7 @@ def road_conditions(
     a depth in centimetres, it wants "closed from 08:20 to 10:05", so that is what this carries -
     with the depth beside it for anyone who does.
     """
+    from varuna_route import ops_overlay as ops
     from varuna_route.forecast import load_depths
     from varuna_route.graph import load_graph
     from varuna_route.profiles import PROFILES
@@ -162,27 +198,40 @@ def road_conditions(
             f"No vehicle profile {profile!r}. Valid profiles: {', '.join(sorted(PROFILES))}.",
         )
     try:
-        depths = load_depths(run_id)
+        # `city` was accepted and then dropped on the way to the forecast, so a Chennai feed
+        # joined Mumbai depths to Chennai geometry. Both sides take the city now.
+        depths = load_depths(run_id, city)
         graph = load_graph(city)
     except FileNotFoundError as error:
         raise api_error(404, "no_run", str(error)) from error
 
     vehicle = get_profile(profile)
+    overlay = ops.active(city, at=depths.valid_ts)
     # One representative edge per segment carries its name and geometry endpoints.
     first_edge: dict[str, int] = {}
     for e, segment_id in enumerate(graph.edge_segment):
         first_edge.setdefault(segment_id, e)
 
+    # A street an authority closed is impassable for the whole run window whatever the water is
+    # doing, and the feed says which of the two put it there (task D-06). The overlay is read
+    # here; no product file is touched, so a re-bake is still byte-identical.
+    wet_ids = set(depths.depth_cm)
+    subjects = sorted(wet_ids | set(overlay.closed_segment_ids))
+
     features: list[dict[str, Any]] = []
-    for segment_id, series in depths.depth_cm.items():
+    for segment_id in subjects:
+        series = depths.depth_cm.get(segment_id, [])
         over = [k for k, value in enumerate(series) if value > vehicle.depth_cm]
-        if not over:
+        closure = overlay.closures.get(segment_id)
+        if not over and closure is None:
             continue
-        e = first_edge.get(segment_id)
-        if e is None:
+        edge = first_edge.get(segment_id)
+        if edge is None:
             continue
-        tail = int(graph.edge_tail[e])
-        head = int(graph.head[e])
+        tail = int(graph.edge_tail[edge])
+        head = int(graph.head[edge])
+        first_step = over[0] if over else 0
+        last_step = over[-1] if over else depths.n_steps - 1
         features.append(
             {
                 "type": "Feature",
@@ -195,23 +244,38 @@ def road_conditions(
                 },
                 "properties": {
                     "segment_id": segment_id,
-                    "name": graph.edge_name[e] or None,
+                    "name": graph.edge_name[edge] or None,
                     "condition": "impassable",
+                    "cause": "closure" if closure is not None else "forecast",
+                    "closed_reason": closure.reason if closure is not None else None,
                     "profile": vehicle.key,
-                    "peak_depth_cm": round(max(series), 1),
-                    "from": depths.time_of(over[0]).isoformat(),
-                    "to": depths.time_of(over[-1]).isoformat(),
+                    "peak_depth_cm": round(max(series), 1) if series else 0.0,
+                    "from": depths.time_of(first_step).isoformat(),
+                    "to": (
+                        closure.until.isoformat()
+                        if closure is not None and closure.until is not None
+                        else depths.time_of(last_step).isoformat()
+                    ),
                 },
             }
         )
 
-    features.sort(key=lambda f: -float(f["properties"]["peak_depth_cm"]))
+    # Closures first, then the deepest water: a street an authority shut is not a forecast and
+    # must not be dropped by the truncation that protects the document's size.
+    features.sort(
+        key=lambda f: (
+            0 if f["properties"]["cause"] == "closure" else 1,
+            -float(f["properties"]["peak_depth_cm"]),
+        )
+    )
     truncated = len(features) > MAX_FEED_SEGMENTS
+    n_closures = sum(1 for f in features if f["properties"]["cause"] == "closure")
     log.info(
         "api.road_conditions",
         run_id=depths.run_id,
         profile=vehicle.key,
         segments=len(features),
+        closures=n_closures,
     )
     return {
         "type": "FeatureCollection",
@@ -220,11 +284,15 @@ def road_conditions(
         "profile": vehicle.key,
         "threshold_cm": vehicle.depth_cm,
         "count": len(features),
+        "closures": n_closures,
         "truncated": truncated,
         "features": features[:MAX_FEED_SEGMENTS],
         "notes": [
             "Forecast from a reconstructed replay of 2 July 2019, not a live observation.",
             f"A segment is listed when its predicted depth exceeds {vehicle.depth_cm:.0f} cm, "
             f"the depth at which a {vehicle.label.lower()} stops.",
+            f"{n_closures} of these are closed by an authority rather than by the forecast; each "
+            "carries cause='closure' and the reason given. Closures are an append-only overlay "
+            "read at request time and change no forecast product.",
         ],
     }

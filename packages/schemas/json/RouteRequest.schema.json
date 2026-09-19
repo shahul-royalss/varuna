@@ -57,6 +57,12 @@
       "default": null,
       "title": "Destination Name"
     },
+    "explain": {
+      "default": true,
+      "description": "Include structured reasons.",
+      "title": "Explain",
+      "type": "boolean"
+    },
     "origin": {
       "description": "[lon, lat], e.g. KEM Hospital [72.8419, 19.0035].",
       "maxItems": 2,
@@ -128,6 +134,25 @@
       "default": null,
       "description": "None = the latest published run.",
       "title": "Run Id"
+    },
+    "spread": {
+      "default": true,
+      "description": "Return up to three safe corridors and an assignment (TECH_SPEC 3.2-3.3).",
+      "title": "Spread",
+      "type": "boolean"
+    },
+    "trip_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The client's own stable id for this trip, so the corridor assignment survives a reload. Nothing is stored against it; None means the request is not spread.",
+      "title": "Trip Id"
     }
   },
   "required": [

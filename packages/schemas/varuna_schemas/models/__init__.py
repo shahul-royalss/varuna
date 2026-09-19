@@ -134,6 +134,7 @@ from varuna_schemas.models.replay import (
 )
 from varuna_schemas.models.route import (
     AvoidedSegment,
+    Corridor,
     Isochrone,
     ReachabilityResponse,
     ReachMinutes,
@@ -141,6 +142,7 @@ from varuna_schemas.models.route import (
     RoadStatus,
     RouteConfidence,
     RouteLabel,
+    RouteReason,
     RouteRequest,
     RouteResponse,
     RouteResult,
@@ -256,6 +258,8 @@ _MODELS: tuple[type[VarunaModel], ...] = (
     RouteRequest,
     AvoidedSegment,
     RouteResult,
+    Corridor,
+    RouteReason,
     RouteResponse,
     Isochrone,
     ReachabilityResponse,
