@@ -448,22 +448,29 @@ export function ConsoleScreen() {
 
         {/* Capped well above the canvas floor: at 1366 x 768 the depth legend reaches inboard to
             clear the replay panel, and the legend is always visible (CLAUDE.md section 6.7), so the
-            rain panel stops short of it and scrolls instead. */}
-        <div className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2">
-          <CyclePicker currentRunId={run?.provenance.runId} onPick={pickCycle} />
+            column stops short of it and scrolls instead.
+
+            The column itself scrolls (UI_SPEC 8, task D-17). It used to be a plain flex column
+            with a `max-h`, which at 1366 x 768 simply clipped: the panel needs about 324 px, the
+            rows below the fold were unreachable, and turning the wheel over them did nothing
+            because there was no scroll container to turn. `min-h-0` lets the flex column shrink
+            to its cap and `overflow-y-auto` gives the wheel something to move; `overscroll-contain`
+            stops the scroll chaining out of the column when it reaches the end, which is what
+            would hand the gesture to the map behind it. */}
+        <div className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] min-h-0 w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain">
+          {/* The chips are 414 px of clock times in a 380 px column, so they wrap to a second row
+              rather than spilling over the map (UI_SPEC 8). */}
+          <CyclePicker
+            currentRunId={run?.provenance.runId}
+            onPick={pickCycle}
+            className="w-full flex-wrap"
+          />
           {pick && run ? (
             <SegmentPopover
               pick={pick}
               step={step}
               validTs={run.validTs}
               onClose={() => setPick(null)}
-            />
-          ) : null}
-          {layers.probability ? (
-            <ProbabilityLegend
-              thresholdCm={probabilityThresholdCm}
-              onThresholdChange={setProbabilityThresholdCm}
-              deterministic={(run?.provenance.ensembleN ?? 1) <= 1}
             />
           ) : null}
           <LayerPanel
@@ -477,6 +484,16 @@ export function ConsoleScreen() {
               surcharge: surcharge?.set ? reversedFlowSummary(surcharge.set) : undefined,
             }}
           />
+          {/* Below the panel, never over it (UI_SPEC 8): the legend used to be positioned
+              absolutely at a fixed offset from the map's top-left, which put it on top of the
+              layer rows as soon as probability mode was on. */}
+          {layers.probability ? (
+            <ProbabilityLegend
+              thresholdCm={probabilityThresholdCm}
+              onThresholdChange={setProbabilityThresholdCm}
+              deterministic={(run?.provenance.ensembleN ?? 1) <= 1}
+            />
+          ) : null}
           {/* What the Drains layer is actually showing. An honesty label, not fine print
               (CLAUDE.md 6.8): most of this graph has never been observed, and the operator has to
               be able to tell the pipes the filter moved from the pipes it never saw. */}
