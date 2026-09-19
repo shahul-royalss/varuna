@@ -4,6 +4,19 @@
   "additionalProperties": false,
   "description": "A segment the naive route uses that VARUNA avoids, with why.",
   "properties": {
+    "closed_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Set when an authority closed the street rather than the forecast refusing it; the officer's own words, never a sentence composed by the API.",
+      "title": "Closed Reason"
+    },
     "depth_p50_cm": {
       "anyOf": [
         {

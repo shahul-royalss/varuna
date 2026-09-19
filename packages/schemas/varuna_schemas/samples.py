@@ -29,6 +29,7 @@ from varuna_schemas.models import (
     CleanTopNEffect,
     ComputeRequest,
     ContingencyTable,
+    Corridor,
     CycleLogEntry,
     CycleStageEvent,
     CycleStatus,
@@ -82,6 +83,7 @@ from varuna_schemas.models import (
     ReportIn,
     RoadCondition,
     RoadSegment,
+    RouteReason,
     RouteRequest,
     RouteResponse,
     RouteResult,
@@ -771,6 +773,30 @@ def _route_result(label: str = "VARUNA") -> RouteResult:
     )
 
 
+def _corridor() -> Corridor:
+    return Corridor(
+        id="9f2c41ab",
+        label="A",
+        route=_route_result(),
+        share=0.55,
+        assigned=True,
+        capacity_score=41.8,
+        max_p_exceed=0.08,
+    )
+
+
+def _route_reason() -> RouteReason:
+    return RouteReason(
+        kind="avoided",
+        segment_id="88213",
+        name="Dr Ambedkar Road near Hindmata",
+        depth_cm=47.0,
+        threshold_cm=30.0,
+        at=t(30),
+        probability=0.82,
+    )
+
+
 def _route_response() -> RouteResponse:
     return RouteResponse(
         run_id=RUN_ID,
@@ -782,6 +808,15 @@ def _route_response() -> RouteResponse:
         naive=_route_result("Naive (shortest)"),
         avoided=[_avoided()],
         alternates=[_route_result("Alternate")],
+        corridors=[_corridor()],
+        reasons=[_route_reason()],
+        trip_id="t-9f2c41ab",
+        notes=[
+            "Probabilities are this run's own, across 20 members; the risk tolerance applied "
+            "is 0.20.",
+            "Traffic is spread across 3 safe roads so the safe road does not become the next "
+            "jam. The share beside each is a policy, not a measured traffic count.",
+        ],
         confidence="high",
         confidence_note="high (lead 30 min)",
         explanation="Avoids Hindmata (82 % above 45 cm at 18:10) via Bharatmata",
@@ -1102,6 +1137,8 @@ _BUILDERS: dict[str, Callable[[], VarunaModel]] = {
     "RouteRequest": _route_request,
     "AvoidedSegment": _avoided,
     "RouteResult": _route_result,
+    "Corridor": _corridor,
+    "RouteReason": _route_reason,
     "RouteResponse": _route_response,
     "Isochrone": _isochrone,
     "ReachabilityResponse": _reachability,
