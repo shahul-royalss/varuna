@@ -240,30 +240,56 @@ def _run_path(run_id: str | None, city: str, needs: str) -> Path:
 
 
 # ---- alert state ------------------------------------------------------------------------
-def apply_alert_state(alerts: list[dict[str, Any]], city: str) -> list[dict[str, Any]]:
+def apply_alert_state(alerts: list[dict[str, Any]], city: str | None) -> list[dict[str, Any]]:
     """Overlay the desk's acknowledgements onto a run's alert queue, at read time.
 
     The queue is a product: the cycle computed it and no officer may edit it. What an officer
     changes is the *state* of an alert, which lives in the ops log, so the two are folded
     together here and nowhere else. Later entries win, and the history keeps both, so an alert
     escalated after it was acknowledged still says who acknowledged it.
+
+    **An action is matched by identity as well as by id.** An alert id embeds the run that raised
+    it, so the next cycle renames every alert it is still raising and an id match alone lost the
+    officer's acknowledgement five simulated minutes after it was made. Every action records the
+    alert's :func:`~varuna_products.alerts.alert_identity` - scope, place and level - and an alert
+    carries the state of any action with its id *or* its identity. Both are kept: an entry written
+    before identities existed has no identity and still matches its own alert exactly as it did.
+
+    The two matches overlap on the alert that was acted on, so entries are gathered by their
+    position in the log, which both deduplicates them and restores the order they were written in.
+
+    ``city`` is resolved here rather than by the caller, so ``GET /v1/alerts`` and
+    ``GET /v1/ops/alerts`` cannot reach different logs by resolving it two ways. ``None`` means
+    the configured city, which is what a caller with no ``?city=`` hands in.
     """
+    from varuna_products.alerts import alert_identity
     from varuna_route import ops_overlay as ops
 
-    actions: dict[str, list[dict[str, Any]]] = {}
-    for entry in ops.entries(city):
+    city = _city(city)
+    by_id: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    by_identity: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    for position, entry in enumerate(ops.entries(city)):
         kind = entry.get("kind")
         if kind not in {"alert_ack", "alert_escalate"}:
             continue
         alert_id = str(entry.get("alert_id", "")).strip()
         if alert_id:
-            actions.setdefault(alert_id, []).append(entry)
-    if not actions:
+            by_id.setdefault(alert_id, []).append((position, entry))
+        identity = str(entry.get("identity", "")).strip()
+        if identity:
+            by_identity.setdefault(identity, []).append((position, entry))
+    if not by_id and not by_identity:
         return alerts
 
     out: list[dict[str, Any]] = []
     for alert in alerts:
-        history = list(actions.get(str(alert.get("id")), ()))
+        found = dict(
+            (
+                *by_id.get(str(alert.get("id")), ()),
+                *by_identity.get(alert_identity(alert), ()),
+            )
+        )
+        history = [found[position] for position in sorted(found)]
         if not history:
             out.append(alert)
             continue
@@ -305,10 +331,13 @@ def _alert_queue(path: Path) -> list[dict[str, Any]]:
 def _alert_action(
     alert_id: str, body: AlertActionRequest, run_id: str | None, kind: str
 ) -> dict[str, Any]:
+    from varuna_products.alerts import alert_identity
+
     city = _city(body.city)
     path = _run_path(run_id, city, "alerts.json")
     queue = _alert_queue(path)
-    if not any(str(a.get("id")) == alert_id for a in queue):
+    target = next((a for a in queue if str(a.get("id")) == alert_id), None)
+    if target is None:
         raise api_error(
             404,
             "alert_not_found",
@@ -316,9 +345,12 @@ def _alert_action(
             run_id=path.name,
         )
 
+    # The id says which alert was on screen; the identity says which *situation* was acted on, and
+    # only the identity is still true next cycle. Both are recorded (see `apply_alert_state`).
     entry: dict[str, Any] = {
         "kind": kind,
         "alert_id": alert_id,
+        "identity": alert_identity(target),
         "run_id": path.name,
         "user": body.user,
         "note": body.note,

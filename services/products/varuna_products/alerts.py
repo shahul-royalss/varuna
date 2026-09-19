@@ -36,6 +36,7 @@ from xml.etree import ElementTree as ET
 import structlog
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
+    from collections.abc import Mapping
     from pathlib import Path
 
 log = structlog.get_logger("varuna.products.alerts")
@@ -44,6 +45,7 @@ __all__ = [
     "LEVELS",
     "MAX_ALERTS",
     "MIN_PERSIST_STEPS",
+    "alert_identity",
     "build_alerts",
     "cap_xml",
     "street_series",
@@ -78,6 +80,33 @@ CAP_NS = "urn:oasis:names:tc:emergency:cap:1.2"
 SENDER = "varuna@sih2026.example"
 """CAP requires a sender identifier. It is deliberately an example domain: VARUNA is a prototype
 and must not appear to originate from a municipal or IMD address (rule 7)."""
+
+
+def alert_identity(alert: Mapping[str, Any]) -> str:
+    """The cycle-independent identity of one alert: scope, place and level.
+
+    An alert's ``id`` is ``VARUNA-{run_id}-{key}-{level}``, so it names the cycle that raised it
+    and no two cycles share one - measured on the seven baked demo cycles, not a single id is
+    common to any two consecutive ones, while twelve situations carry from 03:10Z to 03:40Z. An
+    id is therefore the right key for *this queue* and the wrong key for *this junction*: an
+    officer who has acknowledged Hindmata at severe has not un-acknowledged it because a new
+    cycle landed.
+
+    The place is the register's ``hotspot_id`` where there is one and the ``area_desc`` otherwise,
+    which for a street alert is the street's own name (``build_alerts`` passes ``area=street``).
+    The level is part of the identity on purpose: a junction stepping from moderate to severe is
+    a new situation and deserves fresh eyes.
+
+    **This is one half of a pair.** ``apps/command/lib/alert-identity.ts`` computes the same
+    string in the browser to decide which cards are new (motion M16), and
+    ``services/api/varuna_api/routers/ops.py`` stores it on every acknowledgement so the state
+    can be found again next cycle. The two must not drift, so the fallback below mirrors the
+    TypeScript ``??`` exactly - absent, not merely falsy - and
+    ``services/products/tests/test_alert_identity.py`` runs the TypeScript file's own cases.
+    """
+    hotspot_id = alert.get("hotspot_id")
+    place = alert.get("area_desc", "") if hotspot_id is None else hotspot_id
+    return f"{alert.get('scope', '')}|{place}|{alert.get('level', '')}"
 
 
 def _runs(above: list[bool], min_steps: int) -> list[tuple[int, int]]:

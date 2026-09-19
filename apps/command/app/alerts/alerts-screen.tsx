@@ -2,6 +2,7 @@
 
 import { BellOff, Send } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import {
   Table,
@@ -29,6 +30,7 @@ import { PhoneMock, type PhoneMessage } from "@/components/varuna/phone-mock";
 import { alertIdentities, alertIdentity, freshAlertIds } from "@/lib/alert-identity";
 import { formatIst } from "@/lib/format";
 import { loadAlerts, loadCap, type RunAlert } from "@/lib/api/alerts";
+import { describeRefusal, opsRefusal, postAlertAction, readPassphrase } from "@/lib/api/ops";
 import { useAlertChime } from "@/lib/sound";
 
 /** One line of the delivery log: which channel carried an alert, whether it landed, and when. */
@@ -69,7 +71,9 @@ export function AlertsScreen() {
   const [raised, setRaised] = useState<RunAlert[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [capXml, setCapXml] = useState<string | null>(null);
-  const [acknowledged, setAcknowledged] = useState<Record<string, boolean>>({});
+  // Bumped after a write, to re-read the queue. The desk's state is the API's, never this
+  // screen's: a local boolean was the old behaviour and it vanished on reload (B1).
+  const [reload, setReload] = useState(0);
   // **Which cycle.** An alert is a statement about a forecast, so it only means anything beside
   // the run that raised it - and the newest baked run is 09:10 IST, after the storm, where the
   // queue is nearly empty. The operator picks the cycle here as they do on the console; the row
@@ -106,7 +110,7 @@ export function AlertsScreen() {
         setFresh(NO_FRESH);
       });
     return () => controller.abort();
-  }, [runId]);
+  }, [runId, reload]);
 
   useAlertChime(batch);
 
@@ -130,9 +134,41 @@ export function AlertsScreen() {
     return () => controller.abort();
   }, [active, runId]);
 
+  /**
+   * Acknowledge an alert, then re-read the queue so what is on screen is what the API holds.
+   *
+   * The acknowledgement itself lives in the ops log and is applied to the queue when it is read
+   * (`apply_alert_state`), so the state survives a reload *and* the change of cycle that renames
+   * every alert. A local boolean was the old behaviour and it survived neither.
+   *
+   * The write goes through the authority desk's own client rather than a second one, so there is
+   * one passphrase, one refusal vocabulary and one place to change when D-15's gate moves. This
+   * screen does not gate: it sends what the tab is already holding, and if that is nothing the
+   * API's own refusal says so and points at `/authority`, where the passphrase is entered.
+   */
   const acknowledge = useCallback(
-    (id: string) => setAcknowledged((current) => ({ ...current, [id]: true })),
-    [],
+    async (id: string) => {
+      if (!readPassphrase()) {
+        toast("Acknowledged nothing", {
+          description:
+            "This tab holds no desk passphrase. Enter it on the authority desk, then come back.",
+        });
+        return;
+      }
+      try {
+        const done = await postAlertAction({
+          action: "ack",
+          alertId: id,
+          user: "console",
+          runId,
+        });
+        toast("Acknowledged", { description: done.notes[0] });
+        setReload((current) => current + 1);
+      } catch (error) {
+        toast("Not acknowledged", { description: describeRefusal(opsRefusal(error)) });
+      }
+    },
+    [runId],
   );
 
   const alerts: (AlertSummary & { identity: string })[] = raised.map((a) => ({
@@ -146,7 +182,10 @@ export function AlertsScreen() {
     persistsCycles: a.persistsCycles,
     persistsUnit: "forecast step",
     channels: ["Dashboard", "WhatsApp mock"],
-    acknowledged: Boolean(acknowledged[a.id]),
+    // From the API, not from this screen. `acknowledgedBy` rather than `state === acknowledged`
+    // because an escalation keeps the acknowledgement that came before it.
+    acknowledged: Boolean(a.acknowledgedBy),
+    escalated: a.state === "escalated",
   }));
 
   // Delivery is a dashboard render plus the on-screen phone mock; CLAUDE.md 3.2 keeps a real
@@ -213,7 +252,7 @@ export function AlertsScreen() {
                                 entering={fresh.has(alert.id)}
                                 selected={alert.id === active}
                                 onSelect={(id) => setSelectedId(id)}
-                                onAcknowledge={(id) => acknowledge(id)}
+                                onAcknowledge={(id) => void acknowledge(id)}
                               />
                             </li>
                           ))}

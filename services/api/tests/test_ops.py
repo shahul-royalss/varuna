@@ -44,6 +44,18 @@ AUTH = {ops.OPS_HEADER: PASSPHRASE}
 T0 = datetime(2019, 7, 2, 8, 45, tzinfo=IST)
 ALERT_ID = "VARUNA-MUM-TEST-HINDMATA-SEVERE"
 
+NEXT_RUN_ID = "MUM-20190702T1230Z-sky1.0-twin1.0-flash0.1-baked"
+"""The cycle after ``RUN_ID``, sorting after it so "latest" means this one.
+
+Its alerts are the *same two situations* at the same two levels, under ids of its own: that is
+what a real cycle does, because an alert id embeds the run that raised it and the seven baked
+demo cycles share not one id between any two of them."""
+NEXT_HINDMATA_ID = "VARUNA-MUM-TEST-NEXT-HINDMATA-SEVERE"
+NEXT_HINDMATA_MODERATE_ID = "VARUNA-MUM-TEST-NEXT-HINDMATA-MODERATE"
+NEXT_KINGS_CIRCLE_ID = "VARUNA-MUM-TEST-NEXT-KINGS-CIRCLE-SEVERE"
+KINGS_CIRCLE = "Ward F/North, King's Circle"
+"""A second place, never acknowledged, so a carried state has something to fail to reach."""
+
 HINDMATA = (72.841, 19.012)
 """The chronic spot the demo is about, used here as a candidate the optimiser can reach."""
 
@@ -57,15 +69,28 @@ def _flooding_series() -> list[float]:
     return [10.0] * 6 + [52.0] * 24 + [10.0] * 6
 
 
-def _alert(alert_id: str, level: str = "severe") -> dict[str, Any]:
+def _alert(
+    alert_id: str,
+    level: str = "severe",
+    *,
+    run_id: str = RUN_ID,
+    area: str = "Ward F/South, Hindmata",
+) -> dict[str, Any]:
+    """One alert as the products writer shapes it.
+
+    ``run_id`` and ``area`` are keyword-only with the values every existing caller relied on, so
+    the cross-cycle tests can seed a second cycle without moving what the others measure. The
+    fixture carries no ``hotspot_id``, so its identity falls back to ``area`` exactly as a street
+    alert's does (`varuna_products.alerts.alert_identity`).
+    """
     return {
         "id": alert_id,
-        "run_id": RUN_ID,
+        "run_id": run_id,
         "scope": "hotspot",
         "level": level,
         "threshold_cm": 45,
         "headline": "Hindmata junction: depth above 45 cm from 09:15 to 11:15",
-        "area_desc": "Ward F/South, Hindmata",
+        "area_desc": area,
         "trigger_p": 1.0,
         "state": "raised",
         "raised_ts": T0.isoformat(),
@@ -138,6 +163,49 @@ def _seed_run(data: Path) -> Path:
     return run
 
 
+def _seed_next_cycle(data: Path) -> Path:
+    """The cycle after ``RUN_ID``: the same two situations, plus one place never acted on.
+
+    Nothing here shares an id with ``_seed_run``'s queue, which is the point - a state that
+    survives into this run survived on identity and not on a string match.
+    """
+    run = data / "runs" / NEXT_RUN_ID
+    (run / "depth").mkdir(parents=True)
+    # `GET /v1/alerts` resolves a named run through `depth/bounds.json` (depth.py `_resolve`), so
+    # a cycle without one is a 404 there however complete its alert product is.
+    (run / "depth" / "bounds.json").write_text("{}", encoding="utf-8")
+    (run / "run.json").write_text(
+        json.dumps(
+            {
+                "run_id": NEXT_RUN_ID,
+                "city": "mumbai",
+                "cycle_ts": "2019-07-02T09:10:00+05:30",
+                "notes": ["Reconstructed replay"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    (run / "alerts.json").write_text(
+        json.dumps(
+            {
+                "alerts": [
+                    _alert(NEXT_HINDMATA_ID, run_id=NEXT_RUN_ID),
+                    _alert(NEXT_HINDMATA_MODERATE_ID, "moderate", run_id=NEXT_RUN_ID),
+                    _alert(NEXT_KINGS_CIRCLE_ID, run_id=NEXT_RUN_ID, area=KINGS_CIRCLE),
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    return run
+
+
+def _states(client: TestClient, run_id: str) -> dict[str, str]:
+    """The state of every alert in one run's queue, as the desk reads it."""
+    body = client.get("/v1/ops/alerts", params={"city": "mumbai", "run_id": run_id}).json()
+    return {a["id"]: a.get("state", "raised") for a in body["alerts"]}
+
+
 def _seed_fleet(city: Path) -> None:
     """Two synthetic pumps within lorry range of the seeded candidates."""
     pumps = [
@@ -183,6 +251,20 @@ def desk(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
     _seed_fleet(city / "mumbai")
     yield tmp_path
     ops.reset_rate_limit()
+
+
+@pytest.fixture
+def two_cycles(desk: Path) -> Path:
+    """``desk`` plus the cycle after it, for the tests about carrying state between cycles.
+
+    Kept out of ``desk`` on purpose. ``_run_path`` resolves "latest" among the runs that carry
+    the file it needs, so seeding a second ``alerts.json`` for every test would silently move
+    every un-pinned alert call onto the later run - and the tests that post an ack without a
+    ``run_id`` would start asking a cycle that never raised their alert. The tests below pin
+    ``run_id`` on every call for the same reason.
+    """
+    _seed_next_cycle(desk / "data")
+    return desk
 
 
 def _log_lines(data_root: Path, city: str = "mumbai") -> list[str]:
@@ -416,6 +498,207 @@ def test_acknowledging_an_alert_the_run_never_raised_is_a_404(
     assert res.status_code == 404, res.text
     assert res.json()["error"]["code"] == "alert_not_found"
     assert not _log_lines(desk), "nothing is recorded against an alert that does not exist"
+
+
+# ---- alerts across cycles ------------------------------------------------------------------
+# An alert id embeds the run that raised it, so the next cycle renames every alert it is still
+# raising. Matching the ops log on the id alone lost an officer's acknowledgement five simulated
+# minutes after it was made - ten seconds of wall clock at the demo's 30x. The state is carried on
+# the alert's identity instead: scope, place and level, the same three fields
+# `apps/command/lib/alert-identity.ts` already uses to decide what is new on screen.
+def test_an_acknowledgement_carries_to_the_next_cycle_by_identity(
+    two_cycles: Path, client: TestClient, app: FastAPI
+) -> None:
+    acked = client.post(
+        f"/v1/alerts/{ALERT_ID}/ack",
+        params={"run_id": RUN_ID},
+        json={"user": "control room", "note": "Traffic police informed", "city": "mumbai"},
+        headers=AUTH,
+    )
+    assert acked.status_code == 200, acked.text
+
+    # A second client is a reload; the later run is a new cycle. Neither shares an id with the ack.
+    with TestClient(app) as reloaded:
+        states = _states(reloaded, NEXT_RUN_ID)
+        carried = reloaded.get(
+            "/v1/ops/alerts", params={"city": "mumbai", "run_id": NEXT_RUN_ID}
+        ).json()["alerts"]
+
+    assert states[NEXT_HINDMATA_ID] == "acknowledged", "the same situation, under a new id"
+    assert states[NEXT_KINGS_CIRCLE_ID] == "raised", "a place nobody acknowledged"
+    who = next(a for a in carried if a["id"] == NEXT_HINDMATA_ID)
+    assert who["acknowledged_by"] == "control room"
+    assert who["acknowledged_ts"], "the carried state keeps when it was made, not this cycle's time"
+
+
+def test_a_step_up_in_level_is_a_new_situation_and_is_not_acknowledged(
+    two_cycles: Path, client: TestClient
+) -> None:
+    """Acknowledging the moderate warning must not silence the severe one behind it."""
+    client.post(
+        "/v1/alerts/VARUNA-MUM-TEST-SION-MODERATE/ack",
+        params={"run_id": RUN_ID},
+        json={"user": "ward officer", "city": "mumbai"},
+        headers=AUTH,
+    )
+
+    states = _states(client, NEXT_RUN_ID)
+
+    assert states[NEXT_HINDMATA_MODERATE_ID] == "acknowledged", "same place, same level"
+    assert states[NEXT_HINDMATA_ID] == "raised", "the same place one level worse is unseen"
+
+
+def test_an_escalation_carries_across_cycles_and_keeps_the_acknowledgement(
+    two_cycles: Path, client: TestClient
+) -> None:
+    client.post(
+        f"/v1/alerts/{ALERT_ID}/ack",
+        params={"run_id": RUN_ID},
+        json={"user": "ward officer", "city": "mumbai"},
+        headers=AUTH,
+    )
+    client.post(
+        f"/v1/alerts/{ALERT_ID}/escalate",
+        params={"run_id": RUN_ID},
+        json={"user": "ward officer", "escalate_to": "police_traffic", "city": "mumbai"},
+        headers=AUTH,
+    )
+
+    body = client.get("/v1/ops/alerts", params={"city": "mumbai", "run_id": NEXT_RUN_ID}).json()
+    carried = next(a for a in body["alerts"] if a["id"] == NEXT_HINDMATA_ID)
+
+    assert carried["state"] == "escalated"
+    assert carried["escalated_to"] == "police_traffic"
+    assert carried["acknowledged_by"] == "ward officer", "the earlier acknowledgement is not lost"
+    assert [h["state"] for h in carried["history"]] == ["acknowledged", "escalated"]
+
+
+def test_an_action_is_recorded_once_even_though_its_id_and_identity_both_match(
+    two_cycles: Path, client: TestClient
+) -> None:
+    """The alert acted on matches the entry twice over. Its history must still read once."""
+    client.post(
+        f"/v1/alerts/{ALERT_ID}/ack",
+        params={"run_id": RUN_ID},
+        json={"user": "control room", "city": "mumbai"},
+        headers=AUTH,
+    )
+
+    body = client.get("/v1/ops/alerts", params={"city": "mumbai", "run_id": RUN_ID}).json()
+    acted_on = next(a for a in body["alerts"] if a["id"] == ALERT_ID)
+
+    assert len(acted_on["history"]) == 1, acted_on["history"]
+
+
+def test_a_log_entry_written_before_identities_still_matches_its_own_alert(
+    two_cycles: Path, client: TestClient
+) -> None:
+    """An ops log is append-only and outlives this change; its old lines carry no identity.
+
+    Such a line must still acknowledge the alert it names - and must not reach the next cycle,
+    because nothing in it says which situation it was about.
+    """
+    from varuna_route import ops_overlay as ops_store
+
+    ops_store.append(
+        "mumbai",
+        {"kind": "alert_ack", "alert_id": ALERT_ID, "run_id": RUN_ID, "user": "an older build"},
+    )
+
+    assert _states(client, RUN_ID)[ALERT_ID] == "acknowledged", "matched by id, as it always was"
+    assert _states(client, NEXT_RUN_ID)[NEXT_HINDMATA_ID] == "raised", "no identity to carry on"
+
+
+def test_an_untouched_queue_is_returned_unchanged(two_cycles: Path, client: TestClient) -> None:
+    """With nothing in the log, the overlay must cost the queue nothing at all."""
+    body = client.get("/v1/ops/alerts", params={"city": "mumbai", "run_id": NEXT_RUN_ID}).json()
+
+    assert [a["state"] for a in body["alerts"]] == ["raised", "raised", "raised"]
+    assert not any("history" in a for a in body["alerts"])
+
+
+# ---- the public queue and the desk queue agree ---------------------------------------------
+# `GET /v1/alerts` is the queue the console, the hotspot rail and the citizen surfaces read, and
+# until now it served the product untouched while `GET /v1/ops/alerts` served it with the desk's
+# state folded in. Two endpoints describing one alert differently is the defect; these pin that
+# they cannot. They live here rather than beside the depth router's tests because what is being
+# measured is the ops overlay reaching a second reader, not depth serving a file.
+def _public_states(client: TestClient, run_id: str) -> dict[str, str]:
+    body = client.get("/v1/alerts", params={"run_id": run_id}).json()
+    return {a["id"]: a.get("state", "raised") for a in body["alerts"]}
+
+
+def test_the_public_alert_queue_reflects_an_acknowledgement(
+    two_cycles: Path, client: TestClient, app: FastAPI
+) -> None:
+    """D-07's own acceptance: "`/v1/alerts` reflects an acknowledgement after a reload"."""
+    client.post(
+        f"/v1/alerts/{ALERT_ID}/ack",
+        params={"run_id": RUN_ID},
+        json={"user": "control room", "city": "mumbai"},
+        headers=AUTH,
+    )
+
+    with TestClient(app) as reloaded:
+        states = _public_states(reloaded, RUN_ID)
+        body = reloaded.get("/v1/alerts", params={"run_id": RUN_ID}).json()
+
+    assert states[ALERT_ID] == "acknowledged"
+    assert states["VARUNA-MUM-TEST-SION-MODERATE"] == "raised", "only the one acted on"
+    acted = next(a for a in body["alerts"] if a["id"] == ALERT_ID)
+    assert acted["acknowledged_by"] == "control room"
+    assert [h["state"] for h in acted["history"]] == ["acknowledged"]
+
+
+def test_the_public_queue_carries_the_state_into_the_next_cycle(
+    two_cycles: Path, client: TestClient
+) -> None:
+    """The identity carry has to be visible where people actually read alerts."""
+    client.post(
+        f"/v1/alerts/{ALERT_ID}/ack",
+        params={"run_id": RUN_ID},
+        json={"user": "ward officer", "city": "mumbai"},
+        headers=AUTH,
+    )
+
+    states = _public_states(client, NEXT_RUN_ID)
+
+    assert states[NEXT_HINDMATA_ID] == "acknowledged"
+    assert states[NEXT_KINGS_CIRCLE_ID] == "raised"
+
+
+def test_the_public_and_desk_queues_never_disagree(two_cycles: Path, client: TestClient) -> None:
+    """The invariant. Checked on both cycles, before the log exists and after it does."""
+    for run in (RUN_ID, NEXT_RUN_ID):
+        assert _public_states(client, run) == _states(client, run), f"{run} before any action"
+
+    client.post(
+        f"/v1/alerts/{ALERT_ID}/ack",
+        params={"run_id": RUN_ID},
+        json={"user": "control room", "city": "mumbai"},
+        headers=AUTH,
+    )
+    client.post(
+        f"/v1/alerts/{ALERT_ID}/escalate",
+        params={"run_id": RUN_ID},
+        json={"user": "control room", "escalate_to": "police_traffic", "city": "mumbai"},
+        headers=AUTH,
+    )
+
+    for run in (RUN_ID, NEXT_RUN_ID):
+        assert _public_states(client, run) == _states(client, run), f"{run} after two actions"
+
+
+def test_an_untouched_public_queue_is_the_product_untouched(
+    two_cycles: Path, client: TestClient
+) -> None:
+    """With no ops log, the overlay must not add a key or move a value on the public queue."""
+    served = client.get("/v1/alerts", params={"run_id": NEXT_RUN_ID}).json()["alerts"]
+    on_disk = json.loads(
+        (two_cycles / "data" / "runs" / NEXT_RUN_ID / "alerts.json").read_text(encoding="utf-8")
+    )["alerts"]
+
+    assert served == on_disk
 
 
 # ---- pumps -------------------------------------------------------------------------------
