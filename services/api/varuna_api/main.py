@@ -34,6 +34,7 @@ from varuna_api.routers import (
     live,
     nowcast,
     onboard,
+    ops,
     replay,
     reports,
     route,
@@ -71,6 +72,10 @@ TAGS = [
     {"name": "verification", "description": "Verification scores per event."},
     {"name": "city", "description": "Static city layers simplified for the map."},
     {"name": "weather", "description": "Live conditions proxied from Open-Meteo (CC BY 4.0)."},
+    {
+        "name": "ops",
+        "description": "Authority edits: closures, pump status and the append-only log.",
+    },
 ]
 
 
@@ -250,6 +255,8 @@ def create_app(
     app.include_router(verify.router)
     app.include_router(weather.router)
     app.include_router(nowcast.router)
+    # Before the stubs: ops serves the alert and pump actions that were 501 there (task D-07).
+    app.include_router(ops.router)
     app.include_router(stubs.router)
     return app
 

@@ -15,16 +15,14 @@ from fastapi import APIRouter, Query, Response
 from pydantic import Field
 from varuna_schemas.constants import VehicleProfile
 from varuna_schemas.models import (
-    Alert,
     ErrorEnvelope,
     FeatureCollection,
     PhysicsCheckRequest,
     PhysicsCheckResponse,
-    PumpAssignment,
-    PumpPlan,
     SegmentSeries,
     VarunaModel,
 )
+from varuna_schemas.models.alert import EscalationTarget
 from varuna_schemas.models.common import BBox, Timestamp
 
 from varuna_api.state import api_error, not_implemented
@@ -41,26 +39,47 @@ ProfileQ = Annotated[VehicleProfile, Query(description="Vehicle profile for safe
 
 # ---- request/response models that only the API needs -----------------------------------
 class AlertActionRequest(VarunaModel):
-    """Body of ``POST /v1/alerts/{id}/ack`` and ``/escalate``."""
+    """Body of ``POST /v1/alerts/{id}/ack`` and ``/escalate`` (served by ``varuna_api.routers.ops``)."""
 
     user: str = Field(description="Operator name or id shown in the alert log.")
     note: str | None = Field(default=None, max_length=500)
+    city: str | None = Field(
+        default=None, description="Whose ops log records it; default VARUNA_CITY."
+    )
+    escalate_to: EscalationTarget = Field(
+        default="control_room",
+        description="Step of the escalation matrix (blueprint 6.10). Ignored by /ack.",
+    )
 
 
 class PumpOptimiseRequest(VarunaModel):
-    """Body of ``POST /v1/pumps/optimise``."""
+    """Body of ``POST /v1/pumps/optimise`` (served by ``varuna_api.routers.ops``)."""
 
     run_id: str | None = None
+    city: str | None = Field(
+        default=None, description="Which built city's fleet; default VARUNA_CITY."
+    )
     hotspot_ids: list[str] = Field(default_factory=list, description="Empty = every hotspot.")
     solver: Literal["greedy", "milp"] = "greedy"
 
 
 class PumpDispatchRequest(VarunaModel):
-    """Body of ``POST /v1/pumps/dispatch``: dispatch a plan or explicit assignments."""
+    """Body of ``POST /v1/pumps/dispatch``: dispatch the current plan, or named pumps of it.
 
-    plan_id: str | None = None
-    assignments: list[PumpAssignment] = Field(default_factory=list)
+    The draft took a ``plan_id`` and a list of assignments. Neither survived contact with the
+    served endpoint (task D-07): no plan is stored under an addressable id, so a ``plan_id``
+    could only ever be a string nothing could look up, and accepting assignments from the client
+    would let a caller dispatch benefit figures the optimiser never produced. The desk names the
+    pumps; the API re-solves and dispatches what *it* assigned.
+    """
+
+    run_id: str | None = None
+    city: str | None = None
+    pump_ids: list[str] = Field(
+        default_factory=list, description="Empty = every assignment in the current plan."
+    )
     user: str = Field(default="control room")
+    note: str | None = Field(default=None, max_length=500)
 
 
 class OnboardRequest(VarunaModel):
@@ -155,36 +174,12 @@ def nowcast_segment_series(segment_id: str, run_id: RunIdQ = None) -> SegmentSer
 # `varuna_api.routers.route` serves all three (tasks P8.2, P8.3, P8.4).
 
 
-# ---- alerts (Phase 8) ---------------------------------------------------------------------
-@router.post("/alerts/{alert_id}/ack", tags=["alerts"], response_model=Alert, summary="Acknowledge")
-def alert_ack(alert_id: str, body: AlertActionRequest) -> Alert:
-    raise not_implemented("Alert acknowledgement", 8, "P8.8")
-
-
-@router.post(
-    "/alerts/{alert_id}/escalate", tags=["alerts"], response_model=Alert, summary="Escalate"
-)
-def alert_escalate(alert_id: str, body: AlertActionRequest) -> Alert:
-    raise not_implemented("Alert escalation", 8, "P8.8")
-
-
-# ---- pumps (Phase 8) ----------------------------------------------------------------------
-@router.post(
-    "/pumps/optimise", tags=["pumps"], response_model=PumpPlan, summary="Optimise assignments"
-)
-def pumps_optimise(body: PumpOptimiseRequest | None = None) -> PumpPlan:
-    raise not_implemented("Pump dispatch optimisation", 8, "P8.9")
-
-
-@router.post(
-    "/pumps/dispatch",
-    tags=["pumps"],
-    response_model=PumpPlan,
-    status_code=202,
-    summary="Dispatch pumps (creates the order, alert and phone-mock message)",
-)
-def pumps_dispatch(body: PumpDispatchRequest) -> PumpPlan:
-    raise not_implemented("Pump dispatch", 8, "P8.10")
+# Alert acknowledgement and escalation, pump optimisation and pump dispatch are no longer stubs:
+# `varuna_api.routers.ops` serves all four behind the authority gate (task D-07), and the three
+# request models above stay here as the documented shapes of that contract - the same
+# arrangement `OnboardRequest` has. They answer their own flatter shapes rather than `Alert` and
+# `PumpPlan`: the stored alert carries fields those drafted models forbid, and the plan the
+# board renders is the product's, not the draft's (ADR-0027 for the same decision on /v1/route).
 
 
 # ---- what-if (Phase 7) --------------------------------------------------------------------
