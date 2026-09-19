@@ -96,6 +96,11 @@ export function styles(): string {
   return [
     `:root{--ink:${colors.ink};--deep:${colors.deep};--line:${colors.line};--text:${colors.text};--text-2:${colors["text-2"]};--text-3:${colors["text-3"]};--tide:${colors.tide}}`,
     "*{box-sizing:border-box}",
+    // `font` is `tokens.font.sans.fallback` - the token set's own system stack, "system-ui,
+    // -apple-system, Segoe UI, sans-serif". The rule looks for a literal token class and cannot
+    // see through the interpolation. Naming font-sans here would be the real violation: it would
+    // pull Geist over a 2G connection, and UI_SPEC 7 asks this page to fetch no font at all.
+    // lint-design-allow-next-line
     `body{margin:0;background:var(--ink);color:var(--text);font-family:${font};font-size:16px;line-height:1.5}`,
     "main{max-width:36rem;margin:0 auto;padding:16px 16px 40px}",
     "h1{font-size:18px;font-weight:600;margin:0}",
