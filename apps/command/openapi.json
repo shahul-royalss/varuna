@@ -893,6 +893,25 @@
         "title": "FeatureCollection",
         "type": "object"
       },
+      "GeoPoint": {
+        "description": "A WGS84 point.",
+        "properties": {
+          "lat": {
+            "title": "Lat",
+            "type": "number"
+          },
+          "lon": {
+            "title": "Lon",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lon",
+          "lat"
+        ],
+        "title": "GeoPoint",
+        "type": "object"
+      },
       "GridSpec": {
         "additionalProperties": false,
         "description": "The computational grid of the 2D solver (CLAUDE.md 3.3).",
@@ -3540,6 +3559,238 @@
         "title": "ValidationError",
         "type": "object"
       },
+      "Weather": {
+        "description": "Current conditions and the next four hours, with its provenance and its age.",
+        "properties": {
+          "age_s": {
+            "description": "Seconds since `fetched_at`, computed per request.",
+            "title": "Age S",
+            "type": "number"
+          },
+          "attribution": {
+            "default": "Weather data by Open-Meteo.com (CC BY 4.0)",
+            "title": "Attribution",
+            "type": "string"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/WeatherNow"
+          },
+          "elevation_m": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elevation M"
+          },
+          "fetched_at": {
+            "description": "When this copy was retrieved from Open-Meteo.",
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "grid_offset_km": {
+            "description": "Distance between the two, kilometres.",
+            "title": "Grid Offset Km",
+            "type": "number"
+          },
+          "grid_point": {
+            "$ref": "#/components/schemas/GeoPoint",
+            "description": "The centre of the model cell that answered."
+          },
+          "hourly": {
+            "items": {
+              "$ref": "#/components/schemas/WeatherStep"
+            },
+            "title": "Hourly",
+            "type": "array"
+          },
+          "licence": {
+            "default": "CC BY 4.0",
+            "title": "Licence",
+            "type": "string"
+          },
+          "licence_url": {
+            "default": "https://creativecommons.org/licenses/by/4.0/",
+            "title": "Licence Url",
+            "type": "string"
+          },
+          "notes": {
+            "description": "Why this copy is what it is; printed by the UI.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "point": {
+            "$ref": "#/components/schemas/GeoPoint",
+            "description": "The city AOI centre this was asked for."
+          },
+          "source": {
+            "default": "open-meteo",
+            "title": "Source",
+            "type": "string"
+          },
+          "source_url": {
+            "default": "https://open-meteo.com/",
+            "title": "Source Url",
+            "type": "string"
+          },
+          "stale": {
+            "description": "True once `age_s` exceeds the 900 s cache window.",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "ttl_s": {
+            "default": 900.0,
+            "title": "Ttl S",
+            "type": "number"
+          }
+        },
+        "required": [
+          "city",
+          "point",
+          "grid_point",
+          "grid_offset_km",
+          "current",
+          "hourly",
+          "fetched_at",
+          "age_s",
+          "stale"
+        ],
+        "title": "Weather",
+        "type": "object"
+      },
+      "WeatherNow": {
+        "description": "Open-Meteo's `current` block, renamed to VARUNA's vocabulary and units.",
+        "properties": {
+          "humidity_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humidity Pct"
+          },
+          "precipitation_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Rain in the source's last interval (15 minutes), millimetres.",
+            "title": "Precipitation Mm"
+          },
+          "temperature_c": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperature C"
+          },
+          "ts": {
+            "description": "Observation time, ISO 8601 with the city's offset.",
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          },
+          "weather": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The WMO table's label for the code.",
+            "title": "Weather"
+          },
+          "weather_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "WMO 4677 present-weather code.",
+            "title": "Weather Code"
+          },
+          "wind_kmh": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wind Kmh"
+          }
+        },
+        "required": [
+          "ts"
+        ],
+        "title": "WeatherNow",
+        "type": "object"
+      },
+      "WeatherStep": {
+        "description": "One hourly step of the short forecast.",
+        "properties": {
+          "precipitation_mm": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precipitation Mm"
+          },
+          "precipitation_probability_pct": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Precipitation Probability Pct"
+          },
+          "ts": {
+            "format": "date-time",
+            "title": "Ts",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ts"
+        ],
+        "title": "WeatherStep",
+        "type": "object"
+      },
       "WhatIfRequest": {
         "additionalProperties": false,
         "description": "Body of ``POST /v1/whatif``.",
@@ -4299,7 +4550,7 @@
     },
     "/v1/nowcast/hotspots": {
       "get": {
-        "description": "The run's ranked chronic spots, deepest first (CLAUDE.md 11.8, P5.4).\n\nRead straight off the run directory: ``hotspots.json`` was computed once when the cycle ran,\nand re-deriving it per request would let the rail and the map disagree about the same run.\n\nEvery entry carries the register's ``source_url``, so the claim \"this junction floods\" stays\ntraceable to the report it was verified against (rule 7). ``ranking`` says out loud which\nscore ordered the list, because on a deterministic run it is **not** the spec's\n``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash\nbrings a real ensemble in Phase 7.",
+        "description": "The run's ranked chronic spots, deepest first (CLAUDE.md 11.8, P5.4).\n\nRead straight off the run directory: ``hotspots.json`` was computed once when the cycle ran,\nand re-deriving it per request would let the rail and the map disagree about the same run.\n\nEvery entry carries the register's ``source_url``, so the claim \"this junction floods\" stays\ntraceable to the report it was verified against (rule 7). ``ranking`` says out loud which\nscore ordered the list, because on a deterministic run it is **not** the spec's\n``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash\nbrings a real ensemble in Phase 7.\n\n``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for, and the\nlist is empty on every run baked so far with the label carrying the reason (ADR-0042). The\nfield is present rather than absent so the drawer reads a refusal it can print instead of a\nmissing key it has to guess at.",
         "operationId": "hotspots_v1_nowcast_hotspots_get",
         "parameters": [
           {
@@ -6231,7 +6482,7 @@
     },
     "/v1/route": {
       "post": {
-        "description": "Plan one trip.\n\nBody: ``{origin, destination, depart_at?, profile?, risk_tolerance?, run_id?}``.\n\nReturns both routes, because the comparison is the product: a dispatcher who only sees the\nsafe route has no way to judge whether the detour was worth it.",
+        "description": "Plan one trip.\n\nBody: ``{origin, destination, depart_at?, profile?, risk_tolerance?, run_id?, spread?,\ntrip_id?, explain?}``.\n\nReturns both routes, because the comparison is the product: a dispatcher who only sees the\nsafe route has no way to judge whether the detour was worth it.\n\n``spread`` (default true) adds ``corridors[]`` - up to three safe roads with the share of\ntraffic the policy gives each, and the one this request is assigned to. ``trip_id`` makes\nthat assignment stable for a trip, so a reader who reloads is not sent somewhere else; it is\nthe client's own random id and nothing is stored against it. ``explain`` (default true) adds\n``reasons[]``, which is structured data - the frontend writes the sentences (TECH_SPEC 3.2).",
         "operationId": "route_v1_route_post",
         "requestBody": {
           "content": {
@@ -6503,9 +6754,55 @@
         ]
       }
     },
+    "/v1/weather": {
+      "get": {
+        "description": "Live weather for the city's AOI centre, cached for fifteen minutes.\n\nDegrades rather than fails: an upstream error, a timeout or `VARUNA_OFFLINE=1` serves the last\ngood copy with its true age and `stale: true`. Only when no copy has ever been fetched does\nthis answer 503, with the reason named.",
+        "operationId": "weather_v1_weather_get",
+        "parameters": [
+          {
+            "description": "City slug, e.g. mumbai or chennai.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "default": "mumbai",
+              "description": "City slug, e.g. mumbai or chennai.",
+              "title": "City",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Weather"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Current conditions and the next four hours from Open-Meteo",
+        "tags": [
+          "weather"
+        ]
+      }
+    },
     "/v1/whatif": {
       "post": {
-        "description": "Scale the rain, clean pipes or run pumps, and report what changes.\n\nBody: ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}``.\n\nA tide offset is refused: the emulator is a perturbation around a base state measured at one\ntide series, so it has no representation of a different sea level, and returning a number\nanyway would be inventing one.",
+        "description": "Scale the rain, clean pipes or run pumps, and report what changes.\n\nBody: ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}``.\n\nA tide offset is refused: the emulator is a perturbation around a base state measured at one\ntide series, so it has no representation of a different sea level, and returning a number\nanyway would be inventing one.\n\n``cleaned_segments`` are road-segment ids. Ids this city has no segment for are reported in\n``cleaned_unmatched`` and never counted as cleaned; a request where *none* of them match is\nrefused with 422 ``unknown_segments`` rather than answered for a scenario nobody asked for.",
         "operationId": "whatif_v1_whatif_post",
         "requestBody": {
           "content": {
@@ -6657,6 +6954,10 @@
     {
       "description": "Static city layers simplified for the map.",
       "name": "city"
+    },
+    {
+      "description": "Live conditions proxied from Open-Meteo (CC BY 4.0).",
+      "name": "weather"
     }
   ]
 }
