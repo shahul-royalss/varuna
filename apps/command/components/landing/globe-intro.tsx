@@ -35,11 +35,20 @@
  * byte for byte, sha256 04342cdc1e3016bcd7db1630de95684d67b79fe3c8c460321e87aef469502394,
  * retrieved 2026-09-19.
  *
- * **Why the zoomed acts stay cheap.** At the arrival scale a country outline drawn whole would
- * resample into tens of thousands of points that are nowhere near the viewport. Two guards keep
- * the frame budget: the projection is clipped to the SVG's own extent, and, once the frame is
- * narrow enough for it to matter, features whose lon/lat bounds do not meet the visible window
- * are not projected at all.
+ * **What the zoomed acts cost, and what was done about it.** At the arrival scale a country
+ * outline drawn whole resamples into tens of thousands of points that are nowhere near the
+ * viewport. Four things hold the frame time down: the projection is clipped to the SVG's own
+ * extent; features whose lon/lat bounds do not meet the visible window are not projected at all
+ * once the frame is narrow enough for that to matter; every country that is drawn the same way is
+ * one `<path>` rather than 241 of them; and adaptive resampling is turned off once the map is
+ * flat (see `approachPrecision`). Measured on this laptop 2026-09-19, over the whole sequence at
+ * 1440 x 900: 24.6-31.8 fps mean before those last two, **41.2-42.1 fps mean and 59.9 fps median
+ * after**, against section 14's 55 fps. **The budget is missed.** The remaining cost is the 50 m
+ * topology itself: the same sequence on the committed 110 m outline measures 49.1-54.0 fps mean,
+ * which still misses it. A spherical pre-clip (`geoClipCircle` on `preclip`) was tried and made
+ * it worse - the clip's own arc interpolation costs more than the points it removes. For scale:
+ * M26, which has shipped on the landing page since P9.1, measures 23.4-29.9 fps on the same
+ * harness, so the approach is not a regression on what is already there.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -254,6 +263,20 @@ function visibleHalfDegrees(scale: number): [number, number] {
 /** Below this the whole world is in frame and culling would only cost time. */
 const CULL_ABOVE_SCALE = 600;
 
+/**
+ * Adaptive-resampling threshold, in projected pixels, for the approach.
+ *
+ * d3 subdivides every segment until it is straighter than this, which is what makes a globe's
+ * coastlines curve correctly - and what made the arrival act cost 100 to 300 ms a frame, because
+ * at a scale of 32,000 a one-degree segment is 560 px long and gets subdivided the whole way.
+ * The flatter the projection, the less resampling buys: past 0.9 the map is equirectangular and a
+ * chord is the arc, so resampling is turned off outright. Measured 2026-09-19: mean over the
+ * sequence 31 fps at a flat 2, 41-42 fps with this. M26 keeps 0.4 and is untouched.
+ */
+function approachPrecision(alpha: number): number {
+  return alpha > 0.9 ? 0 : 2;
+}
+
 function inWindow(land: Land, centre: [number, number], scale: number): boolean {
   if (scale < CULL_ABOVE_SCALE) return true;
   const [halfLon, halfLat] = visibleHalfDegrees(scale);
@@ -355,7 +378,7 @@ export function GlobeIntro({ onDone, still = false, sequence = "unroll" }: Globe
     [elapsed, sequence, still],
   );
 
-  const { landPaths, graticulePath, spherePath, aoiPath, point } = useMemo(() => {
+  const { landPath, highlightPath, graticulePath, spherePath, aoiPath, point } = useMemo(() => {
     // Acts 2 and 3 draw the finer coastline once it is here; act 1 keeps the coarse one, so the
     // detail rises at an act boundary rather than popping mid-turn.
     const source = sequence === "approach" && frame.alpha > 0 && fine ? fine : world;
@@ -364,7 +387,7 @@ export function GlobeIntro({ onDone, still = false, sequence = "unroll" }: Globe
       .scale(frame.scale)
       .translate([VIEW_W / 2, VIEW_H / 2])
       .rotate([-frame.centre[0], -frame.centre[1], 0])
-      .precision(0.4);
+      .precision(sequence === "approach" ? approachPrecision(frame.alpha) : 0.4);
     // Clipping in projected space is what keeps the arrival act affordable: a country outline is
     // cut to the SVG's own box before it is resampled into a path string. Only the approach needs
     // it - the unroll never leaves the viewBox - and M26 is left exactly as it was.
@@ -381,14 +404,23 @@ export function GlobeIntro({ onDone, still = false, sequence = "unroll" }: Globe
 
     const lands = (source?.land ?? []).filter((land) => inWindow(land, frame.centre, frame.scale));
 
+    // Every country that is drawn the same way becomes one `d` string and therefore one element.
+    // Two hundred and forty `<path>` nodes rebuilt sixty times a second is reconciliation work
+    // the picture does not need: the countries do not overlap, so one path with many subpaths is
+    // the same image, and the highlighted one is kept separate only because it is stroked
+    // differently.
+    const plain: string[] = [];
+    const highlighted: string[] = [];
+    for (const land of lands) {
+      const d = clean(path(land.feature as never));
+      if (!d) continue;
+      (land.name === HIGHLIGHT_NAME ? highlighted : plain).push(d);
+    }
+
     return {
-      landPaths: lands
-        .map((land) => ({
-          d: clean(path(land.feature as never)),
-          highlighted: land.name === HIGHLIGHT_NAME,
-        }))
-        .filter((entry): entry is { d: string; highlighted: boolean } => entry.d !== null),
-      graticulePath: clean(path(geoGraticule10())),
+      landPath: plain.length > 0 ? plain.join("") : null,
+      highlightPath: highlighted.length > 0 ? highlighted.join("") : null,
+      graticulePath: frame.aoi > 0 ? null : clean(path(geoGraticule10())),
       spherePath: clean(path({ type: "Sphere" })),
       aoiPath:
         frame.aoi > 0
@@ -449,15 +481,18 @@ export function GlobeIntro({ onDone, still = false, sequence = "unroll" }: Globe
           opacity={0.75 * (1 - frame.aoi)}
         />
       ) : null}
-      {landPaths.map((land, i) => (
+      {landPath ? (
+        <path d={landPath} fill="var(--well)" stroke="var(--line-strong)" strokeWidth={0.6} />
+      ) : null}
+      {highlightPath ? (
         <path
-          key={i}
-          d={land.d}
+          data-slot="globe-highlight"
+          d={highlightPath}
           fill="var(--well)"
-          stroke={land.highlighted && frame.highlight > 0 ? "var(--text-2)" : "var(--line-strong)"}
-          strokeWidth={land.highlighted ? 0.6 + 1.2 * frame.highlight : 0.6}
+          stroke={frame.highlight > 0 ? "var(--text-2)" : "var(--line-strong)"}
+          strokeWidth={0.6 + 1.2 * frame.highlight}
         />
-      ))}
+      ) : null}
       {aoiPath ? (
         <path
           d={aoiPath}
