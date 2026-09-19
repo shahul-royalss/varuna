@@ -534,3 +534,26 @@ both `http://127.0.0.1:8899/probe.html` and `http://localhost:3000/probe.html`, 
 the dashboard runs on its labelled fallback - VARUNA's own Esri-and-deck renderer, the same one
 the console uses - and says so on screen. Nothing on the dashboard depends on Google being
 reachable (ADR-0059).
+
+## "Does the citizen dashboard actually work on the deployed site?"
+
+Verified in a browser at `https://varuna-dhrishta.vercel.app/dashboard` on 2026-09-19, against
+the Railway API redeployed the same day:
+
+- The map draws **VARUNA's own Esri-and-deck basemap** with the run's wet streets over it, under
+  the notice "Google refused this key for this address; showing VARUNA's own map." Google's
+  console error confirms why: `RefererNotAllowedMapError` for
+  `https://varuna-dhrishta.vercel.app/dashboard`. **The deployed domain is not in the key's
+  referrer list either** - measured, not assumed - so `TASKS.md` D-25 is what stands between this
+  build and a Google basemap, and nothing else.
+- The header carries the run stamp (`run MUM-20190702T0…flash0.1-baked`), the three honesty chips
+  and a live **29 °C** from `/v1/weather`.
+- "The worst streets in the city right now" lists real segments with their depths and times:
+  84 cm impassable now, 73 cm passable until 10:55, 65 cm until 10:40, 43 cm until 11:30.
+- The rail loads the city's 368 facilities into its From and To pickers.
+
+Timing, measured from the deployed page: `/v1/runs` 1,643 ms warm, the run's wet segments
+791 KB in 856 ms, `/v1/weather` 1,806 ms on a first call and about 1.3 s after. A **cold**
+Railway container adds roughly twenty seconds before the first of those answers, which is the
+free tier waking up rather than the app; the demo laptop serves the same data locally in
+milliseconds. Say that out loud if the deployed site is used on stage, or warm it first.
