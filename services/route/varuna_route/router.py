@@ -201,7 +201,6 @@ def _search(
     p_by_segment = depths.p_gt.get(float(vehicle.depth_cm))
     threshold = vehicle.depth_cm
     tolerance = vehicle.risk_tolerance
-    last_step = depths.n_steps - 1
     depart_offset_s = depths.depart_offset_s(depart)
 
     while heap:
