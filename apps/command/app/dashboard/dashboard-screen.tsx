@@ -56,13 +56,15 @@ const NEARBY_LIMIT = 8;
 export const UNNAMED_ROAD = "Unnamed road";
 
 /**
- * The tolerance a citizen route is planned at.
+ * The tolerance a citizen route is planned at: **the profile's own, chosen by the API**.
  *
- * `services/products` defaults every non-rescue profile to 0.5: a street is refused once it is
- * more likely than not to be over the vehicle's depth. An ambulance's 0.2 is an operator's choice
- * and is not this screen's to make.
+ * Not a number, on purpose. `JSON.stringify` writes `null` for `NaN`, the API reads no tolerance
+ * and applies the profile's own from `services/route/varuna_route/profiles.py`. This screen used
+ * to send a flat 0.5 for everyone, which copied a server-side constant into the browser and then
+ * disagreed with it: a bus is refused a street at 0.4 and someone on foot at 0.3, so the same
+ * trip answered differently here and on `/rural`, which sends nothing. One trip, one answer.
  */
-const CITIZEN_RISK_TOLERANCE = 0.5;
+const CITIZEN_RISK_TOLERANCE = Number.NaN;
 
 /** UI_SPEC 3's split: a rail beside the map at 1024 px and up, the bottom sheet below it. */
 const RAIL_BREAKPOINT = "(min-width: 1024px)";
