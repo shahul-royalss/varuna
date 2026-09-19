@@ -6,6 +6,8 @@
  * and reasons, and the one deployed today, which sends neither. Both must render an answer.
  */
 
+import { createRequire } from "node:module";
+
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -368,4 +370,59 @@ describe("against the API deployed today, which sends no corridors and no reason
     );
     expect(screen.queryByText(/Leave before/)).toBeNull();
   });
+});
+
+/**
+ * axe over the rendered card.
+ *
+ * `axe-core` is not a dependency of `apps/command` - it arrives under `@axe-core/playwright`,
+ * which the e2e suite uses - and adding one would touch `package.json` and the lockfile, which
+ * this task does not own. It is resolved from that package's own folder instead.
+ *
+ * Two rule classes are turned off because jsdom cannot answer them, and a rule that cannot run is
+ * worse than an absent one: `color-contrast` and `target-size` both need layout and real CSS,
+ * and `vitest.config.ts` loads no CSS at all. Those two are the browser suite's job (P10.3 runs
+ * axe over thirteen screens; `/dashboard` joins them with D-11). Everything axe can answer here -
+ * accessible names, ARIA validity, duplicate ids, list and heading structure, nested controls -
+ * is answered.
+ *
+ * The count of passing checks is asserted too, so a run that inspected nothing cannot read as a
+ * clean one.
+ */
+describe("axe", () => {
+  const RULES_JSDOM_CANNOT_ANSWER = { "color-contrast": { enabled: false } };
+
+  /** Only the part of axe's surface used here; the package has no types on this resolution path. */
+  interface AxeCore {
+    run(
+      context: Element,
+      options: { rules: Record<string, { enabled: boolean }> },
+    ): Promise<{ violations: { id: string; nodes: unknown[] }[]; passes: unknown[] }>;
+  }
+
+  async function violationsIn(container: HTMLElement) {
+    const here = createRequire(import.meta.url);
+    const axe = createRequire(here.resolve("@axe-core/playwright"))("axe-core") as AxeCore;
+    const results = await axe.run(container, { rules: RULES_JSDOM_CANNOT_ANSWER });
+    expect(results.passes.length).toBeGreaterThan(0);
+    return results.violations.map((v) => `${v.id}: ${v.nodes.length} node(s)`);
+  }
+
+  it("finds nothing on the full card", async () => {
+    const { container } = renderWithProviders(
+      <RouteAnswer
+        plan={plan({ corridors: CORRIDORS, reasons: [AVOIDED, DESIGN, TIMING, CLOSURE] })}
+        profile="car"
+        pumpPlan={EMULATOR_PLAN}
+      />,
+    );
+    expect(await violationsIn(container)).toEqual([]);
+  }, 30_000);
+
+  it("finds nothing on the card an older API produces", async () => {
+    const { container } = renderWithProviders(
+      <RouteAnswer plan={plan()} profile="car" pumpPlan={null} />,
+    );
+    expect(await violationsIn(container)).toEqual([]);
+  }, 30_000);
 });
