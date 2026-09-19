@@ -243,6 +243,11 @@ export interface paths {
          *     score ordered the list, because on a deterministic run it is **not** the spec's
          *     ``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash
          *     brings a real ensemble in Phase 7.
+         *
+         *     ``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for, and the
+         *     list is empty on every run baked so far with the label carrying the reason (ADR-0042). The
+         *     field is present rather than absent so the drawer reads a refusal it can print instead of a
+         *     missing key it has to guess at.
          */
         get: operations["hotspots_v1_nowcast_hotspots_get"];
         put?: never;
@@ -815,10 +820,17 @@ export interface paths {
          * Route around the forecast water, beside what a naive router does
          * @description Plan one trip.
          *
-         *     Body: ``{origin, destination, depart_at?, profile?, risk_tolerance?, run_id?}``.
+         *     Body: ``{origin, destination, depart_at?, profile?, risk_tolerance?, run_id?, spread?,
+         *     trip_id?, explain?}``.
          *
          *     Returns both routes, because the comparison is the product: a dispatcher who only sees the
          *     safe route has no way to judge whether the detour was worth it.
+         *
+         *     ``spread`` (default true) adds ``corridors[]`` - up to three safe roads with the share of
+         *     traffic the policy gives each, and the one this request is assigned to. ``trip_id`` makes
+         *     that assignment stable for a trip, so a reader who reloads is not sent somewhere else; it is
+         *     the client's own random id and nothing is stored against it. ``explain`` (default true) adds
+         *     ``reasons[]``, which is structured data - the frontend writes the sentences (TECH_SPEC 3.2).
          */
         post: operations["route_v1_route_post"];
         delete?: never;
@@ -909,6 +921,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/weather": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Current conditions and the next four hours from Open-Meteo
+         * @description Live weather for the city's AOI centre, cached for fifteen minutes.
+         *
+         *     Degrades rather than fails: an upstream error, a timeout or `VARUNA_OFFLINE=1` serves the last
+         *     good copy with its true age and `stale: true`. Only when no copy has ever been fetched does
+         *     this answer 503, with the reason named.
+         */
+        get: operations["weather_v1_weather_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/whatif": {
         parameters: {
             query?: never;
@@ -927,6 +963,10 @@ export interface paths {
          *     A tide offset is refused: the emulator is a perturbation around a base state measured at one
          *     tide series, so it has no representation of a different sea level, and returning a number
          *     anyway would be inventing one.
+         *
+         *     ``cleaned_segments`` are road-segment ids. Ids this city has no segment for are reported in
+         *     ``cleaned_unmatched`` and never counted as cleaned; a request where *none* of them match is
+         *     refused with 422 ``unknown_segments`` rather than answered for a scenario nobody asked for.
          */
         post: operations["whatif_v1_whatif_post"];
         delete?: never;
@@ -1362,6 +1402,16 @@ export interface components {
              * @constant
              */
             type: "FeatureCollection";
+        };
+        /**
+         * GeoPoint
+         * @description A WGS84 point.
+         */
+        GeoPoint: {
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
         };
         /**
          * GridSpec
@@ -2714,6 +2764,127 @@ export interface components {
             msg: string;
             /** Error Type */
             type: string;
+        };
+        /**
+         * Weather
+         * @description Current conditions and the next four hours, with its provenance and its age.
+         */
+        Weather: {
+            /**
+             * Age S
+             * @description Seconds since `fetched_at`, computed per request.
+             */
+            age_s: number;
+            /**
+             * Attribution
+             * @default Weather data by Open-Meteo.com (CC BY 4.0)
+             */
+            attribution: string;
+            /** City */
+            city: string;
+            current: components["schemas"]["WeatherNow"];
+            /** Elevation M */
+            elevation_m?: number | null;
+            /**
+             * Fetched At
+             * Format: date-time
+             * @description When this copy was retrieved from Open-Meteo.
+             */
+            fetched_at: string;
+            /**
+             * Grid Offset Km
+             * @description Distance between the two, kilometres.
+             */
+            grid_offset_km: number;
+            /** @description The centre of the model cell that answered. */
+            grid_point: components["schemas"]["GeoPoint"];
+            /** Hourly */
+            hourly: components["schemas"]["WeatherStep"][];
+            /**
+             * Licence
+             * @default CC BY 4.0
+             */
+            licence: string;
+            /**
+             * Licence Url
+             * @default https://creativecommons.org/licenses/by/4.0/
+             */
+            licence_url: string;
+            /**
+             * Notes
+             * @description Why this copy is what it is; printed by the UI.
+             */
+            notes?: string[];
+            /** @description The city AOI centre this was asked for. */
+            point: components["schemas"]["GeoPoint"];
+            /**
+             * Source
+             * @default open-meteo
+             */
+            source: string;
+            /**
+             * Source Url
+             * @default https://open-meteo.com/
+             */
+            source_url: string;
+            /**
+             * Stale
+             * @description True once `age_s` exceeds the 900 s cache window.
+             */
+            stale: boolean;
+            /**
+             * Ttl S
+             * @default 900
+             */
+            ttl_s: number;
+        };
+        /**
+         * WeatherNow
+         * @description Open-Meteo's `current` block, renamed to VARUNA's vocabulary and units.
+         */
+        WeatherNow: {
+            /** Humidity Pct */
+            humidity_pct?: number | null;
+            /**
+             * Precipitation Mm
+             * @description Rain in the source's last interval (15 minutes), millimetres.
+             */
+            precipitation_mm?: number | null;
+            /** Temperature C */
+            temperature_c?: number | null;
+            /**
+             * Ts
+             * Format: date-time
+             * @description Observation time, ISO 8601 with the city's offset.
+             */
+            ts: string;
+            /**
+             * Weather
+             * @description The WMO table's label for the code.
+             */
+            weather?: string | null;
+            /**
+             * Weather Code
+             * @description WMO 4677 present-weather code.
+             */
+            weather_code?: number | null;
+            /** Wind Kmh */
+            wind_kmh?: number | null;
+        };
+        /**
+         * WeatherStep
+         * @description One hourly step of the short forecast.
+         */
+        WeatherStep: {
+            /** Precipitation Mm */
+            precipitation_mm?: number | null;
+            /** Precipitation Probability Pct */
+            precipitation_probability_pct?: number | null;
+            /**
+             * Ts
+             * Format: date-time
+             */
+            ts: string;
         };
         /**
          * WhatIfRequest
@@ -4499,6 +4670,38 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    weather_v1_weather_get: {
+        parameters: {
+            query?: {
+                /** @description City slug, e.g. mumbai or chennai. */
+                city?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Weather"];
                 };
             };
             /** @description Validation Error */

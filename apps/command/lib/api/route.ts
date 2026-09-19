@@ -38,6 +38,47 @@ export interface RouteAvoided {
   path: [number, number][];
 }
 
+/**
+ * One of up to three safe roads the policy spreads traffic across (TECH_SPEC 3.3).
+ *
+ * `share` is a policy, not a measured traffic count, and the screen must say so. An API that
+ * predates route spreading returns none of these, and the screen then shows one answer.
+ */
+export interface RouteCorridor {
+  id: string;
+  label: string;
+  route: RouteLeg | null;
+  share: number;
+  assigned: boolean;
+  capacityScore: number;
+  maxProbability: number;
+}
+
+export type RouteReasonKind = "avoided" | "design" | "timing" | "closure";
+
+/**
+ * Why the route went this way, as a record rather than a sentence: `lib/explain.ts` words it.
+ *
+ * Every field beyond `kind` is optional on the wire, because a reason whose number the run could
+ * not supply is dropped rather than softened (UI_SPEC 4) - and because an older API sends none.
+ */
+export interface RouteReason {
+  kind: RouteReasonKind;
+  segmentId: string;
+  name: string;
+  depthCm?: number;
+  thresholdCm?: number;
+  at?: string;
+  probability?: number;
+  designIntensityMmH?: number;
+  forecastPeakMmH?: number;
+  dryUntil?: string;
+  dryBelowCm?: number;
+  reason?: string;
+  user?: string;
+  until?: string | null;
+}
+
 export interface RoutePlan {
   runId: string;
   profile: string;
@@ -46,6 +87,11 @@ export interface RoutePlan {
   varuna: RouteLeg | null;
   alternates: RouteLeg[];
   avoided: RouteAvoided[];
+  /** Empty when the API does not spread, or when only one safe road exists. */
+  corridors: RouteCorridor[];
+  /** Empty when the API does not explain, or when no reason kept all of its numbers. */
+  reasons: RouteReason[];
+  tripId: string | null;
   notes: string[];
   ms: number;
 }
@@ -127,6 +173,12 @@ export interface RouteQuery {
   profile: string;
   riskTolerance: number;
   runId?: string;
+  /** Ask for up to three corridors. Default on the API side is true. */
+  spread?: boolean;
+  /** The caller's own id, so repeated requests for one trip keep the same corridor. */
+  tripId?: string;
+  /** Ask for structured reasons. Default on the API side is true. */
+  explain?: boolean;
 }
 
 /** Plan a trip. Throws with the API's own message when it refuses one. */
@@ -142,6 +194,9 @@ export async function planRoute(query: RouteQuery, signal?: AbortSignal): Promis
       profile: query.profile,
       risk_tolerance: query.riskTolerance,
       run_id: query.runId,
+      spread: query.spread,
+      trip_id: query.tripId,
+      explain: query.explain,
     }),
   });
   const body = (await response.json()) as Record<string, unknown>;
@@ -166,8 +221,60 @@ export async function planRoute(query: RouteQuery, signal?: AbortSignal): Promis
       at: String(a.at ?? ""),
       path: (a.path as [number, number][]) ?? [],
     })),
+    corridors: ((body.corridors as Record<string, unknown>[]) ?? []).map((c) => ({
+      id: String(c.id ?? ""),
+      label: String(c.label ?? ""),
+      route: leg(c.route as Record<string, unknown> | null),
+      share: Number(c.share ?? 0),
+      assigned: Boolean(c.assigned),
+      capacityScore: Number(c.capacity_score ?? 0),
+      maxProbability: Number(c.max_probability ?? 0),
+    })),
+    reasons: ((body.reasons as Record<string, unknown>[]) ?? [])
+      .map(reason)
+      .filter((r): r is RouteReason => r !== null),
+    tripId: body.trip_id == null ? null : String(body.trip_id),
     notes: (body.notes as string[]) ?? [],
     ms: Number(body.ms ?? 0),
+  };
+}
+
+const REASON_KINDS: ReadonlySet<string> = new Set(["avoided", "design", "timing", "closure"]);
+
+/**
+ * One reason record, or `null` when it is not one of the four kinds `lib/explain.ts` can word.
+ *
+ * Numbers are carried through only when the wire actually holds them: `undefined` here is what
+ * makes the sentence builder drop a reason rather than print "undefined cm".
+ */
+function reason(raw: Record<string, unknown>): RouteReason | null {
+  const kind = String(raw.kind ?? "");
+  if (!REASON_KINDS.has(kind)) return null;
+  const number = (key: string): number | undefined => {
+    const value = raw[key];
+    if (value == null) return undefined;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const text = (key: string): string | undefined => {
+    const value = raw[key];
+    return value == null || value === "" ? undefined : String(value);
+  };
+  return {
+    kind: kind as RouteReasonKind,
+    segmentId: String(raw.segment_id ?? ""),
+    name: String(raw.name ?? ""),
+    depthCm: number("depth_cm"),
+    thresholdCm: number("threshold_cm"),
+    at: text("at"),
+    probability: number("probability"),
+    designIntensityMmH: number("design_intensity_mm_h"),
+    forecastPeakMmH: number("forecast_peak_mm_h"),
+    dryUntil: text("dry_until"),
+    dryBelowCm: number("dry_below_cm"),
+    reason: text("reason"),
+    user: text("user"),
+    until: raw.until == null ? null : String(raw.until),
   };
 }
 
