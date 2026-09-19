@@ -49,18 +49,24 @@ SECTION_12_PATHS = [
 ]
 
 # Endpoints that are still 501. Phase 5 implemented the depth products, Phase 8 the route,
-# reachability and the road-conditions feed, and Phase 9 verification, report ingestion and city
-# onboarding - so each left this list as it landed. The *paths* stay in SECTION_12_PATHS above,
-# which is what asserts the contract in CLAUDE.md 12 is complete either way.
+# reachability and the road-conditions feed, Phase 9 verification, report ingestion and city
+# onboarding, and task D-07 the four authority actions (alert ack and escalate, pump optimise
+# and dispatch, now served by `varuna_api.routers.ops` behind the passphrase gate) - so each
+# left this list as it landed. The *paths* stay in SECTION_12_PATHS above, which is what asserts
+# the contract in CLAUDE.md 12 is complete either way.
 STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None]] = [
     ("GET", "/v1/nowcast/segments/88213/series", None, None),
-    ("POST", "/v1/alerts/ALT-1/ack", {"user": "ward officer"}, None),
-    ("POST", "/v1/alerts/ALT-1/escalate", {"user": "ward officer"}, None),
-    ("POST", "/v1/pumps/optimise", {}, None),
-    ("POST", "/v1/pumps/dispatch", {"plan_id": "plan-1"}, None),
     ("POST", "/v1/whatif/physics-check", sample_json("PhysicsCheckRequest"), None),
     ("POST", "/v1/cycle/compute", sample_json("ComputeRequest"), None),
 ]
+
+OPS_PATHS = [
+    "/v1/ops/closures",
+    "/v1/ops/pumps/{pump_id}/status",
+    "/v1/ops/log",
+    "/v1/ops/alerts",
+]
+"""The authority write path TECH_SPEC 3.6 adds to section 12's table (task D-07)."""
 
 
 @pytest.mark.parametrize(("method", "path", "body", "params"), STUB_CALLS)
@@ -120,6 +126,31 @@ def test_physics_check_refusal_quotes_the_measured_twin_cost(client: TestClient)
     assert f"({lightest} s in the lightest)" in message, (
         f"the refusal names a different lightest cycle; it now measures {lightest} s"
     )
+
+
+def test_the_authority_endpoints_are_published_and_gated(client: TestClient) -> None:
+    """The desk's endpoints are in the contract, and every write refuses an unauthorised caller.
+
+    The refusal here is the one a clean checkout gets: no `VARUNA_OPS_PASSPHRASE` in the
+    environment, so the API is read-only and says which variable would change that. That is the
+    deployed API's state on purpose (TECH_SPEC 3.6).
+    """
+    doc = client.get("/openapi.json").json()
+    missing = [p for p in OPS_PATHS if p not in doc["paths"]]
+    assert not missing, f"missing from OpenAPI: {missing}"
+
+    for method, path, body in (
+        ("POST", "/v1/ops/closures", {"segment_id": "S1-000", "reason": "Water"}),
+        ("POST", "/v1/ops/pumps/P-12/status", {"status": "unavailable"}),
+        ("POST", "/v1/alerts/ALT-1/ack", {"user": "ward officer"}),
+        ("POST", "/v1/alerts/ALT-1/escalate", {"user": "ward officer"}),
+        ("POST", "/v1/pumps/optimise", {}),
+        ("POST", "/v1/pumps/dispatch", {"user": "control room"}),
+    ):
+        res = client.request(method, path, json=body)
+        assert res.status_code in {401, 503}, f"{path} answered {res.status_code}: {res.text}"
+        error = res.json()["error"]
+        assert "VARUNA_OPS_PASSPHRASE" in error["message"] or "X-Varuna-Ops" in error["message"]
 
 
 def test_openapi_contains_every_section_12_path(client: TestClient) -> None:
