@@ -41,6 +41,9 @@ pump at a spot that is still filling. Which model produced a number is on the pl
 
 **The optimiser** is the greedy of CLAUDE.md 11.10 (P0; MILP is P1): pumps in descending
 capacity, each to the hotspot with the largest weighted remaining excess, one hotspot per pump.
+It skips a pump the authority desk has marked unavailable (:data:`ASSIGNABLE_STATES`, task
+D-07); the pump stays on the plan, with its status, under `withheld`, because a board that
+silently drops a lorry is a board that has stopped telling an officer where his fleet is.
 """
 
 from __future__ import annotations
@@ -52,7 +55,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 if TYPE_CHECKING:  # pragma: no cover - typing only; varuna_flash is imported lazily below
-    from collections.abc import Sequence
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
 
     from varuna_flash.model import FlashModel
@@ -60,6 +63,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only; varuna_flash is imported la
 log = structlog.get_logger("varuna.products.pumps")
 
 __all__ = [
+    "ASSIGNABLE_STATES",
     "BENEFIT_LABEL",
     "BENEFIT_LABELS",
     "EMULATOR_LABEL",
@@ -110,6 +114,20 @@ BENEFIT_LABELS = {
     "mixed": MIXED_LABEL,
 }
 """``benefit_model`` to the sentence printed beside the number, so the two cannot disagree."""
+
+ASSIGNABLE_STATES = frozenset({"available", "moved"})
+"""Pump states the optimiser may still send somewhere (task D-07).
+
+``varuna_route.ops_overlay.PUMP_STATES`` has three values and only one of them withholds a
+pump. ``unavailable`` is a lorry that cannot go - broken, or already committed elsewhere - and
+the greedy skips it. ``moved`` is the same lorry at a different depot, and the desk's entry
+carries that depot's point precisely so it can be dispatched from there; withholding it would
+make the coordinate pointless. This is narrower than
+:meth:`~varuna_route.ops_overlay.OpsOverlay.unavailable_pump_ids`, which answers "not at its
+depot" rather than "cannot be sent", so the caller passes the statuses and this module decides.
+
+Until this list existed the status was read off the asset, carried onto the plan and then
+ignored: every pump in the inventory was assignable whatever it said."""
 
 
 def _minutes_above(series: Sequence[float], threshold: float, step_min: int) -> int:
@@ -351,6 +369,8 @@ def build_pump_plan(
     *,
     model: FlashModel | None = None,
     rain_mm_h: Sequence[float] | None = None,
+    pump_status: Mapping[str, str] | None = None,
+    pump_depots: Mapping[str, tuple[float, float]] | None = None,
 ) -> dict[str, Any]:
     """Assign the synthetic pump fleet to the places that flood, greedily by benefit.
 
@@ -367,6 +387,10 @@ def build_pump_plan(
         rain_mm_h: the storm the run was driven by, one value per step - the cycle's own AOI-mean
             hyetograph while it is computing, or :func:`rain_for_run` for a run already on disk.
             Never read from the run directory here; see :func:`rain_for_run` for why.
+        pump_status: pump id to the status the authority desk last set, overriding the synthetic
+            inventory's own field. Anything outside :data:`ASSIGNABLE_STATES` is listed on the
+            plan under ``withheld`` and is never assigned.
+        pump_depots: pump id to the lon/lat the desk moved it to, used for the travel time.
 
     Without both of those the benefit falls back to the bathtub model, and ``benefit_model`` on
     the plan and on every assignment says which one produced the number.
@@ -382,14 +406,22 @@ def build_pump_plan(
         if props.get("kind") != "mobile_pump":
             continue
         lon, lat = feature["geometry"]["coordinates"][:2]
+        pump_id = str(props.get("asset_id"))
+        # The desk's word beats the inventory's: the status on the asset is synthetic and fixed
+        # at build time, and an officer who marked a lorry unavailable this morning is the only
+        # one of the two who has looked at it (TECH_SPEC 3.6).
+        status = str((pump_status or {}).get(pump_id) or props.get("status") or "available")
+        moved_to = (pump_depots or {}).get(pump_id)
         pumps.append(
             {
-                "pump_id": props.get("asset_id"),
+                "pump_id": pump_id,
                 "capacity_m3_per_h": float(props.get("capacity_m3_per_h") or 0.0),
                 "depot": props.get("depot"),
-                "status": props.get("status", "available"),
-                "lon": float(lon),
-                "lat": float(lat),
+                "status": status,
+                "assignable": status in ASSIGNABLE_STATES,
+                "lon": float(moved_to[0]) if moved_to else float(lon),
+                "lat": float(moved_to[1]) if moved_to else float(lat),
+                "moved": bool(moved_to),
                 "synthetic": bool(props.get("synthetic", True)),
             }
         )
@@ -434,6 +466,8 @@ def build_pump_plan(
     assignments: list[dict[str, Any]] = []
     taken: set[str] = set()
     for pump in pumps:
+        if not pump["assignable"]:
+            continue  # withheld by the desk; it is on the plan, it is not in the plan
         best: dict[str, Any] | None = None
         for candidate in candidates:
             hotspot = candidate["hotspot"]
@@ -505,6 +539,10 @@ def build_pump_plan(
         "inventory": "synthetic",
         "travel_speed_kmh": TRAVEL_SPEED_KMH,
         "n_pumps": len(pumps),
+        "n_assignable": sum(1 for p in pumps if p["assignable"]),
+        "withheld": [
+            {"pump_id": p["pump_id"], "status": p["status"]} for p in pumps if not p["assignable"]
+        ],
         "pumps": pumps,
         "assignments": assignments,
         "unassigned": [
@@ -524,6 +562,7 @@ def build_pump_plan(
         "products.pump_plan",
         run_id=run_id,
         pumps=len(pumps),
+        assignable=plan["n_assignable"],
         assigned=len(assignments),
         candidates=len(candidates),
         benefit_model=benefit_model,
