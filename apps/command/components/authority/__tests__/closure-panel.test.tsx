@@ -135,7 +135,17 @@ describe("streetLabel", () => {
   });
 
   it("names an unnamed road by its id rather than leaving a blank row", () => {
+    // The feed said this one has no name, so saying so is true.
     expect(streetLabel(UNNAMED)).toBe("Unnamed road seg-01902");
+  });
+
+  it("does not call a segment unnamed when it was never looked up", () => {
+    // A segment id typed into the form carries no name because nothing asked for one. Dr
+    // Babasaheb Ambedkar Marg closed by its id read "Unnamed road S618477973-001" in the browser
+    // before this: a fact the screen invented about a street OSM does name.
+    expect(streetLabel({ segmentId: "S618477973-001", name: null, known: false })).toBe(
+      "Segment S618477973-001",
+    );
   });
 });
 
@@ -208,6 +218,10 @@ describe("ClosurePanel", () => {
         expect.objectContaining({ segmentId: "seg-09999" }),
       ),
     );
+    // Named "Segment seg-09999", not "Unnamed road seg-09999": nothing looked its name up.
+    const result = await screen.findByRole("status");
+    expect(result).toHaveTextContent("Segment seg-09999 is closed");
+    expect(result.textContent).not.toContain("Unnamed road");
   });
 
   it("reopens by appending, and says the forecast decides the street again", async () => {
