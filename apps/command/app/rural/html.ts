@@ -17,7 +17,11 @@
 import { colors, depthColor, tokens } from "@varuna/tokens";
 
 import type { RuralAdvisory, RuralVehicle } from "@/lib/rural";
-import { RURAL_VEHICLES } from "@/lib/rural";
+// The vehicle's name in a sentence comes from `lib/rural`, which takes it from `lib/explain` -
+// the module `/dashboard` words its answers with. This file had its own `a ${word}` copies and
+// they printed "a ambulance" while the reason directly below said "an ambulance"; one vocabulary
+// per run means one place that decides the article.
+import { RURAL_VEHICLES, stopsPhrase, tooDeepPhrase } from "@/lib/rural";
 
 /** What the page knows about the run it is quoting; every number on screen belongs to it. */
 export interface RuralRunStamp {
@@ -241,8 +245,8 @@ function passableLine(advisory: RuralAdvisory): string {
   const stop = advisory.stopper;
   const after = stop
     ? ` After that: <span class="depth" style="color:${depthColor(stop.depthCm)}">${stop.depthCm} cm</span>` +
-      ` at ${esc(stop.street)} at ${esc(stop.at)} - ${esc(tooDeep(advisory.vehicle))}.`
-    : ` On this cycle nothing on it rises above the depth that stops ${esc(vehiclePhrase(advisory.vehicle))}.`;
+      ` at ${esc(stop.street)} at ${esc(stop.at)} - ${esc(tooDeepPhrase(advisory.vehicle))}.`
+    : ` On this cycle nothing on it rises above the depth that ${esc(stopsPhrase(advisory.vehicle))}.`;
   switch (advisory.passable.kind) {
     case "until":
       // lint-design-allow: UI_SPEC 7 prints this headline in capitals, for a small screen and for
@@ -260,7 +264,11 @@ function passableLine(advisory: RuralAdvisory): string {
 
 function saferLine(advisory: RuralAdvisory): string {
   if (advisory.sameRoad) {
-    return "<p>Safer: the shortest way is already the safe way on this cycle.</p>";
+    // No detour exists on this cycle, so the only advice left is the clock. Naming a vehicle
+    // that could still cross would be a claim about the whole road from one street's depth.
+    const leave =
+      advisory.passable.kind === "until" ? ` Leave before ${esc(advisory.passable.time)}.` : "";
+    return `<p>Safer: the shortest way is already the safe way on this cycle.${leave}</p>`;
   }
   const leave =
     advisory.passable.kind === "until" ? `leave before ${esc(advisory.passable.time)}, or ` : "";
@@ -270,7 +278,9 @@ function saferLine(advisory: RuralAdvisory): string {
 }
 
 function etaLine(advisory: RuralAdvisory): string {
-  if (!advisory.eta) return "";
+  // Two ETAs are the comparison a reader is weighing (UI_SPEC 4). When both routes are the same
+  // road they are the same number twice, and the line above has already said so.
+  if (!advisory.eta || advisory.sameRoad) return "";
   return (
     `<p class="muted">Shortest way ${esc(advisory.eta.shortest)} - ` +
     `safe way ${esc(advisory.eta.safe)} (${esc(advisory.eta.difference)}).</p>`
@@ -296,14 +306,6 @@ function corridorSection(advisory: RuralAdvisory): string {
   const note = advisory.notes.find((line) => line.includes("policy"));
   const disclosure = note ? `<p class="muted">${esc(note)}</p>` : "";
   return `<section><h2>Other safe roads</h2><ul>${items}</ul>${disclosure}</section>`;
-}
-
-function tooDeep(vehicle: RuralVehicle): string {
-  return vehicle.word === "on foot" ? "too deep to cross on foot" : `too deep for a ${vehicle.word}`;
-}
-
-function vehiclePhrase(vehicle: RuralVehicle): string {
-  return vehicle.word === "on foot" ? "a person on foot" : `a ${vehicle.word}`;
 }
 
 /** The block UI_SPEC 7 requires, verbatim in substance, on every state of the page. */
@@ -340,13 +342,13 @@ function form(page: RuralPage): string {
     : "";
   return [
     "<hr>",
-    '<section><h2>Another trip</h2>',
+    "<section><h2>Another trip</h2>",
     '<form method="get" action="/rural">',
     `<label for="from">From<input id="from" name="from" value="${esc(page.query.from)}" autocomplete="off"></label>`,
     `<label for="to">To<input id="to" name="to" value="${esc(page.query.to)}" autocomplete="off"></label>`,
     `<label for="v">Vehicle<select id="v" name="v">${options}</select></label>`,
     hidden,
-    "<button type=\"submit\">Show the advisory</button>",
+    '<button type="submit">Show the advisory</button>',
     "</form>",
     '<p class="muted">A name from VARUNA\'s register, or longitude and latitude as two numbers.</p>',
     "</section>",

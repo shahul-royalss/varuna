@@ -30,7 +30,16 @@ const PLACES: RuralPlaceRow[] = [
   { id: "MUM-HS-05", name: "Sion Circle", lon: 72.863491, lat: 19.042733 },
   { id: "MUM-HS-08", name: "Kurla, LBS Marg", lon: 72.881638, lat: 19.081654 },
   { id: "MUM-HS-20", name: "Kamani junction, LBS Marg (Kurla)", lon: 72.887116, lat: 19.085164 },
-  { id: "hospital-001", name: "KEM Hospital", lon: 72.8417, lat: 19.0026 },
+  // Spelled exactly as `GET /v1/route/facilities` spells it. The fixture used to say "KEM
+  // Hospital", which is what a person types and not what the register holds, and that gap is
+  // what hid the defect this file now pins.
+  {
+    id: "hospital-001",
+    name: "King Edward Memorial (KEM) Hospital, Parel",
+    lon: 72.84218,
+    lat: 19.001551,
+  },
+  { id: "hospital-002", name: "LTMG Hospital, Sion", lon: 72.862, lat: 19.0411 },
 ];
 
 function leg(overrides: Partial<RouteLeg> = {}): RouteLeg {
@@ -140,6 +149,29 @@ describe("resolvePlace", () => {
   it("refuses a coordinate outside it rather than routing from the nearest node", () => {
     // Nagpur: inside India, nowhere near a drain graph VARUNA has built.
     expect(resolvePlace("79.088,21.146", PLACES, MUMBAI).status).toBe("outside");
+  });
+
+  it("finds a hospital by the words a person types, not the register's full spelling", () => {
+    // The demo trip's own origin (CLAUDE.md 3.3). The register calls it "King Edward Memorial
+    // (KEM) Hospital, Parel", so "KEM Hospital" is a substring of nothing and used to be refused.
+    const resolved = resolvePlace("KEM Hospital", PLACES, MUMBAI);
+    expect(resolved).toMatchObject({ status: "ok" });
+    if (resolved.status !== "ok") throw new Error("unreachable");
+    expect(resolved.point.name).toBe("King Edward Memorial (KEM) Hospital, Parel");
+  });
+
+  it("prefers a contiguous match over a scattered one", () => {
+    // "Kurla, LBS Marg" contains this exactly; "Kamani junction, LBS Marg (Kurla)" holds the same
+    // words scattered. Without the tiers, both would match and the trip would be refused.
+    const resolved = resolvePlace("Kurla, LBS Marg", PLACES, MUMBAI);
+    expect(resolved).toMatchObject({ status: "ok" });
+    if (resolved.status !== "ok") throw new Error("unreachable");
+    expect(resolved.point.name).toBe("Kurla, LBS Marg");
+  });
+
+  it("still refuses a word that matches several places, rather than picking one", () => {
+    const resolved = resolvePlace("Hospital", PLACES, MUMBAI);
+    expect(resolved.status).toBe("unknown");
   });
 
   it("refuses an ambiguous name and offers what it matched", () => {
@@ -282,9 +314,7 @@ describe("shareLink", () => {
     expect(parsed.searchParams.get("from")).toBe("Sion Circle");
     expect(parsed.searchParams.get("to")).toBe("Kurla, LBS Marg");
     expect(parsed.searchParams.get("v")).toBe("two-wheeler");
-    expect(parsed.searchParams.get("run")).toBe(
-      "MUM-20190702T0110Z-sky1.0-twin1.0-flash0.1-baked",
-    );
+    expect(parsed.searchParams.get("run")).toBe("MUM-20190702T0110Z-sky1.0-twin1.0-flash0.1-baked");
   });
 
   it("leaves out a run it was not given", () => {
@@ -326,7 +356,15 @@ describe("buildAdvisory", () => {
           },
         ],
         corridors: [
-          { id: "a", label: "A", route: leg(), share: 0.6, assigned: true, capacityScore: 0.1, maxProbability: 0 },
+          {
+            id: "a",
+            label: "A",
+            route: leg(),
+            share: 0.6,
+            assigned: true,
+            capacityScore: 0.1,
+            maxProbability: 0,
+          },
           {
             id: "b",
             label: "B",
