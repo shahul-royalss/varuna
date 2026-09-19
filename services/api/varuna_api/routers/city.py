@@ -22,8 +22,10 @@ from typing import Annotated, Any, Literal
 import structlog
 from fastapi import APIRouter, Query, Request, Response
 from varuna_schemas.models import ErrorEnvelope, FeatureCollection
-from varuna_schemas.paths import city_dir
+from varuna_schemas.paths import city_config_path, city_dir
+from varuna_schemas.settings import get_settings
 
+from varuna_api.runs_util import latest_run_for
 from varuna_api.state import api_error
 
 log = structlog.get_logger("varuna.api.city")
@@ -206,11 +208,74 @@ def city_layer(
     )
 
 
+def _config_ids() -> list[str]:
+    """Every city VARUNA has a config for, alphabetically."""
+    try:
+        configs = city_config_path("mumbai").parent
+    except ValueError:  # pragma: no cover - "mumbai" is always a valid segment
+        return []
+    return sorted(path.stem for path in configs.glob("*.yaml"))
+
+
+def _city_row(city: str) -> dict[str, Any]:
+    """One switcher row: what the config says, and whether the pipeline has run yet.
+
+    ``built`` is the one thing the switcher gates on, and it is a file test rather than a flag:
+    ``city/<city>/map/segments.geojson`` is what every screen draws first, so a city that has it
+    can be opened and a city that does not cannot, whatever anything else claims. ``latest_run``
+    is reported separately because a city can be built and still have nothing baked - Chennai is
+    exactly that until the wizard's first forecast lands, and a switcher that said "ready" would
+    be promising water it has not got.
+    """
+    name: str = city.title()
+    code: str | None = None
+    bbox: list[float] | None = None
+    try:
+        from varuna_city.config import load_city_config
+
+        config = load_city_config(city)
+        box = config.bbox
+        name, code = config.name, config.code
+        # As four numbers, the order every map library wants; `list(BBox)` yields field pairs.
+        bbox = [box.min_lon, box.min_lat, box.max_lon, box.max_lat]
+    except Exception:  # a missing or unreadable config is a row, not a 500
+        log.info("city.config_unreadable", city=city)
+
+    try:
+        built = layer_path(city, "segments").is_file()
+    except ValueError:
+        built = False
+    latest = latest_run_for(city, lambda p: (p / "depth" / "bounds.json").is_file())
+    return {
+        "id": city,
+        "name": name,
+        "code": code,
+        "bbox": bbox,
+        "built": built,
+        "latest_run_id": latest.name if latest is not None else None,
+    }
+
+
+@router.get("/cities", summary="Cities VARUNA has a config for, and which are built")
+def cities() -> dict[str, Any]:
+    """The city switcher's rows (CLAUDE.md 7.2, task D-09).
+
+    The switcher used to carry Mumbai and a hard-coded disabled Chennai, which meant it could not
+    tell the jury the truth after the wizard ran: Chennai was built and the row still said
+    "Onboard first". This reads the configs and the files on disk instead, so the row changes
+    when the pipeline does.
+    """
+    rows = [_city_row(city) for city in _config_ids()]
+    log.info("city.list", n=len(rows), built=sum(1 for row in rows if row["built"]))
+    return {"cities": rows, "default": get_settings().varuna_city}
+
+
 __all__ = [
     "CACHE_CONTROL",
     "GEOJSON_MEDIA_TYPE",
     "LAYER_HINTS",
     "LayerName",
+    "cities",
     "city_layer",
     "feature_in_bbox",
     "filter_collection",

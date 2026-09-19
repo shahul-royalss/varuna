@@ -17,6 +17,8 @@ import { PublicLegend } from "@/components/varuna/public-legend";
 import { VehicleSelector, type PublicProfile } from "@/components/varuna/vehicle-selector";
 import { Wordmark } from "@/components/varuna/wordmark";
 import { useIsClient } from "@/lib/hooks";
+import { currentCity } from "@/lib/city";
+import { useOpeningRun } from "@/lib/use-opening-run";
 import { formatIst } from "@/lib/format";
 
 const REPORT_ROUTE = "/report" as Route;
@@ -136,6 +138,14 @@ export function MapScreen() {
   // "passable until" times below are what carries the forecast instead, which is the form the
   // question actually takes on a phone ("can I still get home?").
   const step = 0;
+  // Which city this map is of; only read by the fetches below, never rendered, so the server's
+  // Mumbai and a client's `?city=` cannot disagree on screen.
+  const city = currentCity();
+  // Open on the 06:40 storm cycle, the same rule `/console` follows (task D-20). Without it the
+  // API hands back the newest run, which on the replay is 09:10 - the calm cycle after the storm,
+  // where a map about which streets are passable has nothing to say. The map holds its load until
+  // the registry has answered, so nobody watches the calm cycle load and then swap.
+  const opening = useOpeningRun(city);
   // The run the map drew. The public map has no app shell and so no run store behind it: the
   // honesty line and the save button read this run, not a registry row the map never loaded.
   const [run, setRun] = useState<RunDepth | null>(null);
@@ -151,7 +161,7 @@ export function MapScreen() {
   // nothing else; a list of ids would be useless to a commuter.
   useEffect(() => {
     const controller = new AbortController();
-    fetch(apiUrl("/v1/city/mumbai/layers/segments"), { signal: controller.signal })
+    fetch(apiUrl(`/v1/city/${city}/layers/segments`), { signal: controller.signal })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         return r.json();
@@ -170,7 +180,7 @@ export function MapScreen() {
         if (!controller.signal.aborted) setNamesFailed(true);
       });
     return () => controller.abort();
-  }, []);
+  }, [city]);
 
   const nearby = useMemo(
     () => (run ? nearbyStreets(run, STOPS_AT_CM[profile], names) : []),
@@ -226,6 +236,9 @@ export function MapScreen() {
             six depth bands, against this vehicle's own stopping depth. */}
         <FloodMap
           step={step}
+          city={city}
+          runId={opening.runId}
+          deferLoad={!opening.resolved}
           onLoaded={onLoaded}
           onStatus={onStatus}
           passableBelowCm={STOPS_AT_CM[profile]}

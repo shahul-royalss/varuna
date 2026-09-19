@@ -36,6 +36,22 @@ BAKE_HINT = (
     "or press Compute live on the replay panel."
 )
 
+CityQuery = Annotated[
+    str | None,
+    Query(
+        description="City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted."
+    ),
+]
+"""Which city an endpoint means when the caller named no run.
+
+Runs from every city share ``data/runs/`` and their ids sort chronologically, so ``CHN-`` sorts
+after ``MUM-`` for the same instant: without this, a Chennai console asking for "the newest run"
+and a Mumbai console asking for "the newest run" got the same answer, and one of them was wrong
+(:func:`varuna_api.runs_util.latest_run_for`). Omitted, the settings' city stands, which is what
+every Mumbai screen relies on today.
+"""
+
+
 NO_ATTRIBUTION_LABEL = (
     "Not computed on this run: Flash-lite is element-wise per segment — ADR-0042."
 )
@@ -66,7 +82,12 @@ def _latest_run_with_depth(city: str | None = None) -> Path | None:
 
 
 def _resolve(run_id: str | None, city: str | None = None) -> Path:
-    """The run directory to serve, or an error that names the command that makes one."""
+    """The run directory to serve, or an error that names the command that makes one.
+
+    ``city`` only decides which run is newest; a ``run_id`` names its own city and is served as
+    asked, because a run directory already knows which city it belongs to and a second opinion
+    from the query string could only disagree with it.
+    """
     if run_id:
         path = run_dir(run_id)
         if not (path / "depth" / "bounds.json").is_file():
@@ -89,9 +110,11 @@ def _meta(path: Path) -> dict[str, Any]:
 
 
 @router.get("/nowcast/raster/bounds", summary="Where a run's depth rasters sit, and what they are")
-def raster_bounds(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+def raster_bounds(
+    run_id: Annotated[str | None, Query()] = None, city: CityQuery = None
+) -> dict[str, Any]:
     """The lon/lat corners for the BitmapLayer, the step count, and the run's provenance."""
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     meta = _meta(path)
     bounds = json.loads((path / "depth" / "bounds.json").read_text(encoding="utf-8"))
     steps = sorted(p.name for p in (path / "depth").glob("p50_*.png"))
@@ -123,6 +146,7 @@ def raster_bounds(run_id: Annotated[str | None, Query()] = None) -> dict[str, An
 def raster(
     step: Annotated[int, Query(ge=0)] = 0,
     run_id: Annotated[str | None, Query()] = None,
+    city: CityQuery = None,
     stat: Annotated[Literal["p50", "p90"], Query()] = "p50",
 ) -> Response:
     """The PNG for one 5-minute step, cached hard because a baked run never changes.
@@ -131,7 +155,7 @@ def raster(
     and the engine versions, so a given URL's bytes cannot change. That is what lets the console
     preload 36 frames and scrub without touching the network again.
     """
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     png = path / "depth" / f"{stat}_{step:02d}.png"
     if not png.is_file():
         available = len(list((path / "depth").glob(f"{stat}_*.png")))
@@ -151,6 +175,7 @@ def raster(
 @router.get("/nowcast/segments", summary="Per-segment depth series for the street layer")
 def segments(
     run_id: Annotated[str | None, Query()] = None,
+    city: CityQuery = None,
     min_depth_cm: Annotated[float, Query(ge=0)] = 5.0,
 ) -> dict[str, Any]:
     """Every segment that gets wet in this run, with its depth at each step.
@@ -161,7 +186,7 @@ def segments(
     hold and a 20 MB one it cannot. The dry remainder is drawn from the city layer, in the dry
     colour, and needs no per-step data at all.
     """
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
 
     # The fast path, and the only one a baked run ever takes: the cycle already wrote exactly
     # this shape at bake time. Reading the 19 MB parquet, filtering it and re-serialising it
@@ -232,6 +257,7 @@ def _with_attribution(row: dict[str, Any]) -> dict[str, Any]:
 @router.get("/nowcast/hotspots", summary="Ranked hotspots for the rail")
 def hotspots(
     run_id: Annotated[str | None, Query()] = None,
+    city: CityQuery = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
 ) -> dict[str, Any]:
     """The run's ranked chronic spots, deepest first (CLAUDE.md 11.8, P5.4).
@@ -250,7 +276,7 @@ def hotspots(
     field is present rather than absent so the drawer reads a refusal it can print instead of a
     missing key it has to guess at.
     """
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     record = path / "hotspots.json"
     if not record.is_file():
         raise api_error(
@@ -277,14 +303,16 @@ def hotspots(
 
 
 @router.get("/nowcast/surcharge", summary="Manholes surcharging and pipes running backwards")
-def surcharge(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+def surcharge(
+    run_id: Annotated[str | None, Query()] = None, city: CityQuery = None
+) -> dict[str, Any]:
     """The run's surcharging manholes and reversed edges (CLAUDE.md 11.4, 11.5; P6.6).
 
     This is the demo's 1:40 moment made drawable: red markers where the drain is pushing water
     back up into the street, and the edges where the sea is holding a trunk shut. Only the nodes
     that actually surcharge are stored, so this stays a small file over a 49,897-node graph.
     """
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     record = path / "node_surcharge.json"
     if not record.is_file():
         raise api_error(
@@ -309,6 +337,7 @@ def surcharge(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
 @router.get("/alerts", tags=["alerts"], summary="Alerts raised by a run")
 def alerts(
     run_id: Annotated[str | None, Query()] = None,
+    city: CityQuery = None,
     level: Annotated[Literal["severe", "moderate", "watch"] | None, Query()] = None,
 ) -> dict[str, Any]:
     """The alert queue for a run, worst level first (CLAUDE.md 11.10, P8.7).
@@ -316,7 +345,7 @@ def alerts(
     Computed once when the cycle ran, so the queue, the map and the hotspot rail are all reading
     the same forecast. Every alert on a replay carries CAP ``status=Exercise``.
     """
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     record = path / "alerts.json"
     if not record.is_file():
         raise api_error(
@@ -345,9 +374,11 @@ def alerts(
     responses={200: {"content": {"application/xml": {}}, "description": "CAP 1.2"}},
     summary="CAP 1.2 XML document for one alert",
 )
-def alert_cap(alert_id: str, run_id: Annotated[str | None, Query()] = None) -> Response:
+def alert_cap(
+    alert_id: str, run_id: Annotated[str | None, Query()] = None, city: CityQuery = None
+) -> Response:
     """One alert as a CAP 1.2 document, exactly as it was written into the run directory."""
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     document = path / "alerts" / f"{alert_id}.cap.xml"
     if not document.is_file():
         raise api_error(
@@ -360,14 +391,14 @@ def alert_cap(alert_id: str, run_id: Annotated[str | None, Query()] = None) -> R
 
 
 @router.get("/pumps", tags=["pumps"], summary="The run's pump inventory and dispatch plan")
-def pumps(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+def pumps(run_id: Annotated[str | None, Query()] = None, city: CityQuery = None) -> dict[str, Any]:
     """The greedy assignment of the synthetic pump fleet to the hotspots that flood.
 
     The inventory is synthetic and the response says so in `inventory`; the benefit is a
     documented reduced model, labelled in `benefit_label` and printed beside every number the
     board shows (CLAUDE.md rule 6, 11.10).
     """
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     record = path / "pump_plan.json"
     if not record.is_file():
         raise api_error(
@@ -382,6 +413,7 @@ def pumps(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
 @router.get("/drains/health", tags=["drains"], summary="The drain map Pulse learned")
 def drains_health(
     run_id: Annotated[str | None, Query()] = None,
+    city: CityQuery = None,
     min_beta: Annotated[float, Query(ge=0.0, le=1.0)] = 0.0,
     limit: Annotated[int, Query(ge=1, le=50_000)] = 4_000,
 ) -> dict[str, Any]:
@@ -392,7 +424,7 @@ def drains_health(
     was sent. Each feature carries `confidence: "inferred"`, which is why the map draws them
     dashed - the geometry is a synthesis from roads and terrain, not a municipal record.
     """
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     record = path / "drain_health.geojson"
     if not record.is_file():
         raise api_error(
@@ -419,9 +451,11 @@ def drains_health(
     responses={200: {"content": {"text/csv": {}}, "description": "Desilting priority"}},
     summary="Desilting priority list as CSV",
 )
-def drains_health_csv(run_id: Annotated[str | None, Query()] = None) -> Response:
+def drains_health_csv(
+    run_id: Annotated[str | None, Query()] = None, city: CityQuery = None
+) -> Response:
     """The ranked desilting list a ward engineer can hand to a jetting crew (CLAUDE.md 7.3)."""
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     csv_path = path / "desilting.csv"
     if not csv_path.is_file():
         raise api_error(
@@ -438,14 +472,16 @@ def drains_health_csv(run_id: Annotated[str | None, Query()] = None) -> Response
 
 
 @router.get("/observations", tags=["observations"], summary="What Pulse assimilated this cycle")
-def observations(run_id: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+def observations(
+    run_id: Annotated[str | None, Query()] = None, city: CityQuery = None
+) -> dict[str, Any]:
     """The traffic anomalies and citizen reports that moved the drain map (CLAUDE.md 7.3).
 
     This is the assimilation timeline on the drain X-ray: each observation with its time, place,
     the depth it implied and the pipe it was about. Synthetic observations are flagged, because
     the replay's traffic and report streams are synthetic and the screen must say so (rule 7).
     """
-    path = _resolve(run_id)
+    path = _resolve(run_id, city)
     record = path / "observations.json"
     if not record.is_file():
         raise api_error(
