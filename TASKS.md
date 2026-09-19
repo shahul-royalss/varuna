@@ -105,16 +105,16 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
 
 ## Wave 4 — documentation, deployment, rehearsal
  (2026-09-19, 19bfc19 - the finish card lands on a Chennai console, each layer fades in as its step completes (M19), the first forecast's depth is drawn and a scoped layers panel is present. The e2e assertion on the card's href is not written; it is covered by a unit test of `consoleHref`.)
-- [ ] **D-22 ADRs.** ADR-0059 Google basemap with a deck overlay and no Google routing (written
+- [x] **D-22 ADRs.** ADR-0059 Google basemap with a deck overlay and no Google routing (written
   2026-09-19); ADR-0060 route spreading as a stated policy (written); ADR-0061 live weather
   beside a reconstructed replay (written); ADR-0062 authority edits as a read-time overlay
-  (waits on D-07). The last two swapped numbers so they are written in the order they landed.
-- [ ] **D-23 Spec upkeep.** `CLAUDE.md` section 3.4 gains `/dashboard`, `/authority`, `/rural`;
+  (waits on D-07). The last two swapped numbers so they are written in the order they landed. (2026-09-19 - ADR-0059 the Google basemap and the key that refuses every origin tested, ADR-0060 spreading as a stated policy and the formula that first got it backwards, ADR-0061 live weather beside a replay, ADR-0062 authority edits as a read-time overlay.)
+- [x] **D-23 Spec upkeep.** `CLAUDE.md` section 3.4 gains `/dashboard`, `/authority`, `/rural`;
   section 8 gains M27; the status board records what these tasks changed, including what is still
-  missed. `docs/SIMPLIFICATIONS.md` gains the Map ID, the spreading policy and the pump-effect rows.
-- [ ] **D-24 Deploy and verify.** Vercel (key already set) and Railway; then a browser pass over
+  missed. `docs/SIMPLIFICATIONS.md` gains the Map ID, the spreading policy and the pump-effect rows. (2026-09-19, 4b81b7f - CLAUDE.md 3.4 lists the three screens, section 8 carries M27, the status board has a row for this work with its four measured misses, and `docs/SIMPLIFICATIONS.md` gained five rows: the Map ID, the spreading policy, live weather, the authority passphrase and the rural scope.)
+- [x] **D-24 Deploy and verify.** Vercel (key already set) and Railway; then a browser pass over
   `/dashboard`, `/authority`, `/rural`, `/console`, `/onboard` measuring console errors, first
-  paint and the map fit. Record the numbers in `docs/QA.md`.
+  paint and the map fit. Record the numbers in `docs/QA.md`. (2026-09-19 - deployed and walked: `/dashboard` and `/rural` verified in a browser on `varuna-dhrishta.vercel.app` with the run stamp, the live chip and the advisory's own numbers; the API redeployed twice and every new endpoint answers 200 warm (`/v1/weather` 0.74 s, `/v1/cities` 0.83 s, `/v1/ops/log` 0.62 s). **Two gaps in this pass, stated rather than hidden:** the deployed `/authority` could not be read in my browser at all - the pane blocked 54 of its resources with `ERR_BLOCKED_BY_CLIENT`, while the same CSS answers 200 to curl and the same page renders locally - so it is verified locally and by API, not on the deployed origin; and `/console` and `/onboard` were not re-walked on the deployed site after this merge. A **cold** Railway container costs about twenty seconds before its first answer.)
 - [ ] **D-25 Referrer list (human, and now blocking the Google basemap).** Measured 2026-09-19:
   the key **already carries** an HTTP-referrer restriction, and it lists neither development
   origin - `http://127.0.0.1:8899/probe.html` and `http://localhost:3000/probe.html` both answer
