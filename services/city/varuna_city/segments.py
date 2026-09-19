@@ -20,6 +20,7 @@ Exposure weight (CLAUDE.md 10.1 step 5, "exposure weight = f(class, hospital/sta
 
 from __future__ import annotations
 
+import ast
 import time
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -84,6 +85,7 @@ SEGMENT_COLUMNS = (
     "segment_id",
     "osm_way_id",
     "name",
+    "name_aliases",
     "u",
     "v",
     "key",
@@ -297,19 +299,68 @@ def _wards(segments: gpd.GeoDataFrame, wards: gpd.GeoDataFrame | None) -> list[s
     return [None if pd.isna(v) else str(v) for v in values]
 
 
-def _first_name(value: object) -> str | None:
-    """OSM's ``name`` is sometimes a list where a way carries several; take the first.
+def split_names(value: object) -> tuple[str | None, tuple[str, ...]]:
+    """An OSM ``name`` value as ``(the name we print, the other names the way carries)``.
+
+    OSM gives a way several names often enough that this is not an edge case - a flyover that is
+    also the road beneath it, a road renamed but still signed both ways - and OSMnx hands that
+    over as a Python list. A list reaching a headline is the defect this function exists to stop:
+    "['Dr Ambedkar Road', 'Kalachowki Road'] is impassable" is not a sentence a ward officer can
+    act on, and 95 of Mumbai's 21,296 segments carried exactly that, two of them on the
+    KEM-to-Sion demo route.
+
+    **The repr string is the real source.** A live OSMnx fetch yields a genuine ``list``; the
+    GeoPackage cache the pipeline reads on every later build has no list type, so the same value
+    comes back as the *text* ``"['Dr Ambedkar Road', 'Kalachowki Road']"``. Handling only the list
+    was therefore a fix that worked exactly once, on the machine that did the download. Both
+    shapes are parsed here, and a string that merely starts with a bracket but is not a list
+    literal ("[Closed] Link Road") is left alone rather than mangled.
+
+    The first name is taken rather than a joined one invented: "Dr Ambedkar Road" is a street a
+    person can find, "Dr Ambedkar Road / Kalachowki Road" is a string VARUNA made up. The rest
+    come back so nothing is discarded (rule 6) - the export keeps them in ``name_aliases``.
 
     An unnamed way stays ``None`` rather than becoming "Unnamed road": a product that needs a
     name can then choose its own fallback, and none of them has to guess whether a literal
     "Unnamed road" came from OSM or from us.
     """
+    names = [text for text in (_one_name(item) for item in _as_name_list(value)) if text]
+    # A way can list the same name twice (two transliterations that strip to the same text);
+    # keep the first of each, in order, so the aliases are deterministic.
+    unique = list(dict.fromkeys(names))
+    if not unique:
+        return None, ()
+    return unique[0], tuple(unique[1:])
+
+
+def _as_name_list(value: object) -> list[object]:
+    """The candidate names in an OSM ``name`` value, in order, whatever shape it arrived in."""
     if isinstance(value, list | tuple):
-        value = value[0] if value else None
+        return list(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = ast.literal_eval(text)
+            except (ValueError, SyntaxError):
+                return [value]  # "[Closed] Link Road" and friends: a name, not a list
+            if isinstance(parsed, list | tuple):
+                return list(parsed)
+        return [value]
+    return [value]
+
+
+def _one_name(value: object) -> str | None:
+    """One candidate as text, or ``None`` when it is missing, NaN or blank."""
     if value is None or (isinstance(value, float) and value != value):
         return None
     text = str(value).strip()
     return text or None
+
+
+def _first_name(value: object) -> str | None:
+    """The name a product prints. See :func:`split_names` for what happens to the others."""
+    return split_names(value)[0]
 
 
 def build_segments(
@@ -352,6 +403,7 @@ def build_segments(
         return empty
 
     weights = dict(CLASS_WEIGHT if class_weights is None else class_weights)
+    split = [split_names(v) for v in edges.get("name", pd.Series([None] * len(edges)))]
     frame = pd.DataFrame(
         {
             "u": edges["u"].to_numpy(),
@@ -363,7 +415,10 @@ def build_segments(
             # The street's own name, straight from OSM. Without it every product that has to
             # say *where* - an alert headline, a map tooltip, a route's avoided list - can only
             # offer a segment id, which is useless to the ward officer reading it.
-            "name": [_first_name(v) for v in edges.get("name", pd.Series([None] * len(edges)))],
+            "name": [primary for primary, _ in split],
+            # The other names the way carries, kept rather than dropped: a headline needs one
+            # street, a person searching may know it by another (`split_names`).
+            "name_aliases": [list(aliases) for _, aliases in split],
             "class": [
                 classify_highway(v) for v in edges.get("highway", pd.Series([None] * len(edges)))
             ],
@@ -449,4 +504,5 @@ __all__ = [
     "sample_dem_along",
     "sample_raster",
     "segments_near",
+    "split_names",
 ]
