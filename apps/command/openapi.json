@@ -1,290 +1,35 @@
 {
   "components": {
     "schemas": {
-      "Alert": {
-        "additionalProperties": false,
-        "description": "One alert as stored in ``alerts.json`` and served by ``GET /v1/alerts``.",
-        "properties": {
-          "acknowledged_by": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Acknowledged By"
-          },
-          "acknowledged_ts": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Acknowledged Ts"
-          },
-          "active": {
-            "readOnly": true,
-            "title": "Active",
-            "type": "boolean"
-          },
-          "area_desc": {
-            "description": "e.g. 'Ward F/North, Hindmata'.",
-            "title": "Area Desc",
-            "type": "string"
-          },
-          "cap_path": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Relative path of the CAP XML inside the run directory.",
-            "title": "Cap Path"
-          },
-          "cap_status": {
-            "description": "Exercise on replay, Actual when live.",
-            "enum": [
-              "Actual",
-              "Exercise"
-            ],
-            "title": "Cap Status",
-            "type": "string"
-          },
-          "channels": {
-            "description": "Channels the alert was sent to.",
-            "items": {
-              "enum": [
-                "dashboard",
-                "cap",
-                "whatsapp",
-                "sms"
-              ],
-              "type": "string"
-            },
-            "title": "Channels",
-            "type": "array"
-          },
-          "cleared_ts": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cleared Ts"
-          },
-          "escalated_to": {
-            "anyOf": [
-              {
-                "enum": [
-                  "ward_officer",
-                  "control_room",
-                  "police_traffic",
-                  "transit",
-                  "public"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Escalated To"
-          },
-          "headline": {
-            "description": "e.g. 'Hindmata junction: depth likely above 45 cm from 18:20 to 20:00'.",
-            "title": "Headline",
-            "type": "string"
-          },
-          "history": {
-            "items": {
-              "$ref": "#/components/schemas/AlertStateChange"
-            },
-            "title": "History",
-            "type": "array"
-          },
-          "hotspot_id": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Hotspot register id, if any.",
-            "title": "Hotspot Id"
-          },
-          "id": {
-            "description": "Also the CAP identifier stem, e.g. VARUNA-MUM-20190702T1745-FN-0031.",
-            "minLength": 1,
-            "title": "Id",
-            "type": "string"
-          },
-          "instruction": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Route hint and pump plan, e.g. 'Avoid Hindmata and Parel TT ...'.",
-            "title": "Instruction"
-          },
-          "level": {
-            "enum": [
-              "watch",
-              "moderate",
-              "severe"
-            ],
-            "title": "Level",
-            "type": "string"
-          },
-          "persists_cycles": {
-            "description": "Consecutive cycles above the raise probability (hysteresis).",
-            "minimum": 1.0,
-            "title": "Persists Cycles",
-            "type": "integer"
-          },
-          "polygon": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/Polygon"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "CAP area polygon (WGS84)."
-          },
-          "pumps": {
-            "description": "Pumps dispatched for this alert.",
-            "items": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "title": "Pumps",
-            "type": "array"
-          },
-          "raised_ts": {
-            "format": "date-time",
-            "title": "Raised Ts",
-            "type": "string"
-          },
-          "run_id": {
-            "description": "Run that raised (or last updated) the alert.",
-            "title": "Run Id",
-            "type": "string"
-          },
-          "scope": {
-            "enum": [
-              "segment",
-              "ward",
-              "facility"
-            ],
-            "title": "Scope",
-            "type": "string"
-          },
-          "scope_id": {
-            "anyOf": [
-              {
-                "minLength": 1,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Segment, ward or facility id the alert is about.",
-            "title": "Scope Id"
-          },
-          "state": {
-            "default": "raised",
-            "enum": [
-              "raised",
-              "acknowledged",
-              "escalated",
-              "cleared"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "threshold_cm": {
-            "description": "Depth threshold that defines the level (15 / 30 / 45 cm).",
-            "exclusiveMinimum": 0.0,
-            "title": "Threshold Cm",
-            "type": "integer"
-          },
-          "trigger_p": {
-            "description": "P(depth > threshold) at the trigger cycle.",
-            "maximum": 1.0,
-            "minimum": 0.0,
-            "title": "Trigger P",
-            "type": "number"
-          },
-          "window_from": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Start of the exceedance window.",
-            "title": "Window From"
-          },
-          "window_to": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "End of the exceedance window.",
-            "title": "Window To"
-          }
-        },
-        "required": [
-          "id",
-          "run_id",
-          "scope",
-          "level",
-          "threshold_cm",
-          "headline",
-          "area_desc",
-          "trigger_p",
-          "raised_ts",
-          "persists_cycles",
-          "cap_status",
-          "active"
-        ],
-        "title": "Alert",
-        "type": "object"
-      },
       "AlertActionRequest": {
         "additionalProperties": false,
-        "description": "Body of ``POST /v1/alerts/{id}/ack`` and ``/escalate``.",
+        "description": "Body of ``POST /v1/alerts/{id}/ack`` and ``/escalate`` (served by ``varuna_api.routers.ops``).",
         "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Whose ops log records it; default VARUNA_CITY.",
+            "title": "City"
+          },
+          "escalate_to": {
+            "default": "control_room",
+            "description": "Step of the escalation matrix (blueprint 6.10). Ignored by /ack.",
+            "enum": [
+              "ward_officer",
+              "control_room",
+              "police_traffic",
+              "transit",
+              "public"
+            ],
+            "title": "Escalate To",
+            "type": "string"
+          },
           "note": {
             "anyOf": [
               {
@@ -307,50 +52,6 @@
           "user"
         ],
         "title": "AlertActionRequest",
-        "type": "object"
-      },
-      "AlertStateChange": {
-        "additionalProperties": false,
-        "description": "One entry of the alert's audit log (acknowledge and escalate are logged with user and time).",
-        "properties": {
-          "note": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Note"
-          },
-          "state": {
-            "enum": [
-              "raised",
-              "acknowledged",
-              "escalated",
-              "cleared"
-            ],
-            "title": "State",
-            "type": "string"
-          },
-          "ts": {
-            "format": "date-time",
-            "title": "Ts",
-            "type": "string"
-          },
-          "user": {
-            "description": "Operator id or 'system'.",
-            "title": "User",
-            "type": "string"
-          }
-        },
-        "required": [
-          "ts",
-          "state",
-          "user"
-        ],
-        "title": "AlertStateChange",
         "type": "object"
       },
       "BBox": {
@@ -435,6 +136,65 @@
           "url"
         ],
         "title": "BundleSource",
+        "type": "object"
+      },
+      "ClosureRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /v1/ops/closures``.",
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Defaults to VARUNA_CITY.",
+            "title": "City"
+          },
+          "reason": {
+            "default": "",
+            "description": "Why, in the officer's own words. Required to close: a closure with no reason reaches the citizen screen with nothing to say after the comma, and UI_SPEC 4 refuses to soften it into 'closed'.",
+            "maxLength": 300,
+            "title": "Reason",
+            "type": "string"
+          },
+          "reopen": {
+            "default": false,
+            "description": "Lift the closure instead of making one.",
+            "title": "Reopen",
+            "type": "boolean"
+          },
+          "segment_id": {
+            "description": "The segment the officer is closing or reopening.",
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "ISO 8601 expiry with an offset; omit for until-reopened.",
+            "title": "Until"
+          },
+          "user": {
+            "default": "ward officer",
+            "maxLength": 80,
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "segment_id"
+        ],
+        "title": "ClosureRequest",
         "type": "object"
       },
       "ComputeRequest": {
@@ -1151,54 +911,6 @@
         "title": "HealthResponse",
         "type": "object"
       },
-      "HotspotPumpBenefit": {
-        "additionalProperties": false,
-        "description": "Per-hotspot outcome of a plan: minutes above 45 cm before and after.",
-        "properties": {
-          "assigned_pumps": {
-            "items": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "title": "Assigned Pumps",
-            "type": "array"
-          },
-          "excess_volume_m3": {
-            "description": "Inflow minus drain outflow over the horizon.",
-            "minimum": 0.0,
-            "title": "Excess Volume M3",
-            "type": "number"
-          },
-          "hotspot_id": {
-            "minLength": 1,
-            "title": "Hotspot Id",
-            "type": "string"
-          },
-          "hotspot_name": {
-            "title": "Hotspot Name",
-            "type": "string"
-          },
-          "minutes_above_45_after": {
-            "minimum": 0.0,
-            "title": "Minutes Above 45 After",
-            "type": "number"
-          },
-          "minutes_above_45_before": {
-            "minimum": 0.0,
-            "title": "Minutes Above 45 Before",
-            "type": "number"
-          }
-        },
-        "required": [
-          "hotspot_id",
-          "hotspot_name",
-          "minutes_above_45_before",
-          "minutes_above_45_after",
-          "excess_volume_m3"
-        ],
-        "title": "HotspotPumpBenefit",
-        "type": "object"
-      },
       "LineString": {
         "additionalProperties": false,
         "properties": {
@@ -1667,83 +1379,11 @@
         "title": "Polygon",
         "type": "object"
       },
-      "PumpAssignment": {
-        "additionalProperties": false,
-        "description": "One pump sent to one hotspot (blueprint 9.1 ``pump_assignment``).",
-        "properties": {
-          "arrive_ts": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Expected arrival (IST).",
-            "title": "Arrive Ts"
-          },
-          "eta_min": {
-            "description": "Travel time from the depot in minutes.",
-            "minimum": 0.0,
-            "title": "Eta Min",
-            "type": "integer"
-          },
-          "expected_benefit_min": {
-            "description": "Minutes above 45 cm avoided at the hotspot (emulator estimate).",
-            "minimum": 0.0,
-            "title": "Expected Benefit Min",
-            "type": "number"
-          },
-          "hotspot_id": {
-            "minLength": 1,
-            "title": "Hotspot Id",
-            "type": "string"
-          },
-          "hotspot_name": {
-            "title": "Hotspot Name",
-            "type": "string"
-          },
-          "order_text": {
-            "description": "Plain-language order, e.g. 'Move P-12 from Parel depot to Hindmata now; ETA 25 min; prevents about 40 min above 45 cm'.",
-            "title": "Order Text",
-            "type": "string"
-          },
-          "pump_id": {
-            "minLength": 1,
-            "title": "Pump Id",
-            "type": "string"
-          },
-          "run_id": {
-            "title": "Run Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "pump_id",
-          "hotspot_id",
-          "hotspot_name",
-          "eta_min",
-          "expected_benefit_min",
-          "order_text"
-        ],
-        "title": "PumpAssignment",
-        "type": "object"
-      },
       "PumpDispatchRequest": {
         "additionalProperties": false,
-        "description": "Body of ``POST /v1/pumps/dispatch``: dispatch a plan or explicit assignments.",
+        "description": "Body of ``POST /v1/pumps/dispatch``: dispatch the current plan, or named pumps of it.\n\nThe draft took a ``plan_id`` and a list of assignments. Neither survived contact with the\nserved endpoint (task D-07): no plan is stored under an addressable id, so a ``plan_id``\ncould only ever be a string nothing could look up, and accepting assignments from the client\nwould let a caller dispatch benefit figures the optimiser never produced. The desk names the\npumps; the API re-solves and dispatches what *it* assigned.",
         "properties": {
-          "assignments": {
-            "items": {
-              "$ref": "#/components/schemas/PumpAssignment"
-            },
-            "title": "Assignments",
-            "type": "array"
-          },
-          "plan_id": {
+          "city": {
             "anyOf": [
               {
                 "type": "string"
@@ -1752,7 +1392,38 @@
                 "type": "null"
               }
             ],
-            "title": "Plan Id"
+            "title": "City"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          },
+          "pump_ids": {
+            "description": "Empty = every assignment in the current plan.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Pump Ids",
+            "type": "array"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
           },
           "user": {
             "default": "control room",
@@ -1765,8 +1436,20 @@
       },
       "PumpOptimiseRequest": {
         "additionalProperties": false,
-        "description": "Body of ``POST /v1/pumps/optimise``.",
+        "description": "Body of ``POST /v1/pumps/optimise`` (served by ``varuna_api.routers.ops``).",
         "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which built city's fleet; default VARUNA_CITY.",
+            "title": "City"
+          },
           "hotspot_ids": {
             "description": "Empty = every hotspot.",
             "items": {
@@ -1799,31 +1482,11 @@
         "title": "PumpOptimiseRequest",
         "type": "object"
       },
-      "PumpPlan": {
+      "PumpStatusRequest": {
         "additionalProperties": false,
-        "description": "``pump_plan.json`` and the response of ``POST /v1/pumps/optimise``.",
+        "description": "Body of ``POST /v1/ops/pumps/{pump_id}/status``.",
         "properties": {
-          "assignments": {
-            "items": {
-              "$ref": "#/components/schemas/PumpAssignment"
-            },
-            "title": "Assignments",
-            "type": "array"
-          },
-          "benefits": {
-            "items": {
-              "$ref": "#/components/schemas/HotspotPumpBenefit"
-            },
-            "title": "Benefits",
-            "type": "array"
-          },
-          "dispatched": {
-            "default": false,
-            "description": "True once 'Dispatch pumps' was pressed.",
-            "title": "Dispatched",
-            "type": "boolean"
-          },
-          "dispatched_by": {
+          "city": {
             "anyOf": [
               {
                 "type": "string"
@@ -1832,66 +1495,66 @@
                 "type": "null"
               }
             ],
-            "title": "Dispatched By"
+            "title": "City"
           },
-          "dispatched_ts": {
+          "lat": {
             "anyOf": [
               {
-                "format": "date-time",
+                "maximum": 90.0,
+                "minimum": -90.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lat"
+          },
+          "lon": {
+            "anyOf": [
+              {
+                "maximum": 180.0,
+                "minimum": -180.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lon"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 300,
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Dispatched Ts"
+            "title": "Note"
           },
-          "run_id": {
-            "title": "Run Id",
-            "type": "string"
-          },
-          "solve_ms": {
-            "description": "Solver wall-clock in ms (budget 1000).",
-            "minimum": 0.0,
-            "title": "Solve Ms",
-            "type": "integer"
-          },
-          "solver": {
-            "description": "greedy in the prototype; milp is P1.",
+          "status": {
             "enum": [
-              "greedy",
-              "milp"
+              "available",
+              "unavailable",
+              "moved"
             ],
-            "title": "Solver",
+            "title": "Status",
             "type": "string"
           },
-          "synthetic_inventory": {
-            "default": true,
-            "description": "Whether the inventory is synthetic (labelled in the UI).",
-            "title": "Synthetic Inventory",
-            "type": "boolean"
-          },
-          "total_benefit_min": {
-            "description": "Total minutes above 45 cm avoided across hotspots.",
-            "readOnly": true,
-            "title": "Total Benefit Min",
-            "type": "number"
-          },
-          "valid_ts": {
-            "description": "Cycle time the plan was solved for (IST).",
-            "format": "date-time",
-            "title": "Valid Ts",
+          "user": {
+            "default": "ward officer",
+            "maxLength": 80,
+            "title": "User",
             "type": "string"
           }
         },
         "required": [
-          "run_id",
-          "valid_ts",
-          "solver",
-          "solve_ms",
-          "total_benefit_min"
+          "status"
         ],
-        "title": "PumpPlan",
+        "title": "PumpStatusRequest",
         "type": "object"
       },
       "RadarAccumulation": {
@@ -3957,6 +3620,24 @@
             }
           },
           {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
+            }
+          },
+          {
             "in": "query",
             "name": "level",
             "required": false,
@@ -4038,6 +3719,24 @@
               ],
               "title": "Run Id"
             }
+          },
+          {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
+            }
           }
         ],
         "responses": {
@@ -4067,6 +3766,7 @@
     },
     "/v1/alerts/{alert_id}/ack": {
       "post": {
+        "description": "Record that an officer has seen this alert, and answer with the alert as it now reads.\n\nThe response is the product's own alert with the ops log folded in - not a model of one -\nbecause the queue carries fields the drafted ``Alert`` schema forbids, the same reason\n``/v1/route`` serves its own flatter shape (ADR-0027).",
         "operationId": "alert_ack_v1_alerts__alert_id__ack_post",
         "parameters": [
           {
@@ -4077,6 +3777,40 @@
               "title": "Alert Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
           }
         ],
         "requestBody": {
@@ -4094,7 +3828,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Alert"
+                  "additionalProperties": true,
+                  "title": "Response Alert Ack V1 Alerts  Alert Id  Ack Post",
+                  "type": "object"
                 }
               }
             },
@@ -4109,19 +3845,9 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Engine not built yet (phase named)"
           }
         },
-        "summary": "Acknowledge",
+        "summary": "Acknowledge an alert (recorded in the ops log)",
         "tags": [
           "alerts"
         ]
@@ -4129,6 +3855,7 @@
     },
     "/v1/alerts/{alert_id}/escalate": {
       "post": {
+        "description": "Escalate to the next step of the matrix. ``escalate_to`` names it; the log keeps who.",
         "operationId": "alert_escalate_v1_alerts__alert_id__escalate_post",
         "parameters": [
           {
@@ -4139,6 +3866,40 @@
               "title": "Alert Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
           }
         ],
         "requestBody": {
@@ -4156,7 +3917,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Alert"
+                  "additionalProperties": true,
+                  "title": "Response Alert Escalate V1 Alerts  Alert Id  Escalate Post",
+                  "type": "object"
                 }
               }
             },
@@ -4171,21 +3934,35 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
+          }
+        },
+        "summary": "Escalate an alert up the matrix (recorded in the ops log)",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/v1/cities": {
+      "get": {
+        "description": "The city switcher's rows (CLAUDE.md 7.2, task D-09).\n\nThe switcher used to carry Mumbai and a hard-coded disabled Chennai, which meant it could not\ntell the jury the truth after the wizard ran: Chennai was built and the row still said\n\"Onboard first\". This reads the configs and the files on disk instead, so the row changes\nwhen the pipeline does.",
+        "operationId": "cities_v1_cities_get",
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
+                  "additionalProperties": true,
+                  "title": "Response Cities V1 Cities Get",
+                  "type": "object"
                 }
               }
             },
-            "description": "Engine not built yet (phase named)"
+            "description": "Successful Response"
           }
         },
-        "summary": "Escalate",
+        "summary": "Cities VARUNA has a config for, and which are built",
         "tags": [
-          "alerts"
+          "city"
         ]
       }
     },
@@ -4374,6 +4151,24 @@
             }
           },
           {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
+            }
+          },
+          {
             "in": "query",
             "name": "min_beta",
             "required": false,
@@ -4448,6 +4243,24 @@
                 }
               ],
               "title": "Run Id"
+            }
+          },
+          {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
             }
           }
         ],
@@ -4567,6 +4380,24 @@
                 }
               ],
               "title": "Run Id"
+            }
+          },
+          {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
             }
           },
           {
@@ -5002,6 +4833,24 @@
               ],
               "title": "Run Id"
             }
+          },
+          {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
+            }
           }
         ],
         "responses": {
@@ -5255,6 +5104,24 @@
               ],
               "title": "Run Id"
             }
+          },
+          {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
+            }
           }
         ],
         "responses": {
@@ -5306,6 +5173,24 @@
                 }
               ],
               "title": "Run Id"
+            }
+          },
+          {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
             }
           }
         ],
@@ -5474,6 +5359,382 @@
         ]
       }
     },
+    "/v1/ops/alerts": {
+      "get": {
+        "description": "The alert queue as the authority desk sees it: the run's own alerts, plus their state.\n\n``GET /v1/alerts`` serves the product untouched and is not this endpoint's to change - it\nbelongs to the depth router - so the desk reads the overlaid queue here and an\nacknowledgement survives a reload.",
+        "operationId": "ops_alerts_v1_ops_alerts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "level",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "severe",
+                    "moderate",
+                    "watch"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ops Alerts V1 Ops Alerts Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A run's alerts with the desk's state applied",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/v1/ops/closures": {
+      "get": {
+        "description": "The live closure set, folded from the log and with expiries applied at ``at``.",
+        "operationId": "get_closures_v1_ops_closures_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "description": "Evaluate expiries at this time.",
+            "in": "query",
+            "name": "at",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Evaluate expiries at this time.",
+              "title": "At"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Closures V1 Ops Closures Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Streets an authority has closed",
+        "tags": [
+          "ops"
+        ]
+      },
+      "post": {
+        "description": "Close a street, or reopen one. Both are appends; nothing is ever deleted.\n\nA closure beats the forecast: the router treats the segment as impassable whatever the depth\nsays, and the reason the officer typed comes back on the route as a structured reason for\nthe screen to word (TECH_SPEC 3.2).",
+        "operationId": "post_closure_v1_ops_closures_post",
+        "parameters": [
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClosureRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Closure V1 Ops Closures Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Close or reopen a street",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/v1/ops/log": {
+      "get": {
+        "description": "Every authority edit for a city, newest first - the audit trail the desk is judged on.",
+        "operationId": "ops_log_v1_ops_log_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 2000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Filter to one entry kind.",
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Filter to one entry kind.",
+              "title": "Kind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ops Log V1 Ops Log Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The append-only authority log",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/v1/ops/pumps/{pump_id}/status": {
+      "post": {
+        "description": "Mark a pump available, unavailable, or moved to a new depot.\n\nAn unavailable pump is not assigned by the next optimise. A moved one still is, from the\npoint given here - see ``varuna_products.pumps.ASSIGNABLE_STATES``.",
+        "operationId": "post_pump_status_v1_ops_pumps__pump_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "pump_id",
+            "required": true,
+            "schema": {
+              "title": "Pump Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PumpStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Pump Status V1 Ops Pumps  Pump Id  Status Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set a pump's status",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
     "/v1/pumps": {
       "get": {
         "description": "The greedy assignment of the synthetic pump fleet to the hotspots that flood.\n\nThe inventory is synthetic and the response says so in `inventory`; the benefit is a\ndocumented reduced model, labelled in `benefit_label` and printed beside every number the\nboard shows (CLAUDE.md rule 6, 11.10).",
@@ -5493,6 +5754,24 @@
                 }
               ],
               "title": "Run Id"
+            }
+          },
+          {
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
             }
           }
         ],
@@ -5529,7 +5808,28 @@
     },
     "/v1/pumps/dispatch": {
       "post": {
+        "description": "Record a dispatch order for the current plan, and return it in plain language.\n\n202 rather than 200: the order is accepted and recorded, and nothing downstream of this\nprototype moves because of it. The inventory is synthetic, and the response says so.",
         "operationId": "pumps_dispatch_v1_pumps_dispatch_post",
+        "parameters": [
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5545,7 +5845,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PumpPlan"
+                  "additionalProperties": true,
+                  "title": "Response Pumps Dispatch V1 Pumps Dispatch Post",
+                  "type": "object"
                 }
               }
             },
@@ -5560,19 +5862,9 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Engine not built yet (phase named)"
           }
         },
-        "summary": "Dispatch pumps (creates the order, alert and phone-mock message)",
+        "summary": "Dispatch the plan (records the order; sends no lorry)",
         "tags": [
           "pumps"
         ]
@@ -5580,7 +5872,28 @@
     },
     "/v1/pumps/optimise": {
       "post": {
+        "description": "Assign the fleet to the places that flood, honouring what the desk has marked.\n\nGated with the writes even though it stores nothing: it is one of the desk's acts, and the\ngreedy re-prices every candidate through the emulator, which is not something an\nunauthenticated caller should be able to ask for thirty times a second.",
         "operationId": "pumps_optimise_v1_pumps_optimise_post",
+        "parameters": [
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -5603,7 +5916,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PumpPlan"
+                  "additionalProperties": true,
+                  "title": "Response Pumps Optimise V1 Pumps Optimise Post",
+                  "type": "object"
                 }
               }
             },
@@ -5618,19 +5933,9 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Engine not built yet (phase named)"
           }
         },
-        "summary": "Optimise assignments",
+        "summary": "Re-run the greedy optimiser on demand",
         "tags": [
           "pumps"
         ]
@@ -6958,6 +7263,10 @@
     {
       "description": "Live conditions proxied from Open-Meteo (CC BY 4.0).",
       "name": "weather"
+    },
+    {
+      "description": "Authority edits: closures, pump status and the append-only log.",
+      "name": "ops"
     }
   ]
 }
