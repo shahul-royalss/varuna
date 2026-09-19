@@ -29,6 +29,7 @@ import { useTruthPins } from "@/lib/hooks/use-truth-pins";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
 import { TimeBar } from "@/components/varuna/time-bar";
+import { edgeFadeStyle, useScrollEdges } from "./use-scroll-edges";
 import { fetchOpeningRunId } from "@/lib/opening-run";
 import { DEFAULT_CITY, cityFromSearch } from "@/lib/city";
 import { DEFAULT_SIM_TIME } from "@/lib/stores/replay";
@@ -213,6 +214,14 @@ function ConsoleView() {
   const [pick, setPick] = useState<SegmentPick | null>(null);
 
   const truth = useTruthPins(run?.provenance.bundle ?? undefined, run?.validTs[step] ?? null);
+
+  // The layer column scrolls, and nothing said so: over the aerial basemap the thin `--line`
+  // scrollbar thumb is invisible, so at 1366 x 768 with probability and drains on the column read
+  // as though it ended at the cut. Two affordances, neither of them motion: a scrollbar in
+  // `--line-strong` on a `--well` track with its gutter reserved, and a 20 px fade applied as a
+  // mask on whichever edge has something hidden - a mask makes the clipped row translucent rather
+  // than laying anything over it, so no row is covered and no click is intercepted.
+  const columnEdges = useScrollEdges();
 
   const toggleLayer = useCallback(
     (key: LayerKey, next: boolean) => setLayers((current) => ({ ...current, [key]: next })),
@@ -491,7 +500,11 @@ function ConsoleView() {
             would hand the gesture to the map behind it. */}
         <div
           data-testid="console-map-column"
-          className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] min-h-0 w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain"
+          ref={columnEdges.ref}
+          data-scroll-above={columnEdges.above ? "yes" : "no"}
+          data-scroll-below={columnEdges.below ? "yes" : "no"}
+          style={edgeFadeStyle(columnEdges)}
+          className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] min-h-0 w-[380px] max-w-[calc(100%-2rem)] [scrollbar-color:var(--line-strong)_var(--well)] [scrollbar-gutter:stable] flex-col items-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain"
         >
           {/* The chips are 414 px of clock times in a 380 px column, so they wrap to a second row
               rather than spilling over the map (UI_SPEC 8). */}
