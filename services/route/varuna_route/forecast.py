@@ -39,6 +39,9 @@ __all__ = ["SegmentDepths", "latest_run_dir", "load_depths"]
 STEP_MIN = 5
 """Forecast step, minutes. Matches the cycle's own step (CLAUDE.md 10.3)."""
 
+_STEP_S = STEP_MIN * 60.0
+"""The same step in seconds, which is the unit the search counts elapsed time in."""
+
 DRY_CM = 5.0
 """Below this a segment is dry enough that no profile slows for it (CLAUDE.md 6.2 `--depth-dry`)."""
 
@@ -92,6 +95,24 @@ class SegmentDepths:
         """
         delta = (when - self.times[0]).total_seconds() / 60.0
         return max(0, min(self.n_steps - 1, int(delta // STEP_MIN)))
+
+    def depart_offset_s(self, when: datetime) -> float:
+        """Seconds from the run's first forecast step to an instant, for :meth:`step_after`."""
+        return (when - self.times[0]).total_seconds()
+
+    def step_after(self, depart_offset_s: float, seconds: float) -> int:
+        """The step reached ``seconds`` after a departure, as :meth:`step_at` would answer it.
+
+        The search pops a node twenty thousand times a route and asked :meth:`step_at` each
+        time, which built a `timedelta`, divided it and clamped it - datetime arithmetic to
+        answer a question that is integer division on a float it already holds. A test pins the
+        two against each other across the window and past both of its ends.
+        """
+        step = int((depart_offset_s + seconds) // _STEP_S)
+        if step < 0:
+            return 0
+        last = self.n_steps - 1
+        return step if step < last else last
 
     def depth_at(self, segment_id: str, step: int) -> float:
         """Depth in cm on a segment at a step; 0 for anything the run never wetted."""
