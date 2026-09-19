@@ -158,14 +158,21 @@ async function decodeFrames(
 
 /** Load one run end to end. `runId` omitted means the newest baked run with depth products.
  *
- * The city is not a parameter: a run directory already knows which city it is for, and passing a
- * second opinion in from the caller would only create a way for the two to disagree. */
+ * `city` decides *whose* newest that is, and only then: a named `runId` is served as asked,
+ * because a run directory already knows which city it is for and a second opinion from the caller
+ * could only disagree with it. Omitted, the API's configured city answers - which is what every
+ * Mumbai screen relies on, and what quietly handed a Mumbai console Chennai's water once Chennai
+ * had been onboarded (task D-09). */
 export async function loadRunDepth(
   runId?: string,
   signal?: AbortSignal,
   onProgress?: (done: number, total: number) => void,
+  city?: string,
 ): Promise<RunDepth> {
-  const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+  const params = new URLSearchParams();
+  if (runId) params.set("run_id", runId);
+  else if (city) params.set("city", city);
+  const query = params.toString() ? `?${params.toString()}` : "";
   const bounds = await getJson<BoundsResponse>(`/v1/nowcast/raster/bounds${query}`, signal);
 
   const [segments, frames] = await Promise.all([

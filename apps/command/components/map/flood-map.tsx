@@ -38,6 +38,7 @@ import type { SurchargeSet } from "@/lib/api/surcharge";
 import { reversedEdgesAtStep } from "./layers/reversed-flow";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Button } from "@/components/ui/button";
+import { currentCity } from "@/lib/city";
 
 /** Stable empty default for `drains`: a fresh `[]` in the parameter list would change identity on
  * every render and re-run the memo below (and `CityMap`'s layer build) for the screens - the
@@ -54,6 +55,13 @@ type Status =
 export type FloodMapStatusKind = Status["kind"];
 
 export interface FloodMapProps {
+  /**
+   * Which city's layers and - when no `runId` pins one - whose newest run to draw.
+   *
+   * Defaults to the city in the address bar rather than to Mumbai, so `?city=chennai` opens a
+   * Chennai map on any screen that hosts this map without having to thread the slug through
+   * itself (task D-09). With no `?city=` that is Mumbai, as it has always been.
+   */
   city?: string;
   runId?: string;
   /** Current step, owned by the time bar so keyboard and play share one clock. */
@@ -105,7 +113,7 @@ export interface FloodMapProps {
 }
 
 export function FloodMap({
-  city = "mumbai",
+  city = currentCity(),
   runId,
   step,
   onLoaded,
@@ -144,9 +152,15 @@ export function FloodMap({
       try {
         setStatus({ kind: "loading", done: 0, total: 36 });
         const [run, geojson] = await Promise.all([
-          loadRunDepth(runId, controller.signal, (done, total) => {
-            if (!cancelled) setStatus({ kind: "loading", done, total });
-          }),
+          loadRunDepth(
+            runId,
+            controller.signal,
+            (done, total) => {
+              if (!cancelled) setStatus({ kind: "loading", done, total });
+            },
+            // Only read when no `runId` pins the load: it picks whose newest run answers (D-09).
+            city,
+          ),
           fetch(apiUrl(`/v1/city/${city}/layers/segments`), { signal: controller.signal })
             .then((r) => (r.ok ? r.json() : { features: [] }))
             .catch(() => ({ features: [] })),
