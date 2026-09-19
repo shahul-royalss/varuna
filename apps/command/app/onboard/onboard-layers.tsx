@@ -14,6 +14,8 @@ export interface WizardLayerState {
   on: boolean;
   /** How many features the pipeline wrote; undefined until the layer has arrived. */
   count?: number;
+  /** One line under the row about what is drawn, e.g. which step of the forecast. */
+  detail?: string;
 }
 
 export interface OnboardLayersProps {
@@ -67,7 +69,11 @@ export function OnboardLayers({ value, onChange }: OnboardLayersProps) {
                   </span>
                 ) : null}
               </div>
-              {ready ? null : (
+              {ready ? (
+                state.detail ? (
+                  <p className="num type-micro text-text-3 pl-[42px]">{state.detail}</p>
+                ) : null
+              ) : (
                 <p className="type-micro text-text-3 pl-[42px]">Not yet — {row.step}</p>
               )}
             </li>
