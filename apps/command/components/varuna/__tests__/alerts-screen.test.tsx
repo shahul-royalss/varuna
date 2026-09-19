@@ -1,8 +1,15 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AlertsScreen } from "@/app/alerts/alerts-screen";
+import { toast } from "sonner";
+
+import { clearPassphrase, writePassphrase } from "@/lib/api/ops";
+
+// `<Toaster />` is mounted by the app layout, not by a test render, so the toast is asserted
+// where it is raised. Same shape as `app/pumps/__tests__/pumps-screen.test.tsx`.
+vi.mock("sonner", () => ({ toast: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/alerts",
@@ -45,6 +52,9 @@ const QUEUES: Record<string, unknown[]> = {
 };
 
 const capRequests: { alertId: string; runId: string | null }[] = [];
+/** Alert ids the stubbed API has been told about, and the header each act arrived with. */
+const acked = new Set<string>();
+const actions: { alertId: string; action: string; passphrase: string | null }[] = [];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -55,10 +65,39 @@ function json(body: unknown, status = 200) {
 
 beforeEach(() => {
   capRequests.length = 0;
-  vi.stubGlobal("fetch", async (input: RequestInfo | URL) => {
+  actions.length = 0;
+  acked.clear();
+  clearPassphrase();
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(raw, "http://localhost:8000");
     const runId = url.searchParams.get("run_id");
+    // The gated act. The API refuses one that carries no passphrase, and the overlay it writes is
+    // what the *next* read of the queue returns - never something this screen remembers.
+    const act = /\/v1\/alerts\/(.+)\/(ack|escalate)$/.exec(url.pathname);
+    if (act) {
+      const alertId = decodeURIComponent(act[1]!);
+      const passphrase = new Headers(init?.headers).get("X-Varuna-Ops");
+      actions.push({ alertId, action: act[2]!, passphrase });
+      if (!passphrase) {
+        return json(
+          {
+            error: {
+              code: "ops_passphrase_required",
+              message: "This is an authority edit and it carries no passphrase.",
+            },
+          },
+          401,
+        );
+      }
+      acked.add(alertId);
+      return json({
+        run_id: runId ?? RUN_0640,
+        entry: { id: "e1", kind: `alert_${act[2]}`, ts: "2019-07-02T08:12:00+05:30" },
+        alert: { id: alertId, state: "acknowledged", acknowledged_by: "console" },
+        notes: ["This changed no forecast."],
+      });
+    }
     if (url.pathname.endsWith("/v1/runs")) {
       return json({
         runs: [
@@ -69,7 +108,11 @@ beforeEach(() => {
     }
     if (url.pathname.endsWith("/v1/alerts")) {
       const run = runId ?? RUN_0640;
-      return json({ run_id: run, alerts: QUEUES[run] });
+      // What `apply_alert_state` does on the server: the product, with the log folded in.
+      const queue = (QUEUES[run] as { id: string }[]).map((a) =>
+        acked.has(a.id) ? { ...a, state: "acknowledged", acknowledged_by: "console" } : a,
+      );
+      return json({ run_id: run, alerts: queue });
     }
     const cap = /\/v1\/alerts\/(.+)\.cap$/.exec(url.pathname);
     if (cap) {
@@ -139,5 +182,72 @@ describe("AlertsScreen motion M16", () => {
       const run = request.runId ?? RUN_0640;
       expect((QUEUES[run] as { id: string }[]).map((a) => a.id)).toContain(request.alertId);
     }
+  });
+});
+
+/**
+ * Acknowledging used to be a boolean this component held: it survived neither a reload nor the
+ * change of cycle, and nobody else ever saw it. The state belongs to the API now, and the button
+ * is the thing that puts it there (B1).
+ */
+describe("AlertsScreen acknowledgement", () => {
+  function first(): HTMLElement {
+    return cards()[0]!;
+  }
+
+  it("shows the state the API returns, without anyone clicking", async () => {
+    acked.add((QUEUES[RUN_0640] as { id: string }[])[0]!.id);
+    render(
+      <TooltipProvider>
+        <AlertsScreen />
+      </TooltipProvider>,
+    );
+
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    expect(within(first()).getByText("Acknowledged")).toBeInTheDocument();
+    expect(actions).toHaveLength(0);
+  });
+
+  it("writes the acknowledgement and takes the new state back off the wire", async () => {
+    writePassphrase("monsoon desk 2026");
+    render(
+      <TooltipProvider>
+        <AlertsScreen />
+      </TooltipProvider>,
+    );
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    const id = (QUEUES[RUN_0640] as { id: string }[])[0]!.id;
+    expect(within(first()).queryByText("Acknowledged")).toBeNull();
+
+    fireEvent.click(within(first()).getByRole("button", { name: "Acknowledge" }));
+
+    await waitFor(() => expect(actions).toHaveLength(1));
+    expect(actions[0]).toMatchObject({
+      alertId: id,
+      action: "ack",
+      passphrase: "monsoon desk 2026",
+    });
+    // The card turns only because the queue was read again, not because the click said so.
+    await waitFor(() => expect(within(first()).getByText("Acknowledged")).toBeInTheDocument());
+  });
+
+  it("sends nothing when the tab holds no passphrase, and says where to enter it", async () => {
+    render(
+      <TooltipProvider>
+        <AlertsScreen />
+      </TooltipProvider>,
+    );
+    await waitFor(() => expect(cards()).toHaveLength(2));
+
+    fireEvent.click(within(first()).getByRole("button", { name: "Acknowledge" }));
+
+    await waitFor(() =>
+      expect(toast).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ description: expect.stringMatching(/authority desk/i) }),
+      ),
+    );
+    expect(actions, "a write with no passphrase never leaves the browser").toHaveLength(0);
+    expect(within(first()).queryByText("Acknowledged")).toBeNull();
   });
 });

@@ -344,7 +344,16 @@ def alerts(
 
     Computed once when the cycle ran, so the queue, the map and the hotspot rail are all reading
     the same forecast. Every alert on a replay carries CAP ``status=Exercise``.
+
+    **The desk's state is folded in at read time.** The queue itself is the cycle's product and
+    is never edited, but whether an officer has *seen* an alert is not a forecast - it lives in
+    the ops log, and a console showing "raised" beside a desk showing "acknowledged" is one alert
+    described two ways. ``apply_alert_state`` is the same call ``GET /v1/ops/alerts`` makes, with
+    the city resolved the same way, so the two cannot disagree. With no ops log it returns the
+    product untouched, which is every run on a fresh clone.
     """
+    from varuna_api.routers.ops import apply_alert_state
+
     path = _resolve(run_id, city)
     record = path / "alerts.json"
     if not record.is_file():
@@ -353,7 +362,7 @@ def alerts(
         )
 
     body = json.loads(record.read_text(encoding="utf-8"))
-    queue = body.get("alerts", [])
+    queue = apply_alert_state(body.get("alerts", []), city)
     if level:
         queue = [a for a in queue if a.get("level") == level]
     meta = _meta(path)
