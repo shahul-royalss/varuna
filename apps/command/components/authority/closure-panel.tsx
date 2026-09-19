@@ -102,9 +102,23 @@ export function matchStreets(streets: StreetOption[], query: string): StreetOpti
     .slice(0, MAX_MATCHES);
 }
 
-/** How a street reads in the list and in the result sentence. */
-export function streetLabel(street: Pick<StreetOption, "name" | "segmentId">): string {
-  return street.name ?? `Unnamed road ${street.segmentId}`;
+/**
+ * How a street reads in the list and in the result sentence.
+ *
+ * **"Unnamed road" is a claim, and it is only made where the feed makes it.** A street picked from
+ * the list arrives with `name: null` because OSM names none of 52.6 % of Mumbai's segments, so
+ * calling it unnamed is true. A segment id typed into the form carries no name because this panel
+ * never asked for one - `Dr Babasaheb Ambedkar Marg` closed by its id would have been printed as
+ * "Unnamed road S618477973-001", which is a fact the screen invented. `known` separates not-named
+ * from not-looked-up, and the typed path says "Segment <id>" instead.
+ */
+export function streetLabel(
+  street: Pick<StreetOption, "name" | "segmentId"> & { known?: boolean },
+): string {
+  if (street.name) return street.name;
+  return street.known === false
+    ? `Segment ${street.segmentId}`
+    : `Unnamed road ${street.segmentId}`;
 }
 
 export interface ClosurePanelProps {
@@ -184,10 +198,16 @@ export function ClosurePanel({
   }, [refreshClosures]);
 
   const matches = useMemo(() => matchStreets(streets ?? [], query), [streets, query]);
-  const target = picked ?? (segmentId.trim() ? { segmentId: segmentId.trim(), name: null } : null);
+  // `known: false` marks a segment this panel was handed rather than looked up, so the result
+  // sentence says "Segment <id>" instead of asserting the road has no name.
+  const target =
+    picked ?? (segmentId.trim() ? { segmentId: segmentId.trim(), name: null, known: false } : null);
 
   const act = useCallback(
-    async (kind: "close" | "reopen", subject: { segmentId: string; name: string | null }) => {
+    async (
+      kind: "close" | "reopen",
+      subject: { segmentId: string; name: string | null; known?: boolean },
+    ) => {
       setBusy(true);
       setResult(null);
       try {
@@ -415,7 +435,13 @@ export function ClosurePanel({
                     className="h-11 shrink-0"
                     disabled={busy}
                     onClick={() =>
-                      act("reopen", { segmentId: closure.segmentId, name: closure.segmentId })
+                      // The closure set carries no street name - the overlay stores the id the
+                      // officer closed and nothing else - so the sentence names the segment.
+                      act("reopen", {
+                        segmentId: closure.segmentId,
+                        name: null,
+                        known: false,
+                      })
                     }
                   >
                     <X className="size-4" aria-hidden="true" />
