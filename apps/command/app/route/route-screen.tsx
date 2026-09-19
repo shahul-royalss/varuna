@@ -234,8 +234,15 @@ export function RouteScreen() {
              * The right column scrolls. It used to be a plain flex column inside a page that is
              * `overflow-hidden`, so once a route came back with an avoided list and two alternates
              * the comparison grew past the viewport and there was no way to reach it - the reported
-             * "I can't even scroll down". The map keeps a definite height rather than `flex-1`, so
-             * it cannot be squeezed to nothing by the panel below it either.
+             * "I can't even scroll down".
+             *
+             * The map fills the pane rather than a band of it (UI_SPEC 8, task D-18). It used to
+             * be capped at `clamp(20rem, 52vh, 40rem)`, which left the city drawn into about half
+             * the column on a 1440 x 900 screen with the comparison below it and nothing in
+             * between. `h-full` against the column's own height gives the map the pane; the
+             * comparison then sits below the fold and the column scrolls to it, which is the
+             * behaviour this column was given in the first place. `shrink-0` keeps the panel below
+             * from squeezing it, and the `min-h` keeps it readable on a short screen.
              */}
             <div
               // Focusable, because until the city and a route have loaded it scrolls and holds
@@ -250,7 +257,7 @@ export function RouteScreen() {
               <PanelErrorBoundary>
                 <section
                   aria-label="Route map"
-                  className="rounded-panel border-line bg-deep relative h-[clamp(20rem,52vh,40rem)] shrink-0 overflow-hidden border"
+                  className="rounded-panel border-line bg-deep relative h-full min-h-[20rem] shrink-0 overflow-hidden border"
                 >
                   {streets.length > 0 ? (
                     <CityMap

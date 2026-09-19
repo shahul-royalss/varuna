@@ -69,25 +69,28 @@ const ROWS: readonly {
 export function LayerPanel({ value, onChange, counts = {}, details = {} }: LayerPanelProps) {
   const [open, setOpen] = useState(true);
 
+  // No `overflow-hidden` on the root: it clipped the rows when the column ran out of room
+  // instead of letting the column scroll them into reach (UI_SPEC 8, task D-17). The rounded
+  // corners it was there for are kept by the header and the list, which are what touch them.
   return (
-    <div className="w-[248px] overflow-hidden rounded-panel border border-line bg-[var(--ink)]/85 backdrop-blur-[12px]">
+    <div className="rounded-panel border-line w-[248px] shrink-0 border bg-[var(--ink)]/85 backdrop-blur-[12px]">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="flex h-9 w-full items-center gap-2 px-3 text-left hover:bg-well focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-tide"
+        className="rounded-t-panel hover:bg-well focus-visible:ring-tide flex h-9 w-full items-center gap-2 px-3 text-left focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
       >
-        <Layers size={16} strokeWidth={1.75} className="shrink-0 text-text-2" />
-        <span className="flex-1 type-small text-text">Layers</span>
+        <Layers size={16} strokeWidth={1.75} className="text-text-2 shrink-0" />
+        <span className="type-small text-text flex-1">Layers</span>
         <ChevronDown
           size={14}
           strokeWidth={1.75}
-          className={cn("shrink-0 text-text-3 transition-transform", !open && "-rotate-90")}
+          className={cn("text-text-3 shrink-0 transition-transform", !open && "-rotate-90")}
         />
       </button>
 
       {open ? (
-        <ul className="border-t border-line p-1">
+        <ul className="rounded-b-panel border-line border-t p-1">
           {ROWS.map((row) => {
             const on = value[row.key];
             const count = counts[row.key];
@@ -100,32 +103,32 @@ export function LayerPanel({ value, onChange, counts = {}, details = {} }: Layer
                   aria-checked={on}
                   onClick={() => onChange(row.key, !on)}
                   title={row.hint}
-                  className="flex w-full items-center gap-2.5 rounded-control px-2 py-1.5 text-left hover:bg-well focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-tide"
+                  className="rounded-control hover:bg-well focus-visible:ring-tide flex w-full items-center gap-2.5 px-2 py-1.5 text-left focus-visible:ring-2 focus-visible:outline-none focus-visible:ring-inset"
                 >
                   <span
                     aria-hidden="true"
                     className={cn(
-                      "relative h-3.5 w-6 shrink-0 rounded-chip border transition-colors",
+                      "rounded-chip relative h-3.5 w-6 shrink-0 border transition-colors",
                       on ? "border-tide bg-tide/30" : "border-line-strong bg-well",
                     )}
                   >
                     <span
                       className={cn(
                         "absolute top-1/2 size-2 -translate-y-1/2 rounded-full transition-[left]",
-                        on ? "left-[13px] bg-tide" : "left-[3px] bg-[var(--text-3)]",
+                        on ? "bg-tide left-[13px]" : "left-[3px] bg-[var(--text-3)]",
                       )}
                     />
                   </span>
-                  <span className="min-w-0 flex-1 truncate type-small text-text">{row.label}</span>
+                  <span className="type-small text-text min-w-0 flex-1 truncate">{row.label}</span>
                   {count !== undefined ? (
-                    <span className="num shrink-0 type-micro text-text-3">
+                    <span className="num type-micro text-text-3 shrink-0">
                       {count.toLocaleString("en-IN")}
                     </span>
                   ) : null}
                   {row.shortcut ? <Kbd>{row.shortcut}</Kbd> : null}
                 </button>
                 {detail ? (
-                  <p className="num px-2 pb-1.5 pl-[42px] type-micro text-text-3">{detail}</p>
+                  <p className="num type-micro text-text-3 px-2 pb-1.5 pl-[42px]">{detail}</p>
                 ) : null}
               </li>
             );
