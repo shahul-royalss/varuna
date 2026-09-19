@@ -40,6 +40,7 @@ from varuna_api.routers import (
     runs,
     stubs,
     verify,
+    weather,
     whatif,
 )
 from varuna_api.seed import seed_demo_runs
@@ -69,6 +70,7 @@ TAGS = [
     {"name": "onboard", "description": "City-in-a-box onboarding jobs."},
     {"name": "verification", "description": "Verification scores per event."},
     {"name": "city", "description": "Static city layers simplified for the map."},
+    {"name": "weather", "description": "Live conditions proxied from Open-Meteo (CC BY 4.0)."},
 ]
 
 
@@ -246,6 +248,7 @@ def create_app(
     app.include_router(route.router)
     app.include_router(onboard.router)
     app.include_router(verify.router)
+    app.include_router(weather.router)
     app.include_router(nowcast.router)
     app.include_router(stubs.router)
     return app
