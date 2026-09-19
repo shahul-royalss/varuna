@@ -33,6 +33,22 @@ import type { TruthPin } from "./types";
 export const TRUTH_RADIUS_M = 70;
 export const RIPPLE_RADIUS_M = 320;
 
+/**
+ * The pin's size in pixels, floor and ceiling.
+ *
+ * A pin is a **marker, not an area**: it says "this was reported here", and 70 m is a reading of
+ * how precisely, not a claim about how much street was under water. Without the ceiling the radius
+ * is geographic all the way in, so at street zoom - 0.28 m per pixel at z19 over Hindmata - the
+ * pin became a 248 px opaque white disc that covered the junction, the imagery and the very
+ * streets whose depth it is there to corroborate. Capped, it stops growing at a marker's size and
+ * keeps marking something the operator can still see.
+ *
+ * The ripple (M18) scales from this same base in the shader, so its 4.6x expansion is unchanged;
+ * it is given the same floor and ceiling so it always starts at the pin's own edge.
+ */
+export const TRUTH_MIN_PX = 4;
+export const TRUTH_MAX_PX = 12;
+
 /** Stroke alpha of the ripple as it starts; the fade takes it to 0. */
 export const RIPPLE_ALPHA = 220;
 
@@ -137,7 +153,8 @@ const pinProps = {
   getPosition: (d: TruthPin) => [d.lon, d.lat] as [number, number],
   getRadius: TRUTH_RADIUS_M,
   radiusUnits: "meters",
-  radiusMinPixels: 4,
+  radiusMinPixels: TRUTH_MIN_PX,
+  radiusMaxPixels: TRUTH_MAX_PX,
   stroked: true,
   filled: true,
   getFillColor: TRUTH_FILL,
@@ -151,6 +168,8 @@ const rippleProps = {
   getPosition: (d: TruthPin) => [d.lon, d.lat] as [number, number],
   getRadius: TRUTH_RADIUS_M,
   radiusUnits: "meters",
+  radiusMinPixels: TRUTH_MIN_PX,
+  radiusMaxPixels: TRUTH_MAX_PX,
   stroked: true,
   filled: false,
   getLineColor: [TRUTH_RING[0], TRUTH_RING[1], TRUTH_RING[2], RIPPLE_ALPHA] as [

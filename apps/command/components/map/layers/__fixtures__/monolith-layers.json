@@ -763,6 +763,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -795,6 +797,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -836,6 +839,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -1630,6 +1634,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -1662,6 +1668,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -1703,6 +1710,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -2398,6 +2406,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -2430,6 +2440,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -2471,6 +2482,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -3118,6 +3130,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -3150,6 +3164,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -3191,6 +3206,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -3852,6 +3868,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -3884,6 +3902,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -3925,6 +3944,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -5204,6 +5224,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -5236,6 +5258,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -5277,6 +5300,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -6091,6 +6115,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -6123,6 +6149,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -6164,6 +6191,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -6978,6 +7006,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -7010,6 +7040,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -7051,6 +7082,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -7811,6 +7843,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -8625,6 +8658,8 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
+    "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
    },
@@ -8657,6 +8692,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true
@@ -8698,6 +8734,7 @@
     "getRadius": 70,
     "lineWidthUnits": "pixels",
     "pickable": false,
+    "radiusMaxPixels": 12,
     "radiusMinPixels": 4,
     "radiusUnits": "meters",
     "stroked": true

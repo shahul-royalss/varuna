@@ -4,8 +4,13 @@
  * `@deck.gl/react` is replaced by a recorder, so every render's `layers` array and camera land here
  * as data. Each scenario renders `CityMap` the way a screen does and compares the serialized layers
  * (ids, order, literal props, accessors evaluated on the data) with the fixture captured from the
- * monolith before any code moved. `CAPTURE=1` rewrites the fixture; it was run exactly once, on
- * commit "capture the monolith", and never after the split.
+ * monolith before any code moved. `CAPTURE=1` rewrites the fixture; it was run once on commit
+ * "capture the monolith", and a second time for chunk INTEGRATE's defect 3, which caps the
+ * ground-truth pin and its ripple in pixels so a 70 m marker cannot become a 248 px disc over the
+ * junction it marks. That recapture added 28 `radiusMaxPixels` and 9 `radiusMinPixels` lines and
+ * removed nothing, which is the whole of that change and the check that nothing else drifted in
+ * with it. A recapture is never how a failure is made to pass: the diff is read line by line
+ * first, and a line that is not the change being made is a regression.
  */
 
 import { act, render } from "@testing-library/react";
@@ -248,7 +253,9 @@ describe("CityMap renders the layers the monolith rendered", () => {
 
   it("flies to a focus", () => {
     const { container } = render(
-      <CityMap {...fx.consoleProps({ focus: { lon: 72.841, lat: 19.012, key: "k1", zoom: 15 } })} />,
+      <CityMap
+        {...fx.consoleProps({ focus: { lon: 72.841, lat: 19.012, key: "k1", zoom: 15 } })}
+      />,
     );
     check("focus", picture(last(), container));
   });
@@ -259,9 +266,7 @@ describe("CityMap renders the layers the monolith rendered", () => {
     const before = last().layers as { id: string }[];
     rerender(<CityMap {...props} step={2} />);
     const after = last().layers as { id: string }[];
-    const rebuilt = after
-      .filter((layer) => !before.includes(layer))
-      .map((layer) => layer.id);
+    const rebuilt = after.filter((layer) => !before.includes(layer)).map((layer) => layer.id);
     check("scrub-rebuilt", rebuilt);
   });
 
