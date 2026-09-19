@@ -554,6 +554,7 @@ export function DashboardScreen() {
             </li>
           ))}
         </ul>
+        {wide ? null : <PublicLegend profile={profile} className="mt-2" />}
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -569,11 +570,15 @@ export function DashboardScreen() {
             onRunLoaded={onRunLoaded}
           />
 
-          {/* Above the map's own attribution credit, which runs along the bottom edge. */}
-          <PublicLegend
-            profile={profile}
-            className="border-line bg-ink/80 rounded-control pointer-events-none absolute bottom-8 left-3 z-10 border px-2.5 py-1.5"
-          />
+          {/* Over the map on a desktop, above its attribution credit. On a phone the bottom of
+              the map is the sheet, so the legend goes in the header instead - where `/map`
+              already puts it - rather than under something the reader has to drag away. */}
+          {wide ? (
+            <PublicLegend
+              profile={profile}
+              className="border-line bg-ink/80 rounded-control pointer-events-none absolute bottom-8 left-3 z-10 border px-2.5 py-1.5"
+            />
+          ) : null}
 
           {wide ? null : (
             <>
