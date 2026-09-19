@@ -191,14 +191,26 @@ def _search(
     heap: list[tuple[float, int]] = [(0.0, source)]
     speed = max(vehicle.speed_scale, 0.05)
 
+    # Hoisted out of the per-edge path. The search relaxes about twenty thousand edges a route
+    # and pops as many nodes, so anything resolved inside the loop is paid twenty thousand
+    # times: the depth table, the threshold's exceedance table, the profile's own numbers, and
+    # the departure as an offset the step arithmetic can use without building a timedelta.
+    # Every lookup below reproduces SegmentDepths.step_at, .depth_at and .exceedance exactly,
+    # and tests pin them against those methods rather than against a remembered answer.
+    depth_by_segment = depths.depth_cm
+    p_by_segment = depths.p_gt.get(float(vehicle.depth_cm))
+    threshold = vehicle.depth_cm
+    tolerance = vehicle.risk_tolerance
+    last_step = depths.n_steps - 1
+    depart_offset_s = depths.depart_offset_s(depart)
+
     while heap:
         elapsed, node = heapq.heappop(heap)
         if elapsed > best[node] + 1e-9:
             continue
         if node == target:
             break
-        arrive_here = depart + timedelta(seconds=elapsed)
-        step = depths.step_at(arrive_here)
+        step = depths.step_after(depart_offset_s, elapsed)
 
         for e in range(int(graph.indptr[node]), int(graph.indptr[node + 1])):
             segment_id = graph.edge_segment[e]
@@ -208,13 +220,26 @@ def _search(
             if avoid_water:
                 if segment_id in closed:
                     continue
-                depth = depths.depth_at(segment_id, step)
-                p = _exceedance(depths, segment_id, vehicle.depth_cm, step)
-                if p >= vehicle.risk_tolerance:
+                series = depth_by_segment.get(segment_id)
+                if not series:
+                    depth = 0.0
+                else:
+                    depth = series[step] if step < len(series) else series[-1]
+                if p_by_segment is None:
+                    p = 1.0 if depth > threshold else 0.0
+                else:
+                    ps = p_by_segment.get(segment_id)
+                    if ps is not None:
+                        p = ps[step] if step < len(ps) else ps[-1]
+                    elif series is None:
+                        p = 0.0
+                    else:
+                        p = 1.0 if depth > threshold else 0.0
+                if p >= tolerance:
                     if record_blocked is not None and e not in record_blocked:
-                        record_blocked[e] = (depth, p, arrive_here)
+                        record_blocked[e] = (depth, p, depart + timedelta(seconds=elapsed))
                     continue
-                cost = free * _phi(depth, vehicle.depth_cm)
+                cost = free * _phi(depth, threshold)
 
             if penalised and e in penalised:
                 cost *= ALTERNATE_PENALTY

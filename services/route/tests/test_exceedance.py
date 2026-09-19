@@ -188,3 +188,31 @@ def test_the_median_depth_alone_would_have_diverted_nobody() -> None:
     depths = _uncertain_depths()
     assert depths.depth_at("SHORT-B", 0) < 30.0
     assert depths.exceedance("SHORT-B", 30.0, 0) == pytest.approx(0.3)
+
+
+def test_step_after_answers_exactly_what_step_at_answers() -> None:
+    """The search's integer-division shortcut and the datetime method must never disagree.
+
+    `_search` asks :meth:`SegmentDepths.step_after` once per node it pops, because
+    :meth:`step_at` built a `timedelta` twenty thousand times a route - 447 ms to 57.7 ms on the
+    KEM-to-Sion ambulance trip, measured on the 08:40 demo run. The shortcut is only safe while
+    it is the same function, including past both ends of the window, so this walks a minute at a
+    time from an hour before a departure to four hours after it and compares the two.
+    """
+    depths = SegmentDepths(
+        run_id="TEST-STEPS",
+        times=tuple(T0 + timedelta(minutes=5 * k) for k in range(36)),
+        depth_cm={},
+        n_steps=36,
+        n_total=1,
+        ensemble_n=20,
+    )
+    for depart_min in (-30, 0, 7, 120, 400):
+        depart = T0 + timedelta(minutes=depart_min)
+        offset = depths.depart_offset_s(depart)
+        for elapsed_min in range(-60, 240):
+            elapsed_s = elapsed_min * 60.0
+            when = depart + timedelta(seconds=elapsed_s)
+            assert depths.step_after(offset, elapsed_s) == depths.step_at(when), (
+                f"depart {depart_min} min, elapsed {elapsed_min} min"
+            )
