@@ -190,7 +190,9 @@ describe("ageLabel", () => {
 
 describe("isGridDistant", () => {
   it("flags a cell centre further than the notice distance", () => {
-    expect(isGridDistant(weatherFromBody(body({ grid_offset_km: GRID_NOTICE_KM + 0.1 })))).toBe(true);
+    expect(isGridDistant(weatherFromBody(body({ grid_offset_km: GRID_NOTICE_KM + 0.1 })))).toBe(
+      true,
+    );
     expect(isGridDistant(weatherFromBody(body({ grid_offset_km: 0.4 })))).toBe(false);
   });
 });
