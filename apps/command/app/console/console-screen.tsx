@@ -221,7 +221,9 @@ function ConsoleView() {
   // `--line-strong` on a `--well` track with its gutter reserved, and a 20 px fade applied as a
   // mask on whichever edge has something hidden - a mask makes the clipped row translucent rather
   // than laying anything over it, so no row is covered and no click is intercepted.
-  const columnEdges = useScrollEdges();
+  // Destructured rather than kept as one object: the React compiler's lint infers that whatever
+  // reaches a `ref` prop is a ref, and then reads of its siblings during render are ref reads.
+  const { attach: attachColumn, above: columnAbove, below: columnBelow } = useScrollEdges();
 
   const toggleLayer = useCallback(
     (key: LayerKey, next: boolean) => setLayers((current) => ({ ...current, [key]: next })),
@@ -500,10 +502,10 @@ function ConsoleView() {
             would hand the gesture to the map behind it. */}
         <div
           data-testid="console-map-column"
-          ref={columnEdges.ref}
-          data-scroll-above={columnEdges.above ? "yes" : "no"}
-          data-scroll-below={columnEdges.below ? "yes" : "no"}
-          style={edgeFadeStyle(columnEdges)}
+          ref={attachColumn}
+          data-scroll-above={columnAbove ? "yes" : "no"}
+          data-scroll-below={columnBelow ? "yes" : "no"}
+          style={edgeFadeStyle({ above: columnAbove, below: columnBelow })}
           className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] min-h-0 w-[380px] max-w-[calc(100%-2rem)] [scrollbar-color:var(--line-strong)_var(--well)] [scrollbar-gutter:stable] flex-col items-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain"
         >
           {/* The chips are 414 px of clock times in a 380 px column, so they wrap to a second row
