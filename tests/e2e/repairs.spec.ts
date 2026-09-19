@@ -92,31 +92,62 @@ test.describe("D-17 the console's floating column scrolls", () => {
   });
 });
 
+/**
+ * The map's own box and the pane it is laid into.
+ *
+ * `CityMap`'s root is `absolute inset-0`, so its parent is the pane: the element that owns the
+ * height. Measuring both is what separates "the map fills what it was given" from "what it was
+ * given is a band".
+ */
+async function mapAndPane(page: Page) {
+  const canvas = page.locator("canvas").first();
+  await expect(canvas).toBeVisible({ timeout: 60_000 });
+  const box = await canvas.evaluate((el) => {
+    const map = el.closest(".absolute.inset-0") ?? (el.closest("div") as HTMLElement);
+    const pane = (map as HTMLElement).parentElement as HTMLElement;
+    const m = (map as HTMLElement).getBoundingClientRect();
+    const p = pane.getBoundingClientRect();
+    return { mapW: m.width, mapH: m.height, paneW: p.width, paneH: p.height };
+  });
+  return box;
+}
+
 test.describe("D-18 maps fill their panes", () => {
   for (const screen of ["/console", "/route", "/drains"]) {
-    for (const vp of VIEWPORTS) {
-      test(`${screen} at ${vp.name} @needs-city`, async ({ page }) => {
+    test(`${screen} fills its pane and the pane grows with the viewport @needs-city`, async ({
+      page,
+    }) => {
+      // Three full page loads with the city's layers on each: `/drains` alone is about thirty
+      // seconds a viewport on this laptop.
+      test.slow();
+      const heights: number[] = [];
+      for (const vp of VIEWPORTS) {
         await page.setViewportSize({ width: vp.width, height: vp.height });
         await page.goto(screen);
-        const canvas = page.locator("canvas").first();
-        await expect(canvas).toBeVisible({ timeout: 60_000 });
+        const box = await mapAndPane(page);
 
-        // The pane is the positioned box the map is laid into; `CityMap` is `absolute inset-0`
-        // inside it, so a map that fills its pane has the pane's own rect.
-        const fit = await canvas.evaluate((el) => {
-          const map = el.closest("div") as HTMLElement;
-          const pane = map.offsetParent as HTMLElement | null;
-          if (!pane) return null;
-          const m = map.getBoundingClientRect();
-          const p = pane.getBoundingClientRect();
-          return { w: m.width / p.width, h: m.height / p.height, paneH: p.height };
-        });
-        expect(fit).not.toBeNull();
-        expect(fit!.w).toBeGreaterThan(0.98);
-        expect(fit!.h).toBeGreaterThan(0.98);
-        // And the pane is a pane, not a band: it is most of the height the page gives it.
-        expect(fit!.paneH).toBeGreaterThan(vp.height * 0.45);
-      });
-    }
+        // The map is the pane, not a band inside it.
+        expect(box.mapW / box.paneW, `${screen} at ${vp.name}: map width vs pane`).toBeGreaterThan(
+          0.98,
+        );
+        expect(box.mapH / box.paneH, `${screen} at ${vp.name}: map height vs pane`).toBeGreaterThan(
+          0.98,
+        );
+        heights.push(box.paneH);
+      }
+
+      // And the pane itself is not capped: a taller window gives the map nearly all of the extra
+      // height. This is what a `clamp(20rem, 52vh, 40rem)` band fails - it takes about half of
+      // each extra pixel and then stops taking any at all.
+      for (let i = 1; i < VIEWPORTS.length; i += 1) {
+        const gained = heights[i] - heights[i - 1];
+        const offered = VIEWPORTS[i].height - VIEWPORTS[i - 1].height;
+        expect(
+          gained / offered,
+          `${screen}: pane grew ${Math.round(gained)} px of the ${offered} px between ` +
+            `${VIEWPORTS[i - 1].name} and ${VIEWPORTS[i].name}`,
+        ).toBeGreaterThan(0.8);
+      }
+    });
   }
 });
