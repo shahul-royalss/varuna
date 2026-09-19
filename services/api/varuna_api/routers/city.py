@@ -227,12 +227,17 @@ def _city_row(city: str) -> dict[str, Any]:
     exactly that until the wizard's first forecast lands, and a switcher that said "ready" would
     be promising water it has not got.
     """
-    name, code, bbox = city.title(), None, None
+    name: str = city.title()
+    code: str | None = None
+    bbox: list[float] | None = None
     try:
         from varuna_city.config import load_city_config
 
         config = load_city_config(city)
-        name, code, bbox = config.name, config.code, list(config.bbox)
+        box = config.bbox
+        name, code = config.name, config.code
+        # As four numbers, the order every map library wants; `list(BBox)` yields field pairs.
+        bbox = [box.min_lon, box.min_lat, box.max_lon, box.max_lat]
     except Exception:  # a missing or unreadable config is a row, not a 500
         log.info("city.config_unreadable", city=city)
 

@@ -1,8 +1,6 @@
 "use client";
 
 import { MapPinned } from "lucide-react";
-import Link from "next/link";
-import type { Route } from "next";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -37,6 +35,7 @@ import {
 } from "@/lib/api/run-depth";
 import { apiUrl } from "@/lib/api/client";
 import { useLayerFade } from "@/lib/hooks/use-layer-fade";
+import { formatIst } from "@/lib/format";
 import { OnboardLayers, type WizardLayerId, type WizardLayerState } from "./onboard-layers";
 
 /** The shape `/v1/city/{city}/layers/segments` returns, as the two readers below want it. */
@@ -130,11 +129,38 @@ function toLines(job: OnboardJob | null): LogLine[] {
  * the layers are on disk and the map must draw them.
  */
 export function reachedStepIndex(job: OnboardJob | null): number {
-  if (!job || job.status === "none") return -1;
-  if (job.status === "finished" || job.built) return ONBOARDING_STEP_IDS.length;
+  if (!job) return -1;
+  // A city built in an earlier session has no job in the API's memory - jobs do not outlive the
+  // process - but its layers are on disk, and a wizard that drew nothing for them would be
+  // telling the operator Chennai had not been built when it had.
+  if (job.built || job.status === "finished") return ONBOARDING_STEP_IDS.length;
+  if (job.status === "none") return -1;
   const current = ONBOARDING_STEP_IDS.indexOf(STEP_OF[job.step] ?? "area");
   // The step it is on has not finished, so only the ones before it have written anything.
   return current;
+}
+
+/**
+ * The step of the first forecast with the most streets over 15 cm - the depth ramp's first wet
+ * band (CLAUDE.md 6.2).
+ *
+ * A design storm's water arrives during the run, so step 0 is a nearly dry Chennai: drawing it
+ * would end the wizard on a map that looks like nothing happened. This picks the wettest step,
+ * and the panel prints which time it is showing, so the map is a moment the run actually
+ * contains rather than an unlabelled "peak".
+ */
+export function wettestStep(depthCm: Map<string, number[]>, overCm = 15): number {
+  const counts: number[] = [];
+  for (const series of depthCm.values()) {
+    for (let step = 0; step < series.length; step += 1) {
+      if (series[step] >= overCm) counts[step] = (counts[step] ?? 0) + 1;
+    }
+  }
+  let best = 0;
+  for (let step = 1; step < counts.length; step += 1) {
+    if ((counts[step] ?? 0) > (counts[best] ?? 0)) best = step;
+  }
+  return best;
 }
 
 /**
@@ -206,6 +232,7 @@ export function OnboardScreen() {
   const reached = reachedStepIndex(job);
   const jobKey = job?.jobId ?? (job?.built ? "existing" : "none");
   const firstRunId = job?.firstRunId ?? null;
+  const built = job?.built ?? false;
 
   // Ask for each layer once its step has completed. A layer the pipeline has not written yet
   // answers 404; that is not an error here, it is "not yet", and the next step tries again.
@@ -243,13 +270,16 @@ export function OnboardScreen() {
         setDrains(pipes.slice(0, MAP_EDGE_LIMIT));
       });
     }
-    if (firstRunId) {
+    // This build's own first run, or - reopening a city built in an earlier session, where the
+    // job is gone from the API's memory - whichever run is newest for it, which is what the
+    // console would draw. Either way it is a run this city actually has.
+    if (firstRunId || built) {
       once("depth", async () => {
-        setDepth(await loadRunDepth(firstRunId, controller.signal, undefined, CITY));
+        setDepth(await loadRunDepth(firstRunId ?? undefined, controller.signal, undefined, CITY));
       });
     }
     return () => controller.abort();
-  }, [reached, jobKey, firstRunId]);
+  }, [reached, jobKey, firstRunId, built]);
 
   const segments = useMemo<GeoSegment[] | null>(() => (roads ? allSegments(roads) : null), [roads]);
   // The first forecast's own wet streets, coloured by its depth.
@@ -264,6 +294,10 @@ export function OnboardScreen() {
   const fadeBuildings = useLayerFade("buildings", (buildings?.length ?? 0) > 0 && show.buildings);
   const fadeDrains = useLayerFade("drains", (drains?.length ?? 0) > 0 && show.drains);
   const fadeDepth = useLayerFade("depth", depth !== null && show.depth);
+
+  // Which step of the first forecast the map draws, and the time it stands for.
+  const depthStep = useMemo(() => (depth ? wettestStep(depth.depthCm) : 0), [depth]);
+  const depthAt = depth?.validTs[depthStep];
 
   const start = useCallback(async () => {
     setStarting(true);
@@ -290,7 +324,11 @@ export function OnboardScreen() {
     streets: { on: show.streets, count: segments?.length },
     buildings: { on: show.buildings, count: buildings?.length },
     drains: { on: show.drains, count: drains?.length },
-    depth: { on: show.depth, count: depth ? depth.depthCm.size : undefined },
+    depth: {
+      on: show.depth,
+      count: depth ? depth.depthCm.size : undefined,
+      detail: depthAt ? `Wettest step, ${formatIst(depthAt)} IST` : undefined,
+    },
   };
 
   return (
@@ -370,16 +408,23 @@ export function OnboardScreen() {
                 </p>
               ) : null}
               {finished ? (
-                // `Button` does not take `asChild`, so a link that looks like a button is a link
-                // carrying the button's own classes - and it stays a real anchor, which is what
-                // middle-click and "open in new tab" need.
+                // A plain anchor, not `next/link`, and deliberately: `/console` reads `?run=` in
+                // a `useState` initialiser, which under the App Router runs on the *server* during
+                // a client-side navigation - so a `Link` here lands on the console with no run
+                // pinned, and its opening rule then pins Mumbai's 06:40 cycle over a Chennai map
+                // (measured in a browser, 2026-09-19). A full navigation makes the console read
+                // the URL the card actually carries. The console-side fix - read the parameter in
+                // an effect, and pass `city` to its run-registry lookup - belongs to that screen.
                 //
-                <Link
-                  href={consoleHref(CITY, firstRunId) as Route}
+                // `Button` does not take `asChild`, so a link that looks like a button carries the
+                // button's own classes, and it stays a real anchor, which is what middle-click and
+                // "open in new tab" need.
+                <a
+                  href={consoleHref(CITY, firstRunId)}
                   className="rounded-control border-line type-small text-text hover:bg-well focus-visible:ring-tide/50 inline-flex h-8 items-center gap-2 border bg-transparent px-3 focus-visible:ring-3"
                 >
                   Open Chennai console
-                </Link>
+                </a>
               ) : (
                 <Button variant="outline" size="sm" disabled aria-disabled="true">
                   Open Chennai console
@@ -410,7 +455,7 @@ export function OnboardScreen() {
                   showRaster={depth !== null && show.depth}
                   showSurcharge={false}
                   showBuildings={(buildings?.length ?? 0) > 0 && show.buildings}
-                  step={0}
+                  step={depthStep}
                   layerFade={{
                     streets: fadeStreets,
                     buildings: fadeBuildings,

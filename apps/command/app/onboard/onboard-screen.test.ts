@@ -52,8 +52,8 @@ describe("reachedStepIndex", () => {
 
   it("counts a finished or already-built city as past every step", () => {
     expect(reachedStepIndex(job({ status: "finished", step: "first_forecast" }))).toBe(6);
-    // A reopened tab never watched the steps; the layers are on disk and must still be drawn.
-    expect(reachedStepIndex(job({ status: "none", built: true, jobId: null }))).toBe(-1);
-    expect(reachedStepIndex(job({ status: "queued", built: true }))).toBe(6);
+    // A city built in an earlier session reports no job at all - jobs do not outlive the API
+    // process - and its layers are still on disk, so the map must draw them.
+    expect(reachedStepIndex(job({ status: "none", built: true, jobId: null }))).toBe(6);
   });
 });
