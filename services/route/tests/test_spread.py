@@ -206,17 +206,45 @@ def test_a_closed_street_disqualifies_a_corridor() -> None:
 
 
 def test_the_share_favours_the_road_with_more_spare_capacity() -> None:
-    """Capacity score is lanes times what the water has left of them, summed over the corridor."""
+    """Capacity is the corridor's narrowest leg, per minute it holds a vehicle.
+
+    Corrected 2026-09-19 from a sum over edges, which rewarded length: see
+    :func:`varuna_route.spread.capacity_score` for the measurement that showed it sending the
+    largest share down the slowest road.
+    """
     graph = _fan()
     depths = _depths()
     routes, vehicle = _routes(graph, depths)
     found = corridors(routes, depths, vehicle, trip_id="trip-1")
     by_label = {c.label: c for c in found}
 
-    # A is two lanes over two dry edges: 4. B and C are one lane over two dry edges: 2 each.
-    assert by_label["A"].capacity_score == pytest.approx(4.0)
-    assert by_label["B"].capacity_score == pytest.approx(2.0)
-    assert by_label["A"].share > by_label["B"].share
+    # A is two dry lanes at its narrowest, B and C one, and all three take the same time.
+    a, b = by_label["A"], by_label["B"]
+    assert a.capacity_score == pytest.approx(2.0 / a.route.minutes)
+    assert b.capacity_score == pytest.approx(1.0 / b.route.minutes)
+    assert a.share > b.share
+
+
+def test_a_longer_road_of_the_same_width_no_longer_wins_the_share() -> None:
+    """The defect the sum-over-edges formula had, pinned so it cannot come back.
+
+    Two corridors, the same one lane of dry road at their narrowest; one takes twice as long.
+    Under the old sum the long one scored higher because it had more edges to add up, so most
+    drivers were sent the slow way. It must now score lower, in proportion to the time it costs.
+    """
+    graph = _fan()
+    depths = _depths()
+    routes, vehicle = _routes(graph, depths)
+    short, long_ = routes[1], routes[2]
+    assert short.legs and long_.legs
+
+    from dataclasses import replace
+
+    slow = replace(long_, seconds=long_.seconds * 2.0)
+    fast_score = capacity_score(short, vehicle.depth_cm)
+    slow_score = capacity_score(slow, vehicle.depth_cm)
+    assert slow_score == pytest.approx(fast_score * short.minutes / slow.minutes)
+    assert slow_score < fast_score
 
 
 def test_congestion_proxy_is_the_routers_own_slowdown() -> None:
