@@ -60,9 +60,18 @@ export const SATELLITE_ATTRIBUTION =
 export const MAP_ATTRIBUTION =
   "Imagery: Esri, Maxar · Roads: OpenStreetMap · Terrain: Copernicus GLO-30";
 
-/** Tile pyramid limits. Below 8 the AOI is a speck; above 17 Esri has no imagery here. */
+/**
+ * Tile pyramid limits. Below 8 the AOI is a speck.
+ *
+ * The upper limit was 17 on the belief that Esri had no imagery above it here; it has. Esri's
+ * World Imagery publishes to level 23 over Mumbai, and at 17 the last real tile was being
+ * stretched across every closer view, so a judge zooming to a junction got a blur where the
+ * product's whole claim is the street. 19 is the measured stopping point rather than the
+ * service's: see `docs/QA.md` for the tile count and cache size of a 12 to 19 zoom over
+ * Hindmata, which is what decides how far it is worth going.
+ */
 const MIN_ZOOM = 8;
-const MAX_ZOOM = 17;
+const MAX_ZOOM = 19;
 const TILE_SIZE = 256;
 
 /**
