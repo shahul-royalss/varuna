@@ -12,40 +12,40 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
 
 ## Wave 0 — foundations that everything else needs (no UI)
 
-- [ ] **D-01 Exceedance is real.** `services/route/varuna_route/forecast.py` reads `p_gt_*` from the
+- [x] **D-01 Exceedance is real.** `services/route/varuna_route/forecast.py` reads `p_gt_*` from the
   run and falls back to the median step only for a one-member run; correct the stale docstring.
   *Accepts:* on the 08:40 run a segment where members disagree returns a probability strictly
   between 0 and 1; `risk_tolerance` changes a route in a test. *Why first:* every probability the
-  new screens print is 1.0 or 0.0 until this lands.
-- [ ] **D-02 Pump benefit is the emulator.** Pass the AOI hyetograph the cycle already computes into
+  new screens print is 1.0 or 0.0 until this lands. (2026-09-19, 3bc358f - the router reads `p_gt_*` from the run and falls back to the median step only for a one-member run.)
+- [x] **D-02 Pump benefit is the emulator.** Pass the AOI hyetograph the cycle already computes into
   `build_pump_plan` in `services/cycle/varuna_cycle/twin_cycle.py`. *Accepts:* `pump_plan.json`
   records `benefit_model: "emulator"`; the run note says which model produced it; a unit test pins
-  that the bathtub path is only taken when no rain series is available.
-- [ ] **D-03 Street names stop leaking Python.** 95 segments carry a stringified list as their name
+  that the bathtub path is only taken when no rain series is available. (2026-09-19, 3bc358f - the AOI hyetograph the cycle already computes is passed into `build_pump_plan`; `pump_plan.json` records which model priced it.)
+- [x] **D-03 Street names stop leaking Python.** 95 segments carry a stringified list as their name
   and the demo route crosses two. Normalise at the city export and at read time. *Accepts:* no
   name in `segments.parquet`, the route response, the road-conditions feed or an alert headline
-  starts with `[`.
-- [ ] **D-04 `varuna_schemas.net`.** The outbound-HTTP helper ADR-0006 mandates and that does not
+  starts with `[`. (2026-09-19, 3bc358f - `services/products/varuna_products/names.py` normalises at the city export and at read time.)
+- [x] **D-04 `varuna_schemas.net`.** The outbound-HTTP helper ADR-0006 mandates and that does not
   exist: timeout, retry, `VARUNA_OFFLINE` refusal, truststore. *Accepts:* the weather proxy (D-05)
-  uses it; a test proves `VARUNA_OFFLINE=1` refuses without a socket.
-- [ ] **D-05 `GET /v1/weather`.** Open-Meteo proxy with a 15-minute in-process cache, a last-good
+  uses it; a test proves `VARUNA_OFFLINE=1` refuses without a socket. (2026-09-19, 3bc358f - `packages/schemas/varuna_schemas/net.py`; a test replaces five socket entry points with tripwires and proves `VARUNA_OFFLINE=1` refuses without opening one.)
+- [x] **D-05 `GET /v1/weather`.** Open-Meteo proxy with a 15-minute in-process cache, a last-good
   disk copy, `age_s`, `stale`, `source`, `licence`. *Accepts:* second call makes no outbound
   request; offline serves the stamped copy; upstream 500 degrades with the section 12 envelope;
-  contract test and `pnpm typegen` regenerated.
-- [ ] **D-06 Ops overlay store.** `data/ops/<city>.jsonl`, append-only, with
+  contract test and `pnpm typegen` regenerated. (2026-09-19, 3bc358f - measured by the implementer at 1,260.7-1,465.0 ms uncached and 5.2-21.8 ms cached; the contract snapshot went 46 -> 47 paths and `pnpm typegen` ran on merge. ADR-0061.)
+- [x] **D-06 Ops overlay store.** `data/ops/<city>.jsonl`, append-only, with
   `varuna_route.overlay.apply(...)` honoured by the router and the road-conditions feed.
   *Accepts:* a closure makes the next route avoid the street and annotates the reason; the sha256
-  of every baked product is unchanged after writes (rule 8).
+  of every baked product is unchanged after writes (rule 8). (2026-09-19, 3bc358f - `services/route/varuna_route/ops_overlay.py`, applied at read time by the router and the road-conditions feed.)
 - [ ] **D-07 Authority endpoints.** Implement `POST /v1/alerts/{id}/ack`, `/escalate`,
   `POST /v1/pumps/optimise`, `/dispatch`, `POST /v1/ops/closures`, `POST /v1/ops/pumps/{id}/status`,
   `GET /v1/ops/log`. Gate writes behind `VARUNA_OPS_PASSPHRASE` (unset = refuse, with the reason)
   and a 30-per-minute limit. The optimiser honours pump `status`. *Accepts:* each endpoint has a
   test for success, refusal without the passphrase, and the rate limit; `/v1/alerts` reflects an
   acknowledgement after a reload.
-- [ ] **D-08 Route spreading and reasons.** `spread`, `trip_id`, `explain` on `POST /v1/route`;
+- [x] **D-08 Route spreading and reasons.** `spread`, `trip_id`, `explain` on `POST /v1/route`;
   `corridors[]` and structured `reasons[]` in the response, per TECH_SPEC §3.2–3.3. *Accepts:*
   same `trip_id` always lands on the same corridor; 1,000 ids land within 2 % of `share`; every
-  corridor satisfies the profile threshold; the disclosure note is present.
+  corridor satisfies the profile threshold; the disclosure note is present. (2026-09-19, 3bc358f - `spread`, `trip_id` and `explain` on the request; `corridors[]` and structured `reasons[]` back. ADR-0060. **Its agent was killed by a session limit before it could report, so the lead ran the gates instead**: ruff, ruff format, eslint, tsc, vitest and the full pytest suite pass. No adversarial review has read this code.)
 - [ ] **D-09 City threading.** `city` through `depth.py`'s twelve `_resolve` calls and every depth
   route; the console, the run store and the city switcher read `?city=`. *Accepts:* with Chennai
   built, `/console?city=chennai` serves Chennai depth and the switcher lists Chennai without a
@@ -105,19 +105,24 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
 
 ## Wave 4 — documentation, deployment, rehearsal
 
-- [ ] **D-22 ADRs.** ADR-0059 Google basemap with a deck overlay and no Google routing;
-  ADR-0060 route spreading as a stated policy; ADR-0061 authority edits as a read-time overlay;
-  ADR-0062 live weather beside a reconstructed replay. Five lines each, per rule 12.
+- [ ] **D-22 ADRs.** ADR-0059 Google basemap with a deck overlay and no Google routing (written
+  2026-09-19); ADR-0060 route spreading as a stated policy (written); ADR-0061 live weather
+  beside a reconstructed replay (written); ADR-0062 authority edits as a read-time overlay
+  (waits on D-07). The last two swapped numbers so they are written in the order they landed.
 - [ ] **D-23 Spec upkeep.** `CLAUDE.md` section 3.4 gains `/dashboard`, `/authority`, `/rural`;
   section 8 gains M27; the status board records what these tasks changed, including what is still
   missed. `docs/SIMPLIFICATIONS.md` gains the Map ID, the spreading policy and the pump-effect rows.
 - [ ] **D-24 Deploy and verify.** Vercel (key already set) and Railway; then a browser pass over
   `/dashboard`, `/authority`, `/rural`, `/console`, `/onboard` measuring console errors, first
   paint and the map fit. Record the numbers in `docs/QA.md`.
-- [ ] **D-25 Referrer restriction (human).** In the Google Cloud Console, restrict the key to
-  `https://varuna-dhrishta.vercel.app/*` and `http://localhost:3000/*` and to the Maps JavaScript
-  API. Until this is done the key is usable by anyone who views source. *Owner: the team, not
-  Claude.*
+- [ ] **D-25 Referrer list (human, and now blocking the Google basemap).** Measured 2026-09-19:
+  the key **already carries** an HTTP-referrer restriction, and it lists neither development
+  origin - `http://127.0.0.1:8899/probe.html` and `http://localhost:3000/probe.html` both answer
+  `RefererNotAllowedMapError` from Maps JS v3.66.4d with zero tiles drawn. In the Google Cloud
+  Console, **add** `https://varuna-dhrishta.vercel.app/*` and `http://localhost:3000/*` to that
+  list and keep the key restricted to the Maps JavaScript API. Until then the dashboard runs on
+  its labelled fallback to VARUNA's own renderer (ADR-0059), which is built and tested. *Owner:
+  the team, not Claude.*
 
 ---
 
