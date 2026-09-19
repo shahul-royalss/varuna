@@ -147,6 +147,13 @@ export const MAX_SUGGESTIONS = 6;
  * nearest node VARUNA happens to hold, which would answer a question about a place it has never
  * built. An ambiguous name is also refused, with the names it matched, because picking the first
  * of four would silently answer about a different street.
+ *
+ * **A name is matched word by word, not as one substring.** Matching the whole typed string as a
+ * contiguous substring refused the demo trip's own origin: the register spells it "King Edward
+ * Memorial (KEM) Hospital, Parel", so "KEM Hospital" - which is what CLAUDE.md 3.3 and every
+ * other screen call it, and what a person types - contains no substring of that name and came
+ * back "VARUNA holds no start called KEM Hospital". A contiguous match still wins where there is
+ * one, so no name that resolved before resolves differently now.
  */
 export function resolvePlace(
   raw: string | null | undefined,
@@ -161,7 +168,12 @@ export function resolvePlace(
     if (!insideBbox(point, bbox)) return { status: "outside", typed };
     return {
       status: "ok",
-      point: { name: `${point[0]}, ${point[1]}`, lon: point[0], lat: point[1], fromRegister: false },
+      point: {
+        name: `${point[0]}, ${point[1]}`,
+        lon: point[0],
+        lat: point[1],
+        fromRegister: false,
+      },
     };
   }
 
@@ -171,12 +183,22 @@ export function resolvePlace(
   );
   if (exact) return { status: "ok", point: asPoint(exact) };
 
-  const partial = places.filter((place) => place.name.toLowerCase().includes(key));
-  if (partial.length === 1) return { status: "ok", point: asPoint(partial[0]) };
+  // Tried in order, and the first tier that matches anything is the answer. A contiguous match
+  // beats a scattered one, so "Sion Circle" resolves to the junction of that name even though
+  // its two words also appear apart in some longer entry.
+  const contiguous = places.filter((place) => place.name.toLowerCase().includes(key));
+  const words = key.split(/\s+/).filter(Boolean);
+  const scattered = places.filter((place) => {
+    const name = place.name.toLowerCase();
+    return words.every((word) => name.includes(word));
+  });
+  const matched = contiguous.length ? contiguous : scattered;
+
+  if (matched.length === 1) return { status: "ok", point: asPoint(matched[0]) };
   return {
     status: "unknown",
     typed,
-    suggestions: partial.slice(0, MAX_SUGGESTIONS).map((place) => place.name),
+    suggestions: matched.slice(0, MAX_SUGGESTIONS).map((place) => place.name),
   };
 }
 
@@ -197,7 +219,11 @@ export function etaComparison(
   if (!naive || !varuna) return null;
   const delta = Math.round(varuna.minutes) - Math.round(naive.minutes);
   const difference =
-    delta === 0 ? "same time" : delta > 0 ? `+${formatMinutes(delta)}` : `-${formatMinutes(-delta)}`;
+    delta === 0
+      ? "same time"
+      : delta > 0
+        ? `+${formatMinutes(delta)}`
+        : `-${formatMinutes(-delta)}`;
   return {
     shortest: formatMinutes(naive.minutes),
     safe: formatMinutes(varuna.minutes),
@@ -214,9 +240,7 @@ export function etaComparison(
  * run stops there instead.
  */
 export type PassableUntil =
-  | { kind: "until"; time: string }
-  | { kind: "horizon"; time: string }
-  | { kind: "unknown" };
+  { kind: "until"; time: string } | { kind: "horizon"; time: string } | { kind: "unknown" };
 
 export function passableUntil(leg: RouteLeg | null, horizonIso: string | null): PassableUntil {
   const until = toDate(leg?.safeUntil);
@@ -252,9 +276,9 @@ export interface RuralStopper {
 /**
  * The deepest water the safe route refused, or `null` when this cycle put none in the way.
  *
- * Read from `avoided[]` rather than from the reasons, because `avoided` is the router's own
- * record of what it would not cross and always carries all three numbers. A stopper missing any
- * of them is dropped, per the rule that a sentence with a hole in it is not printed at all.
+ * `avoided` is the router's own record of what it would not cross and always carries all three
+ * numbers. A record missing any of them is dropped, per the rule that a sentence with a hole in
+ * it is not printed at all.
  */
 export function worstAvoided(plan: Pick<RoutePlan, "avoided">): RuralStopper | null {
   let worst: RuralStopper | null = null;
@@ -264,6 +288,36 @@ export function worstAvoided(plan: Pick<RoutePlan, "avoided">): RuralStopper | n
       depthCm: Math.round(avoided.depthCm),
       street: streetName(avoided.name),
       at: formatIst(avoided.at),
+    };
+    if (!worst || candidate.depthCm > worst.depthCm) worst = candidate;
+  }
+  return worst;
+}
+
+/**
+ * What stops this vehicle, and where: the water the route went around, or the water on it.
+ *
+ * The first version of this read `avoided[]` alone, and on the demo trip that was a real defect:
+ * Sion Circle to Kurla has no detour on the 06:40 cycle, so nothing is avoided, and the page
+ * printed "nothing rises above the depth that stops a two-wheeler" directly above a reason
+ * saying the road reaches 21 cm against a 15 cm threshold. A road with no detour still floods;
+ * the `timing` reason is where the router records that, and it is only a stopper when the depth
+ * actually reaches the threshold the router costs on.
+ */
+export function stopper(plan: Pick<RoutePlan, "avoided" | "reasons">): RuralStopper | null {
+  const avoided = worstAvoided(plan);
+  if (avoided) return avoided;
+  let worst: RuralStopper | null = null;
+  for (const reason of plan.reasons) {
+    if (reason.kind !== "timing" && reason.kind !== "avoided") continue;
+    const depth = reason.depthCm;
+    const threshold = reason.thresholdCm;
+    if (!Number.isFinite(depth) || !Number.isFinite(threshold) || !toDate(reason.at)) continue;
+    if ((depth as number) < (threshold as number)) continue;
+    const candidate: RuralStopper = {
+      depthCm: Math.round(depth as number),
+      street: streetName(reason.name),
+      at: formatIst(reason.at),
     };
     if (!worst || candidate.depthCm > worst.depthCm) worst = candidate;
   }
@@ -303,6 +357,17 @@ export function vehiclePhrase(vehicle: RuralVehicle): string {
 export function tooDeepPhrase(vehicle: RuralVehicle): string {
   const noun = vehiclePhrase(vehicle);
   return noun === "on foot" ? "too deep to cross on foot" : `too deep for ${noun}`;
+}
+
+/**
+ * The tail of "nothing on it rises above the depth that ...".
+ *
+ * Split from `vehiclePhrase` because "stops on foot" is not English; `lib/explain` makes the same
+ * split for the same reason, and this keeps the two screens reading alike.
+ */
+export function stopsPhrase(vehicle: RuralVehicle): string {
+  const noun = vehiclePhrase(vehicle);
+  return noun === "on foot" ? "makes it unsafe on foot" : `stops ${noun}`;
 }
 
 /** The first few streets of a leg, named, for the "your road" line. */
@@ -367,7 +432,7 @@ export function buildAdvisory(
     departAt: plan.departAt,
     yourRoad: roadNames(plan.naive),
     passable: passableUntil(plan.naive, horizonIso),
-    stopper: worstAvoided(plan),
+    stopper: stopper(plan),
     eta: etaComparison(plan.naive, plan.varuna),
     detour: detourStreet(plan.naive, plan.varuna),
     sameRoad: sameRoad(plan.naive, plan.varuna),
