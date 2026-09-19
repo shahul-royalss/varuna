@@ -67,9 +67,17 @@ export function boundsCentre(bounds: Bbox): { longitude: number; latitude: numbe
   };
 }
 
-/** Zoom limits: below 10 the AOI is a dot, above 18 the 30 m grid is bigger than the screen. */
+/**
+ * The zoom range the map is designed for: below 9 the AOI is a dot, and 19 is the deepest level
+ * the satellite layer still draws real imagery at (`satellite.tsx`, task D-19). The upper bound
+ * read 18 while the imagery stopped at 17; both were one level off what Esri serves here.
+ *
+ * These are documentation, not enforcement: nothing passes them to the deck `MapView`, which
+ * clamps at its own default of 20. Wiring them to the controller belongs with whoever next owns
+ * `city-map.tsx`; raising the imagery cap is what makes the close view sharp either way.
+ */
 export const MIN_ZOOM = 9;
-export const MAX_ZOOM = 18;
+export const MAX_ZOOM = 19;
 
 /** Zoom at which road names appear, then locality names (CLAUDE.md section 6.7). */
 export const ROAD_LABEL_MIN_ZOOM = 15;
