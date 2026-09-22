@@ -2,7 +2,8 @@
 
 import { ChevronDown, Pause, Play } from "lucide-react";
 import { motion } from "motion/react";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -14,7 +15,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Slider } from "@/components/ui/slider";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  CycleBudgetBar,
+  STAGE_IDS,
+  type StageId,
+  type StageTiming,
+} from "@/components/varuna/cycle-budget-bar";
 import { useReplayControls } from "@/lib/api";
+import { apiUrl } from "@/lib/api/client";
+import { useLive } from "@/lib/api/live";
+import type { LiveEvent } from "@/lib/api/schemas";
+import { formatMs } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { SPRING, useMotionPref } from "@/lib/motion";
 import {
@@ -30,9 +41,6 @@ import {
 } from "@/lib/stores/replay";
 import { registerPlayToggle } from "@/lib/shortcuts";
 import { useRunStore } from "@/lib/stores/run";
-
-/** Stages of the five-minute cycle, in order (CLAUDE.md section 11.11). */
-const CYCLE_STAGES = ["decode", "sky", "twin", "flash", "pulse", "products"] as const;
 
 const LEAD_SPAN = LEAD_MAX - LEAD_MIN;
 const TICKS = Array.from({ length: LEAD_SPAN / LEAD_TICK + 1 }, (_, i) => LEAD_MIN + i * LEAD_TICK);
@@ -68,9 +76,34 @@ export function TimeBar() {
 
   const handleTransition = reduced ? { duration: 0 } : SPRING;
 
+  const compute = useComputeLive();
+  const info = compute.info;
+  const canCompute = hasRun && Boolean(info?.enabled) && !compute.active && !info?.busy;
+  const expected = info?.expected;
+  const typical =
+    expected && expected.median_ms !== null
+      ? `about ${formatMs(expected.median_ms)} here (${formatMs(expected.min_ms)} to ${formatMs(expected.max_ms)} over ${expected.n_runs} runs), against a ${formatMs(info?.budget_ms ?? 15_000)} budget`
+      : null;
+  const computeNote = compute.active
+    ? `Running, ${formatMs(compute.elapsedMs)} so far${expected?.median_ms ? ` of about ${formatMs(expected.median_ms)}` : ""}`
+    : !info
+      ? "Compute live: asking the server"
+      : !info.enabled
+        ? "Compute live is off on this server"
+        : typical
+          ? `A cycle takes ${typical}`
+          : "No cycle timed on this server yet";
+  const computeTooltip = !hasRun
+    ? "Available once a bundle is loaded"
+    : info && !info.enabled
+      ? (info.reason ?? "Compute live is off on this server")
+      : info?.busy || compute.active
+        ? "A live cycle is running; its stages fill the bar below"
+        : `Re-runs the current cycle with real computation${typical ? `: ${typical}` : ""}`;
+
   return (
     <div
-      className="flex h-24 w-full items-center gap-6 border-t border-line bg-ink/72 px-4 backdrop-blur-[12px]"
+      className="border-line bg-ink/72 flex h-24 w-full items-center gap-6 border-t px-4 backdrop-blur-[12px]"
       role="toolbar"
       aria-label="Replay time bar"
     >
@@ -104,7 +137,11 @@ export function TimeBar() {
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <Button variant="outline" size="sm" aria-label={`Replay speed ${speedLabel(speed)}`} />
+              <Button
+                variant="outline"
+                size="sm"
+                aria-label={`Replay speed ${speedLabel(speed)}`}
+              />
             }
           >
             <span className="num">{speedLabel(speed)}</span>
@@ -136,8 +173,8 @@ export function TimeBar() {
             aria-hidden="true"
             className="absolute inset-x-0 top-1/2 flex h-1.5 -translate-y-1/2 overflow-hidden rounded-full"
           >
-            <div className="h-full bg-text-3/50" style={{ width: `${leadToPercent(0)}%` }} />
-            <div className="h-full flex-1 bg-tide-soft" />
+            <div className="bg-text-3/50 h-full" style={{ width: `${leadToPercent(0)}%` }} />
+            <div className="bg-tide-soft h-full flex-1" />
           </div>
 
           {/* 15-minute ticks */}
@@ -146,7 +183,7 @@ export function TimeBar() {
               <span
                 key={tick}
                 className={cn(
-                  "absolute top-1/2 w-px -translate-x-1/2 bg-line-strong",
+                  "bg-line-strong absolute top-1/2 w-px -translate-x-1/2",
                   LABELLED_TICKS.has(tick) ? "h-4 -translate-y-1/2" : "h-2 -translate-y-1/2",
                 )}
                 style={{ left: `${leadToPercent(tick)}%` }}
@@ -157,7 +194,7 @@ export function TimeBar() {
           {/* Springing handle (M6); the slider thumb underneath carries the interaction. */}
           <motion.span
             aria-hidden="true"
-            className="pointer-events-none absolute top-1/2 z-10 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-tide bg-ink"
+            className="border-tide bg-ink pointer-events-none absolute top-1/2 z-10 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
             initial={false}
             animate={{ left: `${leadToPercent(leadMin)}%` }}
             transition={handleTransition}
@@ -173,7 +210,7 @@ export function TimeBar() {
               const next = Array.isArray(value) ? value[0] : value;
               if (typeof next === "number") setLeadMin(next);
             }}
-            className="absolute inset-x-0 top-1/2 z-20 -translate-y-1/2 [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:border-tide [&_[data-slot=slider-thumb]]:bg-transparent [&_[data-slot=slider-track]]:bg-transparent"
+            className="[&_[data-slot=slider-thumb]]:border-tide absolute inset-x-0 top-1/2 z-20 -translate-y-1/2 [&_[data-slot=slider-range]]:bg-transparent [&_[data-slot=slider-thumb]]:bg-transparent [&_[data-slot=slider-track]]:bg-transparent"
           />
         </div>
 
@@ -183,7 +220,7 @@ export function TimeBar() {
             {[...LABELLED_TICKS].map((tick) => (
               <span
                 key={tick}
-                className="num absolute -translate-x-1/2 type-micro text-text-3"
+                className="num type-micro text-text-3 absolute -translate-x-1/2"
                 style={{ left: `${leadToPercent(tick)}%` }}
               >
                 {tick > 0 ? `+${tick}` : tick}
@@ -191,11 +228,11 @@ export function TimeBar() {
             ))}
           </div>
           <div className="absolute inset-x-0 bottom-0 flex items-center gap-2">
-            <span aria-hidden="true" className="h-px flex-1 bg-line" />
+            <span aria-hidden="true" className="bg-line h-px flex-1" />
             <span className="type-micro text-text-3">
               Ensemble spread appears with the first run
             </span>
-            <span aria-hidden="true" className="h-px flex-1 bg-line" />
+            <span aria-hidden="true" className="bg-line h-px flex-1" />
           </div>
         </div>
       </div>
@@ -209,29 +246,151 @@ export function TimeBar() {
           <span className="sr-only">Lead {leadLabel}</span>
           <Tooltip>
             <TooltipTrigger render={<span className="inline-flex" />}>
-              <Button variant="outline" size="sm" disabled aria-disabled="true">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!canCompute}
+                aria-disabled={!canCompute}
+                aria-describedby="compute-live-note"
+                onClick={() => void compute.start()}
+              >
                 Compute live
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Available once a bundle is loaded</TooltipContent>
+            <TooltipContent>{computeTooltip}</TooltipContent>
           </Tooltip>
         </div>
-        <CycleBudgetBarPlaceholder />
+        <div className="flex w-72 flex-col gap-1">
+          <p id="compute-live-note" className="num type-micro text-text-3 truncate">
+            {computeNote}
+          </p>
+          <CycleBudgetBar
+            compact
+            stages={compute.stages}
+            running={compute.running}
+            totalMs={compute.totalMs}
+          />
+        </div>
       </div>
     </div>
   );
 }
 
-/** Six empty stage segments; fills stage by stage once `cycle.stage` events arrive (M21). */
-function CycleBudgetBarPlaceholder() {
-  return (
-    <div className="flex w-72 gap-1" role="group" aria-label="Cycle budget, no timings yet">
-      {CYCLE_STAGES.map((stage) => (
-        <div key={stage} className="flex min-w-0 flex-1 flex-col gap-1">
-          <div className="h-1.5 rounded-full border border-line bg-deep" />
-          <span className="truncate type-micro text-text-3">{stage}</span>
-        </div>
-      ))}
-    </div>
-  );
+/** What `GET /v1/cycle/compute` says about this server. */
+interface ComputeInfo {
+  enabled: boolean;
+  reason: string | null;
+  busy: boolean;
+  budget_ms: number;
+  expected: {
+    median_ms: number | null;
+    min_ms: number | null;
+    max_ms: number | null;
+    n_runs: number;
+  };
+}
+
+/**
+ * "Compute live" (CLAUDE.md 7.2, 11.11; task P6.11): one real cycle on the API, with the budget
+ * bar filling stage by stage from the socket's `cycle.stage` events (motion M21).
+ *
+ * The button says how long a cycle takes **here** before anyone presses it: the median of the
+ * recent runs' own stage totals, which on the demo laptop is a minute or more against section
+ * 14's 15 s. And it says so when the server has it off (`VARUNA_COMPUTE_LIVE`), rather than
+ * sitting disabled with no reason.
+ */
+function useComputeLive() {
+  const [info, setInfo] = useState<ComputeInfo | null>(null);
+  const [stageMs, setStageMs] = useState<Partial<Record<StageId, number>>>({});
+  const [running, setRunning] = useState<StageId | null>(null);
+  const [active, setActive] = useState(false);
+  const [startedAt, setStartedAt] = useState<number | null>(null);
+  const [now, setNow] = useState(0);
+  const [refresh, setRefresh] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(apiUrl("/v1/cycle/compute"), { signal: controller.signal })
+      .then((r) => (r.ok ? (r.json() as Promise<ComputeInfo>) : null))
+      .then((body) => {
+        if (body) setInfo(body);
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [refresh]);
+
+  // Elapsed while a cycle runs, once a second: the operator is told how far in they are.
+  useEffect(() => {
+    if (!active) return;
+    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [active]);
+
+  const onEvent = useCallback((event: LiveEvent) => {
+    const payload = (event.payload ?? {}) as Record<string, unknown>;
+    if (event.type === "cycle.stage") {
+      const stage = String(payload.stage ?? "") as StageId;
+      if (!(STAGE_IDS as readonly string[]).includes(stage)) return;
+      setActive(true);
+      if (payload.status === "started") setRunning(stage);
+      if (payload.status === "finished" && typeof payload.ms === "number") {
+        const ms = payload.ms;
+        setStageMs((current) => ({ ...current, [stage]: ms }));
+      }
+      if (payload.status === "failed") {
+        setActive(false);
+        setRunning(null);
+        toast.error(`The live cycle failed at ${stage}. The map still shows the last run.`);
+      }
+      return;
+    }
+    if (event.type === "runs.published" && payload.mode === "live") {
+      const record = (payload.stage_ms ?? {}) as Record<string, number>;
+      // The numbers of record from run.json replace the live clocks.
+      setStageMs(
+        Object.fromEntries(
+          STAGE_IDS.filter((id) => typeof record[id] === "number").map((id) => [id, record[id]]),
+        ),
+      );
+      setActive(false);
+      setRunning(null);
+      setRefresh((n) => n + 1);
+      // The console swaps its map to the new run on the same event; this names it.
+      toast.success("Live run published", { description: String(payload.run_id ?? "") });
+    }
+  }, []);
+  useLive({ topics: ["cycle.stage", "runs.published"], onEvent });
+
+  const start = useCallback(async () => {
+    setStageMs({});
+    setRunning("sky");
+    setActive(true);
+    const t = Date.now();
+    setStartedAt(t);
+    setNow(t);
+    try {
+      const response = await fetch(apiUrl("/v1/cycle/compute"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as {
+          error?: { message?: string };
+        } | null;
+        throw new Error(body?.error?.message ?? `Compute live answered ${response.status}.`);
+      }
+    } catch (error) {
+      setActive(false);
+      setRunning(null);
+      toast.error(error instanceof Error ? error.message : String(error));
+      setRefresh((n) => n + 1);
+    }
+  }, []);
+
+  const stages: StageTiming[] = STAGE_IDS.map((id) => ({ id, ms: stageMs[id] ?? null }));
+  const reported = Object.values(stageMs).filter((v): v is number => typeof v === "number");
+  const totalMs = reported.length > 0 ? reported.reduce((a, b) => a + b, 0) : null;
+  const elapsedMs = active && startedAt !== null ? Math.max(0, now - startedAt) : null;
+  return { info, stages, running: active ? running : null, active, totalMs, elapsedMs, start };
 }
