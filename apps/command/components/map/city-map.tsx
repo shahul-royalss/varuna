@@ -77,6 +77,9 @@ import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 // The data types lived here before the split; importers still find them here.
 export type * from "./layers/types";
 
+/** Stable empty default, so a caller that passes nothing does not rebuild the basemap memo. */
+const NO_LAYERS: readonly unknown[] = [];
+
 export interface CityMapProps {
   mode?: CityMapMode;
   frames: readonly (ImageBitmap | null)[];
@@ -132,6 +135,9 @@ export interface CityMapProps {
   labels?: readonly MapLabel[];
   /** Draw the map credit. Off where `MapSlot` sits behind this map and draws it already. */
   attribution?: boolean;
+  /** Layers drawn under everything else, after the imagery: the public map's offline vector
+   * basemap (task P9.10). Built by the caller so this host stays a composer. */
+  basemapLayers?: readonly unknown[];
 
   // ---- Seams (task MO1) ---------------------------------------------------------------------
   // Accepted and handed to their layer module, and **not drawn or applied yet**. Each names the
@@ -193,6 +199,7 @@ export function CityMap({
   showLabels = true,
   labels = [],
   attribution = true,
+  basemapLayers: extraBasemap = NO_LAYERS,
   playing = false,
   reversedEdges = [],
   drainCrossFadeMs,
@@ -236,8 +243,8 @@ export function CityMap({
   // `TileLayer` keeps its own tile cache, and handing deck a new instance every render would
   // throw that cache away on every scrub.
   const basemapLayers = useMemo(
-    () => satelliteLayers({ enabled: showSatellite, dimmed: showRaster }),
-    [showSatellite, showRaster],
+    () => [...satelliteLayers({ enabled: showSatellite, dimmed: showRaster }), ...extraBasemap],
+    [showSatellite, showRaster, extraBasemap],
   );
 
   // Each layer's M19 opacity, read out here so the memos below depend on a number rather than on
@@ -428,7 +435,7 @@ export function CityMap({
           mounts `MapSlot` behind this map and that draws the same line; `attribution={false}`
           there keeps it from appearing twice. */}
       {attribution ? (
-        <p className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 py-2 type-micro text-text-3">
+        <p className="type-micro text-text-3 pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 py-2">
           {MAP_ATTRIBUTION}
         </p>
       ) : null}
