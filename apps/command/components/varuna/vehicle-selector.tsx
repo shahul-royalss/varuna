@@ -1,7 +1,7 @@
 "use client";
 
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
-import { PROFILE_LABELS, type VehicleProfile } from "@/lib/stores/ui";
+import { usePublicT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /** The four profiles the public map offers; the rescue profiles live in the console. */
@@ -20,12 +20,15 @@ export interface VehicleSelectorProps {
 
 /**
  * Vehicle picker for the public map (CLAUDE.md section 7.11). Items are 44 px tall so a thumb
- * hits them on a 390 px phone, and the label is text as well as colour.
+ * hits them on a 390 px phone, and the label is text as well as colour. Labels follow the public
+ * map's language, and are English wherever no language provider is mounted (the dashboard); the
+ * English strings equal `PROFILE_LABELS`, which a test pins.
  */
 export function VehicleSelector({ value, onValueChange, className }: VehicleSelectorProps) {
+  const t = usePublicT("vehicle");
   return (
     <ToggleGroup
-      aria-label="Vehicle"
+      aria-label={t("group")}
       variant="outline"
       spacing={0}
       value={[value]}
@@ -39,10 +42,10 @@ export function VehicleSelector({ value, onValueChange, className }: VehicleSele
         <ToggleGroupItem
           key={profile}
           value={profile}
-          aria-label={PROFILE_LABELS[profile as VehicleProfile]}
+          aria-label={t(profile)}
           className="h-11 flex-1 type-small"
         >
-          {PROFILE_LABELS[profile as VehicleProfile]}
+          {t(profile)}
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
