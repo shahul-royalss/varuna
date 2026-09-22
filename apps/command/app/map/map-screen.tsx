@@ -20,6 +20,8 @@ import { useIsClient } from "@/lib/hooks";
 import { currentCity } from "@/lib/city";
 import { useOpeningRun } from "@/lib/use-opening-run";
 import { formatIst } from "@/lib/format";
+import { ENGLISH_MESSAGES, intlLocale, usePublicT, type PublicMessages } from "@/lib/i18n";
+import { createTranslator } from "next-intl";
 
 const REPORT_ROUTE = "/report" as Route;
 const SAVED_KEY = "varuna.map.saved-locations";
@@ -43,7 +45,10 @@ export const UNNAMED_ROAD = "Unnamed road";
 
 interface SavedLocation {
   id: string;
+  /** English name, kept for entries saved before the map spoke Hindi or Marathi. */
   name: string;
+  /** The IST time it was saved ("08:40"), from which the name is printed in the reader's language. */
+  savedAt?: string;
 }
 
 export interface NearbyStreet {
@@ -92,17 +97,28 @@ export function nearbyStreets(
 /** Why the map has no run to draw: nothing baked yet, or the load failed. */
 export type ForecastProblem = "empty" | "error" | null;
 
-/** The honesty line (CLAUDE.md 7.11), timed from the run the map is actually drawing. */
+/** The map's English messages, for callers with no language provider (the unit tests). */
+const ENGLISH_MAP = createTranslator<PublicMessages, "map">({
+  locale: intlLocale("en"),
+  messages: ENGLISH_MESSAGES,
+  namespace: "map",
+});
+type MapT = typeof ENGLISH_MAP;
+
+/**
+ * The honesty line (CLAUDE.md 7.11), timed from the run the map is actually drawing. It says the
+ * same thing in every language - the run it came from and how often it updates - and the time
+ * stays Latin ("06:40").
+ */
 export function honestyLine(
   cycleTs: string | null | undefined,
   problem: ForecastProblem = null,
+  t: MapT = ENGLISH_MAP,
 ): string {
-  if (cycleTs) {
-    return `Forecast from the last VARUNA run at ${formatIst(cycleTs)}; updates every 5 minutes`;
-  }
-  if (problem === "empty") return "No VARUNA run yet; the map fills after the first run";
-  if (problem === "error") return "The forecast did not load; check the connection and reload";
-  return "Loading the forecast from the last VARUNA run";
+  if (cycleTs) return t("honesty", { time: formatIst(cycleTs) });
+  if (problem === "empty") return t("honestyEmpty");
+  if (problem === "error") return t("honestyError");
+  return t("honestyLoading");
 }
 
 /** Saved locations live in this browser only; there is no account behind the public map. */
@@ -117,7 +133,8 @@ function readSaved(): SavedLocation[] {
         typeof item === "object" &&
         item !== null &&
         typeof (item as SavedLocation).id === "string" &&
-        typeof (item as SavedLocation).name === "string",
+        typeof (item as SavedLocation).name === "string" &&
+        ["undefined", "string"].includes(typeof (item as SavedLocation).savedAt),
     );
   } catch {
     return [];
@@ -133,6 +150,9 @@ export function MapScreen() {
   const [sheetHeight, setSheetHeight] = useState(600);
   const stageRef = useRef<HTMLDivElement>(null);
   const isClient = useIsClient();
+  const t = usePublicT("map");
+  const savedName = (location: SavedLocation) =>
+    location.savedAt ? t("savedAt", { time: location.savedAt }) : location.name;
 
   // The public map does not scrub: a commuter wants now, and "now" is the run's first step. The
   // "passable until" times below are what carries the forecast instead, which is the form the
@@ -208,9 +228,11 @@ export function MapScreen() {
 
   const saveCurrent = useCallback(() => {
     if (!run) return;
+    const savedAt = formatIst(new Date().toISOString());
     const entry: SavedLocation = {
       id: `loc-${Date.now()}`,
-      name: `Saved at ${formatIst(new Date().toISOString())}`,
+      name: ENGLISH_MAP("savedAt", { time: savedAt }),
+      savedAt,
     };
     persist([entry, ...saved].slice(0, 8));
   }, [run, persist, saved]);
@@ -223,7 +245,7 @@ export function MapScreen() {
           <LanguageToggle />
         </div>
         <p className="num type-micro text-text-3 mt-2" data-slot="honesty-line">
-          {honestyLine(run?.provenance.cycleTs, problem)}
+          {honestyLine(run?.provenance.cycleTs, problem, t)}
         </p>
         <div className="mt-3">
           <VehicleSelector value={profile} onValueChange={setProfile} />
@@ -257,10 +279,10 @@ export function MapScreen() {
           nativeButton={false}
         >
           <Umbrella aria-hidden="true" />
-          Report water
+          {t("reportWater")}
         </Button>
 
-        <BottomSheet containerHeight={sheetHeight} title="Streets to avoid">
+        <BottomSheet containerHeight={sheetHeight} title={t("streetsToAvoid")}>
           <div className="flex flex-col gap-5">
             {/* The floating button sits under an opened sheet, so the sheet carries its own. */}
             <Button
@@ -271,13 +293,13 @@ export function MapScreen() {
               nativeButton={false}
             >
               <Umbrella aria-hidden="true" />
-              Report water
+              {t("reportWater")}
             </Button>
             {nearby.length === 0 ? (
               <EmptyState
                 size="sm"
-                title="No streets scored yet"
-                description="The public map fills after the first run."
+                title={t("noStreetsTitle")}
+                description={t("noStreetsDescription")}
               />
             ) : (
               <ul className="divide-line rounded-panel border-line divide-y border">
@@ -285,18 +307,20 @@ export function MapScreen() {
                   <li key={street.id} className="flex items-center justify-between gap-3 px-3 py-3">
                     <span className="min-w-0 flex-1">
                       {street.name !== null ? (
-                        <span className="type-small text-text block truncate">{street.name}</span>
+                        <span className="type-small text-text block truncate">
+                          {street.name === UNNAMED_ROAD ? t("unnamedRoad") : street.name}
+                        </span>
                       ) : namesFailed ? (
                         <span className="type-small text-text-2 block truncate">
-                          Street name unavailable
+                          {t("nameUnavailable")}
                         </span>
                       ) : (
                         <Skeleton className="my-0.5 h-3.5 w-3/4" />
                       )}
                       <span className="num type-micro text-text-2 block">
                         {street.passableUntil
-                          ? `Passable until ${street.passableUntil}`
-                          : "Impassable now"}
+                          ? t("passableUntil", { time: street.passableUntil })
+                          : t("impassableNow")}
                       </span>
                     </span>
                     <span className="num type-small text-text-2 shrink-0">
@@ -310,7 +334,7 @@ export function MapScreen() {
             <section aria-labelledby="saved-locations" className="space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <h2 id="saved-locations" className="type-small text-text font-medium">
-                  Saved locations
+                  {t("savedLocations")}
                 </h2>
                 {/* 44 px, the public map's touch target floor (CLAUDE.md 6.5, 7.11). */}
                 <Button
@@ -318,17 +342,15 @@ export function MapScreen() {
                   className="h-11 px-3"
                   onClick={saveCurrent}
                   disabled={!run}
-                  title={run ? undefined : "Available once a run has scored the streets around you"}
+                  title={run ? undefined : t("saveUnavailable")}
                 >
                   <BookmarkPlus aria-hidden="true" />
-                  Save this location
+                  {t("saveLocation")}
                 </Button>
               </div>
               {!isClient || saved.length === 0 ? (
                 <p className="type-micro text-text-3">
-                  {run
-                    ? "Save a location to get its passable-until time first."
-                    : "Available once a run has scored the streets around you."}
+                  {run ? t("saveHint") : t("saveUnavailableHint")}
                 </p>
               ) : (
                 <ul className="divide-line rounded-panel border-line divide-y border">
@@ -337,11 +359,13 @@ export function MapScreen() {
                       key={location.id}
                       className="flex items-center justify-between gap-2 px-3 py-1"
                     >
-                      <span className="type-small text-text min-w-0 truncate">{location.name}</span>
+                      <span className="num type-small text-text min-w-0 truncate">
+                        {savedName(location)}
+                      </span>
                       <Button
                         variant="ghost"
                         className="size-11"
-                        aria-label={`Remove ${location.name}`}
+                        aria-label={t("remove", { name: savedName(location) })}
                         onClick={() => persist(saved.filter((item) => item.id !== location.id))}
                       >
                         <Trash2 aria-hidden="true" />

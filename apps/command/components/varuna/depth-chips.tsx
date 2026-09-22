@@ -1,5 +1,6 @@
 "use client";
 
+import { usePublicT } from "@/lib/i18n";
 import { depthColor } from "@/lib/ramps";
 import { cn } from "@/lib/utils";
 
@@ -8,9 +9,11 @@ export type DepthHint = (typeof DEPTH_HINTS)[number];
 
 export interface DepthHintOption {
   hint: DepthHint;
+  /** English label; the chips print the reader's language. */
   label: string;
   /** The centimetre value Pulse assumes for this chip (CLAUDE.md section 11.6). */
   cm: number;
+  /** English hint; the chips print the reader's language. */
   hintText: string;
 }
 
@@ -32,11 +35,17 @@ export interface DepthChipsProps {
 
 /**
  * Ankle, knee, waist: how a person on a flooded street actually measures water. Tiles are 44 px
- * tall for a thumb, and the colour is backed by the centimetre text so colour is never alone.
+ * tall for a thumb, and the colour is backed by the centimetre text so colour is never alone. The
+ * centimetres stay Latin in every language ("about 45 cm" reads "लगभग 45 cm").
  */
 export function DepthChips({ value, onValueChange, className }: DepthChipsProps) {
+  const t = usePublicT("depth");
   return (
-    <div role="radiogroup" aria-label="How deep is the water" className={cn("grid grid-cols-3 gap-2", className)}>
+    <div
+      role="radiogroup"
+      aria-label={t("group")}
+      className={cn("grid grid-cols-3 gap-2", className)}
+    >
       {DEPTH_HINT_OPTIONS.map((option) => {
         const selected = value === option.hint;
         return (
@@ -58,9 +67,9 @@ export function DepthChips({ value, onValueChange, className }: DepthChipsProps)
                 className="size-2.5 shrink-0 rounded-full"
                 style={{ background: depthColor(option.cm) }}
               />
-              {option.label}
+              {t(option.hint)}
             </span>
-            <span className="num type-micro text-text-2">{option.hintText}</span>
+            <span className="num type-micro text-text-2">{t("about", { cm: option.cm })}</span>
           </button>
         );
       })}
