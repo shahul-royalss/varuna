@@ -34,7 +34,7 @@ from varuna_schemas.paths import run_dir, runs_dir
 
 log = structlog.get_logger("varuna.route.forecast")
 
-__all__ = ["SegmentDepths", "latest_run_dir", "load_depths"]
+__all__ = ["SegmentDepths", "latest_run_dir", "load_depths", "run_dir_at"]
 
 STEP_MIN = 5
 """Forecast step, minutes. Matches the cycle's own step (CLAUDE.md 10.3)."""
@@ -209,6 +209,51 @@ def latest_run_dir(city: str = "mumbai") -> Path:
     return candidates[0]
 
 
+def run_dir_at(at: datetime, city: str = "mumbai") -> Path:
+    """The run a city had issued by an instant: the newest whose cycle is not after ``at``.
+
+    **Why the reachability scrub needs this.** ``GET /v1/reachability`` is asked at the console's
+    scrub time with no run id, and used to answer from :func:`latest_run_dir` - the 09:10 IST
+    cycle, whose forecast starts at 09:15. Every scrub position before 09:15 clamped to that run's
+    first step, so by construction the tab answered one question - "what can this facility reach
+    in the 09:15 water of the 09:10 forecast" - for the whole morning while looking as if it
+    updated on scrub, and at 06:40 it was showing water from two and a half hours later. The
+    question a scrub to 07:40 asks is "what could KEM reach at 07:40, on the forecast the city had
+    then", which is the newest cycle issued at or before 07:40.
+
+    Ties between runs of one cycle break the way :func:`latest_run_dir` breaks them (the name
+    that sorts last). An instant before the first cycle gets the earliest run, clamped to its first
+    step as :meth:`SegmentDepths.step_at` always clamps; an instant after the last gets the newest.
+
+    Raises:
+        FileNotFoundError: nothing is baked for this city.
+    """
+    from varuna_schemas.models.run import RunIdError, city_code, parse_run_id
+
+    try:
+        prefix = f"{city_code(city)}-"
+    except RunIdError:
+        prefix = ""
+    root = runs_dir()
+    dated: list[tuple[datetime, str, Path]] = []
+    if root.is_dir():
+        for p in root.iterdir():
+            if not (p.is_dir() and p.name.startswith(prefix)):
+                continue
+            if not (p / "segments_wet.json").is_file():
+                continue
+            try:
+                cycle = parse_run_id(p.name).cycle_ts
+            except RunIdError:
+                continue
+            dated.append((cycle, p.name, p))
+    if not dated:
+        return latest_run_dir(city)  # raises with the command that fixes it
+    dated.sort()
+    issued = [entry for entry in dated if entry[0] <= at]
+    return issued[-1][2] if issued else dated[0][2]
+
+
 @lru_cache(maxsize=4)
 def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
     del mtime_ns  # part of the cache key: a re-baked run invalidates itself.
@@ -270,9 +315,20 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
     return depths
 
 
-def load_depths(run_id: str | None = None, city: str = "mumbai") -> SegmentDepths:
-    """Load a run's segment depths, cached on the file's mtime."""
-    path = run_dir(run_id) if run_id else latest_run_dir(city)
+def load_depths(
+    run_id: str | None = None, city: str = "mumbai", *, at: datetime | None = None
+) -> SegmentDepths:
+    """Load a run's segment depths, cached on the file's mtime.
+
+    With no ``run_id``, ``at`` picks the run the city had issued by that instant
+    (:func:`run_dir_at`); with neither, the newest run, as before.
+    """
+    if run_id:
+        path = run_dir(run_id)
+    elif at is not None:
+        path = run_dir_at(at, city)
+    else:
+        path = latest_run_dir(city)
     wet = path / "segments_wet.json"
     if not wet.is_file():
         msg = f"Run {path.name} has no segment forecast; it cannot be routed against."
