@@ -1,0 +1,17 @@
+/*
+ * Hindi and Marathi text on /map and /report (CLAUDE.md 6.3). The token stacks are inlined by
+ * Tailwind's `@theme inline`, so a variable cannot be overridden; these rules re-state the two
+ * stacks with Noto Sans Devanagari after the Latin face, only under a Devanagari provider.
+ *
+ * Geist stays first, so numbers, units and times ("45 cm", "09:25") keep their Latin face and their
+ * tabular figures; only Devanagari code points fall through to Noto, whose file is fetched the
+ * first time one is drawn.
+ */
+[data-script="deva"],
+[data-script="deva"] .font-sans {
+  font-family: var(--font-geist-sans), var(--font-devanagari), system-ui, sans-serif;
+}
+
+[data-script="deva"] .font-display {
+  font-family: var(--font-bricolage), var(--font-devanagari), system-ui, sans-serif;
+}
