@@ -104,7 +104,10 @@ export function CapViewer({ xml, filename = "alert.cap.xml", className }: CapVie
   };
 
   return (
-    <div className={cn("flex h-full min-h-0 flex-col", className)}>
+    // Height comes from the document, not from the column. The viewer used to be stretched by
+    // a `min-h` wrapper and `flex-1`, so a twenty-line CAP sat inside a box drawn to the height
+    // of the alert queue beside it, with the outline running on far below the last tag.
+    <div className={cn("flex min-h-0 flex-col", className)}>
       <div className="flex shrink-0 flex-wrap items-center justify-end gap-2 pb-3">
         {hasXml ? (
           <>
@@ -147,7 +150,8 @@ export function CapViewer({ xml, filename = "alert.cap.xml", className }: CapVie
           // user can see the CAP document and never reach the rest of it (WCAG 2.1.1).
           tabIndex={0}
           role="region"
-          className="min-h-0 flex-1 overflow-auto rounded-control border border-line bg-ink p-4 type-mono text-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
+          // Sized by the document, capped so a long one scrolls rather than pushing the page.
+          className="max-h-[60vh] min-h-0 overflow-auto rounded-control border border-line bg-ink p-4 type-mono text-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
           aria-label="CAP 1.2 document"
         >
           <code>
@@ -164,7 +168,7 @@ export function CapViewer({ xml, filename = "alert.cap.xml", className }: CapVie
           </code>
         </pre>
       ) : (
-        <div className="flex min-h-0 flex-1 items-center justify-center rounded-control border border-line bg-ink">
+        <div className="flex min-h-0 items-center justify-center rounded-control border border-line bg-ink py-10">
           <EmptyState
             icon={FileCode2}
             title="No CAP document yet"

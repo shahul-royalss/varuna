@@ -63,6 +63,9 @@ const NO_PASSPHRASE =
 
 const NO_FRESH: ReadonlySet<string> = new Set();
 
+/** How many alerts the queue shows before "Show all". Three fits beside the CAP document. */
+const QUEUE_PREVIEW = 3;
+
 /** The phone's text for an alert: headline, instruction and any pumps the desk sent there. */
 function phoneText(alert: RunAlert): string {
   return [alert.headline, alert.instruction, alert.dispatchNote]
@@ -99,6 +102,9 @@ export function AlertsScreen() {
   // Bumped after a write, to re-read the queue. The desk's state is the API's, never this
   // screen's: a local boolean was the old behaviour and it vanished on reload (B1).
   const [reload, setReload] = useState(0);
+  // The queue opens on the worst few. A heavy cycle raises sixty alerts, and a column that
+  // long buries the CAP document and the phone beside it; the rest are one button away.
+  const [showAllAlerts, setShowAllAlerts] = useState(false);
   // **Which cycle.** An alert is a statement about a forecast, so it only means anything beside
   // the run that raised it. The operator picks the cycle here as they do on the console.
   const [runId, setRunId] = useState<string | undefined>(undefined);
@@ -188,6 +194,8 @@ export function AlertsScreen() {
     setRunId(next);
     setSelectedId(null);
     setCapXml(null);
+    // A new cycle is a new queue, so it opens on its worst few like the last one did.
+    setShowAllAlerts(false);
   }, []);
 
   const active = queueRunId === runId ? (selectedId ?? raised[0]?.id ?? null) : null;
@@ -294,6 +302,11 @@ export function AlertsScreen() {
     escalated: a.state === "escalated",
   }));
 
+  // `alerts` arrives worst-first (severe before moderate before watch, deepest first inside a
+  // level), so the opening three are the three an officer should read first.
+  const visibleAlerts = showAllAlerts ? alerts : alerts.slice(0, QUEUE_PREVIEW);
+  const hiddenAlerts = alerts.length - visibleAlerts.length;
+
   const phoneMessages: PhoneMessage[] = [
     ...raised.filter((a) => fresh.has(a.id)),
     ...raised.filter((a) => !fresh.has(a.id)),
@@ -322,15 +335,24 @@ export function AlertsScreen() {
             </p>
           ) : null}
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,0.9fr)]">
+          {/* Three across from `lg`, not `xl`: at `xl` (1280 px) the queue, the CAP document and
+              the phone stacked one under another on any narrower window, and 6.11 asks for
+              1366 x 768 to work. `self-start` on the panels, because a grid item stretches to the
+              tallest in its row - which drew the CAP box down the full height of the queue, and
+              then the queue down the full height of the phone. */}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)_minmax(0,0.9fr)]">
             <Panel
               title="Queue"
               description="Grouped by level. Raised after two cycles at P ≥ 0.6, cleared at P ≤ 0.3."
-              className="min-w-0"
+              className="min-w-0 self-start"
             >
               <div className="flex flex-col gap-5">
                 {ALERT_LEVELS.map((level) => {
                   const group = alerts.filter((alert) => alert.level === level);
+                  const shown = visibleAlerts.filter((alert) => alert.level === level);
+                  // A level whose alerts are all behind "Show all" is left out rather than given
+                  // a header with nothing under it. Its count is in the button.
+                  if (group.length > 0 && shown.length === 0) return null;
                   return (
                     <section key={level} aria-label={`${ALERT_LEVEL_LABELS[level]} alerts`}>
                       <div className="mb-2 flex items-center justify-between gap-3">
@@ -350,7 +372,7 @@ export function AlertsScreen() {
                         </div>
                       ) : (
                         <ul className="flex flex-col gap-3">
-                          {group.map((alert) => (
+                          {shown.map((alert) => (
                             // Keyed by identity, not id: a street still warned about at the same
                             // level keeps its card across cycles, so only new cards slide in.
                             <li key={alert.identity}>
@@ -369,6 +391,19 @@ export function AlertsScreen() {
                     </section>
                   );
                 })}
+                {alerts.length > QUEUE_PREVIEW ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="self-start"
+                    aria-expanded={showAllAlerts}
+                    onClick={() => setShowAllAlerts((open) => !open)}
+                  >
+                    {showAllAlerts
+                      ? "Show fewer"
+                      : `Show all ${alerts.length} alerts (${hiddenAlerts} more)`}
+                  </Button>
+                ) : null}
 
                 {set?.crossCycle ? (
                   <section
@@ -420,15 +455,9 @@ export function AlertsScreen() {
             <Panel
               title="CAP 1.2 document"
               description="Replay alerts carry CAP status Exercise; live alerts carry Actual."
-              className="min-w-0"
+              className="min-w-0 self-start"
             >
-              <div className="flex min-h-[520px] flex-col">
-                <CapViewer
-                  xml={capXml}
-                  filename={`${active ?? "alert"}.cap.xml`}
-                  className="flex-1"
-                />
-              </div>
+              <CapViewer xml={capXml} filename={`${active ?? "alert"}.cap.xml`} />
             </Panel>
 
             <div className="flex min-w-0 flex-col gap-4">

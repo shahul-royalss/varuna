@@ -27,12 +27,7 @@ describe("AppShell", () => {
     useUiStore.getState().closeOverlays();
   });
 
-  it("renders the top bar, the rail and the children", async () => {
-    // An empty registry. The banner reads "Loading run" until it answers, then "No runs yet".
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => new Response(JSON.stringify({ runs: [] }), { status: 200 })),
-    );
+  it("renders the top bar, the rail and the children", () => {
     renderShell();
     expect(screen.getByText("Map canvas")).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Screens" })).toBeInTheDocument();
@@ -40,11 +35,18 @@ describe("AppShell", () => {
       "href",
       "/console",
     );
-    expect(screen.getByRole("status")).toHaveTextContent("Loading run");
-    expect(await screen.findByText("No runs yet")).toBeInTheDocument();
-    expect(screen.getByText("No run")).toBeInTheDocument();
-    vi.unstubAllGlobals();
     expect(screen.getByRole("button", { name: "Switch city" })).toHaveTextContent("Mumbai");
+  });
+
+  it("carries only the wordmark, the city and settings", () => {
+    // The mode banner, run stamp, verification chip and the search and shortcuts buttons were
+    // removed from the bar at the team's request; Ctrl+K and ? still open their panels.
+    renderShell();
+    for (const gone of ["Search and commands", "Keyboard shortcuts"]) {
+      expect(screen.queryByRole("button", { name: gone })).not.toBeInTheDocument();
+    }
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("No run")).not.toBeInTheDocument();
   });
 
   it("marks the current screen in the rail", () => {
@@ -65,12 +67,8 @@ describe("AppShell", () => {
     expect(screen.getByText("Time bar")).toBeInTheDocument();
   });
 
-  it("wires the icon buttons to the ui store", () => {
+  it("wires the settings button to the ui store", () => {
     renderShell();
-    fireEvent.click(screen.getByRole("button", { name: "Search and commands" }));
-    expect(useUiStore.getState().commandPaletteOpen).toBe(true);
-    fireEvent.click(screen.getByRole("button", { name: "Keyboard shortcuts" }));
-    expect(useUiStore.getState().shortcutsOpen).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Settings" }));
     expect(useUiStore.getState().settingsOpen).toBe(true);
   });
