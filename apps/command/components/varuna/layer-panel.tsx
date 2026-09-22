@@ -17,6 +17,12 @@ export interface LayerToggles {
   drains: boolean;
   buildings: boolean;
   hotspots: boolean;
+  /** The reachability bands of the facility picked in the Reachability tab. */
+  isochrones: boolean;
+  /** The demo ambulance trip, naive against VARUNA, at the scrub time. */
+  routes: boolean;
+  /** The city on its own conditioned DEM, water draped on it (task P6.15). */
+  threeD: boolean;
 }
 
 export type LayerKey = keyof LayerToggles;
@@ -54,17 +60,35 @@ const ROWS: readonly {
   { key: "segments", label: "Streets (depth)", hint: "Road segments coloured by depth" },
   { key: "surcharge", label: "Surcharge", hint: "Manholes pushing water up", shortcut: "S" },
   { key: "drains", label: "Drains", hint: "Inferred graph, coloured by blockage", shortcut: "D" },
+  {
+    key: "isochrones",
+    label: "Isochrones",
+    hint: "5, 10 and 15 minute reach of the facility picked under Reachability",
+    shortcut: "I",
+  },
+  {
+    key: "routes",
+    label: "Routes",
+    hint: "KEM Hospital to Sion Hospital by ambulance, naive against VARUNA",
+    shortcut: "R",
+  },
   { key: "buildings", label: "Buildings", hint: "Footprints from OpenStreetMap" },
   { key: "hotspots", label: "Ground truth", hint: "The chronic register", shortcut: "G" },
+  {
+    key: "threeD",
+    label: "3D terrain",
+    hint: "The conditioned 30 m DEM, 2x vertical, with the water draped on it",
+    shortcut: "3",
+  },
 ];
 
 /**
  * The console's floating layer panel (CLAUDE.md sections 6.5, 7.2, task P6.10).
  *
- * Only layers that exist are listed. CLAUDE.md 17 forbids a dead control, and a switch for
- * isochrones that does nothing is worse than no switch: it makes the operator wonder whether the
- * data is missing or the map is broken. Routes, probability mode and 3D join this list in the
- * phase that builds them.
+ * Only layers that exist are listed. CLAUDE.md 17 forbids a dead control, and a switch that does
+ * nothing is worse than no switch: it makes the operator wonder whether the data is missing or
+ * the map is broken. Where a layer needs something first - a facility for the isochrones, a DEM
+ * for 3D - the row's detail line says what, rather than the switch doing nothing silently.
  */
 export function LayerPanel({ value, onChange, counts = {}, details = {} }: LayerPanelProps) {
   const [open, setOpen] = useState(true);

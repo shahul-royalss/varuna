@@ -7,12 +7,16 @@ import { Button } from "@/components/ui/button";
 import { FloodMap } from "@/components/map/flood-map";
 import type { Isochrone } from "@/components/map/city-map";
 import { apiUrl } from "@/lib/api/client";
+import { useLive } from "@/lib/api/live";
+import type { LiveEvent } from "@/lib/api/schemas";
 import type { RunDepth } from "@/lib/api/run-depth";
 import { loadDrainHealth, type DrainHealth } from "@/lib/api/drains";
 import { loadHotspots, type Hotspot, type HotspotSet } from "@/lib/api/hotspots";
 import type { MapFocus } from "@/components/map/city-map";
 import { loadSurcharge, type SurchargeSet } from "@/lib/api/surcharge";
 import { reversedFlowSummary } from "@/components/map/layers/reversed-flow";
+import { MapOverlayContext, type MapOverlay } from "@/components/map/layers/overlay-context";
+import { useTerrain, type TerrainState } from "@/components/map/layers/terrain";
 import { AppShell } from "@/components/varuna/app-shell";
 import { MapSlot } from "@/components/varuna/map-slot";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
@@ -30,6 +34,8 @@ import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
 import { TimeBar } from "@/components/varuna/time-bar";
 import { edgeFadeStyle, useScrollEdges } from "./use-scroll-edges";
+import { useConsoleRoutes, type ConsoleRouteState } from "./use-console-routes";
+import { WhatIfDrawer, type WhatIfDiff } from "./whatif-drawer";
 import { fetchOpeningRunId } from "@/lib/opening-run";
 import { DEFAULT_CITY, cityFromSearch } from "@/lib/city";
 import { DEFAULT_SIM_TIME } from "@/lib/stores/replay";
@@ -58,6 +64,38 @@ function formatStep(iso: string | undefined): string {
         timeZone: "Asia/Kolkata",
       });
 }
+
+/** What the Routes row says: the trip it drew, with its numbers, or why there is none. */
+function routeDetail(state: ConsoleRouteState): string | undefined {
+  if (state.kind === "off") return undefined;
+  if (state.kind === "loading") return "Planning KEM Hospital to Sion Hospital by ambulance.";
+  if (state.kind === "error") return state.message;
+  const { plan } = state;
+  const varuna = plan.varuna;
+  if (!varuna) return "No safe ambulance route between KEM and Sion at this time.";
+  const avoided = plan.avoided.length;
+  return (
+    `KEM to Sion, departing ${formatStep(plan.departAt)}: ${varuna.minutes.toFixed(1)} min, ` +
+    (avoided === 0
+      ? "nothing on the way predicted impassable for an ambulance."
+      : `around ${avoided} street${avoided === 1 ? "" : "s"} an ambulance cannot pass.`)
+  );
+}
+
+/** What the 3D row says while the ground loads, once it is up, or why it cannot be drawn. */
+function terrainDetail(state: TerrainState): string | undefined {
+  if (state.kind === "off") return undefined;
+  if (state.kind === "loading") return "Loading the conditioned DEM.";
+  if (state.kind === "error") return state.message;
+  const [rows, cols] = state.meta.shape;
+  return `Conditioned 30 m DEM, ${cols} x ${rows} cells, heights ${state.meta.min_m} to ${state.meta.max_m} m drawn 2x.`;
+}
+
+/** The one socket topic the console itself listens to: a published live run. */
+const LIVE_RUN_TOPICS = ["runs.published"] as const;
+
+/** Stable empty bands, for when I has hidden the isochrones. */
+const NO_ISOCHRONES: Isochrone[] = [];
 
 /** Motion M7: 5-minute steps advance about three a second while playing. */
 const PLAY_INTERVAL_MS = 320;
@@ -200,6 +238,13 @@ function ConsoleView() {
     // the basemap worth having. The toggle brings them back for anyone who wants the derived GIS.
     buildings: false,
     hotspots: true,
+    // On: the bands appear only once a facility is picked under Reachability, which is itself
+    // the operator asking for them. I hides them without losing the pick.
+    isochrones: true,
+    // Off: a route is a question about one trip, and it costs a request the scrub would not.
+    routes: false,
+    // Off: 3D is the P1 view (CLAUDE.md 3.2); the flat map is the one the demo reads from.
+    threeD: false,
   });
   // The exceedance the probability layer asks about. CLAUDE.md 7.2's four: the depth at which
   // each class of vehicle stops, so the question is always "who is stopped here?".
@@ -212,6 +257,11 @@ function ConsoleView() {
   // The street the operator last clicked (task P6.9). Cleared by clicking empty map, by Escape,
   // and by a new run - a popover about a segment of a run that is no longer on screen is a lie.
   const [pick, setPick] = useState<SegmentPick | null>(null);
+  // The what-if drawer (W) and the answer it has drawn on the map, if any.
+  const [whatIfOpen, setWhatIfOpen] = useState(false);
+  const [whatIfDiff, setWhatIfDiff] = useState<WhatIfDiff | null>(null);
+  // Bumped by the popover's "why" link so the drawer opens at its attribution section.
+  const [whyFocus, setWhyFocus] = useState<number | null>(null);
 
   const truth = useTruthPins(run?.provenance.bundle ?? undefined, run?.validTs[step] ?? null);
 
@@ -326,6 +376,17 @@ function ConsoleView() {
     [router, search],
   );
 
+  // A live cycle the time bar started has published (task P6.11): the console moves to it. The
+  // map keeps drawing the last run until this event, so nothing half-computed is ever shown.
+  const onLiveEvent = useCallback(
+    (event: LiveEvent) => {
+      const payload = (event.payload ?? {}) as { run_id?: unknown; mode?: unknown };
+      if (payload.mode === "live" && typeof payload.run_id === "string") pickCycle(payload.run_id);
+    },
+    [pickCycle],
+  );
+  useLive({ topics: LIVE_RUN_TOPICS, onEvent: onLiveEvent });
+
   const selectHotspot = useCallback((hotspot: Hotspot) => {
     setSelectedHotspotId(hotspot.id);
     setFocus({ lon: hotspot.lon, lat: hotspot.lat, key: `${hotspot.id}-${Date.now()}`, zoom: 14 });
@@ -381,26 +442,86 @@ function ConsoleView() {
       d: "drains",
       s: "surcharge",
       g: "hotspots",
+      r: "routes",
+      i: "isochrones",
+      "3": "threeD",
     };
     const unsubscribes = Object.entries(toggles).map(([key, layer]) =>
       registerLayerShortcut(key as ShortcutLayerKey, () =>
         setLayers((current) => ({ ...current, [layer]: !current[layer] })),
       ),
     );
+    // W opens the what-if drawer over the rail, and closes it again (CLAUDE.md 7.2, 7.7).
+    unsubscribes.push(registerLayerShortcut("w", () => setWhatIfOpen((open) => !open)));
     return () => unsubscribes.forEach((off) => off());
   }, [run]);
+
+  // 3D mode's ground (task P6.15). The map builds it too, from the same cached load; the console
+  // reads it only to say in the layer panel what 3D is waiting on or why it cannot draw.
+  const terrain = useTerrain(city, layers.threeD);
+
+  // The Routes layer: the demo ambulance trip at the scrub time, re-planned when the scrub rests.
+  const routeState = useConsoleRoutes(
+    layers.routes,
+    city,
+    loadedRunId,
+    run?.validTs[step] ?? undefined,
+  );
+
+  // Which chronic spot a clicked street belongs to, for the popover's "why" (task P6.9).
+  const hotspotBySegment = useMemo(() => {
+    const index = new Map<string, Hotspot>();
+    for (const hotspot of hotspots?.hotspots ?? []) {
+      for (const id of hotspot.segmentIds) if (!index.has(id)) index.set(id, hotspot);
+    }
+    return index;
+  }, [hotspots]);
+  const pickedHotspot = pick ? (hotspotBySegment.get(pick.segment.id) ?? null) : null;
+  const openWhy = useCallback((hotspotId: string) => {
+    setWhatIfOpen(false);
+    setSelectedHotspotId(hotspotId);
+    setWhyFocus(Date.now());
+  }, []);
+
+  const routeLines = routeState.kind === "ready" ? routeState.lines : undefined;
+  const overlay = useMemo<MapOverlay>(
+    () => ({
+      city,
+      threeD: layers.threeD,
+      routes: routeLines,
+      diff: whatIfOpen ? whatIfDiff : null,
+    }),
+    [city, layers.threeD, routeLines, whatIfOpen, whatIfDiff],
+  );
+
+  const layerDetails: Partial<Record<LayerKey, string>> = {
+    surcharge: surcharge?.set ? reversedFlowSummary(surcharge.set) : undefined,
+    isochrones:
+      layers.isochrones && isochrones.length === 0
+        ? "Pick a facility under Reachability to draw its 5, 10 and 15 minute reach."
+        : undefined,
+    routes: routeDetail(routeState),
+    threeD: terrainDetail(terrain),
+  };
 
   return (
     <AppShell
       rightRail={
-        // The drawer slides in *over* the rail (CLAUDE.md 7.2), so it takes the same slot.
-        selected ? (
+        // The drawers slide in *over* the rail (CLAUDE.md 7.2), so they take the same slot.
+        whatIfOpen ? (
+          <WhatIfDrawer
+            runId={loadedRunId ?? null}
+            onDiff={setWhatIfDiff}
+            onClose={() => setWhatIfOpen(false)}
+          />
+        ) : selected ? (
           <HotspotDrawer
             hotspot={selected}
             step={step}
             stepMin={run?.provenance.stepMin ?? 5}
             validTs={run?.validTs ?? []}
             onClose={() => setSelectedHotspotId(null)}
+            focusWhyKey={whyFocus}
           />
         ) : (
           <RightRail
@@ -422,32 +543,36 @@ function ConsoleView() {
         {/* The map is the one memorable element on this screen (CLAUDE.md 6.1); everything else
             floats over it. `MapSlot` stays behind it as the legend and attribution host. */}
         <MapSlot legendClearsRightPanel={replayPanelOpen} />
-        <FloodMap
-          // Passed rather than left to the map's own `currentCity()`: that reads `window` during
-          // render, which is the same staleness the run parameter had.
-          city={city}
-          runId={runParam}
-          deferLoad={!mapReady}
-          step={step}
-          onLoaded={handleLoaded}
-          hotspots={hotspots?.hotspots ?? []}
-          selectedHotspotId={selectedHotspotId}
-          surcharge={surcharge?.runId === loadedRunId ? surcharge?.set : null}
-          focus={focus}
-          isochrones={isochrones}
-          showRaster={layers.raster}
-          showSegments={layers.segments}
-          showSurcharge={layers.surcharge}
-          showDrains={layers.drains}
-          drains={learnedDrains}
-          showBuildings={layers.buildings}
-          showHotspots={layers.hotspots}
-          showSatellite={layers.satellite}
-          probabilityThresholdCm={layers.probability ? probabilityThresholdCm : undefined}
-          truthPins={layers.hotspots ? truth.dropping : undefined}
-          onSegmentPick={setPick}
-          attribution={false}
-        />
+        {/* 3D, the routes layer and the what-if difference reach the map through context: they
+            are console-only asks, and `FloodMap` is shared by every screen with a map. */}
+        <MapOverlayContext.Provider value={overlay}>
+          <FloodMap
+            // Passed rather than left to the map's own `currentCity()`: that reads `window` during
+            // render, which is the same staleness the run parameter had.
+            city={city}
+            runId={runParam}
+            deferLoad={!mapReady}
+            step={step}
+            onLoaded={handleLoaded}
+            hotspots={hotspots?.hotspots ?? []}
+            selectedHotspotId={selectedHotspotId}
+            surcharge={surcharge?.runId === loadedRunId ? surcharge?.set : null}
+            focus={focus}
+            isochrones={layers.isochrones ? isochrones : NO_ISOCHRONES}
+            showRaster={layers.raster}
+            showSegments={layers.segments}
+            showSurcharge={layers.surcharge}
+            showDrains={layers.drains}
+            drains={learnedDrains}
+            showBuildings={layers.buildings}
+            showHotspots={layers.hotspots}
+            showSatellite={layers.satellite}
+            probabilityThresholdCm={layers.probability ? probabilityThresholdCm : undefined}
+            truthPins={layers.hotspots ? truth.dropping : undefined}
+            onSegmentPick={setPick}
+            attribution={false}
+          />
+        </MapOverlayContext.Provider>
 
         {/* The scrub. Owned here so the map, the readout and the keyboard share one step. */}
         {run ? (
@@ -526,6 +651,8 @@ function ConsoleView() {
               pick={pick}
               step={step}
               validTs={run.validTs}
+              hotspot={pickedHotspot}
+              onWhy={openWhy}
               onClose={() => setPick(null)}
             />
           ) : null}
@@ -536,9 +663,7 @@ function ConsoleView() {
               surcharge: surcharge?.set?.nodes.length,
               hotspots: hotspots?.hotspots.length,
             }}
-            details={{
-              surcharge: surcharge?.set ? reversedFlowSummary(surcharge.set) : undefined,
-            }}
+            details={layerDetails}
           />
           {/* Below the panel, never over it (UI_SPEC 8): the legend used to be positioned
               absolutely at a fixed offset from the map's top-left, which put it on top of the
