@@ -4,6 +4,7 @@ import NumberFlow from "@number-flow/react";
 import { ExternalLink, X } from "lucide-react";
 import { motion } from "motion/react";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 
 import type { Hotspot } from "@/lib/api/hotspots";
 import { MAX_CLEANED_SEGMENTS } from "@/lib/api/whatif";
@@ -26,6 +27,11 @@ export interface HotspotDrawerProps {
   /** Valid time of each step, so "safe until" is a clock time and not a step number. */
   validTs?: readonly string[];
   onClose?: () => void;
+  /**
+   * Scroll to "Why this junction floods" when this changes: the segment popover's "why" link
+   * (task P6.9) opens the drawer at that section rather than at the top.
+   */
+  focusWhyKey?: string | number | null;
 }
 
 /** The order the safe-until table reads in: lightest vehicle first, rescue last. */
@@ -71,8 +77,16 @@ export function HotspotDrawer({
   stepMin = 5,
   validTs = [],
   onClose,
+  focusWhyKey = null,
 }: HotspotDrawerProps) {
   const reducedMotion = usePrefersReducedMotion();
+  const whyRef = useRef<HTMLElement>(null);
+  // A jump, not a smooth scroll: section 8 has no row for one, and this is navigation (M23).
+  useEffect(() => {
+    if (focusWhyKey == null) return;
+    whyRef.current?.scrollIntoView({ block: "start" });
+    whyRef.current?.focus({ preventScroll: true });
+  }, [focusWhyKey]);
   // The console publishes the run it is showing here (the top bar's run stamp reads the same
   // store), so the deep link can carry the cycle without the drawer being handed it.
   const runId = useRunStore((s) => s.currentRun?.run_id ?? null);
@@ -97,12 +111,12 @@ export function HotspotDrawer({
       initial={reducedMotion ? false : { x: 24, opacity: 0 }}
       animate={{ x: 0, opacity: 1 }}
       transition={reducedMotion ? { duration: 0 } : { duration: DUR.drawerSlide, ease: EASE_UI }}
-      className="flex h-full min-h-0 flex-col overflow-y-auto bg-deep"
+      className="bg-deep flex h-full min-h-0 flex-col overflow-y-auto"
     >
-      <header className="flex items-start justify-between gap-3 border-b border-line p-4">
+      <header className="border-line flex items-start justify-between gap-3 border-b p-4">
         <div className="min-w-0">
           <h2 className="type-h3 font-display text-text">{hotspot.name}</h2>
-          <p className="mt-1 type-micro text-text-3">
+          <p className="type-micro text-text-3 mt-1">
             Rank {hotspot.rank}
             {hotspot.ward ? ` · ward ${hotspot.ward}` : ""}
             {hotspot.isSink ? " · terrain sink" : ""}
@@ -113,10 +127,10 @@ export function HotspotDrawer({
         </Button>
       </header>
 
-      <section className="border-b border-line p-4">
+      <section className="border-line border-b p-4">
         <div className="flex items-baseline gap-2">
           {/* Motion M4: the number rolls as the operator scrubs. */}
-          <span className="num font-display text-display leading-none text-text">
+          <span className="num font-display text-display text-text leading-none">
             {reducedMotion ? (
               Math.round(now)
             ) : (
@@ -125,24 +139,24 @@ export function HotspotDrawer({
           </span>
           <span className="type-h3 text-text-2">cm</span>
         </div>
-        <p className="mt-2 type-small text-text-2">
+        <p className="type-small text-text-2 mt-2">
           p50 at {validTs[step] ? formatIstTime(validTs[step]) : `+${step * stepMin} min`} · peaks
           at {Math.round(hotspot.peakDepthCm)} cm
           {hotspot.peakTs ? ` at ${formatIstTime(hotspot.peakTs)}` : ""} (+{hotspot.timeToPeakMin}{" "}
           min)
         </p>
         {hotspot.minutesImpassable > 0 ? (
-          <p className="mt-1 type-small text-text-2">
+          <p className="type-small text-text-2 mt-1">
             Above 30 cm for {hotspot.minutesImpassable} min
             {hotspot.impassableFromTs ? `, from ${formatIstTime(hotspot.impassableFromTs)}` : ""}.
           </p>
         ) : (
-          <p className="mt-1 type-small text-text-3">Stays below the 30 cm car threshold.</p>
+          <p className="type-small text-text-3 mt-1">Stays below the 30 cm car threshold.</p>
         )}
       </section>
 
-      <section className="border-b border-line p-4">
-        <h3 className="type-small font-medium text-text">Depth over the forecast</h3>
+      <section className="border-line border-b p-4">
+        <h3 className="type-small text-text font-medium">Depth over the forecast</h3>
         <div className="mt-2">
           <FanChart
             points={points}
@@ -153,29 +167,29 @@ export function HotspotDrawer({
             markerLabel="now"
           />
         </div>
-        <p className="mt-2 type-micro text-text-3">
+        <p className="type-micro text-text-3 mt-2">
           One deterministic Twin run, so the band has no width. The 50-member spread arrives with
           Flash-lite.
         </p>
       </section>
 
-      <section className="border-b border-line p-4">
-        <h3 className="type-small font-medium text-text">Safe until</h3>
+      <section className="border-line border-b p-4">
+        <h3 className="type-small text-text font-medium">Safe until</h3>
         <table className="mt-2 w-full">
           <caption className="sr-only">
             The last forecast time before each vehicle can no longer pass {hotspot.name}
           </caption>
-          <tbody className="divide-y divide-line">
+          <tbody className="divide-line divide-y">
             {PROFILES.map(({ key, label }) => {
               const threshold = PROFILE_THRESHOLD_CM[key];
               const unsafe = firstUnsafeStep(hotspot.depthCm, threshold);
               return (
                 <tr key={key} className="h-8">
-                  <th scope="row" className="text-left type-small font-normal text-text-2">
+                  <th scope="row" className="type-small text-text-2 text-left font-normal">
                     {label}
                   </th>
-                  <td className="num w-16 text-right type-micro text-text-3">{threshold} cm</td>
-                  <td className="num w-28 text-right type-small text-text">
+                  <td className="num type-micro text-text-3 w-16 text-right">{threshold} cm</td>
+                  <td className="num type-small text-text w-28 text-right">
                     {unsafe < 0 ? (
                       <span className="text-text-2">passable</span>
                     ) : unsafe === 0 ? (
@@ -193,12 +207,12 @@ export function HotspotDrawer({
         </table>
       </section>
 
-      <section className="border-b border-line p-4">
-        <h3 className="type-small font-medium text-text">Exposure</h3>
+      <section className="border-line border-b p-4">
+        <h3 className="type-small text-text font-medium">Exposure</h3>
         <dl className="mt-2 space-y-1.5">
           <div className="flex items-baseline justify-between gap-3">
             <dt className="type-small text-text-2">Nearest hospital</dt>
-            <dd className="num min-w-0 truncate type-small text-text">
+            <dd className="num type-small text-text min-w-0 truncate">
               {hotspot.exposure.nearestHospital
                 ? `${hotspot.exposure.nearestHospital} · ${hotspot.exposure.nearestHospitalM} m`
                 : "none within 300 m"}
@@ -206,7 +220,7 @@ export function HotspotDrawer({
           </div>
           <div className="flex items-baseline justify-between gap-3">
             <dt className="type-small text-text-2">Nearest station</dt>
-            <dd className="num min-w-0 truncate type-small text-text">
+            <dd className="num type-small text-text min-w-0 truncate">
               {hotspot.exposure.nearestStation
                 ? `${hotspot.exposure.nearestStation} · ${hotspot.exposure.nearestStationM} m`
                 : "none within 300 m"}
@@ -219,8 +233,15 @@ export function HotspotDrawer({
         </dl>
       </section>
 
-      <section className="border-b border-line p-4">
-        <h3 className="type-small font-medium text-text">Why this junction floods</h3>
+      <section
+        ref={whyRef}
+        tabIndex={-1}
+        aria-labelledby="hotspot-why"
+        className="border-line border-b p-4 focus-visible:outline-none"
+      >
+        <h3 id="hotspot-why" className="type-small text-text font-medium">
+          Why this junction floods
+        </h3>
         {/* This was a busy skeleton captioned "once Pulse has learned this junction's blockage".
             Pulse has: the baked runs move 202 of 6,000 edges off their prior on the 08:40 cycle
             and 270 on 09:10, so the stated precondition was already met and the skeleton could
@@ -283,7 +304,7 @@ export function HotspotDrawer({
               href={hotspot.sourceUrl}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 type-micro text-tide underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-tide"
+              className="type-micro text-tide focus-visible:ring-tide inline-flex items-center gap-1 underline underline-offset-2 focus-visible:ring-2 focus-visible:outline-none"
             >
               Chronic-spot source
               <ExternalLink size={12} strokeWidth={1.75} />
