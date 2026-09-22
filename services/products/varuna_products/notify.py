@@ -136,8 +136,29 @@ def mask_number(number: str) -> str:
 
 
 def configured_sender(env: Mapping[str, str] | None = None) -> SenderConfig | None:
-    """The sender the environment configures completely, or None. Twilio first."""
-    source = os.environ if env is None else env
+    """The sender the environment configures completely, or None. Twilio first.
+
+    With no ``env`` given this reads the process environment, and fills the five keys
+    :class:`~varuna_schemas.settings.Settings` already knows from it too - which is where a key
+    written into ``.env`` rather than exported lands. ``TWILIO_TO`` and ``WHATSAPP_CLOUD_TO`` are
+    read from the environment only.
+    """
+    source: Mapping[str, str]
+    if env is None:
+        from varuna_schemas.settings import get_settings
+
+        settings = get_settings()
+        merged = {
+            "TWILIO_ACCOUNT_SID": settings.twilio_account_sid or "",
+            "TWILIO_AUTH_TOKEN": settings.twilio_auth_token or "",
+            "TWILIO_FROM": settings.twilio_from or "",
+            "WHATSAPP_CLOUD_TOKEN": settings.whatsapp_cloud_token or "",
+            "WHATSAPP_CLOUD_PHONE_ID": settings.whatsapp_cloud_phone_id or "",
+        }
+        merged.update({k: v for k, v in os.environ.items() if v})
+        source = merged
+    else:
+        source = env
 
     def value(name: str) -> str:
         return str(source.get(name, "") or "").strip()

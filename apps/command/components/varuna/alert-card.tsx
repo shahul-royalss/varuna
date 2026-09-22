@@ -24,9 +24,10 @@ export interface AlertSummary {
   /** Consecutive cycles the condition has persisted (hysteresis state). */
   persistsCycles: number;
   /**
-   * What `persistsCycles` counts. CLAUDE.md 11.10's hysteresis is in *cycles*; a deterministic
-   * Phase 4 run has no memory across cycles, so it is measured in forecast steps instead and
-   * the card has to say which - "persists 36 cycles" over a 3-hour forecast would be a lie.
+   * What `persistsCycles` counts, singular. CLAUDE.md 11.10's hysteresis is in *cycles*, and a
+   * run baked under the cross-cycle rule counts them ("cycle"); a run baked before it counted
+   * forecast steps ("forecast step"), and the card has to say which - "persists 36 cycles" over a
+   * 3-hour forecast would be a lie. Defaults to "cycle".
    */
   persistsUnit?: string;
   /** Channels the alert went out on, e.g. ["Dashboard", "WhatsApp mock"]. */
