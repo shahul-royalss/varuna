@@ -252,7 +252,9 @@ def reachability(
 
     started = perf_counter()
     graph = load_graph(city)
-    depths = load_depths(run_id, city)
+    # The run the city had issued by `at`, not the newest: a scrub to 07:40 asks what the
+    # facility could reach at 07:40 on the forecast of the time (forecast.run_dir_at).
+    depths = load_depths(run_id, city, at=at)
     target = facility(asset_id, city)
     vehicle_profile = profile(vehicle)
     when = at or depths.valid_ts
