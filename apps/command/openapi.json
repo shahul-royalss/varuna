@@ -54,6 +54,31 @@
         "title": "AlertActionRequest",
         "type": "object"
       },
+      "AlertSendRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /v1/alerts/{id}/send``. The recipient is configuration, not a field.",
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "user": {
+            "default": "ward officer",
+            "maxLength": 80,
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "title": "AlertSendRequest",
+        "type": "object"
+      },
       "BBox": {
         "additionalProperties": false,
         "description": "A WGS84 bounding box. Accepts ``[min_lon, min_lat, max_lon, max_lat]`` as well as an object.",
@@ -1480,6 +1505,48 @@
           }
         },
         "title": "PumpOptimiseRequest",
+        "type": "object"
+      },
+      "PumpPriceRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /v1/pumps/price``: the board as the operator arranged it.",
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "placements": {
+            "description": "[{pump_id, hotspot_id}] - where each pump sits on the board now.",
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "maxItems": 64,
+            "title": "Placements",
+            "type": "array"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id"
+          }
+        },
+        "title": "PumpPriceRequest",
         "type": "object"
       },
       "PumpStatusRequest": {
@@ -3600,7 +3667,7 @@
     },
     "/v1/alerts": {
       "get": {
-        "description": "The alert queue for a run, worst level first (CLAUDE.md 11.10, P8.7).\n\nComputed once when the cycle ran, so the queue, the map and the hotspot rail are all reading\nthe same forecast. Every alert on a replay carries CAP ``status=Exercise``.",
+        "description": "The alert queue for a run, worst level first (CLAUDE.md 11.10, P8.7).\n\nComputed once when the cycle ran, so the queue, the map and the hotspot rail are all reading\nthe same forecast. Every alert on a replay carries CAP ``status=Exercise``.\n\n**The desk's state is folded in at read time.** The queue itself is the cycle's product and\nis never edited, but whether an officer has *seen* an alert is not a forecast - it lives in\nthe ops log, and a console showing \"raised\" beside a desk showing \"acknowledged\" is one alert\ndescribed two ways. ``apply_alert_state`` is the same call ``GET /v1/ops/alerts`` makes, with\nthe city resolved the same way, so the two cannot disagree. With no ops log it returns the\nproduct untouched, which is every run on a fresh clone.",
         "operationId": "alerts_v1_alerts_get",
         "parameters": [
           {
@@ -3686,6 +3753,134 @@
         "summary": "Alerts raised by a run",
         "tags": [
           "nowcast",
+          "alerts"
+        ]
+      }
+    },
+    "/v1/alerts/delivery": {
+      "get": {
+        "description": "The delivery log for a run's queue: three mock renders per alert, plus every real attempt.\n\nThe mock rows say what the mock did - shown on the queue, shown on the phone mock, an SMS\nrendered and not sent - and are never called delivered. Real rows come from\n``data/ops/<city>.deliveries.jsonl`` and match this queue by alert id or by identity, so a\nsend made on the previous cycle is still listed against the same situation.",
+        "operationId": "alert_delivery_v1_alerts_delivery_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Alert Delivery V1 Alerts Delivery Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What happened to each alert, per channel",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/v1/alerts/escalation": {
+      "get": {
+        "description": "Ward officer to public, in order, as ``config/escalation.yaml`` states it (CLAUDE.md 7.5).\n\nEach tier's ``id`` is what ``POST /v1/alerts/{id}/escalate`` takes in ``escalate_to``, and its\n``levels`` are the alert levels that reach it when raised - the same list every alert carries\nin ``notify``.",
+        "operationId": "alert_escalation_v1_alerts_escalation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Alert Escalation V1 Alerts Escalation Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The escalation matrix from config/escalation.yaml",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
+    "/v1/alerts/sender": {
+      "get": {
+        "description": "Whether \"Send to my phone\" can do anything here, and never a key or a whole number.\n\n``configured`` is false unless every variable one adapter needs is set where the API runs\n(``varuna_products.notify.SENDER_ENV``); the screen draws the button only when it is true\n(CLAUDE.md 7.5 AC3).",
+        "operationId": "alert_sender_v1_alerts_sender_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Alert Sender V1 Alerts Sender Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Whether a real phone sender is configured",
+        "tags": [
           "alerts"
         ]
       }
@@ -3942,6 +4137,95 @@
         ]
       }
     },
+    "/v1/alerts/{alert_id}/send": {
+      "post": {
+        "description": "Send the alert to the phone named in the API's environment, and record what happened.\n\nGated with the desk's writes: a real message costs money and reaches a person. With no sender\nconfigured this answers 503 and sends nothing; a provider refusal is 502 with its reason. The\nattempt is appended to the delivery log either way, so the log is the record and the\nresponse never claims more than the log does.",
+        "operationId": "alert_send_v1_alerts__alert_id__send_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "alert_id",
+            "required": true,
+            "schema": {
+              "title": "Alert Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AlertSendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Alert Send V1 Alerts  Alert Id  Send Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send one alert to the configured phone (real WhatsApp or SMS)",
+        "tags": [
+          "alerts"
+        ]
+      }
+    },
     "/v1/cities": {
       "get": {
         "description": "The city switcher's rows (CLAUDE.md 7.2, task D-09).\n\nThe switcher used to carry Mumbai and a hard-coded disabled Chennai, which meant it could not\ntell the jury the truth after the wizard ran: Chennai was built and the row still said\n\"Onboard first\". This reads the configs and the files on disk instead, so the row changes\nwhen the pipeline does.",
@@ -3963,6 +4247,55 @@
         "summary": "Cities VARUNA has a config for, and which are built",
         "tags": [
           "city"
+        ]
+      }
+    },
+    "/v1/city/{city}/basemap.pmtiles": {
+      "get": {
+        "description": "The city's PMTiles basemap, whole or by byte range.",
+        "operationId": "city_basemap_v1_city__city__basemap_pmtiles_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "city",
+            "required": true,
+            "schema": {
+              "title": "City",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/vnd.pmtiles": {}
+            },
+            "description": "PMTiles v3 archive"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Basemap not built for this city"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Offline vector basemap (OSM roads, buildings, waterways; WorldCover water)",
+        "tags": [
+          "basemap"
         ]
       }
     },
@@ -4056,7 +4389,122 @@
         ]
       }
     },
+    "/v1/city/{city}/terrain": {
+      "get": {
+        "operationId": "terrain_meta_v1_city__city__terrain_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "city",
+            "required": true,
+            "schema": {
+              "title": "City",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "City has no conditioned DEM yet"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Heightmap metadata for 3D mode: Terrarium decoder, bounds, height range",
+        "tags": [
+          "city"
+        ]
+      }
+    },
+    "/v1/city/{city}/terrain.png": {
+      "get": {
+        "operationId": "terrain_png_v1_city__city__terrain_png_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "city",
+            "required": true,
+            "schema": {
+              "title": "City",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/png": {}
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "City has no conditioned DEM yet"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The conditioned DEM as a Terrarium-encoded PNG, on the depth rasters' grid",
+        "tags": [
+          "city"
+        ]
+      }
+    },
     "/v1/cycle/compute": {
+      "get": {
+        "operationId": "compute_info_v1_cycle_compute_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Whether Compute live is on here, and how long a cycle takes",
+        "tags": [
+          "cycle"
+        ]
+      },
       "post": {
         "operationId": "compute_v1_cycle_compute_post",
         "requestBody": {
@@ -4080,6 +4528,16 @@
             },
             "description": "Successful Response"
           },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Compute live is off on this server"
+          },
           "422": {
             "content": {
               "application/json": {
@@ -4090,7 +4548,7 @@
             },
             "description": "Validation Error"
           },
-          "501": {
+          "503": {
             "content": {
               "application/json": {
                 "schema": {
@@ -4098,7 +4556,7 @@
                 }
               }
             },
-            "description": "Not Implemented"
+            "description": "A live cycle is already running"
           }
         },
         "summary": "Compute live: run one real cycle now",
@@ -4109,7 +4567,7 @@
     },
     "/v1/cycle/status": {
       "get": {
-        "description": "Idle until Phase 5 wires the orchestrator; the budgets feed the cycle budget bar.",
+        "description": "The live cycle while one runs (its stage and the stages finished so far), or the last one\nthis process ran, with its timings of record; otherwise the newest run's. The newest run is\nby cycle time, so a live 06:00 cycle computed after the 09:10 bake would otherwise vanish\nfrom here the moment it published.",
         "operationId": "cycle_status_v1_cycle_status_get",
         "responses": {
           "200": {
@@ -5941,6 +6399,50 @@
         ]
       }
     },
+    "/v1/pumps/price": {
+      "post": {
+        "description": "The benefit of the plan on the board, whoever made it (CLAUDE.md 7.6 AC2).\n\nThe same model and arithmetic the greedy uses, so an unmoved plan prices to the optimiser's\nown minutes; a moved one gets its own figure instead of the optimiser's stale one. Ungated,\nlike ``/v1/whatif``: it answers a question about a plan, records nothing and changes nothing,\nand a board anyone can drag has to be able to ask it. Bounded at 64 placements.",
+        "operationId": "pumps_price_v1_pumps_price_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PumpPriceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pumps Price V1 Pumps Price Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Price a pump plan the operator arranged by hand (emulator)",
+        "tags": [
+          "pumps"
+        ]
+      }
+    },
     "/v1/reachability": {
       "get": {
         "description": "Isochrones and the collapse flag.",
@@ -7259,6 +7761,10 @@
     {
       "description": "Static city layers simplified for the map.",
       "name": "city"
+    },
+    {
+      "description": "Offline PMTiles basemap built from OSM and WorldCover.",
+      "name": "basemap"
     },
     {
       "description": "Live conditions proxied from Open-Meteo (CC BY 4.0).",

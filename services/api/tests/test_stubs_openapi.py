@@ -50,14 +50,17 @@ SECTION_12_PATHS = [
 
 # Endpoints that are still 501. Phase 5 implemented the depth products, Phase 8 the route,
 # reachability and the road-conditions feed, Phase 9 verification, report ingestion and city
-# onboarding, and task D-07 the four authority actions (alert ack and escalate, pump optimise
-# and dispatch, now served by `varuna_api.routers.ops` behind the passphrase gate) - so each
-# left this list as it landed. The *paths* stay in SECTION_12_PATHS above, which is what asserts
-# the contract in CLAUDE.md 12 is complete either way.
+# onboarding, task D-07 the four authority actions (alert ack and escalate, pump optimise and
+# dispatch, now served by `varuna_api.routers.ops` behind the passphrase gate), and P6.11 the
+# live cycle - so each left this list as it landed. The *paths* stay in SECTION_12_PATHS above,
+# which is what asserts the contract in CLAUDE.md 12 is complete either way.
+#
+# `POST /v1/cycle/compute` left on 2026-09-22: it runs `run_cycle(mode="live")` on a thread and
+# streams `cycle.stage` over the WebSocket. It is gated by `VARUNA_COMPUTE_LIVE`, and where that
+# gate is closed it refuses with its own reason rather than the stub's.
 STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None]] = [
     ("GET", "/v1/nowcast/segments/88213/series", None, None),
     ("POST", "/v1/whatif/physics-check", sample_json("PhysicsCheckRequest"), None),
-    ("POST", "/v1/cycle/compute", sample_json("ComputeRequest"), None),
 ]
 
 OPS_PATHS = [

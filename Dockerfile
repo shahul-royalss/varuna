@@ -35,6 +35,11 @@ COPY services/products/pyproject.toml services/products/
 COPY services/pulse/pyproject.toml services/pulse/
 COPY services/replay/pyproject.toml services/replay/
 COPY services/route/pyproject.toml services/route/
+# The Rust routing service (P8.12) is a Rust crate, but `members = ["services/*"]` makes it a
+# uv workspace member too, so it carries a virtual pyproject.toml. Without this line the
+# dependency layer's `uv sync --frozen` fails on a member the lockfile names and the image
+# does not have. The crate's source is not built here; the image serves the Python router.
+COPY services/route-rs/pyproject.toml services/route-rs/
 COPY services/sky/pyproject.toml services/sky/
 COPY services/twin/pyproject.toml services/twin/
 COPY services/verify/pyproject.toml services/verify/
@@ -77,6 +82,10 @@ COPY docs/ docs/
 # in it instead of an honest 404 - a real cycle takes about three minutes of CPU, and the
 # container would otherwise spend its first quarter hour with nothing to draw. They are ordinary
 # run artifacts, minus the 19 MB-per-cycle `segment_forecast.parquet` the console never reads.
+# The escalation matrix (CLAUDE.md 11.10): who an alert reaches at each level. `GET
+# /v1/alerts/escalation` and the /alerts screen read it, and both 404 without it.
+COPY config/ config/
+
 COPY demo/ demo/
 
 RUN uv sync --frozen --no-dev

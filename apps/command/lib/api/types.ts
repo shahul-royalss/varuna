@@ -34,8 +34,88 @@ export interface paths {
          *
          *     Computed once when the cycle ran, so the queue, the map and the hotspot rail are all reading
          *     the same forecast. Every alert on a replay carries CAP ``status=Exercise``.
+         *
+         *     **The desk's state is folded in at read time.** The queue itself is the cycle's product and
+         *     is never edited, but whether an officer has *seen* an alert is not a forecast - it lives in
+         *     the ops log, and a console showing "raised" beside a desk showing "acknowledged" is one alert
+         *     described two ways. ``apply_alert_state`` is the same call ``GET /v1/ops/alerts`` makes, with
+         *     the city resolved the same way, so the two cannot disagree. With no ops log it returns the
+         *     product untouched, which is every run on a fresh clone.
          */
         get: operations["alerts_v1_alerts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/delivery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What happened to each alert, per channel
+         * @description The delivery log for a run's queue: three mock renders per alert, plus every real attempt.
+         *
+         *     The mock rows say what the mock did - shown on the queue, shown on the phone mock, an SMS
+         *     rendered and not sent - and are never called delivered. Real rows come from
+         *     ``data/ops/<city>.deliveries.jsonl`` and match this queue by alert id or by identity, so a
+         *     send made on the previous cycle is still listed against the same situation.
+         */
+        get: operations["alert_delivery_v1_alerts_delivery_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/escalation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The escalation matrix from config/escalation.yaml
+         * @description Ward officer to public, in order, as ``config/escalation.yaml`` states it (CLAUDE.md 7.5).
+         *
+         *     Each tier's ``id`` is what ``POST /v1/alerts/{id}/escalate`` takes in ``escalate_to``, and its
+         *     ``levels`` are the alert levels that reach it when raised - the same list every alert carries
+         *     in ``notify``.
+         */
+        get: operations["alert_escalation_v1_alerts_escalation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/alerts/sender": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Whether a real phone sender is configured
+         * @description Whether "Send to my phone" can do anything here, and never a key or a whole number.
+         *
+         *     ``configured`` is false unless every variable one adapter needs is set where the API runs
+         *     (``varuna_products.notify.SENDER_ENV``); the screen draws the button only when it is true
+         *     (CLAUDE.md 7.5 AC3).
+         */
+        get: operations["alert_sender_v1_alerts_sender_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -108,6 +188,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/alerts/{alert_id}/send": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send one alert to the configured phone (real WhatsApp or SMS)
+         * @description Send the alert to the phone named in the API's environment, and record what happened.
+         *
+         *     Gated with the desk's writes: a real message costs money and reaches a person. With no sender
+         *     configured this answers 503 and sends nothing; a provider refusal is 502 with its reason. The
+         *     attempt is appended to the delivery log either way, so the log is the record and the
+         *     response never claims more than the log does.
+         */
+        post: operations["alert_send_v1_alerts__alert_id__send_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cities": {
         parameters: {
             query?: never;
@@ -125,6 +230,26 @@ export interface paths {
          *     when the pipeline does.
          */
         get: operations["cities_v1_cities_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/city/{city}/basemap.pmtiles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Offline vector basemap (OSM roads, buildings, waterways; WorldCover water)
+         * @description The city's PMTiles basemap, whole or by byte range.
+         */
+        get: operations["city_basemap_v1_city__city__basemap_pmtiles_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -153,6 +278,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/city/{city}/terrain": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Heightmap metadata for 3D mode: Terrarium decoder, bounds, height range */
+        get: operations["terrain_meta_v1_city__city__terrain_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/city/{city}/terrain.png": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The conditioned DEM as a Terrarium-encoded PNG, on the depth rasters' grid */
+        get: operations["terrain_png_v1_city__city__terrain_png_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/cycle/compute": {
         parameters: {
             query?: never;
@@ -160,7 +319,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Whether Compute live is on here, and how long a cycle takes */
+        get: operations["compute_info_v1_cycle_compute_get"];
         put?: never;
         /** Compute live: run one real cycle now */
         post: operations["compute_v1_cycle_compute_post"];
@@ -179,7 +339,10 @@ export interface paths {
         };
         /**
          * Orchestrator status and budgets
-         * @description Idle until Phase 5 wires the orchestrator; the budgets feed the cycle budget bar.
+         * @description The live cycle while one runs (its stage and the stages finished so far), or the last one
+         *     this process ran, with its timings of record; otherwise the newest run's. The newest run is
+         *     by cycle time, so a live 06:00 cycle computed after the 09:10 bake would otherwise vanish
+         *     from here the moment it published.
          */
         get: operations["cycle_status_v1_cycle_status_get"];
         put?: never;
@@ -689,6 +852,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/pumps/price": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Price a pump plan the operator arranged by hand (emulator)
+         * @description The benefit of the plan on the board, whoever made it (CLAUDE.md 7.6 AC2).
+         *
+         *     The same model and arithmetic the greedy uses, so an unmoved plan prices to the optimiser's
+         *     own minutes; a moved one gets its own figure instead of the optimiser's stale one. Ungated,
+         *     like ``/v1/whatif``: it answers a question about a plan, records nothing and changes nothing,
+         *     and a board anyone can drag has to be able to ask it. Bounded at 64 placements.
+         */
+        post: operations["pumps_price_v1_pumps_price_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/reachability": {
         parameters: {
             query?: never;
@@ -1161,6 +1349,19 @@ export interface components {
             /**
              * User
              * @description Operator name or id shown in the alert log.
+             */
+            user: string;
+        };
+        /**
+         * AlertSendRequest
+         * @description Body of ``POST /v1/alerts/{id}/send``. The recipient is configuration, not a field.
+         */
+        AlertSendRequest: {
+            /** City */
+            city?: string | null;
+            /**
+             * User
+             * @default ward officer
              */
             user: string;
         };
@@ -1788,6 +1989,23 @@ export interface components {
              * @enum {string}
              */
             solver: "greedy" | "milp";
+        };
+        /**
+         * PumpPriceRequest
+         * @description Body of ``POST /v1/pumps/price``: the board as the operator arranged it.
+         */
+        PumpPriceRequest: {
+            /** City */
+            city?: string | null;
+            /**
+             * Placements
+             * @description [{pump_id, hotspot_id}] - where each pump sits on the board now.
+             */
+            placements?: {
+                [key: string]: string;
+            }[];
+            /** Run Id */
+            run_id?: string | null;
         };
         /**
          * PumpStatusRequest
@@ -3002,6 +3220,85 @@ export interface operations {
             };
         };
     };
+    alert_delivery_v1_alerts_delivery_get: {
+        parameters: {
+            query?: {
+                run_id?: string | null;
+                city?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    alert_escalation_v1_alerts_escalation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    alert_sender_v1_alerts_sender_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
     alert_cap_v1_alerts__alert_id__cap_get: {
         parameters: {
             query?: {
@@ -3121,6 +3418,48 @@ export interface operations {
             };
         };
     };
+    alert_send_v1_alerts__alert_id__send_post: {
+        parameters: {
+            query?: {
+                run_id?: string | null;
+            };
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
+            path: {
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertSendRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     cities_v1_cities_get: {
         parameters: {
             query?: never;
@@ -3139,6 +3478,46 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    city_basemap_v1_city__city__basemap_pmtiles_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                city: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PMTiles v3 archive */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/vnd.pmtiles": unknown;
+                };
+            };
+            /** @description Basemap not built for this city */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3187,6 +3566,106 @@ export interface operations {
             };
         };
     };
+    terrain_meta_v1_city__city__terrain_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                city: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description City has no conditioned DEM yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    terrain_png_v1_city__city__terrain_png_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                city: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                };
+            };
+            /** @description City has no conditioned DEM yet */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compute_info_v1_cycle_compute_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     compute_v1_cycle_compute_post: {
         parameters: {
             query?: never;
@@ -3209,6 +3688,15 @@ export interface operations {
                     "application/json": components["schemas"]["CycleStatus"];
                 };
             };
+            /** @description Compute live is off on this server */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorEnvelope"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
@@ -3218,8 +3706,8 @@ export interface operations {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description A live cycle is already running */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -4101,6 +4589,41 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["PumpOptimiseRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pumps_price_v1_pumps_price_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PumpPriceRequest"];
             };
         };
         responses: {

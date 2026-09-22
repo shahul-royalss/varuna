@@ -41,3 +41,7 @@ docs/*.pdf
 .claude/
 .vercel/
 *.log
+
+# The Rust routing service's build output (P8.12): 167 MB that the image never runs, since
+# the API serves the Python router. The crate's source is small and stays.
+services/route-rs/target/

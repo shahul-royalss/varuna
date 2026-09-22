@@ -39,6 +39,11 @@ pub struct SegmentDepths {
     pub p_gt: Vec<(f64, Series)>,
     /// Whether the file had a `p_gt` block with at least one threshold (`has_exceedance`).
     pub has_exceedance: bool,
+    /// `velocity_ms` per segment, the pedestrian hazard rule's other half. Empty on every run
+    /// VARUNA bakes today: the Twin holds face fluxes while it runs and no product keeps them.
+    pub velocity: Series,
+    /// Whether the file carried a non-empty `velocity_ms` block (`has_velocity`).
+    pub has_velocity: bool,
 }
 
 #[derive(Deserialize)]
@@ -51,6 +56,8 @@ struct WetFile {
     depth_cm: Option<HashMap<String, Vec<f64>>>,
     #[serde(default)]
     p_gt: Option<HashMap<String, HashMap<String, Vec<f64>>>>,
+    #[serde(default)]
+    velocity_ms: Option<HashMap<String, Vec<f64>>>,
 }
 
 #[derive(Deserialize)]
@@ -96,6 +103,15 @@ impl SegmentDepths {
         match &self.depth[segment as usize] {
             Some(series) if !series.is_empty() => at(series, step),
             _ => 0.0,
+        }
+    }
+
+    /// `velocity_at(segment_id, step)`: flow speed in m/s, or None where the run does not say.
+    #[inline]
+    pub fn velocity_at(&self, segment: u32, step: usize) -> Option<f64> {
+        match &self.velocity[segment as usize] {
+            Some(series) if !series.is_empty() => Some(at(series, step)),
+            _ => None,
         }
     }
 
@@ -246,6 +262,15 @@ fn load(path: &Path, graph: &RoadGraph) -> Result<SegmentDepths, RunError> {
         p_gt.push((t, series));
     }
 
+    let raw_v = wet.velocity_ms.unwrap_or_default();
+    let has_velocity = !raw_v.is_empty();
+    let mut velocity: Series = vec![None; n_seg];
+    for (sid, series) in raw_v {
+        if let Some(&j) = graph.segment_index.get(&sid) {
+            velocity[j as usize] = Some(series);
+        }
+    }
+
     let mut ensemble_n = 1;
     let mut rain = Vec::new();
     let meta_path = path.join("run.json");
@@ -279,6 +304,8 @@ fn load(path: &Path, graph: &RoadGraph) -> Result<SegmentDepths, RunError> {
         rain_aoi_mm_h: rain,
         p_gt,
         has_exceedance,
+        velocity,
+        has_velocity,
     })
 }
 

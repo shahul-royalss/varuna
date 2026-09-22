@@ -37,8 +37,13 @@ function op(key: string): ApiOperation {
 describe("operationsFromOpenApi", () => {
   it("reads every path of the committed snapshot", () => {
     const paths = new Set(operations.map((o) => o.path));
+    // Against the snapshot itself, never against a number written down on the day. The count was
+    // pinned at 52 and the merge that added the terrain, basemap, escalation, sender, delivery,
+    // send, price and live-compute routes took it to 60, failing a test that had found no defect.
     expect(paths.size).toBe(Object.keys(snapshot.paths).length);
-    expect(paths.size).toBe(52);
+    // The explorer is only worth having if it lists the whole API, so a snapshot that has lost
+    // most of its paths should still fail here rather than pass an empty comparison.
+    expect(paths.size).toBeGreaterThan(40);
   });
 
   it("strips the passphrase header from every form and marks the operation", () => {

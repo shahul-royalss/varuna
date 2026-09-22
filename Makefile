@@ -22,7 +22,7 @@ SHELL := bash
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help setup doctor city city-cache bundle bake train dev demo test e2e pack demo-video \
+.PHONY: help setup doctor city city-cache city-terrain city-basemap route-rs bundle bake train dev demo test e2e pack demo-video \
         lint typecheck typegen openapi format clean
 
 help: ## List every target (each is also `uv run varuna <target>`)
@@ -39,6 +39,16 @@ city: ## Build city-in-a-box layers from cache (downloads on first run): city/$(
 
 city-cache: ## Download the open data for a city into city/cache/ only (Chennai pre-cache)
 	$(VARUNA) city --city $(CITY) --cache-only $(ARGS)
+
+city-terrain: ## Terrarium heightmap for the console's 3D mode, from the city's conditioned DEM (P6.15)
+	uv run python -m varuna_city.terrain_export --city $(CITY) $(ARGS)
+
+city-basemap: ## PMTiles vector basemap from the city's own OSM layers, for the offline map (P9.10)
+	uv run python -m varuna_city.basemap_tiles --city $(CITY) $(ARGS)
+
+route-rs: ## Build the Rust routing service and export the graph it reads (P8.12)
+	cd services/route-rs && cargo build --release
+	uv run python services/route-rs/tools/export_graph.py --city $(CITY) $(ARGS)
 
 bundle: ## Generate a replay bundle (storm designer, synthetic streams, curated ground truth)
 	$(VARUNA) bundle --bundle $(BUNDLE) $(ARGS)
