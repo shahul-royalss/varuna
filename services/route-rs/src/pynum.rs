@@ -98,11 +98,17 @@ pub fn repr_float(x: f64) -> String {
         return if x > 0.0 { "inf".into() } else { "-inf".into() };
     }
     if x == 0.0 {
-        return if x.is_sign_negative() { "-0.0".into() } else { "0.0".into() };
+        return if x.is_sign_negative() {
+            "-0.0".into()
+        } else {
+            "0.0".into()
+        };
     }
     // `{:e}` gives the shortest round-tripping digits, e.g. "7.284e1" or "-1e-5".
     let sci = format!("{:e}", x);
-    let (mantissa, exp) = sci.split_once('e').expect("LowerExp always has an exponent");
+    let (mantissa, exp) = sci
+        .split_once('e')
+        .expect("LowerExp always has an exponent");
     let exp: i32 = exp.parse().expect("exponent is an integer");
     let negative = mantissa.starts_with('-');
     let digits: String = mantissa.chars().filter(|c| c.is_ascii_digit()).collect();
@@ -144,7 +150,11 @@ pub fn repr_float(x: f64) -> String {
 
 /// `repr()` of a Python `str`, close enough for the error messages that quote a value.
 pub fn repr_str(s: &str) -> String {
-    let quote = if s.contains('\'') && !s.contains('"') { '"' } else { '\'' };
+    let quote = if s.contains('\'') && !s.contains('"') {
+        '"'
+    } else {
+        '\''
+    };
     let mut out = String::new();
     out.push(quote);
     for ch in s.chars() {
@@ -239,7 +249,13 @@ pub fn parse_py_float(s: &str) -> Option<f64> {
     let body = lower.trim_start_matches(['+', '-']);
     let negative = lower.starts_with('-');
     match body {
-        "inf" | "infinity" => return Some(if negative { f64::NEG_INFINITY } else { f64::INFINITY }),
+        "inf" | "infinity" => {
+            return Some(if negative {
+                f64::NEG_INFINITY
+            } else {
+                f64::INFINITY
+            })
+        }
         "nan" => return Some(f64::NAN),
         _ => {}
     }

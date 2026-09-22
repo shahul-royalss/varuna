@@ -208,9 +208,9 @@ fn load(path: &Path, graph: &RoadGraph) -> Result<SegmentDepths, RunError> {
             Some(Parsed::Aware(dt)) => times.push(dt),
             _ => {
                 return Err(RunError::Invalid(format!(
-                    "{name}/segments_wet.json has a step time that is not ISO 8601 with an offset: {}",
-                    str_value(&stamp)
-                )))
+                "{name}/segments_wet.json has a step time that is not ISO 8601 with an offset: {}",
+                str_value(&stamp)
+            )))
             }
         }
     }

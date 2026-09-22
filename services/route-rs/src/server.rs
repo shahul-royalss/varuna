@@ -30,7 +30,10 @@ pub struct AppState {
 
 impl AppState {
     fn ops_path(&self) -> PathBuf {
-        self.runs.data_dir.join("ops").join(format!("{}.jsonl", self.city))
+        self.runs
+            .data_dir
+            .join("ops")
+            .join(format!("{}.jsonl", self.city))
     }
 }
 
@@ -61,7 +64,13 @@ pub fn handle_route(state: &AppState, bytes: &[u8]) -> Result<Value, ApiError> {
         })?;
     let ops_path = state.ops_path();
     let overlay_for = |at| ops::active(&ops_path, at);
-    let result = plan(graph, &depths, &overlay_for, state.naive.as_ref(), request.plan);
+    let result = plan(
+        graph,
+        &depths,
+        &overlay_for,
+        state.naive.as_ref(),
+        request.plan,
+    );
     let ms = started.elapsed().as_secs_f64() * 1000.0;
     eprintln!(
         "{}",
@@ -136,7 +145,10 @@ async fn not_found(uri: Uri) -> Response {
     envelope(&ApiError::new(
         404,
         "not_found",
-        format!("No endpoint at {}. This service answers POST /v1/route and GET /healthz.", uri.path()),
+        format!(
+            "No endpoint at {}. This service answers POST /v1/route and GET /healthz.",
+            uri.path()
+        ),
     ))
 }
 

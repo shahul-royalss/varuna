@@ -400,8 +400,13 @@ pub struct RouteResult {
 
 /// The engine that answers the naive (dry-weather, time-independent) search.
 pub trait NaiveEngine: Sync {
-    fn naive_path(&self, graph: &RoadGraph, source: u32, target: u32, vehicle: &Profile)
-        -> Option<Vec<u32>>;
+    fn naive_path(
+        &self,
+        graph: &RoadGraph,
+        source: u32,
+        target: u32,
+        vehicle: &Profile,
+    ) -> Option<Vec<u32>>;
     fn name(&self) -> &'static str;
 }
 
