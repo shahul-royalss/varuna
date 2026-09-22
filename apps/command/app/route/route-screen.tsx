@@ -23,8 +23,16 @@ import {
 } from "@/components/varuna/route-form";
 import { apiUrl } from "@/lib/api/client";
 import { allSegments } from "@/lib/api/run-depth";
-import { loadPlaces, planRoute, type Place, type RoutePlan } from "@/lib/api/route";
+import { apiProfile, loadPlaces, planRoute, type Place, type RoutePlan } from "@/lib/api/route";
 import { useReplayStore } from "@/lib/stores/replay";
+
+/**
+ * How long the form must hold still before a changed trip is routed again.
+ *
+ * Long enough that dragging the tolerance slider across its range asks once rather than twenty
+ * times, short enough that picking a new profile or departure time reads as immediate.
+ */
+export const REROUTE_DEBOUNCE_MS = 200;
 
 /**
  * The route planner (CLAUDE.md 7.4, task P8.5).
@@ -45,6 +53,11 @@ export function RouteScreen() {
   const [plan, setPlan] = useState<RoutePlan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  // How many times "Find route" has been pressed. Zero means nobody has asked for a route yet,
+  // so editing the form routes nothing; once somebody has, every change to the trip - departure
+  // time, profile, tolerance, either end, the cycle - asks again (CLAUDE.md 7.4 AC3). The count
+  // rather than a flag, so pressing the button on an unchanged trip still re-asks.
+  const [asked, setAsked] = useState(0);
   // The run the trip is costed against; undefined means the newest for this city.
   const [runId, setRunId] = useState<string | undefined>(undefined);
 
@@ -97,35 +110,53 @@ export function RouteScreen() {
   }, [places]);
 
   const run = useCallback(
-    async (next: RouteRequest) => {
+    async (next: RouteRequest, signal: AbortSignal) => {
       const origin = places.find((p) => p.id === next.originId);
       const destination = places.find((p) => p.id === next.destinationId);
       if (!origin || !destination) {
         setError("Pick an origin and a destination from the city's registers.");
+        setRunning(false);
         return;
       }
       setRunning(true);
       setError(null);
       try {
-        setPlan(
-          await planRoute({
+        const answer = await planRoute(
+          {
             origin,
             destination,
             departAt: next.departAt,
-            profile: next.profile,
+            profile: apiProfile(next.profile),
             riskTolerance: next.riskTolerance,
             runId,
-          }),
+          },
+          signal,
         );
+        // A newer question superseded this one while it was in flight: its answer is not shown.
+        if (!signal.aborted) setPlan(answer);
       } catch (failure) {
+        if (signal.aborted) return;
         setError(failure instanceof Error ? failure.message : String(failure));
         setPlan(null);
       } finally {
-        setRunning(false);
+        if (!signal.aborted) setRunning(false);
       }
     },
     [places, runId],
   );
+
+  // Route, and route again whenever the trip changes once somebody has asked for one. The
+  // previous request is aborted rather than raced, so a slow answer for 08:40 can never land on
+  // top of the answer for 10:40 the operator has since asked for.
+  useEffect(() => {
+    if (asked === 0) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => void run(request, controller.signal), REROUTE_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [asked, request, run]);
 
   // Motion M14: the naive route in dashed grey, the VARUNA route over it in `--tide`. Both are
   // handed to the map together; deck draws them in the order section 6.7 sets.
@@ -208,12 +239,24 @@ export function RouteScreen() {
                   <RouteForm
                     value={request}
                     onChange={setRequest}
-                    onSubmit={(next) => void run(next)}
+                    onSubmit={(next) => {
+                      setRequest(next);
+                      setAsked((count) => count + 1);
+                    }}
                     places={options.length > 0 ? options : undefined}
                     disabled={places.length === 0}
                     submitDisabledReason="Loading the city's hospitals and chronic junctions"
                   />
-                  {running ? <p className="type-small text-text-3 mt-3">Routing...</p> : null}
+                  {running ? (
+                    <p className="type-small text-text-3 mt-3" role="status">
+                      Routing...
+                    </p>
+                  ) : null}
+                  {asked > 0 ? (
+                    <p className="type-micro text-text-3 mt-2">
+                      Changing the departure time, the profile or the tolerance routes again.
+                    </p>
+                  ) : null}
                   {error ? <p className="type-small text-text-2 mt-3">{error}</p> : null}
                   {plan ? (
                     <p className="type-micro text-text-3 mt-3">

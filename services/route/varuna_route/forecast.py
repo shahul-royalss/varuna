@@ -34,7 +34,7 @@ from varuna_schemas.paths import run_dir, runs_dir
 
 log = structlog.get_logger("varuna.route.forecast")
 
-__all__ = ["SegmentDepths", "latest_run_dir", "load_depths"]
+__all__ = ["SegmentDepths", "latest_run_dir", "load_depths", "run_dir_at"]
 
 STEP_MIN = 5
 """Forecast step, minutes. Matches the cycle's own step (CLAUDE.md 10.3)."""
@@ -75,6 +75,29 @@ class SegmentDepths:
     ramp, over the segments the run wetted. The cycle writes it only when some value lies
     strictly between 0 and 1, so its presence is itself the claim that this run measured a
     spread."""
+
+    velocity_ms: dict[str, list[float]] = field(default_factory=dict)
+    """``{segment_id: [depth-averaged flow speed, m/s, per step]}``, empty when the run has none.
+
+    The pedestrian hazard rule (``h * v >= 0.5 m^2/s``, Appendix A) needs it, and **no run
+    VARUNA bakes carries one** (measured 2026-09-22 on all seven demo cycles): the Twin's solver
+    holds face fluxes ``qx``/``qy`` while it runs, but no product keeps them - ``segments_wet.json``
+    has depth and ``p_gt``, ``segment_forecast.parquet`` has depth quantiles, exceedance and
+    safe-until, and neither has a speed. So this is read from an optional ``velocity_ms`` block in
+    ``segments_wet.json`` - the same ``{segment_id: [per step]}`` shape as ``depth_cm`` - and
+    stays empty until the products stage writes one. Nothing here derives or assumes a speed."""
+
+    @property
+    def has_velocity(self) -> bool:
+        """True when the run carries a flow speed the pedestrian hazard rule can use."""
+        return bool(self.velocity_ms)
+
+    def velocity_at(self, segment_id: str, step: int) -> float | None:
+        """Flow speed in m/s on a segment at a step, or None where the run does not say."""
+        series = self.velocity_ms.get(segment_id)
+        if not series:
+            return None
+        return series[step] if step < len(series) else series[-1]
 
     @property
     def has_exceedance(self) -> bool:
@@ -186,6 +209,51 @@ def latest_run_dir(city: str = "mumbai") -> Path:
     return candidates[0]
 
 
+def run_dir_at(at: datetime, city: str = "mumbai") -> Path:
+    """The run a city had issued by an instant: the newest whose cycle is not after ``at``.
+
+    **Why the reachability scrub needs this.** ``GET /v1/reachability`` is asked at the console's
+    scrub time with no run id, and used to answer from :func:`latest_run_dir` - the 09:10 IST
+    cycle, whose forecast starts at 09:15. Every scrub position before 09:15 clamped to that run's
+    first step, so by construction the tab answered one question - "what can this facility reach
+    in the 09:15 water of the 09:10 forecast" - for the whole morning while looking as if it
+    updated on scrub, and at 06:40 it was showing water from two and a half hours later. The
+    question a scrub to 07:40 asks is "what could KEM reach at 07:40, on the forecast the city had
+    then", which is the newest cycle issued at or before 07:40.
+
+    Ties between runs of one cycle break the way :func:`latest_run_dir` breaks them (the name
+    that sorts last). An instant before the first cycle gets the earliest run, clamped to its first
+    step as :meth:`SegmentDepths.step_at` always clamps; an instant after the last gets the newest.
+
+    Raises:
+        FileNotFoundError: nothing is baked for this city.
+    """
+    from varuna_schemas.models.run import RunIdError, city_code, parse_run_id
+
+    try:
+        prefix = f"{city_code(city)}-"
+    except RunIdError:
+        prefix = ""
+    root = runs_dir()
+    dated: list[tuple[datetime, str, Path]] = []
+    if root.is_dir():
+        for p in root.iterdir():
+            if not (p.is_dir() and p.name.startswith(prefix)):
+                continue
+            if not (p / "segments_wet.json").is_file():
+                continue
+            try:
+                cycle = parse_run_id(p.name).cycle_ts
+            except RunIdError:
+                continue
+            dated.append((cycle, p.name, p))
+    if not dated:
+        return latest_run_dir(city)  # raises with the command that fixes it
+    dated.sort()
+    issued = [entry for entry in dated if entry[0] <= at]
+    return issued[-1][2] if issued else dated[0][2]
+
+
 @lru_cache(maxsize=4)
 def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
     del mtime_ns  # part of the cache key: a re-baked run invalidates itself.
@@ -217,6 +285,12 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         for threshold, by_segment in (wet.get("p_gt") or {}).items()
     }
 
+    # Optional, and absent from every run baked so far; see SegmentDepths.velocity_ms.
+    velocity = {
+        str(sid): [float(v) for v in series]
+        for sid, series in (wet.get("velocity_ms") or {}).items()
+    }
+
     depths = SegmentDepths(
         run_id=str(wet.get("run_id", path.name)),
         times=times,
@@ -226,6 +300,7 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         ensemble_n=ensemble_n,
         rain_aoi_mm_h=rain,
         p_gt=p_gt,
+        velocity_ms=velocity,
     )
     log.info(
         "route.depths_loaded",
@@ -235,13 +310,25 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         steps=n_steps,
         ensemble_n=ensemble_n,
         p_gt=sorted(p_gt),
+        velocity=bool(velocity),
     )
     return depths
 
 
-def load_depths(run_id: str | None = None, city: str = "mumbai") -> SegmentDepths:
-    """Load a run's segment depths, cached on the file's mtime."""
-    path = run_dir(run_id) if run_id else latest_run_dir(city)
+def load_depths(
+    run_id: str | None = None, city: str = "mumbai", *, at: datetime | None = None
+) -> SegmentDepths:
+    """Load a run's segment depths, cached on the file's mtime.
+
+    With no ``run_id``, ``at`` picks the run the city had issued by that instant
+    (:func:`run_dir_at`); with neither, the newest run, as before.
+    """
+    if run_id:
+        path = run_dir(run_id)
+    elif at is not None:
+        path = run_dir_at(at, city)
+    else:
+        path = latest_run_dir(city)
     wet = path / "segments_wet.json"
     if not wet.is_file():
         msg = f"Run {path.name} has no segment forecast; it cannot be routed against."
