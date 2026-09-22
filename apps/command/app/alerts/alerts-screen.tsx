@@ -1,6 +1,6 @@
 "use client";
 
-import { BellOff, ListTree, Send } from "lucide-react";
+import { BellOff, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -17,12 +17,11 @@ import { CapViewer } from "@/components/varuna/cap-viewer";
 import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { DeliveryLog } from "@/components/varuna/delivery-log";
 import { EmptyState } from "@/components/varuna/empty-state";
-import { EscalationMatrix } from "@/components/varuna/escalation-matrix";
 import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PhoneMock, type PhoneMessage } from "@/components/varuna/phone-mock";
-import { Skeleton } from "@/components/varuna/skeleton";
 import { alertIdentities, alertIdentity, freshAlertIds } from "@/lib/alert-identity";
+import { useOpeningRun } from "@/lib/use-opening-run";
 import { formatIst } from "@/lib/format";
 import {
   loadAlerts,
@@ -66,6 +65,9 @@ const NO_FRESH: ReadonlySet<string> = new Set();
 /** How many alerts the queue shows before "Show all". Three fits beside the CAP document. */
 const QUEUE_PREVIEW = 3;
 
+/** Ties the delivery log's toggle to the region it opens, for `aria-controls`. */
+const DELIVERY_LOG_ID = "delivery-log";
+
 /** The phone's text for an alert: headline, instruction and any pumps the desk sent there. */
 function phoneText(alert: RunAlert): string {
   return [alert.headline, alert.instruction, alert.dispatchNote]
@@ -107,7 +109,17 @@ export function AlertsScreen() {
   const [showAllAlerts, setShowAllAlerts] = useState(false);
   // **Which cycle.** An alert is a statement about a forecast, so it only means anything beside
   // the run that raised it. The operator picks the cycle here as they do on the console.
-  const [runId, setRunId] = useState<string | undefined>(undefined);
+  //
+  // Opening on the API's newest run put the alert centre on 09:10 - the calm cycle after the
+  // storm, two alerts - and left every chip unmarked, because none of them matched "whatever is
+  // newest". The screen opens on the demo's 06:40 cycle instead, by the same rule `/console` and
+  // `/map` use, and a pick overrides it from then on.
+  const opening = useOpeningRun();
+  const [picked, setPicked] = useState<string | undefined>(undefined);
+  const runId = picked ?? opening.runId;
+  // Nothing is fetched until the opening run is known, so the queue is not loaded twice and the
+  // screen never flashes the wrong cycle.
+  const cycleReady = picked !== undefined || opening.resolved;
   const shownRef = useRef<Set<string> | null>(null);
   const [fresh, setFresh] = useState<ReadonlySet<string>>(NO_FRESH);
   const [batch, setBatch] = useState(0);
@@ -118,9 +130,12 @@ export function AlertsScreen() {
   const [sender, setSender] = useState<SenderStatus | null>(null);
   const [delivery, setDelivery] = useState<DeliveryLogData | null>(null);
   const [deliveryError, setDeliveryError] = useState<string | null>(null);
+  // The delivery log is opened on demand; see the panel below.
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
+    if (!cycleReady) return;
     const controller = new AbortController();
     loadAlerts(runId, controller.signal)
       .then((next) => {
@@ -142,10 +157,11 @@ export function AlertsScreen() {
         setFresh(NO_FRESH);
       });
     return () => controller.abort();
-  }, [runId, reload]);
+  }, [runId, reload, cycleReady]);
 
   // The delivery log moves with the queue: a new cycle, an acknowledgement or a real send.
   useEffect(() => {
+    if (!cycleReady) return;
     const controller = new AbortController();
     // The worst four alerts: three renders each, plus any real send. A log of sixty alerts is
     // one nobody reads, and the queue beside it already lists every alert.
@@ -164,7 +180,7 @@ export function AlertsScreen() {
         );
       });
     return () => controller.abort();
-  }, [runId, reload]);
+  }, [runId, reload, cycleReady]);
 
   // The matrix and the sender are configuration: read once.
   useEffect(() => {
@@ -191,7 +207,7 @@ export function AlertsScreen() {
   useAlertChime(batch);
 
   const pickCycle = useCallback((next: string) => {
-    setRunId(next);
+    setPicked(next);
     setSelectedId(null);
     setCapXml(null);
     // A new cycle is a new queue, so it opens on its worst few like the last one did.
@@ -239,7 +255,10 @@ export function AlertsScreen() {
         toast("Escalated nothing", {
           description: steps
             ? "This alert has reached every step of the escalation matrix."
-            : "The escalation matrix is not loaded, so there is no next step to name.",
+            : // The matrix is no longer drawn on the page, so this toast is the only place its
+              // failure can still reach the officer. Name the reason, not just the symptom.
+              (stepsError ??
+              "The escalation matrix is not loaded, so there is no next step to name."),
         });
         return;
       }
@@ -263,7 +282,7 @@ export function AlertsScreen() {
         toast("Not escalated", { description: describeRefusal(opsRefusal(error)) });
       }
     },
-    [raised, steps, runId],
+    [raised, steps, stepsError, runId],
   );
 
   /** A real send, only ever offered when the API has a sender configured (7.5 AC3). */
@@ -486,10 +505,24 @@ export function AlertsScreen() {
                 ) : null}
               </Panel>
 
+              {/* Closed until it is asked for: the log is a record to check after the fact, not
+                  something to read at a glance, and open it pushed the phone up the column. */}
               <Panel
                 title="Delivery log"
                 description="Channel, status and time. The mocks are renders on this screen."
+                actions={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-expanded={deliveryOpen}
+                    aria-controls={DELIVERY_LOG_ID}
+                    onClick={() => setDeliveryOpen((open) => !open)}
+                  >
+                    {deliveryOpen ? "Hide" : "Show"}
+                  </Button>
+                }
               >
+                <div id={DELIVERY_LOG_ID} hidden={!deliveryOpen}>
                 <DeliveryLog
                   rows={
                     delivery?.rows.map((row) => ({
@@ -501,34 +534,10 @@ export function AlertsScreen() {
                   error={deliveryError}
                   notes={delivery?.notes}
                 />
+                </div>
               </Panel>
             </div>
           </div>
-
-          <Panel
-            title="Escalation matrix"
-            description="Who is told at each level, from config/escalation.yaml. Escalate moves an alert one step down this list."
-          >
-            {steps ? (
-              <EscalationMatrix
-                tiers={steps.map((step) => ({
-                  id: step.id,
-                  recipient: step.recipient,
-                  trigger: step.trigger,
-                  channel: step.channel,
-                }))}
-              />
-            ) : stepsError ? (
-              <EmptyState
-                size="sm"
-                icon={ListTree}
-                title="Escalation matrix unavailable"
-                description={stepsError}
-              />
-            ) : (
-              <Skeleton lines={5} />
-            )}
-          </Panel>
         </div>
       </div>
     </AppShell>
