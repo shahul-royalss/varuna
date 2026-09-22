@@ -134,6 +134,22 @@ reclaim_volume() {
 
 reclaim_volume
 
+# The two map products a built city does not produce on its own: the Terrarium heightmap the
+# console's 3D mode drapes the depth raster over (P6.15), and the PMTiles vector basemap the
+# public map draws when it is offline (P9.10). Both are derived from the city the build just
+# finished, both are cheap - 6 s and 62 s on a developer laptop, 278 KB and 4.2 MB - and both are
+# skipped when their file is already on the volume. Without them `/v1/city/<city>/terrain` and
+# `/v1/city/<city>/basemap.pmtiles` answer 404 on the deployed API and two shipped features are
+# dark in production, which is exactly the kind of gap that is only ever found on stage.
+build_map_products() {
+  if [ ! -f "${CITY_DIR}/${CITY}/map/terrain.png" ]; then
+    uv run python -m varuna_city.terrain_export --city "${CITY}"       && log "terrain heightmap written; 3D mode can load it"       || log "terrain export failed; /v1/city/${CITY}/terrain keeps its 404"
+  fi
+  if [ ! -f "${CITY_DIR}/${CITY}/map/basemap.pmtiles" ]; then
+    uv run python -m varuna_city.basemap_tiles --city "${CITY}"       && log "offline basemap written; the public map can cache it"       || log "basemap build failed; the offline map falls back to no basemap"
+  fi
+}
+
 if [ "${BUILD_ON_BOOT}" = "1" ]; then
   # Sequential, and in that order: the bundle is built ON the city. Its reconstruction reads
   # the city's own segments.parquet - the traffic feed is synthesised on real road segments -
@@ -141,7 +157,7 @@ if [ "${BUILD_ON_BOOT}" = "1" ]; then
   # lost: it failed at 10:03:45 on a city that finished exporting at 10:05:01. The pair still
   # runs in the background as a whole, so the API is up for the platform health check either
   # way, and a city that fails short-circuits the bundle rather than letting it fail confusingly.
-  ( build_city && build_bundle ) &
+  ( build_city && build_map_products && build_bundle ) &
 fi
 
 log "starting the API on :${PORT}"
