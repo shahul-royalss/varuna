@@ -435,7 +435,7 @@ export function CityMap({
           mounts `MapSlot` behind this map and that draws the same line; `attribution={false}`
           there keeps it from appearing twice. */}
       {attribution ? (
-        <p className="type-micro text-text-3 pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 py-2">
+        <p className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 py-2 type-micro text-text-3">
           {MAP_ATTRIBUTION}
         </p>
       ) : null}
