@@ -5,6 +5,7 @@ import { motion, type PanInfo } from "motion/react";
 
 import { DUR, EASE_UI } from "@/lib/motion";
 import { usePrefersReducedMotion } from "@/lib/hooks";
+import { usePublicT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 export type SheetSnap = "collapsed" | "half" | "full";
@@ -13,11 +14,11 @@ export type SheetSnap = "collapsed" | "half" | "full";
 export const SNAP_ORDER: readonly SheetSnap[] = ["collapsed", "half", "full"];
 export const COLLAPSED_HEIGHT_PX = 96;
 
-const SNAP_LABEL: Record<SheetSnap, string> = {
-  collapsed: "Collapsed",
-  half: "Half open",
-  full: "Fully open",
-};
+/** Message keys for the handle's spoken state; English wherever no language provider is mounted. */
+const SNAP_KEY = { collapsed: "collapsed", half: "half", full: "full" } as const satisfies Record<
+  SheetSnap,
+  string
+>;
 
 function heightFor(snap: SheetSnap, containerHeight: number): number {
   if (snap === "collapsed") return COLLAPSED_HEIGHT_PX;
@@ -64,6 +65,7 @@ export function BottomSheet({
   defaultSnap = "collapsed",
 }: BottomSheetProps) {
   const [snap, setSnap] = useState<SheetSnap>(defaultSnap);
+  const t = usePublicT("sheet");
   const reduced = usePrefersReducedMotion();
   const height = heightFor(snap, containerHeight);
 
@@ -89,7 +91,7 @@ export function BottomSheet({
     >
       <button
         type="button"
-        aria-label={`${title}, ${SNAP_LABEL[snap].toLowerCase()}. Tap to expand or collapse`}
+        aria-label={t("handle", { title, state: t(SNAP_KEY[snap]) })}
         onClick={() => setSnap(nextSnap(snap))}
         className="focus-visible:ring-tide flex min-h-11 w-full shrink-0 flex-col items-center gap-2 px-4 pt-2 pb-3 focus-visible:ring-2 focus-visible:outline-none"
       >
