@@ -361,8 +361,13 @@ export function terrainLayers({
  * polygons onto the mesh and lifts points to its surface.
  */
 export function onTerrain(layers: readonly unknown[]): unknown[] {
-  return layers.map((layer) => {
-    const l = layer as { props: { extensions?: unknown[] }; clone: (p: object) => unknown };
+  return layers.flatMap((layer) => {
+    const l = layer as {
+      props: { extensions?: unknown[]; id?: string };
+      clone: (p: object) => unknown;
+    };
+    // The depth raster is the terrain's own texture in 3D; draped as well it would be drawn twice.
+    if (l.props.id === "depth-raster") return [];
     return l.clone({
       // A new id, so deck builds the layer fresh with the terrain shader module in it. A clone
       // under the flat layer's id keeps the flat layer's compiled shaders, which have no
@@ -371,4 +376,11 @@ export function onTerrain(layers: readonly unknown[]): unknown[] {
       extensions: [...(l.props.extensions ?? []), TERRAIN_EXTENSION],
     });
   });
+}
+
+/** The flat map kept alive but not drawn while 3D is on, so leaving 3D never re-creates it. */
+export function hiddenLayers(layers: readonly unknown[]): unknown[] {
+  return layers.map((layer) =>
+    (layer as { clone: (p: object) => unknown }).clone({ visible: false }),
+  );
 }
