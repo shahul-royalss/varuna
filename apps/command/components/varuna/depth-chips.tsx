@@ -56,12 +56,12 @@ export function DepthChips({ value, onValueChange, className }: DepthChipsProps)
             aria-checked={selected}
             onClick={() => onValueChange(option.hint)}
             className={cn(
-              "flex min-h-[68px] flex-col items-start justify-center gap-1 rounded-control border px-3 py-2 text-left",
-              "focus-visible:ring-2 focus-visible:ring-tide focus-visible:outline-none",
+              "rounded-control flex min-h-[68px] flex-col items-start justify-center gap-1 border px-3 py-2 text-left",
+              "focus-visible:ring-tide focus-visible:ring-2 focus-visible:outline-none",
               selected ? "border-line-strong bg-well" : "border-line bg-deep hover:bg-well",
             )}
           >
-            <span className="flex items-center gap-2 type-small font-medium text-text">
+            <span className="type-small text-text flex items-center gap-2 font-medium">
               <span
                 aria-hidden="true"
                 className="size-2.5 shrink-0 rounded-full"

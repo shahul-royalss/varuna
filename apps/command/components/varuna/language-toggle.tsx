@@ -36,7 +36,10 @@ export function LanguageToggle({ value = "en", onValueChange, className }: Langu
       role="group"
       aria-label={t("group")}
       aria-describedby={noteId}
-      className={cn("inline-flex items-center rounded-control border border-line bg-deep", className)}
+      className={cn(
+        "rounded-control border-line bg-deep inline-flex items-center border",
+        className,
+      )}
     >
       {PUBLIC_LOCALES.map((code) => {
         const active = code === current;
@@ -55,10 +58,10 @@ export function LanguageToggle({ value = "en", onValueChange, className }: Langu
               else onValueChange?.(code);
             }}
             className={cn(
-              "h-11 min-w-11 px-3 type-small font-medium first:rounded-l-control last:rounded-r-control",
-              "focus-visible:ring-2 focus-visible:ring-tide focus-visible:outline-none",
+              "type-small first:rounded-l-control last:rounded-r-control h-11 min-w-11 px-3 font-medium",
+              "focus-visible:ring-tide focus-visible:ring-2 focus-visible:outline-none",
               active ? "bg-well text-text" : "text-text-2",
-              available ? "hover:text-text" : "cursor-not-allowed text-text-3",
+              available ? "hover:text-text" : "text-text-3 cursor-not-allowed",
             )}
           >
             {CODE_LABEL[code]}

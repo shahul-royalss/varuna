@@ -43,7 +43,7 @@ export function VehicleSelector({ value, onValueChange, className }: VehicleSele
           key={profile}
           value={profile}
           aria-label={t(profile)}
-          className="h-11 flex-1 type-small"
+          className="type-small h-11 flex-1"
         >
           {t(profile)}
         </ToggleGroupItem>

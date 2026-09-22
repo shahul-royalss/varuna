@@ -144,12 +144,12 @@ export function ReportWizard({ className }: ReportWizardProps) {
       <Panel className={cn("p-6", className)}>
         <div className="flex flex-col items-start gap-3" data-outcome={outcome}>
           <Icon size={20} strokeWidth={1.75} aria-hidden="true" className="text-tide" />
-          <h2 className="font-display text-h2 font-semibold tracking-display text-text num">
+          <h2 className="font-display text-h2 tracking-display text-text num font-semibold">
             {heading}
           </h2>
-          <p className="max-w-[60ch] type-body text-text-2">{body}</p>
+          <p className="type-body text-text-2 max-w-[60ch]">{body}</p>
           {outcome === "queued" ? (
-            <p className="max-w-[60ch] type-small text-text-3">{t("queuedFollowUp")}</p>
+            <p className="type-small text-text-3 max-w-[60ch]">{t("queuedFollowUp")}</p>
           ) : null}
           <Button
             size="lg"
@@ -177,7 +177,7 @@ export function ReportWizard({ className }: ReportWizardProps) {
             <li key={s.id} className="flex flex-1 flex-col gap-1.5">
               <span
                 aria-hidden="true"
-                className={cn("h-1 rounded-chip", state === "todo" ? "bg-line" : "bg-tide")}
+                className={cn("rounded-chip h-1", state === "todo" ? "bg-line" : "bg-tide")}
               />
               <span
                 className={cn("type-micro", state === "current" ? "text-text" : "text-text-3")}
@@ -193,7 +193,7 @@ export function ReportWizard({ className }: ReportWizardProps) {
       {step === 1 ? (
         <Panel title={t("whereTitle")} description={t("whereDescription")}>
           <div className="flex flex-col gap-4 p-4">
-            <div className="h-56 overflow-hidden rounded-panel border border-line">
+            <div className="rounded-panel border-line h-56 overflow-hidden border">
               <MapSlot audience="public" emptyState={null} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -259,17 +259,17 @@ export function ReportWizard({ className }: ReportWizardProps) {
               capture="environment"
               aria-label={t("photoTitle")}
               onChange={onPhotoChange}
-              className="block w-full type-small text-text-2 file:mr-3 file:h-11 file:rounded-control file:border file:border-line file:bg-well file:px-3 file:type-small file:text-text"
+              className="type-small text-text-2 file:rounded-control file:border-line file:bg-well file:type-small file:text-text block w-full file:mr-3 file:h-11 file:border file:px-3"
             />
             {photo ? (
               // eslint-disable-next-line @next/next/no-img-element -- a local data URL, never optimised
               <img
                 src={photo}
                 alt={t("photoPicked")}
-                className="max-h-56 w-full rounded-panel border border-line object-cover"
+                className="rounded-panel border-line max-h-56 w-full border object-cover"
               />
             ) : (
-              <p className="flex items-center gap-2 type-small text-text-3">
+              <p className="type-small text-text-3 flex items-center gap-2">
                 <Camera size={16} strokeWidth={1.75} aria-hidden="true" />
                 {t("noPhoto")}
               </p>
@@ -304,7 +304,7 @@ export function ReportWizard({ className }: ReportWizardProps) {
         <Panel title={t("depthTitle")} description={t("depthDescription")}>
           <div className="flex flex-col gap-4 p-4">
             <DepthChips value={depthHint} onValueChange={setDepthHint} />
-            <p className="flex items-center gap-2 type-micro text-text-3">
+            <p className="type-micro text-text-3 flex items-center gap-2">
               <Waves size={16} strokeWidth={1.75} aria-hidden="true" />
               {depthHint
                 ? t("filedAs", {
@@ -333,7 +333,7 @@ export function ReportWizard({ className }: ReportWizardProps) {
 
       {submit.isError ? (
         <Panel title={t("notAccepted")}>
-          <p role="alert" className="p-4 type-small text-text-2">
+          <p role="alert" className="type-small text-text-2 p-4">
             {errorMessage(submit.error)}
           </p>
         </Panel>
