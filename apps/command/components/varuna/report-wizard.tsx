@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import { Camera, Check, MapPin, Waves } from "lucide-react";
+import { Camera, Check, CloudOff, MapPin, Waves } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,8 @@ import { DepthChips, DEPTH_HINT_OPTIONS, type DepthHint } from "@/components/var
 import { MapSlot } from "@/components/varuna/map-slot";
 import { Panel } from "@/components/varuna/panel";
 import { errorMessage, useSubmitReport } from "@/lib/api";
+import type { ReportResponse } from "@/lib/api/schemas";
+import { usePublicLocale, usePublicT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 /** Hindmata junction, Dadar East: the chronic spot the demo report is filed from. */
@@ -17,10 +19,28 @@ export const DEFAULT_LAT = 19.012;
 export const DEFAULT_LON = 72.841;
 
 const STEPS = [
-  { id: 1, label: "Location" },
-  { id: 2, label: "Photo" },
-  { id: 3, label: "Depth" },
+  { id: 1, key: "stepLocation" },
+  { id: 2, key: "stepPhoto" },
+  { id: 3, key: "stepDepth" },
 ] as const;
+
+/**
+ * What a confirmation can honestly say, from the answer `POST /v1/reports` gave.
+ *
+ * - `offline`: a service worker answered 202 `{"queued": true}` because the phone is offline. The
+ *   report is on the phone, not at VARUNA, so nothing may claim it changed a forecast.
+ * - `queued`: the API accepted it for the next cycle; no count exists yet (`feedback_streets` is
+ *   null until the EnKF has assimilated it, CLAUDE.md 11.6).
+ * - `improved` / `assimilated`: a count arrived, positive or zero.
+ */
+export type ReportOutcome = "offline" | "queued" | "improved" | "assimilated";
+
+export function reportOutcome(data: ReportResponse): ReportOutcome {
+  if (data.queued === true) return "offline";
+  const streets = data.feedback_streets;
+  if (typeof streets !== "number") return "queued";
+  return streets > 0 ? "improved" : "assimilated";
+}
 
 export interface ReportWizardProps {
   className?: string;
@@ -29,14 +49,21 @@ export interface ReportWizardProps {
 /**
  * Three steps to a citizen observation (CLAUDE.md section 7.11): where, an optional photo, and
  * how deep. `POST /v1/reports` accepts the report and queues it for the next cycle, so the API's
- * own message is shown verbatim rather than replaced by a claim about what the report changed.
+ * own message is shown verbatim in English rather than replaced by a claim about what the report
+ * changed. In Hindi and Marathi the API's English sentence would be the only English on the
+ * screen, so the same state is said in the reader's language instead.
  */
 export function ReportWizard({ className }: ReportWizardProps) {
+  const t = usePublicT("report");
+  const depth = usePublicT("depth");
+  const english = (usePublicLocale()?.locale ?? "en") === "en";
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [lat, setLat] = useState(String(DEFAULT_LAT));
   const [lon, setLon] = useState(String(DEFAULT_LON));
   const [locating, setLocating] = useState(false);
-  const [locateError, setLocateError] = useState<string | null>(null);
+  const [locateError, setLocateError] = useState<
+    { kind: "none" } | { kind: "failed"; reason: string } | null
+  >(null);
   const [photo, setPhoto] = useState<string | null>(null);
   const [depthHint, setDepthHint] = useState<DepthHint | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -45,7 +72,7 @@ export function ReportWizard({ className }: ReportWizardProps) {
 
   const useMyLocation = useCallback(() => {
     if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setLocateError("This browser does not share a location. Type the latitude and longitude instead.");
+      setLocateError({ kind: "none" });
       return;
     }
     setLocating(true);
@@ -58,9 +85,7 @@ export function ReportWizard({ className }: ReportWizardProps) {
       },
       (error) => {
         setLocating(false);
-        setLocateError(
-          `Location unavailable (${error.message}). Type the latitude and longitude instead.`,
-        );
+        setLocateError({ kind: "failed", reason: error.message });
       },
       { enableHighAccuracy: true, timeout: 8_000 },
     );
@@ -96,42 +121,39 @@ export function ReportWizard({ className }: ReportWizardProps) {
     // `feedback_streets: null` with a queued message; printing `?? 0` there headlined an improved
     // forecast for a count of zero streets - a claim of effect over a number nobody computed
     // (rule 6). So the count is shown only when a count arrives.
-    const streets = submit.data.feedback_streets;
-    const queued = typeof streets !== "number";
-    // The API's own wording, so the screen never invents a state the service did not report; the
-    // fallback covers a service that accepted the report without one.
+    const outcome = reportOutcome(submit.data);
+    const streets = submit.data.feedback_streets ?? 0;
+    // The API's own wording in English, so the screen never invents a state the service did not
+    // report; the fallback covers a service that accepted the report without one.
     const queuedMessage =
-      submit.data.message ?? "Your report is queued; the next cycle assimilates it.";
+      english && submit.data.message ? submit.data.message : t("queuedFallback");
+    const heading = {
+      offline: t("savedOffline"),
+      queued: t("sent"),
+      improved: t("improved", { count: streets }),
+      assimilated: t("assimilated"),
+    }[outcome];
+    const body = {
+      offline: t("savedOfflineBody"),
+      queued: queuedMessage,
+      improved: t("improvedBody"),
+      assimilated: t("assimilatedBody"),
+    }[outcome];
+    const Icon = outcome === "offline" ? CloudOff : Check;
     return (
       <Panel className={cn("p-6", className)}>
-        <div className="flex flex-col items-start gap-3">
-          <Check size={20} strokeWidth={1.75} aria-hidden="true" className="text-tide" />
-          <h2 className="font-display text-h2 font-semibold tracking-display text-text">
-            {queued ? (
-              "Report sent"
-            ) : streets > 0 ? (
-              <>
-                Thanks - your report improved the forecast for{" "}
-                <span className="num">{streets}</span> {streets === 1 ? "street" : "streets"}
-              </>
-            ) : (
-              "Thanks - your report is assimilated"
-            )}
+        <div className="flex flex-col items-start gap-3" data-outcome={outcome}>
+          <Icon size={20} strokeWidth={1.75} aria-hidden="true" className="text-tide" />
+          <h2 className="font-display text-h2 tracking-display text-text num font-semibold">
+            {heading}
           </h2>
-          <p className="max-w-[60ch] type-body text-text-2">
-            {queued
-              ? queuedMessage
-              : streets > 0
-                ? "Pulse assimilated your report. It appears on the drain X-ray as an observation with the blockage change it caused."
-                : "Pulse assimilated your report and no street forecast moved by more than 3 cm. It still appears on the drain X-ray as an observation."}
-          </p>
-          {queued ? (
-            <p className="max-w-[60ch] type-small text-text-3">
-              Once assimilated it appears on the drain X-ray as an observation with the blockage
-              change it caused.
-            </p>
+          <p className="type-body text-text-2 max-w-[60ch]">{body}</p>
+          {outcome === "queued" ? (
+            <p className="type-small text-text-3 max-w-[60ch]">{t("queuedFollowUp")}</p>
           ) : null}
           <Button
+            size="lg"
+            className="h-11"
             onClick={() => {
               submit.reset();
               setStep(1);
@@ -139,7 +161,7 @@ export function ReportWizard({ className }: ReportWizardProps) {
               setPhoto(null);
             }}
           >
-            Report another street
+            {t("another")}
           </Button>
         </div>
       </Panel>
@@ -148,26 +170,20 @@ export function ReportWizard({ className }: ReportWizardProps) {
 
   return (
     <div className={cn("flex flex-col gap-4", className)}>
-      <ol className="flex items-center gap-2" aria-label="Report progress">
+      <ol className="flex items-center gap-2" aria-label={t("progress")}>
         {STEPS.map((s) => {
           const state = s.id === step ? "current" : s.id < step ? "done" : "todo";
           return (
             <li key={s.id} className="flex flex-1 flex-col gap-1.5">
               <span
                 aria-hidden="true"
-                className={cn(
-                  "h-1 rounded-chip",
-                  state === "todo" ? "bg-line" : "bg-tide",
-                )}
+                className={cn("rounded-chip h-1", state === "todo" ? "bg-line" : "bg-tide")}
               />
               <span
-                className={cn(
-                  "type-micro",
-                  state === "current" ? "text-text" : "text-text-3",
-                )}
+                className={cn("type-micro", state === "current" ? "text-text" : "text-text-3")}
                 aria-current={state === "current" ? "step" : undefined}
               >
-                {s.id}. {s.label}
+                <span className="num">{s.id}.</span> {t(s.key)}
               </span>
             </li>
           );
@@ -175,56 +191,65 @@ export function ReportWizard({ className }: ReportWizardProps) {
       </ol>
 
       {step === 1 ? (
-        <Panel title="Where is the water?" description="Adjust the point if the map is off.">
+        <Panel title={t("whereTitle")} description={t("whereDescription")}>
           <div className="flex flex-col gap-4 p-4">
-            <div className="h-56 overflow-hidden rounded-panel border border-line">
+            <div className="rounded-panel border-line h-56 overflow-hidden border">
               <MapSlot audience="public" emptyState={null} />
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <Button variant="outline" onClick={useMyLocation} disabled={locating}>
+              {/* 44 px: every control a citizen touches (CLAUDE.md 7.11). */}
+              <Button
+                variant="outline"
+                size="lg"
+                className="h-11"
+                onClick={useMyLocation}
+                disabled={locating}
+              >
                 <MapPin aria-hidden="true" />
-                {locating ? "Finding your location" : "Use my location"}
+                {locating ? t("findingLocation") : t("useMyLocation")}
               </Button>
-              <span className="type-micro text-text-3">
-                Or type the coordinates below.
-              </span>
+              <span className="type-micro text-text-3">{t("orType")}</span>
             </div>
             {locateError ? (
               <p role="alert" className="type-small text-text-2">
-                {locateError}
+                {locateError.kind === "none"
+                  ? t("noGeolocation")
+                  : t("locationUnavailable", { reason: locateError.reason })}
               </p>
             ) : null}
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="report-lat">Latitude</Label>
+                <Label htmlFor="report-lat">{t("latitude")}</Label>
                 <Input
                   id="report-lat"
                   inputMode="decimal"
-                  className="num"
+                  className="num h-11"
                   value={lat}
                   onChange={(event) => setLat(event.target.value)}
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="report-lon">Longitude</Label>
+                <Label htmlFor="report-lon">{t("longitude")}</Label>
                 <Input
                   id="report-lon"
                   inputMode="decimal"
-                  className="num"
+                  className="num h-11"
                   value={lon}
                   onChange={(event) => setLon(event.target.value)}
                 />
               </div>
             </div>
             <div className="flex justify-end">
-              <Button onClick={() => setStep(2)}>Continue to photo</Button>
+              <Button size="lg" className="h-11" onClick={() => setStep(2)}>
+                {t("continueToPhoto")}
+              </Button>
             </div>
           </div>
         </Panel>
       ) : null}
 
       {step === 2 ? (
-        <Panel title="Add a photo" description="Optional - a photo helps us read the depth.">
+        <Panel title={t("photoTitle")} description={t("photoDescription")}>
           <div className="flex flex-col gap-4 p-4">
             <input
               ref={fileRef}
@@ -232,38 +257,43 @@ export function ReportWizard({ className }: ReportWizardProps) {
               type="file"
               accept="image/*"
               capture="environment"
+              aria-label={t("photoTitle")}
               onChange={onPhotoChange}
-              className="block w-full type-small text-text-2 file:mr-3 file:h-11 file:rounded-control file:border file:border-line file:bg-well file:px-3 file:type-small file:text-text"
+              className="type-small text-text-2 file:rounded-control file:border-line file:bg-well file:type-small file:text-text block w-full file:mr-3 file:h-11 file:border file:px-3"
             />
             {photo ? (
               // eslint-disable-next-line @next/next/no-img-element -- a local data URL, never optimised
               <img
                 src={photo}
-                alt="The photo you picked"
-                className="max-h-56 w-full rounded-panel border border-line object-cover"
+                alt={t("photoPicked")}
+                className="rounded-panel border-line max-h-56 w-full border object-cover"
               />
             ) : (
-              <p className="flex items-center gap-2 type-small text-text-3">
+              <p className="type-small text-text-3 flex items-center gap-2">
                 <Camera size={16} strokeWidth={1.75} aria-hidden="true" />
-                No photo yet.
+                {t("noPhoto")}
               </p>
             )}
             <div className="flex flex-wrap justify-between gap-2">
-              <Button variant="ghost" onClick={() => setStep(1)}>
-                Back to location
+              <Button variant="ghost" size="lg" className="h-11" onClick={() => setStep(1)}>
+                {t("backToLocation")}
               </Button>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
+                  size="lg"
+                  className="h-11"
                   onClick={() => {
                     setPhoto(null);
                     if (fileRef.current) fileRef.current.value = "";
                     setStep(3);
                   }}
                 >
-                  Skip photo
+                  {t("skipPhoto")}
                 </Button>
-                <Button onClick={() => setStep(3)}>Continue to depth</Button>
+                <Button size="lg" className="h-11" onClick={() => setStep(3)}>
+                  {t("continueToDepth")}
+                </Button>
               </div>
             </div>
           </div>
@@ -271,21 +301,30 @@ export function ReportWizard({ className }: ReportWizardProps) {
       ) : null}
 
       {step === 3 ? (
-        <Panel title="How deep is the water?" description="Pick the closest of the three.">
+        <Panel title={t("depthTitle")} description={t("depthDescription")}>
           <div className="flex flex-col gap-4 p-4">
             <DepthChips value={depthHint} onValueChange={setDepthHint} />
-            <p className="flex items-center gap-2 type-micro text-text-3">
+            <p className="type-micro text-text-3 flex items-center gap-2">
               <Waves size={16} strokeWidth={1.75} aria-hidden="true" />
               {depthHint
-                ? `Filed as ${DEPTH_HINT_OPTIONS.find((o) => o.hint === depthHint)?.hintText}.`
-                : "Pick a depth to send the report."}
+                ? t("filedAs", {
+                    hint: depth("about", {
+                      cm: DEPTH_HINT_OPTIONS.find((o) => o.hint === depthHint)?.cm ?? 0,
+                    }),
+                  })
+                : t("pickDepth")}
             </p>
             <div className="flex flex-wrap justify-between gap-2">
-              <Button variant="ghost" onClick={() => setStep(2)}>
-                Back to photo
+              <Button variant="ghost" size="lg" className="h-11" onClick={() => setStep(2)}>
+                {t("backToPhoto")}
               </Button>
-              <Button onClick={send} disabled={!depthHint || submit.isPending}>
-                {submit.isPending ? "Sending report" : "Send report"}
+              <Button
+                size="lg"
+                className="h-11"
+                onClick={send}
+                disabled={!depthHint || submit.isPending}
+              >
+                {submit.isPending ? t("sending") : t("send")}
               </Button>
             </div>
           </div>
@@ -293,8 +332,8 @@ export function ReportWizard({ className }: ReportWizardProps) {
       ) : null}
 
       {submit.isError ? (
-        <Panel title="The report was not accepted">
-          <p role="alert" className="p-4 type-small text-text-2">
+        <Panel title={t("notAccepted")}>
+          <p role="alert" className="type-small text-text-2 p-4">
             {errorMessage(submit.error)}
           </p>
         </Panel>

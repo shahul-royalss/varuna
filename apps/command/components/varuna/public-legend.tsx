@@ -1,13 +1,14 @@
 "use client";
 
+import { usePublicT } from "@/lib/i18n";
 import { cssVar } from "@/lib/ramps";
-import { PROFILE_LABELS, type VehicleProfile } from "@/lib/stores/ui";
 import { cn } from "@/lib/utils";
 
 import type { PublicProfile } from "./vehicle-selector";
 
 export interface PublicLegendStop {
   key: "passable" | "caution" | "impassable";
+  /** The English label; the legend itself prints the reader's language. */
   label: string;
   colour: string;
 }
@@ -29,21 +30,24 @@ export interface PublicLegendProps {
 }
 
 export function PublicLegend({ profile, className }: PublicLegendProps) {
+  const t = usePublicT("legend");
+  const vehicle = usePublicT("vehicle");
   return (
     <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1.5", className)}>
       {PUBLIC_LEGEND_STOPS.map((stop) => (
-        <span key={stop.key} className="inline-flex items-center gap-1.5 type-micro text-text-2">
+        <span key={stop.key} className="type-micro text-text-2 inline-flex items-center gap-1.5">
           <span
             aria-hidden="true"
             className="size-2.5 shrink-0 rounded-full"
             style={{ background: stop.colour }}
           />
-          {stop.label}
+          {t(stop.key)}
         </span>
       ))}
       {profile ? (
         <span className="type-micro text-text-3">
-          for a {PROFILE_LABELS[profile as VehicleProfile].toLowerCase()}
+          {/* English lowercases the vehicle mid-sentence; Devanagari has no case to change. */}
+          {t("for", { vehicle: vehicle(profile).toLowerCase() })}
         </span>
       ) : null}
     </div>
