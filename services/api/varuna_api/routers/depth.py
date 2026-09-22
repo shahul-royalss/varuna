@@ -366,13 +366,39 @@ def alerts(
     if level:
         queue = [a for a in queue if a.get("level") == level]
     meta = _meta(path)
+    record = body.get("hysteresis")
+    notes = list(meta.get("notes", []))
+    if not isinstance(record, dict):
+        # Written before the cross-cycle rule (CLAUDE.md 11.10): the queue decided on one cycle's
+        # forecast and `persists_cycles` counts forecast steps. Said, not hidden, until re-baked.
+        notes.append(
+            "This run's queue was written before alerts needed two consecutive cycles: it raised "
+            "on this cycle alone, and its persistence is counted in forecast steps. Re-bake it "
+            "to apply the cross-cycle rule."
+        )
     log.info("api.alerts", run_id=path.name, n=len(queue), level=level)
     return {
         "run_id": meta.get("run_id", path.name),
         "cycle_ts": meta.get("cycle_ts"),
         "n_total": len(body.get("alerts", [])),
         "alerts": queue,
-        "notes": meta.get("notes", []),
+        # The cross-cycle state beside the queue: what raises next cycle if it holds, and what
+        # this cycle cleared. The per-situation record itself stays in the file - it is the next
+        # cycle's input, not the screen's.
+        "pending": body.get("pending", []),
+        "n_pending": body.get("n_pending", len(body.get("pending", []))),
+        "cleared": body.get("cleared", []),
+        "n_cleared": body.get("n_cleared", len(body.get("cleared", []))),
+        "hysteresis": (
+            {
+                "rule": record.get("rule"),
+                "previous_run_id": record.get("previous_run_id"),
+                "previous_legacy": record.get("previous_legacy", False),
+            }
+            if isinstance(record, dict)
+            else None
+        ),
+        "notes": notes,
     }
 
 
