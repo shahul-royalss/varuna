@@ -87,6 +87,8 @@ export type * from "./layers/types";
 
 /** Stable empty default, so a screen that passes no routes never changes the routes memo. */
 const NO_ROUTES: readonly RouteLine[] = [];
+/** Stable empty default, so a caller that passes nothing does not rebuild the basemap memo. */
+const NO_LAYERS: readonly unknown[] = [];
 
 export interface CityMapProps {
   mode?: CityMapMode;
@@ -143,6 +145,9 @@ export interface CityMapProps {
   labels?: readonly MapLabel[];
   /** Draw the map credit. Off where `MapSlot` sits behind this map and draws it already. */
   attribution?: boolean;
+  /** Layers drawn under everything else, after the imagery: the public map's offline vector
+   * basemap (task P9.10). Built by the caller so this host stays a composer. */
+  basemapLayers?: readonly unknown[];
 
   // ---- Seams (task MO1) ---------------------------------------------------------------------
   // Accepted and handed to their layer module, and **not drawn or applied yet**. Each names the
@@ -204,6 +209,7 @@ export function CityMap({
   showLabels = true,
   labels = [],
   attribution = true,
+  basemapLayers: extraBasemap = NO_LAYERS,
   playing = false,
   reversedEdges = [],
   drainCrossFadeMs,
@@ -281,8 +287,8 @@ export function CityMap({
   // and then hidden. The terrain carries the city's shape there instead.
   const imagery = showSatellite && !threeD;
   const basemapLayers = useMemo(
-    () => satelliteLayers({ enabled: showSatellite, dimmed: showRaster }),
-    [showSatellite, showRaster],
+    () => [...satelliteLayers({ enabled: showSatellite, dimmed: showRaster }), ...extraBasemap],
+    [showSatellite, showRaster, extraBasemap],
   );
 
   // The ground, with the current step's water draped on it (task P6.15). A scrub swaps a cached
