@@ -166,6 +166,18 @@ export async function loadPlaces(city = "mumbai", signal?: AbortSignal): Promise
   return out;
 }
 
+/**
+ * The API's key for a vehicle profile.
+ *
+ * The console's picker spells two profiles with a hyphen ("two-wheeler", "fire-tender") and
+ * `varuna_route.profiles.PROFILES` keys them with an underscore, so sending the picker's value
+ * as it stands got a 422 "No vehicle profile 'two-wheeler'" for both. Every other key is
+ * already the same on both sides and passes through unchanged.
+ */
+export function apiProfile(profile: string): string {
+  return profile.replace(/-/g, "_");
+}
+
 export interface RouteQuery {
   origin: Place;
   destination: Place;
