@@ -319,6 +319,9 @@ class AlertQueue(list[dict[str, Any]]):
     final: bool
     pending: list[dict[str, Any]]
     cleared: list[dict[str, Any]]
+    n_raised: int
+    n_pending: int
+    n_cleared: int
     record: dict[str, Any] | None
 
     def __init__(self, items: list[dict[str, Any]] | None = None) -> None:
@@ -329,6 +332,9 @@ class AlertQueue(list[dict[str, Any]]):
         self.final = False
         self.pending = []
         self.cleared = []
+        self.n_raised = 0
+        self.n_pending = 0
+        self.n_cleared = 0
         self.record = None
 
 
@@ -673,6 +679,11 @@ def apply_cycle_hysteresis(queue: AlertQueue, previous: Mapping[str, Any]) -> Al
     out.run_id = queue.run_id
     out.final = True
     level_rank = {level: i for i, level in enumerate(order)}
+    # The lists are capped for a reader like the queue is; the counts are not, so a screen can say
+    # "and 180 more" rather than implying sixty was all there was.
+    out.n_raised = len(raised)
+    out.n_pending = len(pending)
+    out.n_cleared = len(cleared)
     out.pending = sorted(
         pending,
         key=lambda a: (level_rank[a["level"]], a["scope"] != "hotspot", -a["peak_cm"], a["id"]),
@@ -844,8 +855,11 @@ def write_alerts(
 
     body: dict[str, Any] = {"alerts": list(queue)}
     if isinstance(queue, AlertQueue) and queue.final:
+        body["n_raised"] = queue.n_raised
         body["pending"] = queue.pending
+        body["n_pending"] = queue.n_pending
         body["cleared"] = queue.cleared
+        body["n_cleared"] = queue.n_cleared
         body["hysteresis"] = queue.record
     (run_dir / "alerts.json").write_text(json.dumps(body, separators=(",", ":")), encoding="utf-8")
     if not queue:
