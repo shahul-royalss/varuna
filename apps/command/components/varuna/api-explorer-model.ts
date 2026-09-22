@@ -53,9 +53,7 @@ export interface ApiField {
   description: string;
 }
 
-export type ApiBody =
-  | { kind: "schema"; schema: string; fields: ApiField[] }
-  | { kind: "free" };
+export type ApiBody = { kind: "schema"; schema: string; fields: ApiField[] } | { kind: "free" };
 
 export interface ApiOperation {
   /** Stable key, `"POST /v1/route"`. */
@@ -171,7 +169,11 @@ function bodyFrom(op: OperationLike, schemas: Record<string, SchemaLike>): ApiBo
 }
 
 /** Why the explorer shows an operation without sending it, or null when it sends it. */
-export function notRunnableReason(method: HttpMethod, path: string, needsPassphrase: boolean): string | null {
+export function notRunnableReason(
+  method: HttpMethod,
+  path: string,
+  needsPassphrase: boolean,
+): string | null {
   if (needsPassphrase) {
     return "An authority write: it needs the desk passphrase in the x-varuna-ops header, and this explorer never sends or stores one. Copy it as curl and send it from the desk.";
   }
@@ -181,7 +183,7 @@ export function notRunnableReason(method: HttpMethod, path: string, needsPassphr
     return "This moves the replay clock every console on this API is watching. Copy it as curl and send it yourself.";
   }
   if (path === "/v1/whatif/physics-check") {
-    return "This re-runs the Twin, which takes about a minute on the demo laptop. Copy it as curl and send it yourself.";
+    return "This re-runs the Twin, which took 47 to 114 s per cycle on the demo laptop. Copy it as curl and send it yourself.";
   }
   return "This changes what the API holds (a live cycle, a job or a report). Copy it as curl and send it yourself.";
 }
@@ -220,7 +222,9 @@ export function operationsFromOpenApi(doc: OpenApiLike): ApiOperation[] {
 }
 
 /** Operations grouped by their last tag, groups in the order they first appear. */
-export function groupByTag(operations: readonly ApiOperation[]): Array<{ tag: string; operations: ApiOperation[] }> {
+export function groupByTag(
+  operations: readonly ApiOperation[],
+): Array<{ tag: string; operations: ApiOperation[] }> {
   const groups = new Map<string, ApiOperation[]>();
   for (const op of operations) {
     const list = groups.get(op.tag) ?? [];
@@ -231,7 +235,10 @@ export function groupByTag(operations: readonly ApiOperation[]): Array<{ tag: st
 }
 
 /** Case-insensitive filter over method, path, summary and tag. */
-export function filterOperations(operations: readonly ApiOperation[], query: string): ApiOperation[] {
+export function filterOperations(
+  operations: readonly ApiOperation[],
+  query: string,
+): ApiOperation[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return [...operations];
   return operations.filter((op) =>
@@ -240,7 +247,10 @@ export function filterOperations(operations: readonly ApiOperation[], query: str
 }
 
 /** A form's starting values: the parameter defaults, overlaid with preset values. */
-export function initialValues(op: ApiOperation, preset: Record<string, string> = {}): Record<string, string> {
+export function initialValues(
+  op: ApiOperation,
+  preset: Record<string, string> = {},
+): Record<string, string> {
   const values: Record<string, string> = {};
   for (const param of op.params) {
     values[param.name] = preset[param.name] ?? (param.name === "run_id" ? DEMO_RUN_ID : "");
@@ -421,13 +431,31 @@ export async function sendRequest(
   const base = { status: response.status, statusText: response.statusText, contentType };
   if (contentType.startsWith("image/")) {
     const blob = await response.blob();
-    return { ...base, ms: now() - started, bytes: blob.size, kind: "image", shown: "", truncatedFrom: null, envelope: null, blob };
+    return {
+      ...base,
+      ms: now() - started,
+      bytes: blob.size,
+      kind: "image",
+      shown: "",
+      truncatedFrom: null,
+      envelope: null,
+      blob,
+    };
   }
   const text = await response.text();
   const ms = now() - started;
   const bytes = new TextEncoder().encode(text).length;
   if (!text) {
-    return { ...base, ms, bytes, kind: "empty", shown: "", truncatedFrom: null, envelope: null, blob: null };
+    return {
+      ...base,
+      ms,
+      bytes,
+      kind: "empty",
+      shown: "",
+      truncatedFrom: null,
+      envelope: null,
+      blob: null,
+    };
   }
   try {
     const parsed: unknown = JSON.parse(text);
@@ -471,6 +499,8 @@ export interface Preset {
   body: (places: PresetPlaces | null) => string;
   /** Whether the body needs the hospitals looked up before it can be sent. */
   needsPlaces: boolean;
+  /** Where the served endpoint departs from what the snapshot documents, said beside the preset. */
+  caveat: string | null;
 }
 
 /** Dadar East around Hindmata junction: small enough that the answer reads on one screen. */
@@ -486,6 +516,8 @@ export const PRESETS: readonly Preset[] = [
     values: { run_id: DEMO_RUN_ID, bbox: DEMO_BBOX, t: DEMO_TIME, profile: "car" },
     body: () => "",
     needsPlaces: false,
+    caveat:
+      "The snapshot documents bbox, t and profile, but the handler that serves this path reads only run_id, city and min_depth_cm, so the answer is every street of the run that gets wetter than 5 cm (about 3.7 MB). A true bounding box, without depths, is GET /v1/city/mumbai/layers/segments?bbox=.",
   },
   {
     id: "route",
@@ -511,6 +543,7 @@ export const PRESETS: readonly Preset[] = [
         2,
       ),
     needsPlaces: true,
+    caveat: null,
   },
   {
     id: "whatif",
@@ -521,6 +554,7 @@ export const PRESETS: readonly Preset[] = [
     values: {},
     body: () => JSON.stringify({ run_id: DEMO_RUN_ID, rain_scale: 1.3, tide_offset_m: 0 }, null, 2),
     needsPlaces: false,
+    caveat: null,
   },
 ];
 
