@@ -51,8 +51,10 @@ import { pointsInView, useReversedFlowLayers, viewBounds } from "./layers/revers
 import { routeLayers, useRouteProgress } from "./layers/routes";
 import { wetStreetsLayers } from "./layers/streets";
 import { deckAnimates, surchargeLayers } from "./layers/surcharge";
+import { TERRAIN_PITCH, onTerrain, terrainLayers, useTerrain } from "./layers/terrain";
 import { mapTooltip } from "./layers/tooltip";
 import { truthPinLayers } from "./layers/truth-pins";
+import { useMapOverlay } from "./layers/overlay-context";
 import type {
   BuildingPolygon,
   DrainPath,
@@ -76,6 +78,9 @@ import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 
 // The data types lived here before the split; importers still find them here.
 export type * from "./layers/types";
+
+/** Stable empty default, so a screen that passes no routes never changes the routes memo. */
+const NO_ROUTES: readonly RouteLine[] = [];
 
 export interface CityMapProps {
   mode?: CityMapMode;
@@ -166,12 +171,12 @@ export function CityMap({
   frames,
   rasterBounds,
   baseSegments,
-  segments,
+  segments: segmentsProp,
   surcharge,
   hotspots,
   buildings = [],
   drains = [],
-  routes = [],
+  routes: routesProp = NO_ROUTES,
   isochrones = [],
   truthPins = [],
   onSegmentPick,
@@ -187,8 +192,8 @@ export function CityMap({
   showBuildings = true,
   showDrains = false,
   probabilityThresholdCm,
-  diffMode = false,
-  diffProgress = 1,
+  diffMode: diffModeProp = false,
+  diffProgress: diffProgressProp = 1,
   showSatellite = true,
   showLabels = true,
   labels = [],
@@ -203,6 +208,34 @@ export function CityMap({
 }: CityMapProps) {
   const interactive = mode !== "hero";
   const reducedMotion = usePrefersReducedMotion();
+
+  // What the console asks for beyond these props: 3D, its routes layer and the what-if
+  // difference layer (`layers/overlay-context.ts`). Every other screen provides nothing.
+  const overlay = useMapOverlay();
+  const terrain = useTerrain(overlay.city, Boolean(overlay.threeD) && interactive);
+  // 3D is drawn only once the ground exists; until then the flat map stays exactly as it was.
+  const threeD = terrain.kind === "ready";
+
+  const overlayRoutes = overlay.routes;
+  const routes = useMemo(
+    () =>
+      overlayRoutes && overlayRoutes.length > 0 ? [...routesProp, ...overlayRoutes] : routesProp,
+    [routesProp, overlayRoutes],
+  );
+
+  // The what-if answer joined onto the city's own geometry: only the segments it moved, as the
+  // lab does, so 21,296 unchanged paths never go through the diff accessor.
+  const overlayDiff = overlay.diff ?? null;
+  const diffDelta = overlayDiff?.deltaCm ?? null;
+  const diffSegments = useMemo(() => {
+    if (!diffDelta) return null;
+    return baseSegments
+      .filter((s) => diffDelta.has(s.id))
+      .map((s) => ({ ...s, deltaCm: diffDelta.get(s.id) ?? 0 }));
+  }, [baseSegments, diffDelta]);
+  const segments = diffSegments ?? segmentsProp;
+  const diffMode = diffSegments ? true : diffModeProp;
+  const diffProgress = diffSegments && overlayDiff ? overlayDiff.progress : diffProgressProp;
 
   const routeProgress = useRouteProgress(routes, reducedMotion);
   const shownIsochrones = useDisplayedIsochrones(isochrones, reducedMotion);
@@ -226,6 +259,8 @@ export function CityMap({
     focus,
     reducedMotion,
     interactive,
+    threeD,
+    pitch3d: TERRAIN_PITCH,
   });
 
   // ---- Layers ---------------------------------------------------------------------------
@@ -235,9 +270,24 @@ export function CityMap({
   // The basemap, under everything. Rebuilt only when it is toggled or the raster comes and goes:
   // `TileLayer` keeps its own tile cache, and handing deck a new instance every render would
   // throw that cache away on every scrub.
+  //
+  // Not in 3D: the imagery is flat and the ground stands above it, so every tile would be drawn
+  // and then hidden. The terrain carries the city's shape there instead.
+  const imagery = showSatellite && !threeD;
   const basemapLayers = useMemo(
-    () => satelliteLayers({ enabled: showSatellite, dimmed: showRaster }),
-    [showSatellite, showRaster],
+    () => satelliteLayers({ enabled: imagery, dimmed: showRaster }),
+    [imagery, showRaster],
+  );
+
+  // The ground, with the current step's water draped on it (task P6.15). A scrub swaps a cached
+  // texture, as the flat raster swaps a bitmap.
+  const currentFrame = frames[step] ?? null;
+  const groundLayers = useMemo(
+    () =>
+      threeD && overlay.city
+        ? terrainLayers({ city: overlay.city, terrain, frame: currentFrame, showRaster })
+        : [],
+    [threeD, overlay.city, terrain, currentFrame, showRaster],
   );
 
   // Each layer's M19 opacity, read out here so the memos below depend on a number rather than on
@@ -271,7 +321,9 @@ export function CityMap({
       ...depthRasterLayers({
         frame: frames[step] ?? null,
         bounds: rasterBounds,
-        show: showRaster,
+        // In 3D the frame is the terrain's texture; drawing it flat as well would put the
+        // water twice, once under the ground.
+        show: showRaster && !threeD,
         fade: fadeRaster,
       }),
       ...wetStreetsLayers({
@@ -311,6 +363,7 @@ export function CityMap({
       playing,
       reducedMotion,
       fadeRaster,
+      threeD,
     ],
   );
 
@@ -356,9 +409,8 @@ export function CityMap({
     size,
   });
 
-  const layers = useMemo(
-    () => [
-      ...basemapLayers,
+  const layers = useMemo(() => {
+    const above = [
       ...cityLayers,
       ...streetLayers,
       ...runLayers,
@@ -367,18 +419,22 @@ export function CityMap({
       ...overlayLayers,
       // Labels last: a street name the depth ramp paints over is a name nobody can read.
       ...labelDrawLayers,
-    ],
-    [
-      basemapLayers,
-      cityLayers,
-      streetLayers,
-      runLayers,
-      drainFlowLayers,
-      markerLayers,
-      overlayLayers,
-      labelDrawLayers,
-    ],
-  );
+    ];
+    // In 3D everything above the ground is laid on it: streets, rings and markers are drawn at
+    // z = 0, which would put them under a ground that averages 20 m up once exaggerated.
+    return threeD ? [...groundLayers, ...onTerrain(above)] : [...basemapLayers, ...above];
+  }, [
+    threeD,
+    groundLayers,
+    basemapLayers,
+    cityLayers,
+    streetLayers,
+    runLayers,
+    drainFlowLayers,
+    markerLayers,
+    overlayLayers,
+    labelDrawLayers,
+  ]);
 
   const animate = deckAnimates({
     reducedMotion,
@@ -405,7 +461,7 @@ export function CityMap({
         }
       />
 
-      {showSatellite ? (
+      {imagery ? (
         // The scrim. The imagery is already drawn dim; this takes the last of its contrast out of
         // the midtones so the depth ramp has the only saturated colour on the screen. It is
         // `pointer-events-none` because the map underneath still has to be draggable.
