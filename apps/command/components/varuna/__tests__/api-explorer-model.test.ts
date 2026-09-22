@@ -52,7 +52,9 @@ describe("operationsFromOpenApi", () => {
   });
 
   it("sends reads and the two compute-only POSTs, and nothing that changes state", () => {
-    const runnablePosts = operations.filter((o) => o.method !== "GET" && o.runnable).map((o) => o.key);
+    const runnablePosts = operations
+      .filter((o) => o.method !== "GET" && o.runnable)
+      .map((o) => o.key);
     expect(runnablePosts.sort()).toEqual(["POST /v1/route", "POST /v1/whatif"]);
     expect(operations.filter((o) => o.method === "GET").every((o) => o.runnable)).toBe(true);
     expect(op("POST /v1/replay/play").notRunnableReason).toMatch(/replay clock/);
@@ -81,7 +83,7 @@ describe("operationsFromOpenApi", () => {
 describe("buildRequest", () => {
   it("fills path parameters, drops empty optional ones and pre-fills the demo run", () => {
     const series = op("GET /v1/nowcast/segments/{segment_id}/series");
-    const values = { ...initialValues(series), segment_id: "S1/2" };
+    const values: Record<string, string> = { ...initialValues(series), segment_id: "S1/2" };
     expect(values.run_id).toBe(DEMO_RUN_ID);
     const built = buildRequest(series, values, "", "http://localhost:8154/");
     expect(built.ok).toBe(true);
@@ -109,7 +111,9 @@ describe("buildRequest", () => {
     const built = buildRequest(closures, {}, "{}", "http://x");
     expect(built.ok).toBe(true);
     if (built.ok) {
-      expect(Object.keys(built.request.headers).map((h) => h.toLowerCase())).not.toContain(PASSPHRASE_HEADER);
+      expect(Object.keys(built.request.headers).map((h) => h.toLowerCase())).not.toContain(
+        PASSPHRASE_HEADER,
+      );
       const curl = toCurl(built.request, closures.needsPassphrase);
       expect(curl).toContain("$VARUNA_OPS_PASSPHRASE");
     }
@@ -134,7 +138,10 @@ describe("sendRequest", () => {
         headers: { "content-type": "application/json" },
       });
     });
-    const result = await sendRequest(request, { fetchImpl: fetchImpl as unknown as typeof fetch, now: () => t });
+    const result = await sendRequest(request, {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      now: () => t,
+    });
     expect(result.status).toBe(200);
     expect(result.ms).toBe(242);
     expect(result.kind).toBe("json");
@@ -143,12 +150,25 @@ describe("sendRequest", () => {
   });
 
   it("shows a refusal in the API's own envelope", async () => {
-    const envelope = { error: { code: "bad_point", message: "origin must be [lon, lat] or {lon, lat}.", run_id: null } };
+    const envelope = {
+      error: {
+        code: "bad_point",
+        message: "origin must be [lon, lat] or {lon, lat}.",
+        run_id: null,
+      },
+    };
     const fetchImpl = async () =>
-      new Response(JSON.stringify(envelope), { status: 422, headers: { "content-type": "application/json" } });
+      new Response(JSON.stringify(envelope), {
+        status: 422,
+        headers: { "content-type": "application/json" },
+      });
     const result = await sendRequest(request, { fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(result.status).toBe(422);
-    expect(result.envelope).toEqual({ code: "bad_point", message: envelope.error.message, runId: null });
+    expect(result.envelope).toEqual({
+      code: "bad_point",
+      message: envelope.error.message,
+      runId: null,
+    });
   });
 
   it("turns an unreachable API into a result that says so", async () => {
@@ -162,8 +182,11 @@ describe("sendRequest", () => {
   });
 
   it("cuts a long body and says how long it was", async () => {
-    const long = JSON.stringify({ rows: Array.from({ length: 5000 }, (_, i) => ({ segment_id: `S${i}`, delta_cm: i })) });
-    const fetchImpl = async () => new Response(long, { status: 200, headers: { "content-type": "application/json" } });
+    const long = JSON.stringify({
+      rows: Array.from({ length: 5000 }, (_, i) => ({ segment_id: `S${i}`, delta_cm: i })),
+    });
+    const fetchImpl = async () =>
+      new Response(long, { status: 200, headers: { "content-type": "application/json" } });
     const result = await sendRequest(request, { fetchImpl: fetchImpl as unknown as typeof fetch });
     expect(result.truncatedFrom).toBeGreaterThan(result.shown.length);
   });
@@ -171,7 +194,10 @@ describe("sendRequest", () => {
   it("refuses to send a request carrying the passphrase", async () => {
     const fetchImpl = vi.fn();
     await expect(
-      sendRequest({ ...request, headers: { [PASSPHRASE_HEADER]: "x" } }, { fetchImpl: fetchImpl as unknown as typeof fetch }),
+      sendRequest(
+        { ...request, headers: { [PASSPHRASE_HEADER]: "x" } },
+        { fetchImpl: fetchImpl as unknown as typeof fetch },
+      ),
     ).rejects.toThrow();
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -193,7 +219,11 @@ describe("presets", () => {
     const places = demoPlacesFrom({
       facilities: [
         { name: "King Edward Memorial (KEM) Hospital, Parel", lon: 72.8414, lat: 19.0028 },
-        { name: "Lokmanya Tilak Municipal General (LTMG) Hospital, Sion", lon: 72.8608, lat: 19.0374 },
+        {
+          name: "Lokmanya Tilak Municipal General (LTMG) Hospital, Sion",
+          lon: 72.8608,
+          lat: 19.0374,
+        },
       ],
     });
     expect(places).toEqual({ origin: [72.8414, 19.0028], destination: [72.8608, 19.0374] });
