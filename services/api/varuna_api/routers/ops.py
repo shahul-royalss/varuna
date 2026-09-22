@@ -268,8 +268,14 @@ def apply_alert_state(alerts: list[dict[str, Any]], city: str | None) -> list[di
     city = _city(city)
     by_id: dict[str, list[tuple[int, dict[str, Any]]]] = {}
     by_identity: dict[str, list[tuple[int, dict[str, Any]]]] = {}
+    by_place: dict[str, list[dict[str, Any]]] = {}
     for position, entry in enumerate(ops.entries(city)):
         kind = entry.get("kind")
+        if kind == "dispatch":
+            place = str(entry.get("hotspot_id", "")).strip()
+            if place:
+                by_place.setdefault(place, []).append(entry)
+            continue
         if kind not in {"alert_ack", "alert_escalate"}:
             continue
         alert_id = str(entry.get("alert_id", "")).strip()
@@ -278,7 +284,7 @@ def apply_alert_state(alerts: list[dict[str, Any]], city: str | None) -> list[di
         identity = str(entry.get("identity", "")).strip()
         if identity:
             by_identity.setdefault(identity, []).append((position, entry))
-    if not by_id and not by_identity:
+    if not by_id and not by_identity and not by_place:
         return alerts
 
     out: list[dict[str, Any]] = []
@@ -290,10 +296,24 @@ def apply_alert_state(alerts: list[dict[str, Any]], city: str | None) -> list[di
             )
         )
         history = [found[position] for position in sorted(found)]
-        if not history:
+        dispatched = by_place.get(_alert_place(alert), [])
+        if not history and not dispatched:
             out.append(alert)
             continue
         updated = dict(alert)
+        if dispatched:
+            # CLAUDE.md 7.5's "Pumps P-12, P-15 dispatched": the order the desk gave for this place,
+            # carried on the alert about it so the phone says it. Matched by place rather than by
+            # alert, because a pump sent to Hindmata at 08:40 is still there at 09:10.
+            pumps = list(dict.fromkeys(str(e.get("pump_id")) for e in dispatched))
+            updated["pumps"] = pumps
+            updated["dispatch_note"] = (
+                f"Pump{'s' if len(pumps) > 1 else ''} {', '.join(pumps)} dispatched."
+            )
+            updated["dispatch_orders"] = [e.get("order_text") for e in dispatched]
+        if not history:
+            out.append(updated)
+            continue
         updated["history"] = [
             {
                 "ts": e.get("ts"),
@@ -313,6 +333,17 @@ def apply_alert_state(alerts: list[dict[str, Any]], city: str | None) -> list[di
                 updated["escalated_to"] = e.get("to")
         out.append(updated)
     return out
+
+
+def _alert_place(alert: dict[str, Any]) -> str:
+    """The id a pump dispatch names for the place an alert is about.
+
+    The pump plan calls a register hotspot by its ``hotspot_id`` and a street ``street:<name>``
+    (``varuna_products.pumps``); the alert names a street by its ``area_desc``.
+    """
+    if alert.get("hotspot_id"):
+        return str(alert["hotspot_id"])
+    return f"street:{alert.get('area_desc', '')}"
 
 
 def _alert_queue(path: Path) -> list[dict[str, Any]]:
@@ -424,6 +455,218 @@ def ops_alerts(
         "alerts": queue,
         "writes_enabled": writes_enabled(),
         "notes": [NO_FORECAST_CHANGED],
+    }
+
+
+# ---- escalation matrix, sender, delivery log ----------------------------------------------
+@router.get(
+    "/alerts/escalation",
+    tags=["alerts"],
+    summary="The escalation matrix from config/escalation.yaml",
+)
+def alert_escalation() -> dict[str, Any]:
+    """Ward officer to public, in order, as ``config/escalation.yaml`` states it (CLAUDE.md 7.5).
+
+    Each tier's ``id`` is what ``POST /v1/alerts/{id}/escalate`` takes in ``escalate_to``, and its
+    ``levels`` are the alert levels that reach it when raised - the same list every alert carries
+    in ``notify``.
+    """
+    from varuna_products.alerts import load_escalation
+
+    try:
+        matrix = load_escalation()
+    except ValueError as error:
+        raise api_error(
+            500, "bad_escalation_config", f"{error}. Fix the file and reload."
+        ) from None
+    if matrix is None:
+        raise api_error(
+            404,
+            "no_escalation_config",
+            "config/escalation.yaml is not where this API runs. It is committed at the repository "
+            "root; an image built without it needs `COPY config/ config/`.",
+        )
+    return matrix
+
+
+@router.get("/alerts/sender", tags=["alerts"], summary="Whether a real phone sender is configured")
+def alert_sender() -> dict[str, Any]:
+    """Whether "Send to my phone" can do anything here, and never a key or a whole number.
+
+    ``configured`` is false unless every variable one adapter needs is set where the API runs
+    (``varuna_products.notify.SENDER_ENV``); the screen draws the button only when it is true
+    (CLAUDE.md 7.5 AC3).
+    """
+    from varuna_products.notify import SENDER_ENV, configured_sender
+
+    sender = configured_sender()
+    if sender is None:
+        return {
+            "configured": False,
+            "provider": None,
+            "channel": None,
+            "to_masked": None,
+            "needs": {provider: list(names) for provider, names in SENDER_ENV.items()},
+        }
+    return {**sender.public(), "needs": None}
+
+
+class AlertSendRequest(VarunaModel):
+    """Body of ``POST /v1/alerts/{id}/send``. The recipient is configuration, not a field."""
+
+    user: str = Field(default="ward officer", max_length=80)
+    city: str | None = None
+
+
+@router.post(
+    "/alerts/{alert_id}/send",
+    tags=["alerts"],
+    summary="Send one alert to the configured phone (real WhatsApp or SMS)",
+)
+def alert_send(
+    alert_id: str,
+    body: AlertSendRequest,
+    _gate: OpsWrite,
+    run_id: Annotated[str | None, Query()] = None,
+) -> dict[str, Any]:
+    """Send the alert to the phone named in the API's environment, and record what happened.
+
+    Gated with the desk's writes: a real message costs money and reaches a person. With no sender
+    configured this answers 503 and sends nothing; a provider refusal is 502 with its reason. The
+    attempt is appended to the delivery log either way, so the log is the record and the
+    response never claims more than the log does.
+    """
+    from varuna_products.alerts import alert_identity
+    from varuna_products.notify import configured_sender, record_delivery, send_alert
+
+    city = _city(body.city)
+    path = _run_path(run_id, city, "alerts.json")
+    queue = apply_alert_state(_alert_queue(path), city)
+    alert = next((a for a in queue if str(a.get("id")) == alert_id), None)
+    if alert is None:
+        raise api_error(
+            404,
+            "alert_not_found",
+            f"Run {path.name} raised no alert {alert_id}. Open /v1/alerts for the queue it did.",
+            run_id=path.name,
+        )
+    if configured_sender() is None:
+        raise api_error(
+            503,
+            "no_sender",
+            "No real sender is configured where this API runs, so nothing was sent. Set "
+            "TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_FROM and TWILIO_TO, or "
+            "WHATSAPP_CLOUD_TOKEN, WHATSAPP_CLOUD_PHONE_ID and WHATSAPP_CLOUD_TO, and restart it. "
+            "The on-screen phone mock needs none of them.",
+            run_id=path.name,
+        )
+    delivery = send_alert(alert)
+    row = record_delivery(
+        city, delivery, alert=alert, identity=alert_identity(alert), user=body.user
+    )
+    log.info("api.alert_send", alert_id=alert_id, status=delivery.status, user=body.user)
+    if not delivery.sent:
+        raise api_error(
+            502,
+            "not_sent",
+            f"The message was not sent: {delivery.error} The attempt is in the delivery log.",
+            run_id=path.name,
+        )
+    return {"run_id": path.name, "delivery": row, "text": delivery.text}
+
+
+MOCK_CHANNELS: tuple[tuple[str, str, str], ...] = (
+    ("dashboard", "Dashboard", "Shown on the alert queue"),
+    ("whatsapp_mock", "WhatsApp mock", "Shown on the on-screen phone"),
+    ("sms_mock", "SMS mock", "Rendered, not sent"),
+)
+"""The prototype's three channels and what each actually did - a render, never a delivery."""
+
+
+@router.get("/alerts/delivery", tags=["alerts"], summary="What happened to each alert, per channel")
+def alert_delivery(
+    run_id: Annotated[str | None, Query()] = None,
+    city: Annotated[str | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+) -> dict[str, Any]:
+    """The delivery log for a run's queue: three mock renders per alert, plus every real attempt.
+
+    The mock rows say what the mock did - shown on the queue, shown on the phone mock, an SMS
+    rendered and not sent - and are never called delivered. Real rows come from
+    ``data/ops/<city>.deliveries.jsonl`` and match this queue by alert id or by identity, so a
+    send made on the previous cycle is still listed against the same situation.
+    """
+    from varuna_products.alerts import alert_identity
+    from varuna_products.notify import configured_sender, deliveries, sms_text, whatsapp_text
+
+    name = _city(city)
+    path = _run_path(run_id, name, "alerts.json")
+    queue = apply_alert_state(_alert_queue(path), name)[:limit]
+    by_id = {str(a.get("id")): a for a in queue}
+    by_identity = {alert_identity(a): a for a in queue}
+
+    rows: list[dict[str, Any]] = []
+    for alert in queue:
+        when = alert.get("sent_ts") or alert.get("raised_ts")
+        for channel, label, status in MOCK_CHANNELS:
+            rows.append(
+                {
+                    "id": f"{alert['id']}-{channel}",
+                    "alert_id": alert["id"],
+                    "channel": channel,
+                    "label": label,
+                    "kind": "mock",
+                    "status": status,
+                    "ts": when,
+                    "text": sms_text(alert)
+                    if channel == "sms_mock"
+                    else whatsapp_text(alert)
+                    if channel == "whatsapp_mock"
+                    else None,
+                }
+            )
+    real = 0
+    for index, entry in enumerate(deliveries(name)):
+        alert = by_id.get(str(entry.get("alert_id"))) or by_identity.get(str(entry.get("identity")))
+        if alert is None:
+            continue
+        real += 1
+        provider = entry.get("provider") or "no sender"
+        rows.append(
+            {
+                "id": f"real-{index}",
+                "alert_id": alert["id"],
+                "channel": entry.get("channel") or "none",
+                "label": f"Real send ({provider})",
+                "kind": "real",
+                "status": {"sent": "Sent", "failed": "Failed", "refused": "Refused"}.get(
+                    str(entry.get("status")), str(entry.get("status"))
+                ),
+                "ts": entry.get("ts"),
+                "to_masked": entry.get("to_masked"),
+                "provider_id": entry.get("provider_id"),
+                "error": entry.get("error"),
+                "user": entry.get("user"),
+                "text": None,
+            }
+        )
+    sender = configured_sender()
+    return {
+        "run_id": path.name,
+        "city": name,
+        "n_alerts": len(queue),
+        "n_real": real,
+        "rows": rows,
+        "sender": sender.public() if sender else {"configured": False},
+        "notes": [
+            "Dashboard, WhatsApp mock and SMS mock are renders on this screen: nothing left the "
+            "machine for them.",
+            (
+                "A real sender is configured; real attempts are listed with the provider's answer."
+                if sender
+                else "No real sender is configured, so no message has been sent to any phone."
+            ),
+        ],
     }
 
 
@@ -620,25 +863,16 @@ def _pump_overrides(city: str) -> tuple[dict[str, str], dict[str, tuple[float, f
     return statuses, depots
 
 
-def _optimise(run_id: str | None, city: str, solver: str) -> dict[str, Any]:
-    """Re-run the greedy for a run, honouring the desk's pump statuses.
+def _plan_inputs(run_id: str | None, city: str) -> dict[str, Any]:
+    """What a pump plan is computed from, for a run on disk: the same for optimise and price.
 
-    The plan is returned and **not written into the run**: the run directory is what the cycle
-    produced, and an officer pressing Optimise must not change it (rule 8).
+    The run's register hotspots and wet streets, the storm it was driven by (so the benefit is
+    the emulator's) and the desk's pump statuses. ``notes`` says what was missing and what the
+    benefit fell back to, because every number the board prints carries its model (rule 6).
     """
-    from time import perf_counter
-
     from varuna_products.alerts import STREET_POINTS, street_series
     from varuna_products.depth import segment_names, segment_points
-    from varuna_products.pumps import build_pump_plan, rain_for_run
-
-    if solver == "milp":
-        raise api_error(
-            501,
-            "not_implemented",
-            "The MILP solver is P1 (task P8.9). The greedy of CLAUDE.md 11.10 is what runs "
-            "today; send solver='greedy'.",
-        )
+    from varuna_products.pumps import rain_for_run
 
     root = city_dir(city)
     if not (root / "assets.geojson").is_file():
@@ -700,18 +934,52 @@ def _optimise(run_id: str | None, city: str, solver: str) -> dict[str, Any]:
             "benefit_label say so beside every number."
         )
     statuses, depots = _pump_overrides(city)
+    return {
+        "path": path,
+        "root": root,
+        "hotspots": hotspots,
+        "streets": streets,
+        "points": points,
+        "rain": rain,
+        "statuses": statuses,
+        "depots": depots,
+        "notes": notes,
+    }
+
+
+def _optimise(run_id: str | None, city: str, solver: str) -> dict[str, Any]:
+    """Re-run the greedy for a run, honouring the desk's pump statuses.
+
+    The plan is returned and **not written into the run**: the run directory is what the cycle
+    produced, and an officer pressing Optimise must not change it (rule 8).
+    """
+    from time import perf_counter
+
+    from varuna_products.pumps import build_pump_plan
+
+    if solver == "milp":
+        raise api_error(
+            501,
+            "not_implemented",
+            "The MILP solver is P1 (task P8.9). The greedy of CLAUDE.md 11.10 is what runs "
+            "today; send solver='greedy'.",
+        )
+
+    inputs = _plan_inputs(run_id, city)
+    path: Path = inputs["path"]
+    notes: list[str] = inputs["notes"]
 
     started = perf_counter()
     plan = build_pump_plan(
-        hotspots,
-        root,
+        inputs["hotspots"],
+        inputs["root"],
         path.name,
         STEP_MIN,
-        streets,
-        points,
-        rain_mm_h=rain,
-        pump_status=statuses,
-        pump_depots=depots,
+        inputs["streets"],
+        inputs["points"],
+        rain_mm_h=inputs["rain"],
+        pump_status=inputs["statuses"],
+        pump_depots=inputs["depots"],
     )
     plan["solver"] = "greedy"
     plan["solve_ms"] = round((perf_counter() - started) * 1000.0)
@@ -740,6 +1008,127 @@ def pumps_optimise(_gate: OpsWrite, body: PumpOptimiseRequest | None = None) -> 
     """
     request = body or PumpOptimiseRequest()
     return _optimise(request.run_id, _city(request.city), request.solver)
+
+
+class PumpPriceRequest(VarunaModel):
+    """Body of ``POST /v1/pumps/price``: the board as the operator arranged it."""
+
+    run_id: str | None = None
+    city: str | None = None
+    placements: list[dict[str, str]] = Field(
+        default_factory=list,
+        max_length=64,
+        description="[{pump_id, hotspot_id}] - where each pump sits on the board now.",
+    )
+
+
+@router.post(
+    "/pumps/price",
+    tags=["pumps"],
+    summary="Price a pump plan the operator arranged by hand (emulator)",
+)
+def pumps_price(body: PumpPriceRequest) -> dict[str, Any]:
+    """The benefit of the plan on the board, whoever made it (CLAUDE.md 7.6 AC2).
+
+    The same model and arithmetic the greedy uses, so an unmoved plan prices to the optimiser's
+    own minutes; a moved one gets its own figure instead of the optimiser's stale one. Ungated,
+    like ``/v1/whatif``: it answers a question about a plan, records nothing and changes nothing,
+    and a board anyone can drag has to be able to ask it. Bounded at 64 placements.
+    """
+    from time import perf_counter
+
+    from varuna_products.pumps import price_placements
+
+    city = _city(body.city)
+    inputs = _plan_inputs(body.run_id, city)
+    path: Path = inputs["path"]
+    placements: list[tuple[str, str]] = []
+    for row in body.placements:
+        pump_id = str(row.get("pump_id", "")).strip()
+        target = str(row.get("hotspot_id", "")).strip()
+        if not pump_id or not target:
+            raise api_error(
+                422,
+                "bad_placement",
+                "Every placement needs a pump_id and the hotspot_id it sits on.",
+                run_id=path.name,
+            )
+        placements.append((pump_id, target))
+
+    started = perf_counter()
+    priced = price_placements(
+        inputs["hotspots"],
+        inputs["root"],
+        path.name,
+        placements,
+        STEP_MIN,
+        inputs["streets"],
+        inputs["points"],
+        rain_mm_h=inputs["rain"],
+        pump_status=inputs["statuses"],
+        pump_depots=inputs["depots"],
+    )
+    priced["price_ms"] = round((perf_counter() - started) * 1000.0)
+    priced["city"] = city
+    priced["notes"] = [
+        *inputs["notes"],
+        "Priced now for the board as arranged; nothing was recorded and the run is unchanged.",
+    ]
+    log.info(
+        "api.pumps_price",
+        run_id=path.name,
+        placements=len(placements),
+        saved=priced["total_minutes_saved"],
+        ms=priced["price_ms"],
+    )
+    return priced
+
+
+def _dispatch_messages(
+    run_id: str, city: str, orders: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The phone-mock message and alert instruction each dispatched place now carries.
+
+    Read back through :func:`apply_alert_state` after the dispatch was appended, so the message is
+    the one ``GET /v1/alerts`` will serve for that alert - not a second composition of it. A place
+    this run raised no alert about still gets the order itself as its message.
+    """
+    from varuna_products.notify import whatsapp_text
+
+    path = run_dir(run_id)
+    # A run with no alert product still dispatches; its places just have no alert to carry it.
+    queue = apply_alert_state(_alert_queue(path), city) if (path / "alerts.json").is_file() else []
+    by_place = {_alert_place(a): a for a in queue}
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for order in orders:
+        place = str(order["hotspot_id"])
+        if place in seen:
+            continue
+        seen.add(place)
+        alert = by_place.get(place)
+        pumps = [o["pump_id"] for o in orders if o["hotspot_id"] == place]
+        instruction = f"Pump{'s' if len(pumps) > 1 else ''} {', '.join(pumps)} dispatched."
+        text = (
+            whatsapp_text(alert)
+            if alert is not None
+            else "\n".join(
+                [
+                    "VARUNA pump order (exercise)",
+                    *(o["order_text"] for o in orders if o["hotspot_id"] == place),
+                ]
+            )
+        )
+        out.append(
+            {
+                "hotspot_id": place,
+                "hotspot_name": order.get("hotspot_name"),
+                "alert_id": alert.get("id") if alert else None,
+                "instruction": instruction,
+                "text": text,
+            }
+        )
+    return out
 
 
 @router.post(
@@ -804,7 +1193,10 @@ def pumps_dispatch(body: PumpDispatchRequest, _gate: OpsWrite) -> dict[str, Any]
         )
 
     log.info("api.pumps_dispatch", run_id=plan["run_id"], n=len(orders), user=body.user, city=city)
+    messages = _dispatch_messages(plan["run_id"], city, orders)
     return {
+        "alert_instructions": [m["instruction"] for m in messages],
+        "phone_messages": messages,
         "run_id": plan["run_id"],
         "city": city,
         "dispatched": True,

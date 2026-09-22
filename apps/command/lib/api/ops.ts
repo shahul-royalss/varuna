@@ -700,6 +700,10 @@ export interface DispatchResult {
   benefitLabel: string;
   syntheticInventory: boolean;
   notes: string[];
+  /** One sentence per dispatched place, as the alert about it now carries it (7.6 AC4). */
+  alertInstructions: string[];
+  /** The phone-mock message per place: the alert's own WhatsApp text, or the order itself. */
+  phoneMessages: { hotspotId: string; alertId: string | null; instruction: string; text: string }[];
 }
 
 /** Record the dispatch order for the current plan. No lorry moves; the response says so. */
@@ -726,6 +730,52 @@ export async function dispatchPumps(input: {
     benefitLabel: text(body.benefit_label),
     syntheticInventory: body.synthetic_inventory === true,
     notes: notes(body.notes),
+    alertInstructions: Array.isArray(body.alert_instructions)
+      ? body.alert_instructions.map((n) => String(n))
+      : [],
+    phoneMessages: (Array.isArray(body.phone_messages) ? body.phone_messages : []).map((raw) => {
+      const row = record(raw);
+      return {
+        hotspotId: text(row.hotspot_id),
+        alertId: typeof row.alert_id === "string" ? row.alert_id : null,
+        instruction: text(row.instruction),
+        text: text(row.text),
+      };
+    }),
+  };
+}
+
+/** What a real send did: the delivery log row the API recorded, and the text it sent. */
+export interface AlertSendResult {
+  runId: string;
+  status: string;
+  toMasked: string | null;
+  providerId: string | null;
+  text: string;
+}
+
+/**
+ * Send one alert to the phone configured where the API runs (task P8.8). Gated like every desk
+ * act. The recipient is the API's configuration, never this call's: there is no number to pass.
+ */
+export async function sendAlertToPhone(input: {
+  alertId: string;
+  user: string;
+  city?: string;
+  runId?: string;
+}): Promise<AlertSendResult> {
+  const query = input.runId ? `?run_id=${encodeURIComponent(input.runId)}` : "";
+  const body = await post<Record<string, unknown>>(
+    `/v1/alerts/${encodeURIComponent(input.alertId)}/send${query}`,
+    { user: input.user, city: input.city ?? null },
+  );
+  const delivery = record(body.delivery);
+  return {
+    runId: text(body.run_id),
+    status: text(delivery.status, "unknown"),
+    toMasked: typeof delivery.to_masked === "string" ? delivery.to_masked : null,
+    providerId: typeof delivery.provider_id === "string" ? delivery.provider_id : null,
+    text: text(body.text),
   };
 }
 

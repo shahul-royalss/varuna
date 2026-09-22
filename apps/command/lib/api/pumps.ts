@@ -6,7 +6,7 @@
  * come down the wire so the board can print them rather than the client asserting them.
  */
 
-import { apiUrl } from "@/lib/api/client";
+import { api, apiUrl } from "@/lib/api/client";
 
 export interface PumpUnit {
   id: string;
@@ -63,10 +63,7 @@ interface RawAssignment {
 }
 
 /** Fetch the plan. Returns null when the run predates the pump product. */
-export async function loadPumpPlan(
-  runId?: string,
-  signal?: AbortSignal,
-): Promise<PumpPlan | null> {
+export async function loadPumpPlan(runId?: string, signal?: AbortSignal): Promise<PumpPlan | null> {
   const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
   const response = await fetch(apiUrl(`/v1/pumps${query}`), { signal });
   if (!response.ok) {
@@ -113,5 +110,109 @@ export async function loadPumpPlan(
       minutesAbove: u.minutes_above ?? 0,
     })),
     totalMinutesSaved: body.total_minutes_saved ?? 0,
+  };
+}
+
+/** One pump where the operator put it, priced by the API (`POST /v1/pumps/price`). */
+export interface PricedPlacement {
+  pumpId: string;
+  targetId: string;
+  targetName: string | null;
+  depot: string;
+  /** Minutes from its depot; null on a place the forecast keeps below 45 cm. */
+  etaMin: number | null;
+  /** The minutes this pump adds, in arrival order: a second lorry buys only its marginal share. */
+  minutesSaved: number;
+  /** Why it saves nothing, when it saves nothing for a reason the forecast can state. */
+  note: string | null;
+}
+
+/** One place on the board, with and without the pumps the operator put there. */
+export interface PricedTarget {
+  targetId: string;
+  targetName: string | null;
+  minutesBefore: number;
+  minutesAfter: number;
+  minutesSaved: number;
+}
+
+export interface PricedPlan {
+  runId: string;
+  placements: PricedPlacement[];
+  targets: PricedTarget[];
+  refused: { pumpId: string; targetId: string; reason: string }[];
+  totalMinutesSaved: number;
+  benefitModel: string;
+  /** "Flash-lite emulator re-run with the pump's outflow" or the bathtub label. */
+  benefitLabel: string;
+  priceMs: number;
+}
+
+/**
+ * Price the board as the operator arranged it (CLAUDE.md 7.6 AC2). Ungated: it records nothing.
+ * The same model and arithmetic as the optimiser, so an unmoved plan prices to its own figures.
+ */
+export async function pricePumpPlacements(
+  input: { runId?: string; placements: { pumpId: string; targetId: string }[] },
+  signal?: AbortSignal,
+): Promise<PricedPlan> {
+  const body = await api.post<{
+    run_id?: string;
+    placements?: {
+      pump_id?: string;
+      hotspot_id?: string;
+      hotspot_name?: string | null;
+      depot?: string | null;
+      eta_min?: number | null;
+      minutes_saved?: number;
+      note?: string | null;
+    }[];
+    targets?: {
+      hotspot_id?: string;
+      hotspot_name?: string | null;
+      minutes_before?: number;
+      minutes_after?: number;
+      minutes_saved?: number;
+    }[];
+    refused?: { pump_id?: string; target_id?: string; reason?: string }[];
+    total_minutes_saved?: number;
+    benefit_model?: string;
+    benefit_label?: string;
+    price_ms?: number;
+  }>(
+    "/v1/pumps/price",
+    {
+      run_id: input.runId ?? null,
+      placements: input.placements.map((p) => ({ pump_id: p.pumpId, hotspot_id: p.targetId })),
+    },
+    { signal },
+  );
+  return {
+    runId: body.run_id ?? "",
+    placements: (body.placements ?? []).map((p) => ({
+      pumpId: p.pump_id ?? "",
+      targetId: p.hotspot_id ?? "",
+      targetName: p.hotspot_name ?? null,
+      depot: p.depot ?? "",
+      etaMin: p.eta_min ?? null,
+      minutesSaved: p.minutes_saved ?? 0,
+      note: p.note ?? null,
+    })),
+    targets: (body.targets ?? []).map((t) => ({
+      targetId: t.hotspot_id ?? "",
+      targetName: t.hotspot_name ?? null,
+      minutesBefore: t.minutes_before ?? 0,
+      minutesAfter: t.minutes_after ?? 0,
+      minutesSaved: t.minutes_saved ?? 0,
+    })),
+    refused: (body.refused ?? []).map((r) => ({
+      pumpId: r.pump_id ?? "",
+      targetId: r.target_id ?? "",
+      reason: r.reason ?? "",
+    })),
+    totalMinutesSaved: body.total_minutes_saved ?? 0,
+    benefitModel: body.benefit_model ?? "reduced_model",
+    benefitLabel: body.benefit_label ?? "",
+    priceMs: body.price_ms ?? 0,
   };
 }
