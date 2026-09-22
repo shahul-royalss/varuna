@@ -186,8 +186,18 @@ export function Hero() {
           mode="hero"
           step={step}
           onLoaded={onMapLoaded}
-          showSurcharge
-          showBuildings
+          // No surcharge pulse on the hero. M8 is a console motion, and it asks deck to redraw on
+          // every animation frame; each redraw re-applies the depth raster's sampler, where
+          // luma.gl 9.3.6 builds a debug string of every GL constant's name whether or not it is
+          // logging (`getGLKeys` in `_setSamplerParameters`). Profiled on the steady loop, that
+          // was 9.8 s of samples in a 10 s window. Without the pulse the map redraws when the
+          // loop moves a step - 4.5 times a second rather than 60.
+          showSurcharge={false}
+          // No footprints on the hero. Section 6.7 draws buildings only from zoom 14 and the hero
+          // frames the whole AOI at about 12, so they were never meant to be seen here - and
+          // they are 11 MB of JSON and 39,259 polygons to tessellate on the main thread while
+          // the loop is trying to start.
+          showBuildings={false}
           showHotspots
         />
       </div>
