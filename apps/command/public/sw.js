@@ -431,12 +431,15 @@ function flushReports(options) {
 }
 
 async function sendQueued({ rethrow = false } = {}) {
-  const items = await allQueued();
+  // Claimed, not just read: the `/map` and `/report` registrations are two workers sharing one
+  // queue, and both wake when the connection returns. Reading the queue from both sent each report
+  // twice; a claim taken inside one IndexedDB transaction lets exactly one of them send it.
+  const items = await claimQueued();
   if (items.length === 0) return;
   let sent = 0;
   let refused = 0;
   let failure = null;
-  for (const item of items) {
+  for (const [index, item] of items.entries()) {
     try {
       const response = await fetch(item.url, {
         method: "POST",
@@ -456,11 +459,17 @@ async function sendQueued({ rethrow = false } = {}) {
         refused += 1;
         await dequeue(item.id);
       } else {
+        // The API answered and failed (5xx, 408, 429). It may have stored the report before it
+        // failed - `POST /v1/reports` writes the inbox before it counts nearby streets - so this
+        // one keeps its claim and waits out `CLAIM_MS` rather than being sent again at once.
         failure = new Error(`Report replay answered ${response.status}`);
+        await Promise.allSettled(items.slice(index + 1).map((rest) => release(rest)));
         break;
       }
     } catch (error) {
       failure = error;
+      // No answer at all: hand back this report and every one after it for the next attempt.
+      await Promise.allSettled(items.slice(index).map((rest) => release(rest)));
       break;
     }
   }
@@ -505,8 +514,40 @@ function dequeue(id) {
   return withStore("readwrite", (store) => store.delete(id));
 }
 
-async function allQueued() {
-  return (await withStore("readonly", (store) => store.getAll())) || [];
+/** How long a claim holds before another worker may take the report over. */
+const CLAIM_MS = 60_000;
+const WORKER_ID = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+
+/** Every report no other worker holds, marked as this worker's in the same transaction. */
+async function claimQueued() {
+  const db = await openDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(DB_STORE, "readwrite");
+      const store = tx.objectStore(DB_STORE);
+      const claimed = [];
+      const now = Date.now();
+      const all = store.getAll();
+      all.onsuccess = () => {
+        for (const item of all.result) {
+          if (item.claimedBy && now - (item.claimedAt || 0) < CLAIM_MS) continue;
+          item.claimedBy = WORKER_ID;
+          item.claimedAt = now;
+          store.put(item);
+          claimed.push(item);
+        }
+      };
+      tx.oncomplete = () => resolve(claimed);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function release(item) {
+  return withStore("readwrite", (store) => store.put({ ...item, claimedBy: null, claimedAt: 0 }));
 }
 
 async function countQueued() {
