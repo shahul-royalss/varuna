@@ -11,7 +11,6 @@
 import {
   geoBounds,
   geoEquirectangularRaw,
-  geoGraticule10,
   geoOrthographicRaw,
   geoPath,
   geoProjectionMutator,
@@ -53,6 +52,45 @@ export interface GlobeFrame {
   aoi: number;
   /** True once the sequence has run its length. */
   finished: boolean;
+  /**
+   * How much of the picture the photographic Earth behind this geometry is carrying, 0 to 1.
+   *
+   * `frameAt` always reports 0, because the camera does not know whether the Blue Marble texture
+   * has decoded; the component sets it from `photoAmount()` before it paints or posts the frame.
+   * Everything that would *hide* the photograph - the ocean disc, the country fills - is faded out
+   * by it, and everything the photograph cannot say - the coastlines as instrumentation, the
+   * India highlight, the AOI box, the Mumbai mark - is kept, dimmed where it would
+   * otherwise fight the imagery. It rides on the frame rather than on a second message so that
+   * `globe-worker.ts`, which forwards frames unread, needs no change at all.
+   */
+  photo?: number;
+}
+
+/** {@link GlobeFrame.photo}, defaulted, so every reader treats an old frame as vector-only. */
+export function photoOf(frame: GlobeFrame): number {
+  return frame.photo === undefined ? 0 : Math.min(Math.max(frame.photo, 0), 1);
+}
+
+/**
+ * How strongly each vector layer is drawn once the photograph is behind it.
+ *
+ * One place for the numbers so the SVG in `globe-intro.tsx` and the canvas below cannot drift
+ * apart. The fills go to nothing - a filled country over a photograph of that country is a sticker
+ * over a planet - while the strokes stay more than half their weight, because a thin coastline
+ * over imagery is what makes the picture read as an instrument rather than a wallpaper.
+ */
+export function vectorOpacity(photo: number): {
+  sphereFill: number;
+  sphereStroke: number;
+  landFill: number;
+  landStroke: number;
+} {
+  return {
+    sphereFill: 1 - photo,
+    sphereStroke: 1 - 0.55 * photo,
+    landFill: 1 - photo,
+    landStroke: 1 - 0.45 * photo,
+  };
 }
 
 /** The interpolated projection: `alpha` 0 is a globe, 1 is a flat equirectangular map. */
@@ -99,7 +137,6 @@ export async function loadTopology(url: string, signal: AbortSignal): Promise<Wo
 export interface CanvasPalette {
   deep: string;
   well: string;
-  line: string;
   lineStrong: string;
   tide: string;
   text2: string;
@@ -124,8 +161,9 @@ export function paintUnroll(
   height: number,
   dpr: number,
 ): void {
-  // `xMidYMid meet`, as the SVG does it: the view box scaled to fit and centred.
-  const fit = Math.min(width / VIEW_W, height / VIEW_H);
+  // `xMidYMid slice`, as the SVG does it: the view box scaled to **cover** the canvas and
+  // centred, so the offsets go negative and the overflow is cropped rather than letterboxed.
+  const fit = Math.max(width / VIEW_W, height / VIEW_H);
   const offsetX = (width - VIEW_W * fit) / 2;
   const offsetY = (height - VIEW_H * fit) / 2;
   context.setTransform(1, 0, 0, 1, 0, 0);
@@ -140,29 +178,34 @@ export function paintUnroll(
   // d3's context typing names the DOM context; the offscreen one has the same path methods.
   const path = geoPath(projection, context as CanvasRenderingContext2D);
 
+  // What the photographic Earth behind this canvas is carrying, if anything. At 0 - no WebGL, no
+  // texture yet, or the approach's final act - every line below is exactly what it always was.
+  const dim = vectorOpacity(photoOf(frame));
+
   context.beginPath();
   path({ type: "Sphere" });
-  context.fillStyle = palette.deep;
-  context.fill();
+  if (dim.sphereFill > 0.01) {
+    context.globalAlpha = dim.sphereFill;
+    context.fillStyle = palette.deep;
+    context.fill();
+  }
+  context.globalAlpha = dim.sphereStroke;
   context.lineWidth = 1;
   context.strokeStyle = palette.lineStrong;
   context.stroke();
 
   context.beginPath();
-  path(geoGraticule10());
-  context.globalAlpha = 0.75;
-  context.lineWidth = 0.6;
-  context.strokeStyle = palette.line;
-  context.stroke();
-  context.globalAlpha = 1;
-
-  context.beginPath();
   for (const shape of land) path(shape.feature as never);
-  context.fillStyle = palette.well;
-  context.fill();
+  if (dim.landFill > 0.01) {
+    context.globalAlpha = dim.landFill;
+    context.fillStyle = palette.well;
+    context.fill();
+  }
+  context.globalAlpha = dim.landStroke;
   context.lineWidth = 0.6;
   context.strokeStyle = palette.lineStrong;
   context.stroke();
+  context.globalAlpha = 1;
 
   // The Mumbai mark, held back until the globe faces the city and grown with the flattening.
   const point = projection([MUMBAI_LON, MUMBAI_LAT]);

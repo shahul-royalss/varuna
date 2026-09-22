@@ -12,15 +12,23 @@ import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 
 import { frameAt, GlobeIntro, sequenceMs } from "@/components/landing/globe-intro";
-import { paintUnroll } from "@/components/landing/globe-paint";
+import { paintUnroll, VIEW_H, VIEW_W } from "@/components/landing/globe-paint";
 import { DUR_MS } from "@/lib/motion";
 
-/** The geometry M26 had before the approach act existed, recomputed from its own constants. */
-function legacyUnroll(elapsed: number) {
+/**
+ * The geometry M26 had before the approach act existed, recomputed from its own constants.
+ *
+ * `flatScale` is a parameter because exactly one of those constants has deliberately moved since:
+ * the unroll used to end at a flat 138, which is `pi * 138 = 433` view units of map inside a
+ * 560-unit box, so a full-bleed hero unrolled into a world map with `--ink` banded above and
+ * below it (2026-09-23). Everything else about M26 - its 4.0 s, its cubic ease, its spin rate and
+ * its rotation at every instant - is still asserted against the original numbers below.
+ */
+function legacyUnroll(elapsed: number, flatScale = 138) {
   const SPIN_MS = 1400;
   const UNROLL_MS = 2600;
   const SCALE_GLOBE = 190;
-  const SCALE_FLAT = 138;
+  const SCALE_FLAT = flatScale;
   const SPIN_DEG_PER_S = 22;
   const MUMBAI_LON = 72.86;
   const MUMBAI_LAT = 19.06;
@@ -36,17 +44,30 @@ function legacyUnroll(elapsed: number) {
 }
 
 describe("the landing hero's sequence (M26) is unchanged", () => {
-  it("runs for the same 4.0 s and puts the camera in the same place at every instant", () => {
+  it("runs for the same 4.0 s and turns the camera exactly as it always did", () => {
     expect(sequenceMs("unroll")).toBe(4000);
     for (const elapsed of [0, 200, 700, 1399, 1400, 1800, 2600, 3400, 3999, 4000]) {
       const now = frameAt("unroll", elapsed);
-      const before = legacyUnroll(elapsed);
+      const before = legacyUnroll(elapsed, frameAt("unroll", sequenceMs("unroll")).scale);
       expect(now.alpha).toBeCloseTo(before.alpha, 12);
+      // The same cubic ease between the same globe radius and whatever the unroll now ends on.
       expect(now.scale).toBeCloseTo(before.scale, 10);
       // The frame carries the centre; the projection is rotated by its negation.
       expect(-now.centre[0]).toBeCloseTo(before.rotate[0], 10);
       expect(-now.centre[1]).toBeCloseTo(before.rotate[1], 10);
     }
+  });
+
+  it("ends on a map that covers the view box, so the hero has no bands", () => {
+    // An equirectangular projection at scale s is 2*pi*s wide and pi*s tall. The hero draws the
+    // view box with `preserveAspectRatio="xMidYMid slice"`, so covering the box in both axes is
+    // exactly the condition for a full-bleed hero with no `--ink` showing through.
+    const end = frameAt("unroll", sequenceMs("unroll"));
+    expect(end.alpha).toBe(1);
+    expect(Math.PI * end.scale).toBeGreaterThanOrEqual(VIEW_H);
+    expect(2 * Math.PI * end.scale).toBeGreaterThanOrEqual(VIEW_W);
+    // And it is the *smallest* such scale: covering is the requirement, not zooming past it.
+    expect(end.scale).toBeCloseTo(Math.max(VIEW_H / Math.PI, VIEW_W / (2 * Math.PI)), 10);
   });
 
   it("asks for neither the highlight nor the AOI box the approach adds", () => {
@@ -101,16 +122,17 @@ describe("the landing hero's sequence (M26) is unchanged", () => {
     const palette = {
       deep: "deep",
       well: "well",
-      line: "line",
       lineStrong: "line-strong",
       tide: "tide",
       text2: "text-2",
       font: "sans",
     };
     paintUnroll(context, palette, [], frameAt("unroll", sequenceMs("unroll")), 1440, 900, 1);
-    // Sphere in --deep, graticule in --line, land in --well, and the Mumbai mark in --tide.
+    // Sphere in --deep with a --line-strong limb, land in --well, the Mumbai mark in --tide.
+    // No `strokeStyle=line`: the graticule was the only thing that used it and it is gone.
     expect(calls).toContain("fillStyle=deep");
-    expect(calls).toContain("strokeStyle=line");
+    expect(calls).toContain("strokeStyle=line-strong");
+    expect(calls).not.toContain("strokeStyle=line");
     expect(calls).toContain("fillStyle=well");
     expect(calls).toContain("fillStyle=tide");
     expect(calls).toContain("fillText(3)");
@@ -129,6 +151,48 @@ describe("the landing hero's sequence (M26) is unchanged", () => {
       expect(asked.some((url) => url.includes("world-50m"))).toBe(false);
     } finally {
       globalThis.fetch = original;
+    }
+  });
+});
+
+/**
+ * The photographic Earth is a layer *behind* both sequences, and jsdom has no WebGL2 at all, so
+ * what can be checked here is the shape of the degraded path: the canvas is in the document, the
+ * component renders, and nothing throws. That is the path a browser without WebGL2 takes, and the
+ * one every server render takes, so it is worth pinning even though the imagery never appears.
+ */
+describe("the photographic Earth behind both sequences", () => {
+  it("gives each sequence a canvas of its own, hidden from assistive technology", () => {
+    const still = render(<GlobeIntro still />);
+    const heroEarth = still.container.querySelector('[data-slot="globe-earth"]');
+    expect(heroEarth?.tagName.toLowerCase()).toBe("canvas");
+    expect(heroEarth).toHaveAttribute("aria-hidden", "true");
+    still.unmount();
+
+    const approach = render(<GlobeIntro sequence="approach" still />);
+    expect(approach.container.querySelector('[data-slot="globe-earth"]')).toBeInTheDocument();
+  });
+
+  it("keeps the vector picture exactly as it was when there is no WebGL to paint with", () => {
+    // jsdom returns nothing for every context, which is the browser case this has to survive.
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue(null as never);
+    try {
+      const { container } = render(<GlobeIntro still />);
+      const svg = container.querySelector("svg");
+      expect(svg).toHaveAttribute("data-photo", "false");
+      // The ocean disc and the country fills are the two things the photograph would replace.
+      const filled = Array.from(container.querySelectorAll("path")).filter(
+        (path) =>
+          path.getAttribute("fill") === "var(--deep)" ||
+          path.getAttribute("fill") === "var(--well)",
+      );
+      for (const path of filled) {
+        expect(path.getAttribute("fill-opacity")).toBe("1");
+      }
+    } finally {
+      getContext.mockRestore();
     }
   });
 });

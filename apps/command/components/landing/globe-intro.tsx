@@ -1,8 +1,8 @@
 "use client";
 
 /**
- * The vector Earth two screens open on: the landing hero's unrolling world map (M26) and the
- * citizen dashboard's approach to Mumbai (M27).
+ * The Earth two screens open on: the landing hero's unrolling world map (M26) and the citizen
+ * dashboard's approach to Mumbai (M27).
  *
  * **Why it belongs on these pages.** VARUNA's claim is a scale change - global forecasting stops
  * at 12 km, and the water arrives at 30 m. The morph *is* that claim: the camera starts where
@@ -15,6 +15,17 @@
  * than a cross-fade between two pictures - the coastlines deform correctly the whole way through.
  * The paths are rendered as React elements instead of by `d3-selection`, which keeps one rendering
  * model in the app and lets the whole thing be a pure function of one number.
+ *
+ * **The planet is a photograph** (2026-09-23). Behind the geometry sits a WebGL2 canvas that paints
+ * NASA's Blue Marble imagery through the *inverse* of that same morphed projection, per pixel, with
+ * the terminator of the replay's own instant across it and an atmospheric rim on the limb
+ * (`globe-texture.ts`). The vectors above it then stop being the picture and become the
+ * instrumentation on it: the ocean disc and the country fills fade out, and the coastlines, the
+ * India highlight, the AOI box and the Mumbai mark stay. One number,
+ * `GlobeFrame.photo`, carries that hand-over, and it is 0 - which is to say the picture is exactly
+ * what it was before - whenever the browser has no WebGL2, the texture has not decoded, a token
+ * colour could not be read, or the frame is tighter than the texture can honestly fill. There is no
+ * fade when the texture arrives: a fade would be a motion, and section 8 lists none for this.
  *
  * **Two sequences, one geometry.** `sequence="unroll"` is M26 unchanged: turn 1.4 s, unroll 2.6 s,
  * hand over. `sequence="approach"` is M27: turn 1.4 s to bring India to the meridian, approach
@@ -49,10 +60,36 @@
  * it worse - the clip's own arc interpolation costs more than the points it removes. For scale:
  * M26, which has shipped on the landing page since P9.1, measures 23.4-29.9 fps on the same
  * harness, so the approach is not a regression on what is already there.
+ *
+ * **What the photograph costs (2026-09-23).** Re-measured on the same laptop with 8 python, 12
+ * node and 22 chrome processes running, in a **`next dev` build**, driving a headed Chromium at
+ * 1440 x 900 and sampling `requestAnimationFrame` over the first 4,000 ms from the instant the
+ * sequence's element enters the document. The harness the 2026-09-19 numbers above came from is
+ * not in the repository, so these are **not like-for-like** with them; what is like-for-like is the
+ * pair below, which is the same page, the same build and the same four seconds with the texture
+ * allowed to load and with it refused.
+ *
+ * - Landing hero (M26), photograph **on**: 32.8, 46.2 and 46.8 fps mean over three runs; median
+ *   **59.9 fps** in all three; 95th-percentile frame 33.7-66.6 ms.
+ * - Landing hero (M26), texture **blocked**, so the vector globe alone: 53.2, 53.8 and 55.3 fps
+ *   mean; median 59.9; 95th-percentile frame 17.4-32.8 ms.
+ *
+ * So the photograph costs roughly **7 to 20 fps of the mean and nothing of the median**: most
+ * frames still land on the refresh, and the mean is dragged down by a handful of 250-1,000 ms
+ * frames that are the dev build compiling and the 110 m topology parsing, not the shader.
+ * **Section 14's 55 fps is missed either way**, as it already was.
+ *
+ * The approach (M27) could not be measured against the 41.2-42.1 above at all. On `/dashboard`,
+ * which is the only screen that plays it, the same harness measures 15.0-17.0 fps mean with the
+ * photograph and 14.3-20.1 fps mean without it - the page around the globe (its deck.gl map, its
+ * basemap and its failing data fetches on a machine with no API running) costs more than the globe
+ * does, and the two arms are within each other's spread. A number for the approach's own cost
+ * needs the isolated harness that produced the earlier figures, and that harness does not exist
+ * here.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { geoGraticule10, geoPath } from "d3-geo";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { geoPath } from "d3-geo";
 
 import {
   loadTopology,
@@ -60,6 +97,7 @@ import {
   MUMBAI_LON,
   morphProjection,
   paintUnroll,
+  vectorOpacity,
   VIEW_H,
   VIEW_W,
   type CanvasPalette,
@@ -68,13 +106,34 @@ import {
   type Land,
   type WorldShape,
 } from "@/components/landing/globe-paint";
+import {
+  createEarthPainter,
+  cssColorToRgb,
+  ensureEarthImage,
+  photoAmount,
+  type EarthPainter,
+  type EarthPalette,
+} from "@/components/landing/globe-texture";
 import { DUR_MS } from "@/lib/motion";
 
 export type { GlobeFrame } from "@/components/landing/globe-paint";
 
-/** Globe radius at the start, and half-width of the flat map at the end, in view units. */
+/** Globe radius at the start, in view units. */
 const SCALE_GLOBE = 190;
-const SCALE_FLAT = 138;
+
+/**
+ * The equirectangular scale the unroll ends on: the one at which the flat map **covers** the view
+ * box rather than sitting inside it.
+ *
+ * An equirectangular projection at scale `s` is `2 pi s` wide and `pi s` tall, so the map fills
+ * the box's height at `VIEW_H / pi` and its width at `VIEW_W / (2 pi)`; covering both means the
+ * larger. It was a flat 138 until 2026-09-23, which is `pi * 138 = 433` view units against a
+ * 560-unit box - 127 units of `--ink` banded across the top and bottom of a full-bleed hero,
+ * which is what the map unrolled into. Covering crops the Pacific instead, and the sequence ends
+ * centred on Mumbai, so the longitude it gives up is the half of the world furthest from the one
+ * city this page is about.
+ */
+const SCALE_FLAT = Math.max(VIEW_H / Math.PI, VIEW_W / (2 * Math.PI));
 
 /**
  * The approach's two further scales, in view units of an equirectangular projection (radians to
@@ -273,12 +332,96 @@ function readPalette(element: Element): CanvasPalette {
   return {
     deep: token("--deep"),
     well: token("--well"),
-    line: token("--line"),
     lineStrong: token("--line-strong"),
     tide: token("--tide"),
     text2: token("--text-2"),
     font: style.fontFamily,
   };
+}
+
+/**
+ * The three token colours the Earth shader needs, or null when they cannot be read.
+ *
+ * Null is the ordinary case in a test environment, where `getPropertyValue` on a custom property
+ * returns an empty string because no stylesheet has been applied; the caller then never creates a
+ * WebGL context and the picture is the vector one. It is also the honest answer if the tokens ever
+ * become a colour space the browser refuses to parse, and dropping the imagery beats painting the
+ * planet in whatever `fillStyle` fell back to.
+ */
+function readEarthPalette(element: Element): EarthPalette | null {
+  const style = getComputedStyle(element);
+  const ink = cssColorToRgb(style.getPropertyValue("--ink"));
+  const deep = cssColorToRgb(style.getPropertyValue("--deep"));
+  const tide = cssColorToRgb(style.getPropertyValue("--tide"));
+  if (!ink || !deep || !tide) return null;
+  return { ink, deep, tide };
+}
+
+/**
+ * Owns the photographic Earth behind one sequence: the texture's single decode, the WebGL2 context
+ * on `canvasRef`, and the resize observer.
+ *
+ * `ready` is state rather than a ref because the SVG above has to re-render when the imagery
+ * arrives - that is the frame on which the ocean disc and the country fills stop being drawn.
+ * `paint` is a stable callback that does nothing at all until there is a painter, so the animation
+ * loop can call it unconditionally.
+ */
+function useEarthLayer(
+  hostRef: RefObject<HTMLElement | null>,
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+): { ready: boolean; paint: (frame: GlobeFrame, photo: number) => void } {
+  const painterRef = useRef<EarthPainter | null>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    const canvas = canvasRef.current;
+    if (!host || !canvas) return;
+    let disposed = false;
+
+    const palette = readEarthPalette(host);
+    if (palette) {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      void ensureEarthImage()
+        .then((image) => {
+          if (disposed || !image) return;
+          const painter = createEarthPainter(
+            canvas,
+            image,
+            palette,
+            canvas.clientWidth,
+            canvas.clientHeight,
+            dpr,
+          );
+          if (!painter) return;
+          painterRef.current = painter;
+          setReady(true);
+        })
+        .catch(() => undefined);
+    }
+
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() =>
+            painterRef.current?.resize(canvas.clientWidth, canvas.clientHeight),
+          );
+    observer?.observe(canvas);
+
+    return () => {
+      disposed = true;
+      observer?.disconnect();
+      painterRef.current?.dispose();
+      painterRef.current = null;
+      setReady(false);
+    };
+  }, [canvasRef, hostRef]);
+
+  const paint = useCallback((frame: GlobeFrame, photo: number) => {
+    painterRef.current?.frame(frame, photo);
+  }, []);
+
+  return { ready, paint };
 }
 
 /** A painter for one canvas: in a worker where the browser allows it, on this thread where not. */
@@ -388,16 +531,25 @@ function mainThreadPainter(
  */
 function UnrollCanvas({ onDone }: { onDone?: () => void }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const earthRef = useRef<HTMLCanvasElement>(null);
   const onDoneRef = useRef(onDone);
   useEffect(() => {
     onDoneRef.current = onDone;
   }, [onDone]);
 
+  // The photograph, on its own canvas behind the vectors. Its `ready` is read through a ref by the
+  // animation loop below, which is started once and must not be torn down when the texture lands.
+  const earth = useEarthLayer(hostRef, earthRef);
+  const earthRefState = useRef(earth);
+  useEffect(() => {
+    earthRefState.current = earth;
+  });
+
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     const canvas = document.createElement("canvas");
-    canvas.className = "block h-full w-full";
+    canvas.className = "absolute inset-0 block h-full w-full";
     canvas.setAttribute("aria-hidden", "true");
     host.appendChild(canvas);
 
@@ -419,7 +571,12 @@ function UnrollCanvas({ onDone }: { onDone?: () => void }) {
     const start = performance.now();
     const tick = (now: number) => {
       const elapsed = Math.min(now - start, total);
-      painter.frame(frameAt("unroll", elapsed));
+      const camera = frameAt("unroll", elapsed);
+      const layer = earthRefState.current;
+      const photo = photoAmount(camera, layer.ready);
+      layer.paint(camera, photo);
+      // The vector painter may be in a worker, so the hand-over rides on the frame itself.
+      painter.frame(photo > 0 ? { ...camera, photo } : camera);
       if (elapsed < total) {
         raf = requestAnimationFrame(tick);
       } else if (!finished) {
@@ -440,12 +597,19 @@ function UnrollCanvas({ onDone }: { onDone?: () => void }) {
   return (
     <div
       ref={hostRef}
-      className="h-full w-full"
+      className="relative h-full w-full"
       data-slot="globe-intro"
       data-sequence="unroll"
       role="img"
       aria-label="A globe unrolling into a world map, before the view settles on Mumbai"
-    />
+    >
+      <canvas
+        ref={earthRef}
+        aria-hidden="true"
+        data-slot="globe-earth"
+        className="absolute inset-0 block h-full w-full"
+      />
+    </div>
   );
 }
 
@@ -455,6 +619,9 @@ function GlobeSvg({ onDone, still = false, sequence = "unroll" }: GlobeIntroProp
   const [fine, setFine] = useState<WorldShape | null>(null);
   const [elapsed, setElapsed] = useState(still ? sequenceMs(sequence) : 0);
   const done = useRef(false);
+  const hostRef = useRef<HTMLDivElement>(null);
+  const earthRef = useRef<HTMLCanvasElement>(null);
+  const earth = useEarthLayer(hostRef, earthRef);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -505,7 +672,19 @@ function GlobeSvg({ onDone, still = false, sequence = "unroll" }: GlobeIntroProp
     [elapsed, sequence, still],
   );
 
-  const { landPath, highlightPath, graticulePath, spherePath, aoiPath, point } = useMemo(() => {
+  const photo = photoAmount(frame, earth.ready);
+  const dim = vectorOpacity(photo);
+
+  // The photograph is painted from the same frame the geometry below is built from, in a layout
+  // effect ordering that does not matter because both canvases and the SVG are composited by the
+  // browser after this render commits. Under reduced motion `elapsed` never changes and this runs
+  // once, for the one still frame, which is what section 8 asks for.
+  const paintEarth = earth.paint;
+  useEffect(() => {
+    paintEarth(frame, photo);
+  }, [frame, paintEarth, photo]);
+
+  const { landPath, highlightPath, spherePath, aoiPath, point } = useMemo(() => {
     // Acts 2 and 3 draw the finer coastline once it is here; act 1 keeps the coarse one, so the
     // detail rises at an act boundary rather than popping mid-turn.
     const source = sequence === "approach" && frame.alpha > 0 && fine ? fine : world;
@@ -547,7 +726,6 @@ function GlobeSvg({ onDone, still = false, sequence = "unroll" }: GlobeIntroProp
     return {
       landPath: plain.length > 0 ? plain.join("") : null,
       highlightPath: highlighted.length > 0 ? highlighted.join("") : null,
-      graticulePath: frame.aoi > 0 ? null : clean(path(geoGraticule10())),
       spherePath: clean(path({ type: "Sphere" })),
       aoiPath:
         frame.aoi > 0
@@ -582,56 +760,79 @@ function GlobeSvg({ onDone, still = false, sequence = "unroll" }: GlobeIntroProp
         } as const);
 
   return (
-    <svg
-      viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-      className="h-full w-full"
-      // `meet`, not `slice`: the globe is the subject and cropping it to fill a wide hero cuts
-      // the poles off. The letterboxing is invisible because the page behind it is `--ink` too.
-      preserveAspectRatio="xMidYMid meet"
-      data-slot="globe-intro"
-      data-sequence={sequence}
-      {...labelling}
-    >
-      {/* The ocean inside the sphere: `--deep`, the same panel colour the console uses, so the
-          globe reads as part of the product rather than as an illustration bolted on. */}
-      {spherePath ? (
-        <path d={spherePath} fill="var(--deep)" stroke="var(--line-strong)" strokeWidth={1} />
-      ) : null}
-      {graticulePath ? (
-        <path
-          d={graticulePath}
-          fill="none"
-          stroke="var(--line)"
-          strokeWidth={0.6}
-          // The graticule is a globe's furniture; past the subcontinent it is 10° apart and off
-          // the frame, so it fades rather than leaving one stray line across Mumbai.
-          opacity={0.75 * (1 - frame.aoi)}
-        />
-      ) : null}
-      {landPath ? (
-        <path d={landPath} fill="var(--well)" stroke="var(--line-strong)" strokeWidth={0.6} />
-      ) : null}
-      {highlightPath ? (
-        <path
-          data-slot="globe-highlight"
-          d={highlightPath}
-          fill="var(--well)"
-          stroke={frame.highlight > 0 ? "var(--text-2)" : "var(--line-strong)"}
-          strokeWidth={0.6 + 1.2 * frame.highlight}
-        />
-      ) : null}
-      {aoiPath ? (
-        <path
-          d={aoiPath}
-          fill="none"
-          stroke="var(--tide)"
-          strokeWidth={1.2}
-          opacity={frame.aoi}
-          data-slot="globe-aoi"
-        />
-      ) : null}
-      <MumbaiMark point={point} frame={frame} />
-    </svg>
+    <div ref={hostRef} className="relative h-full w-full">
+      {/* The photograph. It is behind the SVG rather than inside it because a fragment shader
+          cannot run in an SVG, and because the two are composited by the browser at exactly the
+          same `xMidYMid slice` fit - the painter reproduces that fit from the same view box. */}
+      <canvas
+        ref={earthRef}
+        aria-hidden="true"
+        data-slot="globe-earth"
+        className="absolute inset-0 block h-full w-full"
+      />
+      <svg
+        viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
+        className="absolute inset-0 h-full w-full"
+        // `slice`, not `meet`: this is a full-bleed hero, and `meet` fits the 900 x 560 box
+        // *inside* the frame, so any viewport that is not 1.607:1 - which is every 16:9 screen -
+        // got `--ink` down the sides. Cover crops the box instead. The globe is centred and its
+        // 380-unit diameter still clears the visible height at every desktop aspect; a portrait
+        // phone crops its limb, which is the trade for a hero that fills the page.
+        preserveAspectRatio="xMidYMid slice"
+        data-slot="globe-intro"
+        data-sequence={sequence}
+        data-photo={photo > 0 ? "true" : "false"}
+        {...labelling}
+      >
+        {/* The ocean inside the sphere: `--deep`, the same panel colour the console uses, so the
+            globe reads as part of the product rather than as an illustration bolted on. With the
+            photograph behind, the fill would hide an ocean that is already there, so it goes and
+            only the limb stroke stays. */}
+        {spherePath ? (
+          <path
+            d={spherePath}
+            fill={dim.sphereFill > 0.01 ? "var(--deep)" : "none"}
+            fillOpacity={dim.sphereFill}
+            stroke="var(--line-strong)"
+            strokeOpacity={dim.sphereStroke}
+            strokeWidth={1}
+          />
+        ) : null}
+        {landPath ? (
+          <path
+            d={landPath}
+            fill={dim.landFill > 0.01 ? "var(--well)" : "none"}
+            fillOpacity={dim.landFill}
+            stroke="var(--line-strong)"
+            strokeOpacity={dim.landStroke}
+            strokeWidth={0.6}
+          />
+        ) : null}
+        {highlightPath ? (
+          <path
+            data-slot="globe-highlight"
+            d={highlightPath}
+            fill={dim.landFill > 0.01 ? "var(--well)" : "none"}
+            fillOpacity={dim.landFill}
+            // The highlight is the one stroke the photograph cannot make: it says *this* country,
+            // which is a claim about the demo and not about the Earth. It keeps its full weight.
+            stroke={frame.highlight > 0 ? "var(--text-2)" : "var(--line-strong)"}
+            strokeWidth={0.6 + 1.2 * frame.highlight}
+          />
+        ) : null}
+        {aoiPath ? (
+          <path
+            d={aoiPath}
+            fill="none"
+            stroke="var(--tide)"
+            strokeWidth={1.2}
+            opacity={frame.aoi}
+            data-slot="globe-aoi"
+          />
+        ) : null}
+        <MumbaiMark point={point} frame={frame} />
+      </svg>
+    </div>
   );
 }
 
