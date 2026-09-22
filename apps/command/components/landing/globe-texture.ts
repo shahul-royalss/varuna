@@ -271,17 +271,54 @@ export function cssColorToRgb(value: string): [number, number, number] | null {
 /**
  * Loads the committed texture once per page and keeps the promise, so both sequences and a
  * remount share one decode. Resolves to null on any failure, which leaves the vector globe alone.
+ *
+ * **The decode must not happen on the main thread.** `earth-bluemarble-4096.jpg` is 704 KB on the
+ * wire and 4096 x 2048 = 8.4 million pixels once decoded. An `HTMLImageElement` fires `onload`
+ * when the bytes have arrived, *not* when they have been decoded, and `decoding = "async"` is a
+ * hint a browser is free to ignore - so the decode was landing inside the `texImage2D` upload
+ * below, synchronously, in the middle of the sequence. Measured on a dev build at 1440 x 900,
+ * fronted tab, 12 node processes: one frame of **916.7 ms** and a mean of 43.2 fps over the first
+ * six seconds against section 14's 55.
+ *
+ * `createImageBitmap` decodes off the main thread and hands back something `texImage2D` can take
+ * without decoding anything, which is the whole fix. The element path stays for browsers without
+ * it - and it is what jsdom exercises, since jsdom implements neither `createImageBitmap` nor
+ * `HTMLImageElement.decode` - and it now awaits `decode()` where that exists, so even the
+ * fallback pays the decode before the upload rather than during it.
  */
-let earthImage: Promise<HTMLImageElement | null> | null = null;
+let earthImage: Promise<TexImageSource | null> | null = null;
 
-export function ensureEarthImage(
-  url: string = EARTH_TEXTURE_URL,
-): Promise<HTMLImageElement | null> {
+export function ensureEarthImage(url: string = EARTH_TEXTURE_URL): Promise<TexImageSource | null> {
   if (earthImage) return earthImage;
   if (typeof window === "undefined" || typeof Image === "undefined") {
     return Promise.resolve(null);
   }
-  earthImage = new Promise<HTMLImageElement | null>((resolve) => {
+  earthImage = loadEarthTexture(url);
+  return earthImage;
+}
+
+async function loadEarthTexture(url: string): Promise<TexImageSource | null> {
+  if (typeof createImageBitmap === "function" && typeof fetch === "function") {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        // These bytes become a texture, not a picture on the page: no premultiplication and no
+        // colour conversion, so what the shader samples is what the file holds.
+        return await createImageBitmap(await response.blob(), {
+          premultiplyAlpha: "none",
+          colorSpaceConversion: "none",
+        });
+      }
+    } catch {
+      // A refused fetch, a browser whose `createImageBitmap` cannot take a blob, an OOM on an
+      // 8-megapixel bitmap: all of them fall through to the element, which always works.
+    }
+  }
+  return loadEarthElement(url);
+}
+
+function loadEarthElement(url: string): Promise<HTMLImageElement | null> {
+  return new Promise<HTMLImageElement | null>((resolve) => {
     let image: HTMLImageElement;
     try {
       image = new Image();
@@ -290,7 +327,14 @@ export function ensureEarthImage(
       return;
     }
     image.decoding = "async";
-    image.onload = () => resolve(image);
+    image.onload = () => {
+      // `decode()` resolves once the pixels exist, so the upload has nothing left to do. Its
+      // rejection is not a failure worth reporting: the element loaded, and `texImage2D` will
+      // decode it the old way.
+      const done = () => resolve(image);
+      if (typeof image.decode === "function") image.decode().then(done, done);
+      else done();
+    };
     image.onerror = () => resolve(null);
     try {
       image.src = url;
@@ -298,7 +342,6 @@ export function ensureEarthImage(
       resolve(null);
     }
   });
-  return earthImage;
 }
 
 /** Only for tests: forgets the cached decode so each case starts from nothing. */
@@ -548,7 +591,7 @@ export function createEarthPainter(
   }
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image as TexImageSource);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, image);
   // Longitude wraps and latitude does not, which is exactly REPEAT and CLAMP_TO_EDGE. The globe
   // acts minify the texture heavily (4096 pixels of longitude across a 600-pixel disc), so it
   // needs mip levels; `textureGrad` above is what keeps the antimeridian out of them.
