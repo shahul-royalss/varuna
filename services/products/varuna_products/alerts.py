@@ -3,17 +3,26 @@
 An alert is the point where VARUNA stops describing water and starts asking someone to do
 something, so the bar for raising one is higher than "a number went up".
 
-**Hysteresis, adapted honestly.** CLAUDE.md 11.10 raises an alert when ``P(h > θ) >= 0.6`` for
-two consecutive *cycles* and clears it at ``<= 0.3``. That rule needs a probability and a memory
-across cycles; Phase 4 gives one deterministic Twin run, where ``P`` is 0 or 1, and each baked
-cycle is computed independently. Applying the rule as written would make every exceedance an
-instant alert and every dip an instant all-clear - a queue that flickers.
+**Hysteresis across cycles (CLAUDE.md 11.10, 7.5 AC1).** A level is raised when
+``P(h > θ) >= 0.6`` in **two consecutive cycles** and cleared when it falls to ``<= 0.3``. The
+memory is the previous run's own ``alerts.json``: every run writes a ``hysteresis`` record of
+each situation (scope and place) and each level's state - ``pending`` after one cycle at or
+above 0.6, ``raised`` after two, carried while the probability stays above 0.3 - and the next
+cycle reads it (:func:`previous_record`, :func:`apply_cycle_hysteresis`). The previous run is an
+input like the radar, so a bake stays byte-identical for identical inputs (rule 8,
+``tests/test_alert_hysteresis.py`` bakes the same pair twice).
 
-So the same idea is applied along the forecast instead: a level is raised when the depth stays
-above its threshold for **two consecutive 5-minute steps**. That is the same statement - a
-threshold crossing has to persist to count - made with the information a deterministic run
-actually has. ``persists_cycles`` reports the steps and ``persists_unit`` says so, because a
-jury reading "persists 2 cycles" deserves to know which clock that is.
+**What ``P`` is on these runs.** One cycle's exceedance is still read along its own forecast:
+the depth has to stay above the threshold for two consecutive 5-minute steps
+(:data:`MIN_PERSIST_STEPS`), because one step is a single cell's arithmetic. The Twin that feeds
+the queue is one deterministic run, so that ``P`` is 0 or 1 and the 0.3-0.6 band that holds a
+raised alert open is empty until the ensemble's probabilities reach this module; the state machine
+carries the band anyway so nothing changes shape when they do. ``trigger_p`` says which number
+triggered, and ``persists_unit`` says the count is in cycles.
+
+**The first cycle raises nothing.** With no previous run within :data:`MAX_CYCLE_GAP_MIN`, every
+exceedance is ``pending``: two consecutive cycles means two, and a bake that starts at 06:10 has
+seen one. The queue says so rather than inventing a history.
 
 **Scope.** CLAUDE.md 11.10 puts the state machine "per segment/ward". The chronic register leads
 the queue: those are the named, sourced places a judge recognises. But on a cycle where the
@@ -29,7 +38,8 @@ civil warning.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+import re
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from xml.etree import ElementTree as ET
 
@@ -42,12 +52,24 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 log = structlog.get_logger("varuna.products.alerts")
 
 __all__ = [
+    "CLEAR_P",
+    "ESCALATION_PATH",
     "LEVELS",
     "MAX_ALERTS",
+    "MAX_CYCLE_GAP_MIN",
     "MIN_PERSIST_STEPS",
+    "RAISE_CYCLES",
+    "RAISE_P",
+    "AlertQueue",
     "alert_identity",
+    "apply_cycle_hysteresis",
     "build_alerts",
     "cap_xml",
+    "escalation_by_level",
+    "load_escalation",
+    "previous_record",
+    "run_cycle_ts",
+    "situation_key",
     "street_series",
     "write_alerts",
 ]
@@ -63,10 +85,30 @@ The thresholds are the depth ramp's own bands, so an alert level and the colour 
 is about can never disagree."""
 
 MIN_PERSIST_STEPS = 2
-"""Steps a threshold must stay crossed before an alert is raised: 10 minutes at a 5-minute step.
+"""Steps a threshold must stay crossed for one cycle to count it as an exceedance: 10 minutes.
 
-The hysteresis of CLAUDE.md 11.10, read along the forecast rather than across cycles - see the
-module docstring. One step is a single 30 m cell's arithmetic; two is a trend."""
+This is what makes one cycle's ``P`` 1 rather than 0 on a deterministic run; the hysteresis of
+CLAUDE.md 11.10 is then applied across cycles (:data:`RAISE_CYCLES`). One step is a single 30 m
+cell's arithmetic; two is a trend."""
+
+RAISE_P = 0.6
+"""``P(h > θ)`` at or above which a cycle counts towards raising a level (CLAUDE.md 11.10)."""
+
+CLEAR_P = 0.3
+"""``P(h > θ)`` at or below which a raised level clears (CLAUDE.md 11.10)."""
+
+RAISE_CYCLES = 2
+"""Consecutive cycles at or above :data:`RAISE_P` before a level is raised (CLAUDE.md 11.10)."""
+
+MAX_CYCLE_GAP_MIN = 60
+"""How far back a previous run may be and still count as the previous *cycle*.
+
+The live cadence is five minutes and the shipped demo bake is every thirty (``make bake ARGS=
+"--every 30"``), so an hour admits both. A run from yesterday is not the cycle before this one,
+and carrying its state forward would raise an alert on the strength of a storm that ended."""
+
+HYSTERESIS_VERSION = 1
+"""Written into the record so a reader can tell the rule it was produced under."""
 
 MAX_ALERTS = 60
 """How many alerts a run's queue carries, worst first.
@@ -169,7 +211,7 @@ A module-level cache rather than a second return value, so the existing callers 
 ``street_series`` keep their shape; ``build_alerts`` and the pump plan read it straight after."""
 
 
-def _alert_from_series(
+def _level_alerts(
     series: list[float],
     *,
     key: str,
@@ -185,12 +227,15 @@ def _alert_from_series(
     lon: float | None = None,
     lat: float | None = None,
     source_url: str | None = None,
-) -> dict[str, Any] | None:
-    """The worst level a depth series reaches, as one alert, or None if it stays below `watch`.
+    escalation: Mapping[str, list[str]] | None = None,
+) -> dict[str, dict[str, Any]]:
+    """One candidate alert per level this series crosses for :data:`MIN_PERSIST_STEPS`, worst first.
 
-    Worst level only. A street that goes over 45 cm is also over 30 and over 15, and sending a
-    ward officer three messages about one road is how a queue gets ignored.
+    Every level, not only the worst, because the cross-cycle rule runs per level: a junction that
+    has been over 30 cm for two cycles and over 45 cm for one is a raised *moderate* and a pending
+    *severe*, and only a per-level record can say so.
     """
+    out: dict[str, dict[str, Any]] = {}
     for level, threshold in LEVELS:
         windows = _runs([cm > threshold for cm in series], MIN_PERSIST_STEPS)
         if not windows:
@@ -201,7 +246,7 @@ def _alert_from_series(
         from_ts = times[start] if start < len(times) else cycle_ts
         to_ts = times[end] if end < len(times) else cycle_ts
 
-        return {
+        alert: dict[str, Any] = {
             "id": f"VARUNA-{run_id}-{key}-{level}".upper().replace("_", "-"),
             "run_id": run_id,
             "scope": scope,
@@ -228,12 +273,72 @@ def _alert_from_series(
             "raised_ts": cycle_ts.isoformat(),
             "persists_cycles": end - start + 1,
             "persists_unit": "forecast steps of 5 minutes",
+            "window_steps": end - start + 1,
             "state": "raised",
             "channels": ["dashboard"],
             "source_url": source_url,
             "cap_status": "Exercise" if mode != "live" else "Actual",
         }
-    return None
+        if escalation is not None:
+            alert["notify"] = list(escalation.get(level, []))
+        out[level] = alert
+    return out
+
+
+def _alert_from_series(series: list[float], **kwargs: Any) -> dict[str, Any] | None:
+    """The worst level a depth series reaches, as one alert, or None if it stays below `watch`.
+
+    Worst level only. A street that goes over 45 cm is also over 30 and over 15, and sending a
+    ward officer three messages about one road is how a queue gets ignored.
+    """
+    levels = _level_alerts(series, **kwargs)
+    return next(iter(levels.values()), None)
+
+
+def situation_key(alert: Mapping[str, Any]) -> str:
+    """The place an alert is about, without its level: :func:`alert_identity` minus the level.
+
+    The cross-cycle record is kept per situation and per level inside it, so a junction stepping
+    from moderate to severe is one situation with two levels rather than two unrelated alerts.
+    """
+    return alert_identity(alert).rsplit("|", 1)[0]
+
+
+class AlertQueue(list[dict[str, Any]]):
+    """The queue :func:`build_alerts` returns: a list, plus what the next step needs.
+
+    ``candidates`` is every level every situation crossed this cycle, uncapped by
+    :data:`MAX_ALERTS` - the cap is for a reader, and a hysteresis record that forgot the 61st
+    street would raise it from scratch next cycle. ``cycle_ts`` is the instant the queue speaks for.
+    ``final`` is True once the cross-cycle rule has been applied to it.
+    """
+
+    candidates: dict[str, dict[str, dict[str, Any]]]
+    cycle_ts: datetime | None
+    run_id: str | None
+    final: bool
+    pending: list[dict[str, Any]]
+    cleared: list[dict[str, Any]]
+    record: dict[str, Any] | None
+
+    def __init__(self, items: list[dict[str, Any]] | None = None) -> None:
+        super().__init__(items or [])
+        self.candidates = {}
+        self.cycle_ts = None
+        self.run_id = None
+        self.final = False
+        self.pending = []
+        self.cleared = []
+        self.record = None
+
+
+def _sort_queue(alerts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    order = {level: i for i, (level, _) in enumerate(LEVELS)}
+    # Hotspots first inside a level: they are the named, sourced places, and a judge scanning the
+    # queue should meet Hindmata before an arterial road they have not heard of.
+    return sorted(
+        alerts, key=lambda a: (order[a["level"]], a["scope"] != "hotspot", -a["peak_cm"], a["id"])
+    )
 
 
 def build_alerts(
@@ -243,16 +348,31 @@ def build_alerts(
     times: tuple[datetime, ...],
     mode: str = "baked",
     streets: dict[str, list[float]] | None = None,
-) -> list[dict[str, Any]]:
-    """The run's alert queue: the chronic register first, then the streets behind it."""
-    alerts: list[dict[str, Any]] = []
+    *,
+    previous: Mapping[str, Any] | None = None,
+    escalation: Mapping[str, list[str]] | None = None,
+) -> AlertQueue:
+    """The run's alert queue: the chronic register first, then the streets behind it.
+
+    Without ``previous`` this is what *this cycle alone* says - the worst level each place crosses
+    - and the returned :class:`AlertQueue` carries every candidate so :func:`write_alerts` can
+    apply the cross-cycle rule against the previous run on disk. With ``previous`` (a record from
+    :func:`previous_record`, or ``{}`` for "there was no previous cycle") the rule is applied here
+    and the queue is final.
+
+    ``escalation`` is level to the tiers it reaches (:func:`escalation_by_level`); absent, it is
+    read from ``config/escalation.yaml`` when that file exists.
+    """
+    if escalation is None:
+        escalation = escalation_by_level()
+    candidates: dict[str, dict[str, dict[str, Any]]] = {}
 
     for hotspot in hotspots:
         series = [float(v) for v in hotspot.get("depth_cm", [])]
         if not series:
             continue
         name = str(hotspot.get("name"))
-        alert = _alert_from_series(
+        levels = _level_alerts(
             series,
             key=str(hotspot.get("slug") or hotspot.get("hotspot_id") or "spot"),
             name=name,
@@ -267,12 +387,13 @@ def build_alerts(
             lon=hotspot.get("lon"),
             lat=hotspot.get("lat"),
             source_url=hotspot.get("source_url"),
+            escalation=escalation,
         )
-        if alert:
-            alerts.append(alert)
+        if levels:
+            candidates[situation_key(next(iter(levels.values())))] = levels
 
     for index, (street, series) in enumerate(sorted((streets or {}).items())):
-        alert = _alert_from_series(
+        levels = _level_alerts(
             list(series),
             key=f"street-{index:04d}",
             name=street,
@@ -285,26 +406,340 @@ def build_alerts(
             scope_id=None,
             lon=STREET_POINTS.get(street, (None, None))[0],
             lat=STREET_POINTS.get(street, (None, None))[1],
+            escalation=escalation,
         )
-        if alert:
-            alerts.append(alert)
+        if levels:
+            candidates.setdefault(situation_key(next(iter(levels.values()))), levels)
 
-    order = {level: i for i, (level, _) in enumerate(LEVELS)}
-    # Hotspots first inside a level: they are the named, sourced places, and a judge scanning the
-    # queue should meet Hindmata before an arterial road they have not heard of.
-    alerts.sort(key=lambda a: (order[a["level"]], a["scope"] != "hotspot", -a["peak_cm"]))
-    alerts = alerts[:MAX_ALERTS]
+    worst = [next(iter(levels.values())) for levels in candidates.values()]
+    queue = AlertQueue(_sort_queue(worst)[:MAX_ALERTS])
+    queue.candidates = candidates
+    queue.cycle_ts = cycle_ts
+    queue.run_id = run_id
+
+    if previous is not None:
+        queue = apply_cycle_hysteresis(queue, previous)
 
     log.info(
         "products.alerts",
         run_id=run_id,
-        n=len(alerts),
-        severe=sum(1 for a in alerts if a["level"] == "severe"),
-        moderate=sum(1 for a in alerts if a["level"] == "moderate"),
-        watch=sum(1 for a in alerts if a["level"] == "watch"),
-        hotspot_scoped=sum(1 for a in alerts if a["scope"] == "hotspot"),
+        n=len(queue),
+        final=queue.final,
+        pending=len(queue.pending),
+        cleared=len(queue.cleared),
+        severe=sum(1 for a in queue if a["level"] == "severe"),
+        moderate=sum(1 for a in queue if a["level"] == "moderate"),
+        watch=sum(1 for a in queue if a["level"] == "watch"),
+        hotspot_scoped=sum(1 for a in queue if a["scope"] == "hotspot"),
     )
-    return alerts
+    return queue
+
+
+# ---- cross-cycle hysteresis ------------------------------------------------------------------
+_RUN_ID = re.compile(r"^(?P<city>[A-Z0-9]+)-(?P<ts>\d{8}T\d{4})Z-")
+
+
+def run_cycle_ts(run_id: str) -> tuple[str, datetime] | None:
+    """The city prefix and UTC cycle time a run id encodes (CLAUDE.md 10.3), or None."""
+    match = _RUN_ID.match(run_id)
+    if match is None:
+        return None
+    moment = datetime.strptime(match["ts"], "%Y%m%dT%H%M").replace(tzinfo=UTC)
+    return match["city"], moment
+
+
+def _record_from_legacy(alerts: list[dict[str, Any]]) -> dict[str, Any]:
+    """A hysteresis record reconstructed from a queue written before the record existed.
+
+    Such a queue raised on one cycle's evidence, so each of its alerts is read as one cycle at or
+    above :data:`RAISE_P` for its level and every level below it - ``pending``, not ``raised``.
+    Reading it as raised would carry a single-cycle alert straight into a second cycle's queue
+    as if it had already met the two-cycle rule.
+    """
+    order = [level for level, _ in LEVELS]
+    situations: dict[str, dict[str, Any]] = {}
+    for alert in alerts:
+        level = str(alert.get("level", ""))
+        if level not in order:
+            continue
+        entry = situations.setdefault(situation_key(alert), {"levels": {}})
+        for lower in order[order.index(level) :]:
+            entry["levels"][lower] = {
+                "p": float(alert.get("trigger_p", 1.0)),
+                "state": "pending",
+                "cycles": 1,
+                "since_ts": alert.get("raised_ts"),
+                "raised_ts": None,
+            }
+    return {"situations": situations}
+
+
+def previous_record(
+    run_id: str, runs_root: Path | None = None, *, max_gap_min: int = MAX_CYCLE_GAP_MIN
+) -> dict[str, Any]:
+    """The hysteresis record of the cycle before ``run_id``, or ``{}`` when there was none.
+
+    The previous cycle is the run of the same city whose cycle time is the latest one before
+    this run's, no more than ``max_gap_min`` minutes earlier. Folders whose name starts with a dot
+    are the registry's in-flight temporaries and are never read. Ties on the cycle time (a baked
+    and a live run of the same instant) go to the name that sorts first, so the choice is a
+    function of the directory and not of the file system's listing order.
+    """
+    here = run_cycle_ts(run_id)
+    if here is None:
+        return {}
+    city, cycle = here
+    if runs_root is None:
+        from varuna_schemas.paths import runs_dir
+
+        runs_root = runs_dir()
+    if not runs_root.is_dir():
+        return {}
+
+    best: tuple[datetime, str] | None = None
+    for child in runs_root.iterdir():
+        name = child.name
+        if name.startswith(".") or name == run_id or not child.is_dir():
+            continue
+        parsed = run_cycle_ts(name)
+        if parsed is None or parsed[0] != city:
+            continue
+        moment = parsed[1]
+        if not (cycle - timedelta(minutes=max_gap_min) <= moment < cycle):
+            continue
+        if not (child / "alerts.json").is_file():
+            continue
+        if best is None or moment > best[0] or (moment == best[0] and name < best[1]):
+            best = (moment, name)
+    if best is None:
+        return {}
+
+    try:
+        body = json.loads((runs_root / best[1] / "alerts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        log.warning("products.alerts_previous_unreadable", run_id=best[1], error=str(error))
+        return {}
+    record = body.get("hysteresis")
+    if not isinstance(record, dict):
+        record = _record_from_legacy(list(body.get("alerts", [])))
+        record["legacy"] = True
+    return {**record, "run_id": best[1]}
+
+
+def _cleared_entry(
+    level: str, prior: Mapping[str, Any], meta: Mapping[str, Any], cycle_iso: str
+) -> dict[str, Any]:
+    return {
+        "situation": meta.get("situation"),
+        "scope": meta.get("scope"),
+        "hotspot_id": meta.get("hotspot_id"),
+        "area_desc": meta.get("area_desc"),
+        "name": meta.get("name"),
+        "level": level,
+        "raised_ts": prior.get("raised_ts"),
+        "cleared_ts": cycle_iso,
+        "persists_cycles": int(prior.get("cycles", 0)),
+        "persists_unit": "cycles",
+        "state": "cleared",
+    }
+
+
+def apply_cycle_hysteresis(queue: AlertQueue, previous: Mapping[str, Any]) -> AlertQueue:
+    """CLAUDE.md 11.10's rule, per situation and level, against the previous cycle's record.
+
+    For each level: ``P >= RAISE_P`` moves nothing to ``pending``, ``pending`` to ``raised`` and
+    keeps ``raised`` raised; ``CLEAR_P < P < RAISE_P`` keeps a raised level raised and drops a
+    pending one; ``P <= CLEAR_P`` clears a raised level and drops a pending one. A situation's
+    card is its worst raised level; a situation whose worst crossing is still pending is listed
+    under ``pending`` so the screen can say "raises next cycle if it holds".
+    """
+    cycle = queue.cycle_ts
+    if cycle is None:
+        msg = "apply_cycle_hysteresis needs the queue's cycle_ts; build it with build_alerts"
+        raise ValueError(msg)
+    cycle_iso = cycle.isoformat()
+    order = [level for level, _ in LEVELS]
+    prior_situations: Mapping[str, Any] = previous.get("situations", {}) or {}
+
+    record: dict[str, dict[str, Any]] = {}
+    raised: list[dict[str, Any]] = []
+    pending: list[dict[str, Any]] = []
+    cleared: list[dict[str, Any]] = []
+
+    for key in sorted(set(queue.candidates) | set(prior_situations)):
+        now = queue.candidates.get(key, {})
+        prior = (prior_situations.get(key) or {}).get("levels", {}) or {}
+        sample = next(iter(now.values()), None)
+        meta = {
+            "situation": key,
+            "scope": (sample or {}).get("scope") or (prior_situations.get(key) or {}).get("scope"),
+            "hotspot_id": (sample or {}).get("hotspot_id")
+            or (prior_situations.get(key) or {}).get("hotspot_id"),
+            "area_desc": (sample or {}).get("area_desc")
+            or (prior_situations.get(key) or {}).get("area_desc"),
+            "name": (prior_situations.get(key) or {}).get("name")
+            or ((sample or {}).get("headline", "").split(":", 1)[0] or None),
+        }
+        levels: dict[str, dict[str, Any]] = {}
+        for level in order:
+            candidate = now.get(level)
+            p = float(candidate["trigger_p"]) if candidate else 0.0
+            before = prior.get(level) or {}
+            state = before.get("state")
+            if p >= RAISE_P:
+                if state == "raised":
+                    levels[level] = {
+                        **before,
+                        "p": p,
+                        "cycles": int(before.get("cycles", 1)) + 1,
+                    }
+                elif state == "pending" and int(before.get("cycles", 1)) + 1 >= RAISE_CYCLES:
+                    levels[level] = {
+                        "p": p,
+                        "state": "raised",
+                        "cycles": int(before.get("cycles", 1)) + 1,
+                        "since_ts": before.get("since_ts"),
+                        "raised_ts": cycle_iso,
+                    }
+                else:
+                    levels[level] = {
+                        "p": p,
+                        "state": "pending" if RAISE_CYCLES > 1 else "raised",
+                        "cycles": 1,
+                        "since_ts": cycle_iso,
+                        "raised_ts": cycle_iso if RAISE_CYCLES <= 1 else None,
+                    }
+            elif p > CLEAR_P and state == "raised":
+                levels[level] = {**before, "p": p, "cycles": int(before.get("cycles", 1)) + 1}
+            elif state == "raised":
+                cleared.append(_cleared_entry(level, before, meta, cycle_iso))
+
+        if levels:
+            record[key] = {
+                "scope": meta["scope"],
+                "hotspot_id": meta["hotspot_id"],
+                "area_desc": meta["area_desc"],
+                "name": meta["name"],
+                "levels": levels,
+            }
+
+        worst_raised = next(
+            (lv for lv in order if levels.get(lv, {}).get("state") == "raised"), None
+        )
+        if worst_raised is not None and worst_raised in now:
+            state = levels[worst_raised]
+            card = dict(now[worst_raised])
+            card["raised_ts"] = state["raised_ts"]
+            card["sent_ts"] = cycle_iso
+            card["first_seen_ts"] = state.get("since_ts")
+            card["persists_cycles"] = int(state["cycles"])
+            card["persists_unit"] = "cycles"
+            card["hysteresis"] = {
+                "rule": "cycles",
+                "raise_p": RAISE_P,
+                "clear_p": CLEAR_P,
+                "raise_cycles": RAISE_CYCLES,
+            }
+            raised.append(card)
+        worst_pending = next(
+            (lv for lv in order if levels.get(lv, {}).get("state") == "pending"), None
+        )
+        if worst_pending is not None and (
+            worst_raised is None or order.index(worst_pending) < order.index(worst_raised)
+        ):
+            candidate = now[worst_pending]
+            pending.append(
+                {
+                    "id": candidate["id"],
+                    "situation": key,
+                    "scope": candidate["scope"],
+                    "hotspot_id": candidate.get("hotspot_id"),
+                    "area_desc": candidate["area_desc"],
+                    "level": worst_pending,
+                    "threshold_cm": candidate["threshold_cm"],
+                    "headline": candidate["headline"],
+                    "peak_cm": candidate["peak_cm"],
+                    "trigger_p": candidate["trigger_p"],
+                    "since_ts": levels[worst_pending]["since_ts"],
+                    "persists_cycles": int(levels[worst_pending]["cycles"]),
+                    "persists_unit": "cycles",
+                    "state": "pending",
+                }
+            )
+
+    out = AlertQueue(_sort_queue(raised)[:MAX_ALERTS])
+    out.candidates = queue.candidates
+    out.cycle_ts = cycle
+    out.run_id = queue.run_id
+    out.final = True
+    level_rank = {level: i for i, level in enumerate(order)}
+    out.pending = sorted(
+        pending,
+        key=lambda a: (level_rank[a["level"]], a["scope"] != "hotspot", -a["peak_cm"], a["id"]),
+    )[:MAX_ALERTS]
+    out.cleared = sorted(cleared, key=lambda a: (level_rank[a["level"]], str(a["situation"])))[
+        :MAX_ALERTS
+    ]
+    out.record = {
+        "version": HYSTERESIS_VERSION,
+        "rule": {
+            "raise_p": RAISE_P,
+            "clear_p": CLEAR_P,
+            "raise_cycles": RAISE_CYCLES,
+            "min_persist_steps": MIN_PERSIST_STEPS,
+            "max_cycle_gap_min": MAX_CYCLE_GAP_MIN,
+        },
+        "cycle_ts": cycle_iso,
+        "previous_run_id": previous.get("run_id"),
+        "previous_legacy": bool(previous.get("legacy", False)),
+        "situations": record,
+    }
+    return out
+
+
+# ---- escalation matrix -------------------------------------------------------------------------
+ESCALATION_PATH = "config/escalation.yaml"
+"""Where the escalation matrix lives, relative to the repository root (CLAUDE.md 11.10)."""
+
+
+def load_escalation(path: Path | None = None) -> dict[str, Any] | None:
+    """``config/escalation.yaml`` as a dict, or None when the file is not there.
+
+    None rather than a default matrix: a matrix typed into this module would be a second copy of
+    the config that nobody edits, and the screen should say the file is missing instead.
+    """
+    import yaml
+    from varuna_schemas.paths import repo_root
+
+    target = path if path is not None else repo_root() / ESCALATION_PATH
+    if not target.is_file():
+        return None
+    body = yaml.safe_load(target.read_text(encoding="utf-8")) or {}
+    tiers = body.get("tiers")
+    if not isinstance(tiers, list) or not tiers:
+        msg = f"{target} has no tiers; it must list the escalation matrix in order"
+        raise ValueError(msg)
+    known = {level for level, _ in LEVELS}
+    for tier in tiers:
+        if not isinstance(tier, dict) or not tier.get("id"):
+            msg = f"{target}: every tier needs an id"
+            raise ValueError(msg)
+        unknown = set(tier.get("levels") or []) - known
+        if unknown:
+            msg = f"{target}: tier {tier['id']} names unknown levels {sorted(unknown)}"
+            raise ValueError(msg)
+    return {"version": body.get("version", 1), "tiers": tiers, "path": ESCALATION_PATH}
+
+
+def escalation_by_level(path: Path | None = None) -> dict[str, list[str]] | None:
+    """Alert level to the tier ids it reaches when raised, in matrix order; None without config."""
+    matrix = load_escalation(path)
+    if matrix is None:
+        return None
+    return {
+        level: [str(t["id"]) for t in matrix["tiers"] if level in (t.get("levels") or [])]
+        for level, _ in LEVELS
+    }
 
 
 def _cap_datetime(value: str) -> str:
@@ -344,7 +779,11 @@ def cap_xml(alert: dict[str, Any]) -> str:
 
     child(root, "identifier", alert["id"])
     child(root, "sender", SENDER)
-    child(root, "sent", _cap_datetime(alert["raised_ts"]))
+    # `sent` is when *this document* went out. An alert carried across cycles keeps the cycle it
+    # was raised on in `raised_ts` for the card, and each cycle's document is sent at that cycle
+    # (`sent_ts`); a queue written before the cross-cycle rule has only `raised_ts`, which was
+    # the same instant.
+    child(root, "sent", _cap_datetime(alert.get("sent_ts") or alert["raised_ts"]))
     child(root, "status", alert.get("cap_status", "Exercise"))
     child(root, "msgType", "Alert")
     child(root, "scope", "Public")
@@ -378,14 +817,41 @@ def cap_xml(alert: dict[str, Any]) -> str:
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + ET.tostring(root, encoding="unicode")
 
 
-def write_alerts(run_dir: Path, alerts: list[dict[str, Any]]) -> None:
-    """Write ``alerts.json`` and one CAP document per alert into the run directory."""
-    (run_dir / "alerts.json").write_text(
-        json.dumps({"alerts": alerts}, separators=(",", ":")), encoding="utf-8"
-    )
-    if not alerts:
-        return
+def write_alerts(
+    run_dir: Path,
+    alerts: list[dict[str, Any]],
+    *,
+    runs_root: Path | None = None,
+    run_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """Write ``alerts.json`` and one CAP document per alert into the run directory.
+
+    **This is where the cross-cycle rule meets the disk.** Given the :class:`AlertQueue`
+    :func:`build_alerts` returns, not yet final, the previous cycle's record is read from
+    ``runs_root`` - by default the folder ``run_dir`` sits in, which is the registry's root while
+    the cycle writes into its temporary directory - and :func:`apply_cycle_hysteresis` decides
+    what is raised. The run id comes from the queue itself unless given. A plain list is written
+    as it is, which is what a caller that has already decided (or a test) hands in.
+
+    Returns the queue as written, so a caller can read what was raised.
+    """
+    queue: list[dict[str, Any]] = alerts
+    if isinstance(alerts, AlertQueue) and not alerts.final:
+        name = run_id or alerts.run_id
+        root = runs_root if runs_root is not None else run_dir.parent
+        previous = previous_record(name, root) if name else {}
+        queue = apply_cycle_hysteresis(alerts, previous)
+
+    body: dict[str, Any] = {"alerts": list(queue)}
+    if isinstance(queue, AlertQueue) and queue.final:
+        body["pending"] = queue.pending
+        body["cleared"] = queue.cleared
+        body["hysteresis"] = queue.record
+    (run_dir / "alerts.json").write_text(json.dumps(body, separators=(",", ":")), encoding="utf-8")
+    if not queue:
+        return queue
     folder = run_dir / "alerts"
     folder.mkdir(exist_ok=True)
-    for alert in alerts:
+    for alert in queue:
         (folder / f"{alert['id']}.cap.xml").write_text(cap_xml(alert), encoding="utf-8")
+    return queue
