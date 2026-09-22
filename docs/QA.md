@@ -557,3 +557,108 @@ Timing, measured from the deployed page: `/v1/runs` 1,643 ms warm, the run's wet
 Railway container adds roughly twenty seconds before the first of those answers, which is the
 free tier waking up rather than the app; the demo laptop serves the same data locally in
 milliseconds. Say that out loud if the deployed site is used on stage, or warm it first.
+
+## "You have two routers now. Do they agree?"
+
+Yes, and it is checked rather than asserted. `services/route-rs` (task P8.12) is a line-for-line
+port of the Python router, and a parity test starts the compiled binary and compares it with
+`plan()` **leaf by leaf on 31 trips** - all seven profiles, six cycles, a dozen trip ids, the
+KEM-to-Sion ambulance run, a cross-city car trip and three trips over closed streets - excluding
+only `ms`, with no tolerance anywhere. **72 of 72 checks pass** (2026-09-22).
+
+| Trip | Python p95 | Rust p95 |
+|---|---|---|
+| KEM to Sion, ambulance, 08:40 | 62-73 ms | **2-3 ms** |
+| Worli to Chembur, car, 08:40 | 207-230 ms | **10.6-13.7 ms** |
+| Graph load, cold | 1,743-2,699 ms | **19-21 ms** |
+
+Contraction hierarchies serve **only the naive, dry-weather search**, where the cost does not
+depend on time and CH is exact: 1,974 of 2,000 random pairs identical for every profile, the other
+26 unreachable in both, 0 different-cost paths. The VARUNA search and its two alternates stay
+time-dependent Dijkstra, and `/healthz` names which engine answers which. CH costs 0.062 ms a
+query against Dijkstra's 1.618 ms and barely moves a whole request, because three of the four
+searches per route are time-dependent.
+
+**The parity test earned its keep on day one.** The port was written from `main` before the
+pedestrian hazard rule landed in Python, so Python answered a pedestrian with a fourth note that
+Rust did not have. The test failed rather than letting two implementations of one answer drift
+apart, and it failed a second time on the same note over stray whitespace. The deployed API still
+serves the Python router; Rust is the upgrade path, proved.
+
+## "Is the radar real?" - the second answer
+
+It can be, for one product. `varuna_sky.decode_imd` (task P2.9) decodes IMD's published Mumbai
+radar image. Measured on `https://mausam.imd.gov.in/Radar/ppi_mum.gif`, fetched 2026-09-22
+(cached locally, never committed - it is IMD's image):
+
+- 386,459 pixels inside the 150 km footprint; **373,158 decoded, 13,301 masked (3.44 %)** - 8,090
+  black pixels of rings, spokes and text, and 5,211 of IMD's own coastline blue. No other colour
+  was masked, and nothing is interpolated across them.
+- Georeference from a concentric fit of the three range rings: **0.413 px RMS, 0.177 km**, with the
+  rings agreeing on scale within 0.06 %. The image header prints 0.4 km/px, which is **6.9 % off**
+  what its own rings say; IMD's station markers sit 0-4 px from the ring-fitted positions and
+  16-20 px from the header's.
+- On the Sky grid: 13,347 of 14,400 cells covered (92.7 %), 607 with echo. The other 1,053 are
+  unobserved because every image pixel landing in them was an overlay pixel, and they are reported
+  as such rather than filled.
+- Decode time 845 ms cold, 753-954 ms warm with 18 python processes.
+
+What it does not do: no attenuation correction, no beam-height correction, no PPI-to-CAPPI
+conversion, slant range taken as ground range, and one product's layout only (Colaba PPI(Z) close
+range) - any other layout is refused rather than approximated. It is **not wired into Sky**: a
+nowcast needs three frames ten minutes apart, this is one image, and `qc.coverage_mask` still
+assumes the radar sits at the domain centre while Colaba is 19 km from it. Two corrections to the
+task's own wording: IMD serves **GIF**, not PNG, and the Colaba legend carries **4** dBZ classes,
+not the 5 the task names - the decoder outputs the legend's own.
+
+## "Why does the Sky stage time keep changing?"
+
+Because the laptop was busy, and the number tracks that rather than the code. Measured on
+2026-09-22 across one afternoon, same commit, same fixture:
+
+| Machine state | Sky total | pySTEPS nowcast |
+|---|---|---|
+| 8 build agents plus a test suite | 14.22 s | 13.47 s |
+| Winding down | 11.36 s | 7.80 s |
+| 12 python processes | 10.06 s | 9.61 s |
+| **Quiet, 10 python processes** | **7.92 s** | **5.41 s** |
+
+The regression guard sits at 10 s (2x the budget) and **passes quiet, fails loaded**. The real
+budget is 5 s and is still missed at 7.92 s, which is what the status board has said since
+2026-09-12. Any timing in this document was taken with its process count beside it for this
+reason.
+
+## "What is still missed in phases 6 and 8, now that every task is ticked?"
+
+A task being done is not an acceptance criterion being met, and these are the ones that are not
+(2026-09-22, all on a production build):
+
+| Criterion | Budget | Measured |
+|---|---|---|
+| "Compute live" runs a real cycle (7.2) | 15 s | **141 s** (274 s contended); Twin is 90-232 s of it |
+| Map frame rate, streets + raster + markers (14) | 55 fps | **57.8 flat, 54.2 contended, 50.4 in 3D** |
+| Scrub restyle (14) | 16 ms | React commit median 12.9 ms, **p95 26.1 ms** |
+| Reachability per facility (11.9) | 2 s | **p95 3,432 ms** (p50 1,583 ms) |
+| Pump optimise, first call after a restart (7.6) | 1 s | **1,669 ms**; 157-554 ms warm |
+| Reversed-flow edges at the tide-locked outfall (7.2) | drawn | **none drawn**: every run predates the geometry (ADR-0052), and the panel says 20,270 pipes run backwards with none drawable |
+| Hotspot attribution, 5 pipes (7.2) | 5 | **refused with its reason** (ADR-0042); P7.7 owns it |
+| KEM to Sion avoids a street (7.4) | avoids | **avoids nothing** for an ambulance on any 2 July cycle |
+
+What did pass, on the same build: 0 network requests during a 36-step scrub, 0 console errors
+across a full replay, every keyboard shortcut, and the ground-truth pins dropping on the replay
+clock with their sources.
+
+## "Does the public map really work with no network?"
+
+Driven in a browser with the API stopped and the browser offline (task P9.10): `/map` drew the
+last forecast it had cached over a PMTiles vector basemap built from VARUNA's own OSM layers, and
+said how old that forecast was. A report submitted while offline was answered 202
+`{"queued": true}`, held in IndexedDB, and arrived when the connection returned.
+
+Sizes: the basemap is **4.19 MB**, built in **62 s** by `make city-basemap`; the terrain heightmap
+for 3D is **278 KB** in **6.0 s** by `make city-terrain`. Both are served from the deployed API
+(200, 4,189,309 B and 277,557 B on 2026-09-23), which builds them at boot after the city.
+
+Esri's aerial imagery is **never** cached for offline use: it is not redistributable, which is the
+same reason `make pack` leaves it out. The offline map draws OpenStreetMap-derived vectors, with
+the ODbL attribution on screen.
