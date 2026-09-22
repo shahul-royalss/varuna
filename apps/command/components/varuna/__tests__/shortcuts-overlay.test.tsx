@@ -33,19 +33,18 @@ describe("ShortcutsOverlay", () => {
     }
   });
 
-  it("says of every run-only shortcut either that it needs a run or that it is not built", () => {
+  it("says of every run-only shortcut that it needs a run, and of none that it is unbuilt", () => {
     render(<ShortcutsOverlay />);
     const runOnly = SHORTCUTS.filter((s) => s.availability === "run").length;
     expect(runOnly).toBeGreaterThan(0);
 
-    // Each run-only row carries exactly one note, and which note it is matters: the console
-    // wires four of these keys and does not wire the other four. Listing an unwired key with
-    // no qualifier is section 17's dead control - the operator presses it, nothing happens,
-    // and there is nothing on screen to explain why. So the two notes must partition the set.
-    const needsRun = screen.getAllByText("Available once a run is loaded").length;
-    const pilot = screen.getAllByText(/^Coming in pilot\./).length;
-    expect(pilot).toBeGreaterThan(0);
-    expect(needsRun + pilot).toBe(runOnly);
+    // This used to assert that the two notes partitioned the set, because four of these keys -
+    // R, I, 3 and W - were listed as shortcuts while nothing handled them, which is section 17's
+    // dead control. P6.15 and P6.13 wired all four, so "coming in pilot" describes nothing on
+    // this screen any more and a note that survives its own defect is the next lie. Every
+    // run-only row now carries the same qualifier, and none carries the old one.
+    expect(screen.getAllByText("Available once a run is loaded").length).toBe(runOnly);
+    expect(screen.queryByText(/Coming in pilot/)).not.toBeInTheDocument();
   });
 
   it("renders nothing visible while closed", () => {
