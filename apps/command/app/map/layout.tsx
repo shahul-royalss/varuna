@@ -8,7 +8,7 @@ import { PublicI18nProvider } from "@/lib/i18n/provider";
 export default function MapLayout({ children }: { children: React.ReactNode }) {
   return (
     <PublicI18nProvider>
-      <div className="flex h-dvh min-h-0 flex-col bg-ink">{children}</div>
+      <div className="bg-ink flex h-dvh min-h-0 flex-col">{children}</div>
     </PublicI18nProvider>
   );
 }

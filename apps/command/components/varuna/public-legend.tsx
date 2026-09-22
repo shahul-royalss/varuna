@@ -35,7 +35,7 @@ export function PublicLegend({ profile, className }: PublicLegendProps) {
   return (
     <div className={cn("flex flex-wrap items-center gap-x-4 gap-y-1.5", className)}>
       {PUBLIC_LEGEND_STOPS.map((stop) => (
-        <span key={stop.key} className="inline-flex items-center gap-1.5 type-micro text-text-2">
+        <span key={stop.key} className="type-micro text-text-2 inline-flex items-center gap-1.5">
           <span
             aria-hidden="true"
             className="size-2.5 shrink-0 rounded-full"
