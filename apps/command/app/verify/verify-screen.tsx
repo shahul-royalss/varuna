@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
 import { VerificationGrid, type ScoreTile } from "@/components/varuna/verification-grid";
+import { VerificationThresholdChart } from "@/components/varuna/verification-threshold-chart";
 import { formatIst } from "@/lib/format";
 import { loadVerification, type ThresholdRow, type Verification } from "@/lib/api/verification";
 
@@ -85,10 +86,10 @@ function ThresholdTable({ rows }: { rows: ThresholdRow[] }) {
     <div className="overflow-x-auto">
       <table className="w-full border-collapse">
         <thead>
-          <tr className="border-b border-line text-left">
+          <tr className="border-line border-b text-left">
             {["Threshold", "Hits", "Misses", "False alarms", "CSI", "POD", "FAR", "Lead"].map(
               (head) => (
-                <th key={head} className="px-2 py-2 type-micro font-medium text-text-2">
+                <th key={head} className="type-micro text-text-2 px-2 py-2 font-medium">
                   {head}
                 </th>
               ),
@@ -97,15 +98,15 @@ function ThresholdTable({ rows }: { rows: ThresholdRow[] }) {
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.thresholdCm} className="border-b border-line last:border-b-0">
-              <td className="num px-2 py-2 type-small text-text">{r.thresholdCm} cm</td>
-              <td className="num px-2 py-2 type-small text-text">{r.contingency.hits}</td>
-              <td className="num px-2 py-2 type-small text-text">{r.contingency.misses}</td>
-              <td className="num px-2 py-2 type-small text-text">{r.contingency.falseAlarms}</td>
-              <td className="num px-2 py-2 type-small text-text">{score(r.csi) ?? "—"}</td>
-              <td className="num px-2 py-2 type-small text-text">{score(r.pod) ?? "—"}</td>
-              <td className="num px-2 py-2 type-small text-text">{score(r.far) ?? "—"}</td>
-              <td className="num px-2 py-2 type-small text-text">
+            <tr key={r.thresholdCm} className="border-line border-b last:border-b-0">
+              <td className="num type-small text-text px-2 py-2">{r.thresholdCm} cm</td>
+              <td className="num type-small text-text px-2 py-2">{r.contingency.hits}</td>
+              <td className="num type-small text-text px-2 py-2">{r.contingency.misses}</td>
+              <td className="num type-small text-text px-2 py-2">{r.contingency.falseAlarms}</td>
+              <td className="num type-small text-text px-2 py-2">{score(r.csi) ?? "—"}</td>
+              <td className="num type-small text-text px-2 py-2">{score(r.pod) ?? "—"}</td>
+              <td className="num type-small text-text px-2 py-2">{score(r.far) ?? "—"}</td>
+              <td className="num type-small text-text px-2 py-2">
                 {r.medianLeadMin != null ? `${r.medianLeadMin.toFixed(0)} min` : "—"}
               </td>
             </tr>
@@ -209,8 +210,18 @@ export function VerifyScreen() {
                 <Skeleton className="h-32 w-full" />
               ) : v && v.byThreshold.length > 0 ? (
                 <>
+                  <VerificationThresholdChart
+                    className="mb-4"
+                    groundTruthCount={v.nInWindow}
+                    points={v.byThreshold.map((r) => ({
+                      thresholdCm: r.thresholdCm,
+                      csi: r.csi,
+                      pod: r.pod,
+                      far: r.far,
+                    }))}
+                  />
                   <ThresholdTable rows={v.byThreshold} />
-                  <p className="mt-3 type-micro text-text-3">
+                  <p className="type-micro text-text-3 mt-3">
                     The spread across the three rows is itself the finding: the pattern is right at
                     5 cm, where every pin is found, and the level falls short by 30 cm.
                   </p>
@@ -221,6 +232,22 @@ export function VerifyScreen() {
                   description="Bake the event and the table fills from its runs."
                 />
               )}
+            </Panel>
+          </PanelErrorBoundary>
+
+          {/* Section 7.10's SkillByLeadChart. The scores exist - `services/verify/rain_skill.py`
+              computes rain CSI by lead against the bundle's truth field - but no endpoint serves
+              them, and a chart drawn from numbers typed into this page would break rule 6. So the
+              panel says what is missing rather than being left out. */}
+          <PanelErrorBoundary title="Rain skill by lead time">
+            <Panel
+              title="Rain skill by lead time"
+              description="Rain CSI at 20 and 40 mm/h against the reconstructed truth field, by lead."
+            >
+              <EmptyState
+                title="Not served yet"
+                description="services/verify computes these scores in rain_skill.py, but /v1/verification does not carry them yet, so there is nothing here to draw."
+              />
             </Panel>
           </PanelErrorBoundary>
 
@@ -237,7 +264,7 @@ export function VerifyScreen() {
                     {v.missed.slice(0, 12).map((pin) => (
                       <li
                         key={pin.pinId}
-                        className="rounded-control border border-line bg-well p-2"
+                        className="rounded-control border-line bg-well border p-2"
                       >
                         <p className="type-small text-text">{pin.name}</p>
                         <p className="num type-micro text-text-2">
@@ -280,7 +307,7 @@ export function VerifyScreen() {
                     {v.matched.slice(0, 12).map((pin) => (
                       <li
                         key={pin.pinId}
-                        className="rounded-control border border-line bg-well p-2"
+                        className="rounded-control border-line bg-well border p-2"
                       >
                         <p className="type-small text-text">{pin.name}</p>
                         <p className="num type-micro text-text-2">
@@ -323,9 +350,7 @@ export function VerifyScreen() {
                 <dl className="flex flex-col gap-3">
                   {Object.entries(v?.unavailable ?? {}).map(([key, reason]) => (
                     <div key={key}>
-                      <dt className="type-small font-medium text-text">
-                        {key.replace(/_/g, " ")}
-                      </dt>
+                      <dt className="type-small text-text font-medium">{key.replace(/_/g, " ")}</dt>
                       <dd className="type-micro text-text-2">{reason}</dd>
                     </div>
                   ))}
