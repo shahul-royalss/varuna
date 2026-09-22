@@ -22,7 +22,7 @@ SHELL := bash
 endif
 
 .DEFAULT_GOAL := help
-.PHONY: help setup doctor city city-cache city-terrain city-basemap route-rs bundle bake train dev demo test e2e pack demo-video \
+.PHONY: help setup doctor city city-cache city-terrain city-basemap workers route-rs bundle bake train dev demo test e2e pack demo-video \
         lint typecheck typegen openapi format clean
 
 help: ## List every target (each is also `uv run varuna <target>`)
@@ -45,6 +45,9 @@ city-terrain: ## Terrarium heightmap for the console's 3D mode, from the city's 
 
 city-basemap: ## PMTiles vector basemap from the city's own OSM layers, for the offline map (P9.10)
 	uv run python -m varuna_city.basemap_tiles --city $(CITY) $(ARGS)
+
+workers: ## Copy the loaders.gl decoder workers into apps/command/public/workers/ (no CDN at run time)
+	pnpm --filter @varuna/command run workers
 
 route-rs: ## Build the Rust routing service and export the graph it reads (P8.12)
 	cd services/route-rs && cargo build --release

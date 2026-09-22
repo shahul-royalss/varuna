@@ -521,7 +521,7 @@ replay of 2 July 2019.
 
 ## "Why doesn't the citizen dashboard use Google's map?"
 
-It does, and on this key it cannot yet. The dashboard draws VARUNA's water and routes over Google
+It does, and since 2026-09-23 it does so on a key of this team's own. The dashboard draws VARUNA's water and routes over Google
 Maps through `@vis.gl/react-google-maps`, with deck.gl **overlaid** rather than interleaved
 (Google's context has no multisampling, and interleaved aliases every route line) and a dark
 style built at runtime from `tokens.json`, so the map matches the depth ramp exactly.
@@ -662,3 +662,61 @@ for 3D is **278 KB** in **6.0 s** by `make city-terrain`. Both are served from t
 Esri's aerial imagery is **never** cached for offline use: it is not redistributable, which is the
 same reason `make pack` leaves it out. The offline map draws OpenStreetMap-derived vectors, with
 the ODbL attribution on screen.
+
+## "Is that really Mumbai in 3D, or a model of it?"
+
+It is Google's photography, and the water on it is ours. The console's 3D ground is Google's
+Photorealistic 3D Tiles drawn through deck.gl's `Tile3DLayer`, with VARUNA's streets, depth
+raster, routes and markers draped onto it (ADR-0069). It replaced a Terrarium heightmap exported
+from the city's own DEM (ADR-0065), which is still built and still served but no longer drawn.
+
+Coverage, measured 2026-09-23 by traversing the tileset from the global root down to the demo's
+own hotspot at Hindmata junction (19.012 N, 72.841 E), descending at each level into the child
+whose oriented bounding box contains the point:
+
+| | |
+|---|---|
+| nested sub-tilesets to reach it | 6 |
+| geometric error at each level | 1e100 -> 131,489 -> 8,218 -> 513.63 -> 32.10 -> **2.006 m** |
+| finest tile | 13,900 bytes, glTF 2.0, `asset.copyright: "Google;Airbus"` |
+
+A 2 m geometric error is individual buildings, not satellite imagery draped on terrain.
+
+**It misses the frame-rate budget, and by more than what it replaced.** Measured at 1440 x 900 on
+2026-09-23:
+
+| view | fps | budget (section 14) |
+|---|---|---|
+| 3D, street level | **25.2-26.1** | 55 |
+| 3D, AOI fit | **11.4-11.9** | 55 |
+| flat map, 3D off | 44.9 | 55 |
+
+So 3D is **off by default** and the demo runs on the flat map - the same conclusion ADR-0065
+reached about the heightmap, for a worse number. Two further costs are real: 3D needs the network,
+where the heightmap did not, and it needs a Google Cloud project with billing linked and the Map
+Tiles API enabled.
+
+## "How did you get the Google key working?"
+
+It took three Cloud projects, and the failure mode is worth knowing because it names nothing.
+
+| state | what the Map Tiles API answered | what actually diagnosed it |
+|---|---|---|
+| API not enabled | 403 `SERVICE_DISABLED`, naming the project | the error itself |
+| API enabled, **no billing linked** | **404 `NOT_FOUND`, "Requested entity was not found."** | Static Maps, which answers 403 "You must enable Billing on the Google Cloud Project" |
+| API enabled, billing linked | 200, and the tiles draw | - |
+
+An unbilled Google Maps Platform project answers a bare 404 on every Map Tiles method - not "no
+billing", not "forbidden". Billing attaches to a *project*, not to a key, so a key created outside
+the billed project can never be rescued by linking more billing accounts.
+
+**And the key this build carried until that day was not ours.** It was MCGM's browser key, read
+off their public page and left in `.env.local`; `docs/research/_raw/mcgm_main.js:17` holds the same
+value byte for byte. That is the whole explanation for the `RefererNotAllowedMapError` of
+2026-09-19 (ADR-0059) and for `TASKS.md` D-25 having been impossible as written: nobody here could
+add an origin to somebody else's key, and every call it served spent somebody else's quota.
+
+The key now in use carries **no** referrer restriction and answers Static Maps, Geocoding and
+Directions as well as Map Tiles, all measured 2026-09-23. Since it is read as a `NEXT_PUBLIC_*`
+value and therefore inlined into the JavaScript every visitor downloads, restricting it is a
+prerequisite for deploying, tracked as `TASKS.md` D-26.

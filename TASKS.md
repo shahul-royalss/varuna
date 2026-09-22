@@ -115,14 +115,30 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
 - [x] **D-24 Deploy and verify.** Vercel (key already set) and Railway; then a browser pass over
   `/dashboard`, `/authority`, `/rural`, `/console`, `/onboard` measuring console errors, first
   paint and the map fit. Record the numbers in `docs/QA.md`. (2026-09-19 - deployed and walked: `/dashboard` and `/rural` verified in a browser on `varuna-dhrishta.vercel.app` with the run stamp, the live chip and the advisory's own numbers; the API redeployed twice and every new endpoint answers 200 warm (`/v1/weather` 0.74 s, `/v1/cities` 0.83 s, `/v1/ops/log` 0.62 s). **Two gaps in this pass, stated rather than hidden:** the deployed `/authority` could not be read in my browser at all - the pane blocked 54 of its resources with `ERR_BLOCKED_BY_CLIENT`, while the same CSS answers 200 to curl and the same page renders locally - so it is verified locally and by API, not on the deployed origin; and `/console` and `/onboard` were not re-walked on the deployed site after this merge. A **cold** Railway container costs about twenty seconds before its first answer.)
-- [ ] **D-25 Referrer list (human, and now blocking the Google basemap).** Measured 2026-09-19:
-  the key **already carries** an HTTP-referrer restriction, and it lists neither development
-  origin - `http://127.0.0.1:8899/probe.html` and `http://localhost:3000/probe.html` both answer
-  `RefererNotAllowedMapError` from Maps JS v3.66.4d with zero tiles drawn. In the Google Cloud
-  Console, **add** `https://varuna-dhrishta.vercel.app/*` and `http://localhost:3000/*` to that
-  list and keep the key restricted to the Maps JavaScript API. Until then the dashboard runs on
-  its labelled fallback to VARUNA's own renderer (ADR-0059), which is built and tested. *Owner:
-  the team, not Claude.*
+- [x] **D-25 A Google key of our own (human).** (2026-09-23) *This task was impossible as
+  written, and that is the finding.* It said to add our origins to "the key's" referrer list.
+  The key was **MCGM's**, scraped from their public page into `.env.local` -
+  `docs/research/_raw/mcgm_main.js:17` holds the same value byte for byte - so its referrer list
+  naturally named no origin of ours, which is all ADR-0059 and the 2026-09-19
+  `RefererNotAllowedMapError` ever measured. Nobody on this team could have added anything to it,
+  and every call it served spent MCGM's quota.
+  Closed by the team issuing a key on their own project, `project-b71068dc-8dd9-4753-807`, with
+  billing linked and both the **Maps JavaScript API** and the **Map Tiles API** enabled. It took
+  three projects: the first had the Map Tiles API off, the second and third had it on but no
+  billing account linked, and an unbilled project answers every Map Tiles method with a bare
+  `404 NOT_FOUND` that names nothing - Static Maps is the endpoint that says "You must enable
+  Billing" out loud, which is how it was diagnosed.
+
+- [ ] **D-26 Restrict the new key before the deployed site serves it (human, blocking a deploy).**
+  Measured 2026-09-23: the key carries **no HTTP-referrer restriction** - the Map Tiles root
+  answers 200 from curl with no `Referer`, with `http://localhost:3000/`, and with an arbitrary
+  one - and it answers **200 to Static Maps, Geocoding and Directions** as well as to Map Tiles.
+  It is read as `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, which Next inlines into the JavaScript every
+  visitor downloads, so on a public site it is a billed key anyone can lift and spend. In the
+  Google Cloud Console set **Application restrictions -> HTTP referrers** to
+  `https://varuna-dhrishta.vercel.app/*` and `http://localhost:3000/*`, and **API restrictions**
+  to Maps JavaScript API and Map Tiles API only. Also set a budget alert on the billing account.
+  *Owner: the team, not Claude.*
 
 ---
 

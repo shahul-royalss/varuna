@@ -18,15 +18,20 @@ import {
 const KEY_VAR = "NEXT_PUBLIC_GOOGLE_MAPS_API_KEY";
 
 /**
- * The body `GET https://tile.googleapis.com/v1/3dtiles/root.json` actually returned on
- * 2026-09-23, with the key in an `X-Goog-Api-Key` header, against the Cloud project this build
- * was given: HTTP 403, `PERMISSION_DENIED`, `SERVICE_DISABLED`.
+ * A recorded fixture, not today's state.
  *
- * Kept verbatim apart from the project number, which is replaced by a placeholder - it is not a
+ * This is the body `GET https://tile.googleapis.com/v1/3dtiles/root.json` returned earlier on
+ * 2026-09-23, with the key in an `X-Goog-Api-Key` header, while the Map Tiles API was still
+ * switched off on the Cloud project: HTTP 403, `PERMISSION_DENIED`, `SERVICE_DISABLED`. Later the
+ * same day, with the API enabled and billing linked, the identical request answered **HTTP 200**
+ * with about 64.5 KB of 3D Tiles 1.0, so this branch is dormant on the key the build now carries.
+ *
+ * It is kept, and kept verbatim, because it is the first thing a fresh Cloud project answers and
+ * the next deployment will meet it. The project number is replaced by a placeholder - it is not a
  * secret, but it identifies somebody's Cloud project and the classifier never reads it. Test
  * against the real shape, not against a guess: the two fields that matter here
  * (`details[].reason` and the leading sentence) sit in places a hand-written fake would have got
- * wrong, and this is the exact state the build ships in today.
+ * wrong.
  */
 const SERVICE_DISABLED_403 = JSON.stringify({
   error: {
@@ -81,11 +86,13 @@ describe("serverSentence", () => {
 });
 
 describe("classifyPhotorealProbe", () => {
+  // The only branch today's key reaches: measured 200 from curl on 2026-09-23, four ways over
+  // (header form, `?key=` form, a localhost `Referer`, and no `Referer` at all).
   it("reads a 200 as tiles we can draw", () => {
     expect(classifyPhotorealProbe(200, '{"asset":{}}')).toEqual({ kind: "ready" });
   });
 
-  it("names the disabled Map Tiles API from the body this key really returns", () => {
+  it("names the disabled Map Tiles API from the body a switched-off project returns", () => {
     const state = classifyPhotorealProbe(403, SERVICE_DISABLED_403);
     expect(state).toMatchObject({ kind: "unavailable", reason: "api-disabled" });
   });
@@ -134,7 +141,9 @@ describe("photorealNotice", () => {
     }
   });
 
-  it("names the Map Tiles API and the Cloud project, because that is the state we ship in", () => {
+  // Dormant on this key since the API was enabled on 2026-09-23, and still the first thing a
+  // fresh Cloud project says - so the sentence has to keep naming the switch and its page.
+  it("names the Map Tiles API and the Cloud project a reader has to go and enable it on", () => {
     const notice = photorealNotice("api-disabled");
     expect(notice).toContain("Map Tiles API");
     expect(notice).toMatch(/Google Cloud project/);
@@ -174,7 +183,7 @@ describe("probePhotorealTileset", () => {
     expect(state).toMatchObject({ kind: "unavailable", reason: "offline" });
   });
 
-  it("classifies the real disabled-service answer end to end", async () => {
+  it("classifies the recorded disabled-service answer end to end", async () => {
     const fetchImpl = vi.fn(
       async () => new Response(SERVICE_DISABLED_403, { status: 403 }),
     ) as unknown as typeof fetch;
@@ -188,6 +197,14 @@ describe("mergeCredits", () => {
     expect(
       mergeCredits(["Airbus; Maxar Technologies", "Maxar Technologies;Airbus", "  CNES / Airbus "]),
     ).toBe("Airbus; CNES / Airbus; Maxar Technologies");
+  });
+
+  it("merges the strings real Mumbai tiles carry, whose separator has no space", () => {
+    // Read off the tileset on 2026-09-23 by walking from the global root to the containing tile:
+    // the finest tile over Hindmata junction (geometric error 2.006 m) carries "Google;Airbus",
+    // and a coarse one over the sea west of Mumbai carries "Google". No space after the
+    // semicolon, which is the whole reason the split trims each piece.
+    expect(mergeCredits(["Google;Airbus", "Google"])).toBe("Airbus; Google");
   });
 
   it("does not depend on the order the tiles were traversed in", () => {

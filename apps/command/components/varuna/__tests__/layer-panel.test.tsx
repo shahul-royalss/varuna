@@ -4,9 +4,12 @@
  * CLAUDE.md 17: "every P1 button reads 'coming in pilot' with one sentence of plan - never a dead
  * control", and the panel's own docstring makes that a rule about layers: where a layer needs
  * something first, the row's detail line says what. Two of those rows are new - the
- * photorealistic city and the drain X-ray - and both are, today, in the state where the detail
- * line is the whole answer: the Map Tiles API is disabled on this key's Cloud project, and a
- * drain layer exported before the invert elevations landed carries none.
+ * photorealistic city and the drain X-ray - and this file asserts every state each row can be in,
+ * including the ones it is **not** in today. Since 2026-09-23 the key's project is billed with the
+ * Map Tiles API on, so the photorealistic row renders its ready sentence and the tiles draw; the
+ * unavailable sentences are fixtures for a project that has not been through those switches. The
+ * drain row's empty state is likewise dormant now that `varuna_city.export` keeps the invert
+ * elevations, and still reachable by any city exported before that.
  */
 
 import { render, screen } from "@testing-library/react";

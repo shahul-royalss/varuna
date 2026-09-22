@@ -1,15 +1,19 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PHOTOREAL_TILESET_URL, type PhotorealState } from "@/lib/maps/photoreal";
 import {
   collectTileCredits,
   hiddenLayers,
   LOCAL_WORKER_BASE,
+  LOCAL_WORKER_FILES,
+  localWorkersVerified,
   onSurface,
   PHOTOREAL_LAYER_ID,
   photorealLayers,
   photorealLoadOptions,
+  resetLocalWorkerProbe,
   SURFACE_EXTENSION,
+  verifyLocalWorkers,
 } from "../photoreal";
 
 const READY: PhotorealState = { kind: "ready" };
@@ -32,6 +36,23 @@ function fakeLayer(id: string, extensions: unknown[] = []) {
 
 type BuiltLayer = { props: Record<string, unknown> };
 
+/** A fetch that answers HEAD for the named files and 404s everything else. */
+function serving(...files: string[]) {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init;
+    return files.some((file) => String(input).endsWith(file))
+      ? ({ ok: true, status: 200 } as Response)
+      : ({ ok: false, status: 404 } as Response);
+  });
+}
+
+const BOTH_WORKERS = Object.values(LOCAL_WORKER_FILES);
+
+beforeEach(() => {
+  // The probe is one-per-page module state on purpose, so each test has to start from nothing.
+  resetLocalWorkerProbe();
+});
+
 describe("photorealLoadOptions", () => {
   it("carries the key in a header and never in a URL", () => {
     const options = photorealLoadOptions("test-key");
@@ -39,23 +60,84 @@ describe("photorealLoadOptions", () => {
     expect(JSON.stringify(options)).not.toContain("?key=");
   });
 
-  it("decodes in place by default, which is what keeps unpkg out of the loop", () => {
-    // `core.worker: false` means loaders.gl never reaches `getWorkerURL`, so the CDN branch that
-    // would produce `https://unpkg.com/@loaders.gl/...` is never evaluated at all.
-    expect(photorealLoadOptions("test-key")).toMatchObject({ core: { worker: false } });
-    expect(JSON.stringify(photorealLoadOptions("test-key"))).not.toContain("unpkg");
+  it("decodes in place until the local workers have been seen, never guessing they are there", async () => {
+    // The dangerous version of this module names a `workerUrl` it has not checked. loaders.gl's
+    // `parseWithLoader` has no try/catch around `parseWithWorker`, so a 404 there rejects the
+    // parse and the tile never appears - strictly worse than a slow decode.
+    expect(localWorkersVerified()).toBe(false);
+    expect(photorealLoadOptions("test-key", "local")).toMatchObject({ core: { worker: false } });
+
+    await verifyLocalWorkers(serving(...BOTH_WORKERS));
+    expect(photorealLoadOptions("test-key", "local")).not.toHaveProperty("core");
   });
 
-  it("points Draco and Basis at this app's own workers when asked, still never at a CDN", () => {
+  it("decodes in place when asked to, which keeps unpkg out of the loop by construction", () => {
+    // `core.worker: false` means loaders.gl never reaches `getWorkerURL`, so the CDN branch that
+    // would produce `https://unpkg.com/@loaders.gl/...` is never evaluated at all.
+    expect(photorealLoadOptions("test-key", "off")).toMatchObject({ core: { worker: false } });
+    expect(JSON.stringify(photorealLoadOptions("test-key", "off"))).not.toContain("unpkg");
+  });
+
+  it("points Draco and Basis at this app's own workers once they answer, still never at a CDN", async () => {
+    await verifyLocalWorkers(serving(...BOTH_WORKERS));
     const options = photorealLoadOptions("test-key", "local");
     const serialised = JSON.stringify(options);
-    expect(serialised).toContain(`${LOCAL_WORKER_BASE}/draco-worker.js`);
-    expect(serialised).toContain(`${LOCAL_WORKER_BASE}/basis-worker.js`);
+    expect(serialised).toContain(`${LOCAL_WORKER_BASE}/${LOCAL_WORKER_FILES.draco}`);
+    expect(serialised).toContain(`${LOCAL_WORKER_BASE}/${LOCAL_WORKER_FILES.basis}`);
     expect(serialised).not.toContain("unpkg");
+    expect(serialised).not.toContain("gstatic");
+    // Every worker URL is origin-relative, so none of them can name another host.
     expect(serialised).not.toContain("http");
     // Naming a worker URL is itself what suppresses the generated one, so `worker: false` would
     // be redundant here - and would throw the workers away again.
     expect(options).not.toHaveProperty("core");
+  });
+
+  it("still decodes in place when asked for the local workers after they answered", async () => {
+    await verifyLocalWorkers(serving(...BOTH_WORKERS));
+    expect(photorealLoadOptions("test-key", "off")).toMatchObject({ core: { worker: false } });
+  });
+});
+
+describe("verifyLocalWorkers", () => {
+  it("HEADs every bundle at this origin and nothing else", async () => {
+    const fetchImpl = serving(...BOTH_WORKERS);
+    await expect(verifyLocalWorkers(fetchImpl)).resolves.toBe(true);
+
+    const asked = fetchImpl.mock.calls.map(([url]) => String(url));
+    expect(asked.sort()).toEqual(BOTH_WORKERS.map((f) => `${LOCAL_WORKER_BASE}/${f}`).sort());
+    for (const [, init] of fetchImpl.mock.calls) expect(init).toEqual({ method: "HEAD" });
+    // Relative paths: this origin, whatever it is, and never a CDN.
+    for (const url of asked) expect(url.startsWith("/")).toBe(true);
+  });
+
+  it("falls back to decoding in place when a bundle 404s, rather than losing the tile", async () => {
+    // The copy step was never run, or only half of it landed. This is the case the whole probe
+    // exists for: `scripts/copy-loader-workers.mjs` not having run must cost a slower decode and
+    // nothing else.
+    const fetchImpl = serving(LOCAL_WORKER_FILES.draco);
+    await expect(verifyLocalWorkers(fetchImpl)).resolves.toBe(false);
+    expect(localWorkersVerified()).toBe(false);
+    expect(photorealLoadOptions("k", "local")).toMatchObject({ core: { worker: false } });
+  });
+
+  it("falls back to decoding in place when the fetch throws", async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError("Failed to fetch");
+    });
+    await expect(verifyLocalWorkers(fetchImpl as unknown as typeof fetch)).resolves.toBe(false);
+    expect(photorealLoadOptions("k", "local")).toMatchObject({ core: { worker: false } });
+  });
+
+  it("probes once per page, not once per layer build", async () => {
+    const fetchImpl = serving(...BOTH_WORKERS);
+    await Promise.all([
+      verifyLocalWorkers(fetchImpl),
+      verifyLocalWorkers(fetchImpl),
+      verifyLocalWorkers(fetchImpl),
+    ]);
+    // Two calls: one per bundle, from the single cached probe.
+    expect(fetchImpl).toHaveBeenCalledTimes(BOTH_WORKERS.length);
   });
 });
 
@@ -68,6 +150,48 @@ describe("photorealLayers", () => {
     expect(photorealLayers({ key: "test-key", state: DISABLED })).toEqual([]);
     expect(photorealLayers({ key: "test-key", state: { kind: "loading" } })).toEqual([]);
     expect(photorealLayers({ key: "test-key", state: { kind: "off" } })).toEqual([]);
+  });
+
+  it("starts the worker probe on the first build, before there is a tileset to decode", async () => {
+    // Deliberately on a state that builds nothing: this is the render that happens while
+    // `usePhotorealTileset` is still waiting on tile.googleapis.com, and a same-origin HEAD
+    // started here has settled long before that round trip does.
+    const fetchImpl = serving(...BOTH_WORKERS);
+    vi.stubGlobal("fetch", fetchImpl);
+    try {
+      expect(photorealLayers({ key: "k", state: { kind: "loading" } })).toEqual([]);
+      expect(fetchImpl).toHaveBeenCalledTimes(BOTH_WORKERS.length);
+      await vi.waitFor(() => expect(localWorkersVerified()).toBe(true));
+
+      // And it is not re-probed on every subsequent build.
+      photorealLayers({ key: "k", state: READY });
+      photorealLayers({ key: "k", state: READY });
+      expect(fetchImpl).toHaveBeenCalledTimes(BOTH_WORKERS.length);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not probe at all when the caller asked for in-place decoding", () => {
+    const fetchImpl = serving(...BOTH_WORKERS);
+    vi.stubGlobal("fetch", fetchImpl);
+    try {
+      photorealLayers({ key: "k", state: READY, workers: "off" });
+      expect(fetchImpl).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("builds a tileset whose decode never names a CDN, verified or not", async () => {
+    const unverified = photorealLayers({ key: "k", state: READY, workers: "off" }) as BuiltLayer[];
+    expect(JSON.stringify(unverified[0].props.loadOptions)).not.toContain("unpkg");
+
+    await verifyLocalWorkers(serving(...BOTH_WORKERS));
+    const verified = photorealLayers({ key: "k", state: READY }) as BuiltLayer[];
+    const serialised = JSON.stringify(verified[0].props.loadOptions);
+    expect(serialised).toContain(`${LOCAL_WORKER_BASE}/${LOCAL_WORKER_FILES.draco}`);
+    expect(serialised).not.toContain("unpkg");
   });
 
   it("builds one tileset that declares itself the ground", () => {

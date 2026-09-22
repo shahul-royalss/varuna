@@ -8,16 +8,19 @@
  * the corner, the flyover they take every morning - and that is the one thing Google's basemap is
  * genuinely better at. So this screen, and only this screen, loads Google.
  *
- * Google is a **basemap and nothing else** (TECH_SPEC 0): the key is referrer-restricted and every
- * Google service except the Maps JavaScript bootstrap answers `REQUEST_DENIED`. The streets, their
- * depths, the route and every marker come from VARUNA's own run.
+ * Google is a **basemap and nothing else** (TECH_SPEC 0). The streets, their depths, the route and
+ * every marker come from VARUNA's own run. That is a rule this code keeps, not one the key
+ * enforces - see `lib/maps/google.ts`, which records that the key now in use answers Geocoding and
+ * Directions perfectly well.
  *
- * **The fallback is the path most likely to run.** The key's referrer list is a human-maintained
- * list in a console this build cannot reach; it has already been measured refusing a dev origin
- * with `RefererNotAllowedMapError`. So a missing key, a refused referrer or a slow bootstrap all
- * land on `<FloodMap>` - the same map the console draws, over aerial imagery - with one sentence
- * saying which map this is. That path is not a consolation: it is the offline demo path
- * (CLAUDE.md 17) and it carries identical water, identical routes and identical numbers.
+ * **The fallback is no longer the path most likely to run, and that sentence stood here until
+ * 2026-09-23.** It was written when this build carried MCGM's browser key rather than one of ours,
+ * whose referrer list named no origin of ours and which was measured throwing
+ * `RefererNotAllowedMapError` at a dev origin (ADR-0059). On the team's own key Google loads. The
+ * fallback is still the path for a missing key, a slow bootstrap, a refused referrer once the key
+ * is restricted, and the venue with its network off (CLAUDE.md 17) - it draws the same map the
+ * console draws, over aerial imagery, with one sentence saying which map this is, and it carries
+ * identical water, identical routes and identical numbers.
  *
  * Nothing here logs to the console in either path. CLAUDE.md 14 makes a console error a failing
  * gate, and a key that is absent by design is not an error.

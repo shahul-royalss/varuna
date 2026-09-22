@@ -26,8 +26,16 @@
  * the venue's network off, or with Google declining the key, 3D simply does not turn on and the
  * flat map above stays exactly as it was. It replaced a Terrarium heightmap built from the city's
  * own DEM (`layers/terrain.ts`, ADR-0065), which is deleted. Seen drawing on 2026-09-23 at
- * `/console`, `/dashboard` and over Dadar at street level; the tiles are referrer-restricted, so
- * a `curl` of the same tileset answers 404 and only a browser is a real test of it.
+ * `/console`, `/dashboard` and over Dadar at street level, and the tileset answers `curl` on the
+ * same machine too - 200 with no Referer, with a localhost Referer and with an arbitrary one -
+ * because the key carries no HTTP-referrer restriction. It is still only a browser that proves
+ * the *mesh* drew; 200 on `root.json` proves only that the service answered.
+ *
+ * **It costs the frame rate, and the number is bad.** Measured 2026-09-23 at 1440 x 900:
+ * **25.2-26.1 fps at street level and 11.4-11.9 fps at the AOI fit**, against 44.9 fps with 3D
+ * off and section 14's budget of 55. So 3D stays off by default and the flat map is what the
+ * demo runs on - the same conclusion ADR-0065 reached about the heightmap it replaced, for a
+ * worse number.
  *
  * **The drain X-ray** (motion M28) is the view the 3D ground exists for: the surface fades to
  * 20 % while `layers/drains-3d.ts` draws the inferred pipes at their invert elevations beneath

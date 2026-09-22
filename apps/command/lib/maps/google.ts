@@ -1,10 +1,25 @@
 /**
  * The Google Maps browser key, and what the citizen map does when it is not usable.
  *
- * Google is a **basemap only** on this product (TECH_SPEC 0): the key is HTTP-referrer restricted,
- * and Directions, Geocoding, Static Maps and Places all answer `REQUEST_DENIED` server-side. Every
- * route, every marker and every depth on the citizen screen comes from VARUNA's own artifacts, so
- * a refused key costs the reader a prettier basemap and nothing else.
+ * Google is a **basemap only** on this product (TECH_SPEC 0). Every route, every marker and every
+ * depth on the citizen screen comes from VARUNA's own artifacts, so a refused key costs the reader
+ * a prettier basemap and nothing else.
+ *
+ * **That is our discipline, not the key's.** This file used to say the key was HTTP-referrer
+ * restricted and that Directions, Geocoding, Static Maps and Places answered `REQUEST_DENIED`.
+ * That was true of the key this build carried until 2026-09-23 - which turned out not to be this
+ * team's key at all, but MCGM's own browser key, read off their public page and left in
+ * `.env.local`; naturally its referrer list named none of our origins, which is what ADR-0059
+ * measured and what `TASKS.md` D-25 was written about. The key now in use belongs to this team,
+ * and measured the same day it answers **200** to Static Maps, Geocoding *and* Directions, and to
+ * the Map Tiles tileset from curl with no Referer at all. Nothing server-side stops this app
+ * calling a Google routing API; only this rule does.
+ *
+ * Two consequences worth stating where they will be read. The routing story in section 2.2 is
+ * VARUNA's own time-dependent Dijkstra and must stay that way to mean anything. And a
+ * `NEXT_PUBLIC_*` value is inlined into the JavaScript every visitor downloads, so an
+ * unrestricted key on a billed project is a bill anyone can run up: it must carry an HTTP-referrer
+ * restriction and an API allow-list before it is deployed.
  *
  * The reader copies `components/map/basemap.ts`'s rule for a public variable exactly: Next inlines
  * an unset `NEXT_PUBLIC_*` as the literal string "undefined", so that reads as absent, as does
