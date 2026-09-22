@@ -52,23 +52,25 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  geoBounds,
-  geoEquirectangularRaw,
-  geoGraticule10,
-  geoOrthographicRaw,
-  geoPath,
-  geoProjectionMutator,
-  type GeoProjection,
-} from "d3-geo";
-import type { Feature, FeatureCollection, Geometry } from "geojson";
-import { feature } from "topojson-client";
+import { geoGraticule10, geoPath } from "d3-geo";
 
+import {
+  loadTopology,
+  MUMBAI_LAT,
+  MUMBAI_LON,
+  morphProjection,
+  paintUnroll,
+  VIEW_H,
+  VIEW_W,
+  type CanvasPalette,
+  type GlobeFrame,
+  type GlobeWorkerMessage,
+  type Land,
+  type WorldShape,
+} from "@/components/landing/globe-paint";
 import { DUR_MS } from "@/lib/motion";
 
-/** The SVG's own coordinate space. Everything scales from it, so the hero is resolution-free. */
-const VIEW_W = 900;
-const VIEW_H = 560;
+export type { GlobeFrame } from "@/components/landing/globe-paint";
 
 /** Globe radius at the start, and half-width of the flat map at the end, in view units. */
 const SCALE_GLOBE = 190;
@@ -95,8 +97,6 @@ const ARRIVE_MS = DUR_MS.globeArrive;
 /** Degrees per second the globe turns, and the longitude it starts at - Mumbai's, so the city is
  * facing the viewer when the unrolling begins. */
 const SPIN_DEG_PER_S = 22;
-const MUMBAI_LON = 72.86;
-const MUMBAI_LAT = 19.06;
 
 /**
  * Where the approach's first act ends: the middle of the subcontinent, so India faces the reader
@@ -121,33 +121,9 @@ const TOPOLOGY_50M = "/world-50m.json";
 /** Which opening is playing: the landing hero's (M26) or the dashboard's (M27). */
 export type GlobeSequence = "unroll" | "approach";
 
-/** One country with its lon/lat bounds, computed once so the zoomed acts can cull cheaply. */
-interface Land {
-  feature: Feature<Geometry>;
-  /** [west, south, east, north] in degrees. */
-  bounds: [number, number, number, number];
-  name: string;
-}
-
-interface WorldShape {
-  land: Land[];
-}
-
 /** Total length of a sequence, in milliseconds. */
 export function sequenceMs(sequence: GlobeSequence): number {
   return sequence === "approach" ? SPIN_MS + APPROACH_MS + ARRIVE_MS : SPIN_MS + UNROLL_MS;
-}
-
-/** The interpolated projection: `alpha` 0 is a globe, 1 is a flat equirectangular map. */
-function morphProjection(alpha: number) {
-  // `geoProjectionMutator` takes a factory of raw projections and returns a function of the
-  // mutable parameter; the typings describe the zero-argument shape, so the call is narrowed here.
-  const mutate = geoProjectionMutator((t: number) => (lambda: number, phi: number) => {
-    const [x0, y0] = geoOrthographicRaw(lambda, phi);
-    const [x1, y1] = geoEquirectangularRaw(lambda, phi);
-    return [x0 + t * (x1 - x0), y0 + t * (y1 - y0)];
-  }) as unknown as (t: number) => GeoProjection;
-  return mutate(alpha);
 }
 
 /** Ease-out cubic: fast at the start, settling into the flat map rather than stopping dead. */
@@ -166,22 +142,6 @@ function lerp(from: number, to: number, t: number): number {
 /** Zoom is multiplicative, so scales interpolate in the log, or the approach lurches at the end. */
 function zoomLerp(from: number, to: number, t: number): number {
   return from * Math.pow(to / from, t);
-}
-
-/** Where the camera is at `elapsed`: everything the SVG draws is a pure function of this. */
-export interface GlobeFrame {
-  /** 0 a globe, 1 a flat equirectangular map. */
-  alpha: number;
-  /** Projection scale in view units. */
-  scale: number;
-  /** Longitude and latitude at the centre of the frame. */
-  centre: [number, number];
-  /** 0 to 1 as the highlighted country's outline strengthens (acts 2 and 3). */
-  highlight: number;
-  /** 0 to 1 as the AOI box appears in the final act. */
-  aoi: number;
-  /** True once the sequence has run its length. */
-  finished: boolean;
 }
 
 /**
@@ -288,31 +248,6 @@ function inWindow(land: Land, centre: [number, number], scale: number): boolean 
   return Math.abs(delta) - span <= halfLon;
 }
 
-/** Reads one committed TopoJSON file into features with their bounds. */
-async function loadTopology(url: string, signal: AbortSignal): Promise<WorldShape | null> {
-  const response = await fetch(url, { signal });
-  if (!response.ok) return null;
-  const topology = (await response.json()) as unknown;
-  if (!topology) return null;
-  // The world-atlas topologies carry a `countries` object; typing them precisely would pull in
-  // `topojson-specification` for one field, so they are narrowed here instead.
-  const topo = topology as { objects: { countries: unknown } };
-  const collection = feature(
-    topo as never,
-    topo.objects.countries as never,
-  ) as unknown as FeatureCollection<Geometry>;
-  const land = collection.features.map((f) => {
-    const [[west, south], [east, north]] = geoBounds(f as never);
-    const name = String((f.properties as { name?: unknown } | null)?.name ?? "");
-    return {
-      feature: f,
-      bounds: [west, south, east, north] as [number, number, number, number],
-      name,
-    };
-  });
-  return { land };
-}
-
 export interface GlobeIntroProps {
   /** Called once the sequence has finished, so the page can hand over to its live map. */
   onDone?: () => void;
@@ -322,7 +257,199 @@ export interface GlobeIntroProps {
   sequence?: GlobeSequence;
 }
 
-export function GlobeIntro({ onDone, still = false, sequence = "unroll" }: GlobeIntroProps) {
+export function GlobeIntro(props: GlobeIntroProps) {
+  // The landing hero's moving globe is drawn on a canvas; everything else - its finished frame
+  // under reduced motion, and the whole of the dashboard's approach - stays the SVG below.
+  if ((props.sequence ?? "unroll") === "unroll" && !props.still) {
+    return <UnrollCanvas onDone={props.onDone} />;
+  }
+  return <GlobeSvg {...props} />;
+}
+
+/** The token colours the canvas paints with, read from the stylesheet (no literals). */
+function readPalette(element: Element): CanvasPalette {
+  const style = getComputedStyle(element);
+  const token = (name: string) => style.getPropertyValue(name).trim();
+  return {
+    deep: token("--deep"),
+    well: token("--well"),
+    line: token("--line"),
+    lineStrong: token("--line-strong"),
+    tide: token("--tide"),
+    text2: token("--text-2"),
+    font: style.fontFamily,
+  };
+}
+
+/** A painter for one canvas: in a worker where the browser allows it, on this thread where not. */
+interface Painter {
+  frame(frame: GlobeFrame): void;
+  resize(width: number, height: number): void;
+  dispose(): void;
+}
+
+function workerPainter(
+  canvas: HTMLCanvasElement,
+  palette: CanvasPalette,
+  width: number,
+  height: number,
+  dpr: number,
+): Painter | null {
+  if (typeof Worker === "undefined" || !("transferControlToOffscreen" in canvas)) return null;
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL("./globe-worker.ts", import.meta.url), { type: "module" });
+    const offscreen = canvas.transferControlToOffscreen();
+    const init: GlobeWorkerMessage = {
+      type: "init",
+      canvas: offscreen,
+      palette,
+      topologyUrl: new URL(TOPOLOGY_110M, window.location.href).href,
+      width,
+      height,
+      dpr,
+    };
+    worker.postMessage(init, [offscreen]);
+  } catch {
+    return null;
+  }
+  const post = (message: GlobeWorkerMessage) => worker.postMessage(message);
+  return {
+    frame: (frame) => post({ type: "frame", frame }),
+    resize: (w, h) => post({ type: "resize", width: w, height: h }),
+    dispose: () => worker.terminate(),
+  };
+}
+
+function mainThreadPainter(
+  canvas: HTMLCanvasElement,
+  palette: CanvasPalette,
+  width: number,
+  height: number,
+  dpr: number,
+): Painter {
+  const context = canvas.getContext("2d");
+  const controller = new AbortController();
+  let land: Land[] = [];
+  let latest: GlobeFrame | null = null;
+  let w = width;
+  let h = height;
+  const paint = () => {
+    if (context && latest && w > 0 && h > 0) paintUnroll(context, palette, land, latest, w, h, dpr);
+  };
+  const size = () => {
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(h * dpr);
+  };
+  size();
+  void loadTopology(TOPOLOGY_110M, controller.signal)
+    .then((shape) => {
+      if (shape) {
+        land = shape.land;
+        paint();
+      }
+    })
+    .catch(() => undefined);
+  return {
+    frame: (frame) => {
+      latest = frame;
+      paint();
+    },
+    resize: (nextW, nextH) => {
+      w = nextW;
+      h = nextH;
+      size();
+      paint();
+    },
+    dispose: () => controller.abort(),
+  };
+}
+
+/**
+ * M26 while it moves.
+ *
+ * **Why a canvas, and why a worker.** The SVG version rebuilt about 214,000 characters of path
+ * data every frame - one `d` string per country, joined - and handed them to React to diff and to
+ * the browser to parse. Measured in Node on this laptop, building those strings cost 23-38 ms a
+ * frame against 7.5-10.5 ms for the projection itself, and on a phone at Lighthouse's 4x CPU
+ * slowdown every frame became a 150-400 ms long task: the four-second intro alone put 3.9-5.2 s of
+ * blocking time on the landing page. A canvas removes the strings, the diff and the parse; the
+ * projection that is left still cost about 100 ms a frame at 4x on the main thread, so the canvas
+ * is handed to `globe-worker.ts`, which projects and paints there. This thread computes only the
+ * camera - `frameAt("unroll", t)`, a few multiplications - and posts it.
+ *
+ * Where a browser cannot transfer a canvas to a worker, the same painter runs here instead. The
+ * geometry, the timing and the strokes are unchanged either way, and the finished frame reduced
+ * motion shows is still the SVG.
+ *
+ * The canvas is created by the effect rather than rendered by React, because a canvas whose
+ * control has been transferred can never be transferred again, and React re-runs effects on the
+ * same element in development.
+ */
+function UnrollCanvas({ onDone }: { onDone?: () => void }) {
+  const hostRef = useRef<HTMLDivElement>(null);
+  const onDoneRef = useRef(onDone);
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
+
+  useEffect(() => {
+    const host = hostRef.current;
+    if (!host) return;
+    const canvas = document.createElement("canvas");
+    canvas.className = "block h-full w-full";
+    canvas.setAttribute("aria-hidden", "true");
+    host.appendChild(canvas);
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const palette = readPalette(host);
+    const painter =
+      workerPainter(canvas, palette, canvas.clientWidth, canvas.clientHeight, dpr) ??
+      mainThreadPainter(canvas, palette, canvas.clientWidth, canvas.clientHeight, dpr);
+
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(() => painter.resize(canvas.clientWidth, canvas.clientHeight));
+    observer?.observe(canvas);
+
+    let raf = 0;
+    let finished = false;
+    const total = sequenceMs("unroll");
+    const start = performance.now();
+    const tick = (now: number) => {
+      const elapsed = Math.min(now - start, total);
+      painter.frame(frameAt("unroll", elapsed));
+      if (elapsed < total) {
+        raf = requestAnimationFrame(tick);
+      } else if (!finished) {
+        finished = true;
+        onDoneRef.current?.();
+      }
+    };
+    raf = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      observer?.disconnect();
+      painter.dispose();
+      canvas.remove();
+    };
+  }, []);
+
+  return (
+    <div
+      ref={hostRef}
+      className="h-full w-full"
+      data-slot="globe-intro"
+      data-sequence="unroll"
+      role="img"
+      aria-label="A globe unrolling into a world map, before the view settles on Mumbai"
+    />
+  );
+}
+
+function GlobeSvg({ onDone, still = false, sequence = "unroll" }: GlobeIntroProps) {
   const [world, setWorld] = useState<WorldShape | null>(null);
   /** The finer topology, once it has arrived; null means the approach runs on 110 m throughout. */
   const [fine, setFine] = useState<WorldShape | null>(null);

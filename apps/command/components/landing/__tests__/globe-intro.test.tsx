@@ -8,10 +8,11 @@
  * The first `describe` is the one that matters most: **M26 must still be exactly what it was.**
  * The landing hero is the first thing a judge sees, and it was working before this task.
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
 
 import { frameAt, GlobeIntro, sequenceMs } from "@/components/landing/globe-intro";
+import { paintUnroll } from "@/components/landing/globe-paint";
 import { DUR_MS } from "@/lib/motion";
 
 /** The geometry M26 had before the approach act existed, recomputed from its own constants. */
@@ -62,6 +63,57 @@ describe("the landing hero's sequence (M26) is unchanged", () => {
     expect(svg).toHaveAttribute("data-sequence", "unroll");
     expect(svg).toHaveAttribute("role", "img");
     expect(svg?.getAttribute("aria-label")).toContain("Mumbai");
+  });
+
+  it("draws its moving frames on a labelled canvas host rather than the SVG", () => {
+    // jsdom has no 2D context; the painter treats a missing context as nothing to draw.
+    const getContext = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockReturnValue(null as never);
+    try {
+      const { container } = render(<GlobeIntro />);
+      const host = container.querySelector('[data-slot="globe-intro"]');
+      expect(host).toHaveAttribute("data-sequence", "unroll");
+      expect(host).toHaveAttribute("role", "img");
+      expect(host?.getAttribute("aria-label")).toContain("Mumbai");
+      expect(container.querySelector("svg")).toBeNull();
+      expect(host?.querySelector("canvas")).toHaveAttribute("aria-hidden", "true");
+    } finally {
+      getContext.mockRestore();
+    }
+  });
+
+  it("paints the finished frame with the same strokes the SVG draws", () => {
+    const calls: string[] = [];
+    const context = new Proxy(
+      {},
+      {
+        get: (_target, key) =>
+          typeof key === "string" && /^[a-z]+[A-Z]?[a-zA-Z]*$/.test(key)
+            ? (...args: unknown[]) => calls.push(`${key}(${args.length})`)
+            : undefined,
+        set: (_target, key, value) => {
+          calls.push(`${String(key)}=${String(value)}`);
+          return true;
+        },
+      },
+    ) as unknown as CanvasRenderingContext2D;
+    const palette = {
+      deep: "deep",
+      well: "well",
+      line: "line",
+      lineStrong: "line-strong",
+      tide: "tide",
+      text2: "text-2",
+      font: "sans",
+    };
+    paintUnroll(context, palette, [], frameAt("unroll", sequenceMs("unroll")), 1440, 900, 1);
+    // Sphere in --deep, graticule in --line, land in --well, and the Mumbai mark in --tide.
+    expect(calls).toContain("fillStyle=deep");
+    expect(calls).toContain("strokeStyle=line");
+    expect(calls).toContain("fillStyle=well");
+    expect(calls).toContain("fillStyle=tide");
+    expect(calls).toContain("fillText(3)");
   });
 
   it("does not fetch the finer topology; only the approach pays for that", () => {
