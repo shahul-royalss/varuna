@@ -9,15 +9,33 @@
  * photographed Mumbai instead, so a judge looking at Hindmata sees the underpass that floods
  * rather than a dip in a grey surface.
  *
- * **Why a probe exists at all.** The tileset is a separate Google product from the Maps
- * JavaScript API, with its own switch in the Cloud console, and the key this build was given has
- * that switch off. Measured here on 2026-09-23: `GET https://tile.googleapis.com/v1/3dtiles/root.json`
- * with the key in an `X-Goog-Api-Key` header answers **HTTP 403** with `status:
- * "PERMISSION_DENIED"`, `details[0].reason: "SERVICE_DISABLED"` and the sentence "Map Tiles API
- * has not been used in project <n> before or it is disabled." - the same body the `?key=` query
- * form returns. Without the probe that failure reaches the reader as an empty 3D view and a pile
- * of red tile requests in the network panel: Google's silence presented as ours. With it, the
- * console can say which switch is off and where to throw it.
+ * **What the service answers today.** Measured here with curl on 2026-09-23, against the Cloud
+ * project this build now points at - billing linked, Map Tiles API enabled:
+ * `GET https://tile.googleapis.com/v1/3dtiles/root.json` answers **HTTP 200** with about 64.5 KB
+ * of 3D Tiles 1.0, four ways over - key in an `X-Goog-Api-Key` header, key in a `?key=` query
+ * parameter, `Referer: http://localhost:3000/`, and **no `Referer` header at all**. With no key
+ * it answers 403 `PERMISSION_DENIED`, "Method doesn't allow unregistered callers". The key
+ * carries no HTTP-referrer restriction today, so a command line is as honest a test of it as a
+ * browser is. Traversed from the global root down to Hindmata junction (19.012 N, 72.841 E),
+ * following the child whose oriented box contains the point with 150 m of height slack for the
+ * geoid: 6 nested sub-tilesets, finest geometric error 2.006 m, finest tile 13,900 bytes of
+ * glTF 2.0 carrying `asset.copyright: "Google;Airbus"`. Two metres is fifteen times finer than
+ * the 30 m DEM the Terrarium ground was built from, which is the whole reason for the swap.
+ *
+ * **Why a probe exists at all, then.** It is dormant and kept, not dead. The tileset is a
+ * separate Google product from the Maps JavaScript API, with its own switch in the Cloud console
+ * and its own dependence on the project having billing linked, and both gates were shut earlier
+ * on this same day. What follows is the log of getting through them, not a measurement anyone can
+ * repeat on this key now: with the Map Tiles API switched off the identical request answered
+ * **403**
+ * `PERMISSION_DENIED` / `SERVICE_DISABLED` ("Map Tiles API has not been used in project <n>
+ * before or it is disabled"), and on two earlier projects with no billing linked every Map Tiles
+ * method answered **404 `NOT_FOUND`** while Static Maps answered 403 asking for billing - a
+ * diagnosis worth keeping, because a 404 reads as a wrong URL when the gate was money. Any
+ * deployment that has not been through those two switches will meet them. Without the probe they
+ * reach the reader as an empty 3D view and a pile of red tile requests in the network panel:
+ * Google's silence presented as ours. With it, the console says which switch is off and where to
+ * throw it.
  *
  * **Nothing in this module logs.** CLAUDE.md 14 makes a console error during the demo run a
  * failing gate, and a disabled API is a state to render, not a crash to report.
@@ -45,9 +63,10 @@ export const PHOTOREAL_TILESET_URL = "https://tile.googleapis.com/v1/3dtiles/roo
  * The header the key travels in.
  *
  * Google documents `X-GOOG-API-KEY` for the Map Tiles API, and the root tileset accepts it:
- * verified above, where the header form reached the service check and was answered with the
- * service's own 403 rather than an authentication error. HTTP header names are case-insensitive,
- * but one spelling is exported so the probe and the layer cannot drift apart.
+ * verified above on 2026-09-23, where the header form answered HTTP 200 with the same tileset the
+ * `?key=` query form returns - the two bodies differ only in their per-request session and file
+ * tokens. HTTP header names are case-insensitive, but one spelling is exported so the probe and
+ * the layer cannot drift apart.
  */
 export const PHOTOREAL_KEY_HEADER = "X-GOOG-API-KEY";
 
@@ -120,6 +139,11 @@ export function serverSentence(body: string): string | undefined {
  * before the general refusal because both arrive as 403 and only one of them is about whether
  * this key is allowed near the API at all - they are fixed on different pages of the console, so
  * they cannot share a sentence.
+ *
+ * On today's key only the `ready` branch is reachable: the live service answered 200 on
+ * 2026-09-23. Every failure branch below is therefore held by a recorded fixture rather than by
+ * the service, and each is kept because it was real on some project on some day and will be
+ * again on the next one - the bodies in the tests are the ones Google actually sent.
  */
 export function classifyPhotorealProbe(status: number, body: string): PhotorealState {
   if (status >= 200 && status < 300) return { kind: "ready" };
@@ -180,8 +204,9 @@ export async function probePhotorealTileset(
  *
  * **Only a `ready` verdict is kept.** A refusal is deliberately re-probed on the next toggle,
  * because every one of the failure reasons is something a person can fix while the console is
- * open - enabling the Map Tiles API, adding this origin to the key's referrer list, plugging the
- * network back in - and a cached "no" would make them reload the page to see their own fix.
+ * open - enabling the Map Tiles API, linking billing to the project, adding this origin to a key
+ * that is referrer-restricted (this one is not), plugging the network back in - and a cached "no"
+ * would make them reload the page to see their own fix.
  */
 const verdicts = new Map<string, Promise<PhotorealState>>();
 
@@ -194,8 +219,9 @@ export function resetPhotorealVerdicts(): void {
  * Whether the photorealistic basemap can be drawn, probed the first time 3D is switched on.
  *
  * Returns `off` while 3D is off, so nothing is asked of Google until a reader wants the view that
- * needs it: the key is referrer-restricted, and a request made on a screen nobody asked for is
- * somebody's quota spent on nothing.
+ * needs it. The Map Tiles API is metered and needs billing linked to the project before it
+ * answers at all, so a request made for a screen nobody asked for is somebody's quota spent on
+ * nothing.
  */
 export function usePhotorealTileset(enabled: boolean): PhotorealState {
   // Read once: Next inlines the key at build time, so it cannot change while the page is open.
@@ -241,9 +267,13 @@ export function usePhotorealTileset(enabled: boolean): PhotorealState {
  * The one credits line for a set of tiles, per Google's Map Tiles attribution requirement.
  *
  * Each tile's `asset.copyright` is a semicolon-separated list of the providers that contributed
- * to it ("Airbus; Maxar Technologies; CNES / Airbus"), and a city view is hundreds of tiles whose
- * lists overlap almost entirely. Splitting, trimming, de-duplicating and sorting turns that into
- * the single line the policy asks for.
+ * to it, and the separator carries no space: read off real tiles on 2026-09-23, the finest tile
+ * over Hindmata junction says `"Google;Airbus"` and a coarse one over the sea west of Mumbai says
+ * `"Google"`. A city view is hundreds of such tiles whose lists overlap almost entirely.
+ * Splitting, trimming, de-duplicating and sorting turns them into the single line the policy asks
+ * for - on the console at `http://localhost:3000/console` on 2026-09-23, with the camera over the
+ * AOI, that line came out as "Google Maps; Airbus; Data SIO, NOAA, U.S. Navy, NGA, GEBCO; Google;
+ * Landsat / Copernicus".
  *
  * Sorted with an explicit "en" collation rather than by code unit: the line is read by a person,
  * and naming the locale keeps it identical in every tab - which code-unit order would also do,

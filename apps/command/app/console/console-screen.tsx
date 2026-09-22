@@ -16,7 +16,11 @@ import type { MapFocus } from "@/components/map/city-map";
 import { loadSurcharge, type SurchargeSet } from "@/lib/api/surcharge";
 import { reversedFlowSummary } from "@/components/map/layers/reversed-flow";
 import { MapOverlayContext, type MapOverlay } from "@/components/map/layers/overlay-context";
-import { drainXraySummary, exaggerationLabel, type Drains3dResult } from "@/components/map/layers/drains-3d";
+import {
+  drainXraySummary,
+  exaggerationLabel,
+  type Drains3dResult,
+} from "@/components/map/layers/drains-3d";
 import { usePhotorealTileset, type PhotorealState } from "@/lib/maps/photoreal";
 import { AppShell } from "@/components/varuna/app-shell";
 import { MapSlot } from "@/components/varuna/map-slot";
@@ -87,10 +91,16 @@ function routeDetail(state: ConsoleRouteState): string | undefined {
  * What the photorealistic-city row says: what it is waiting for, what it drew, or which switch is
  * off and where to throw it.
  *
- * The `unavailable` sentence comes from `lib/maps/photoreal.ts`, which words one per reason, and
- * on this build that is the Map Tiles API being disabled on the key's Cloud project - so this is
- * the line a judge reads unless somebody enables it. It is printed whole rather than summarised:
- * a reason that does not name the page it is fixed on is not a fix.
+ * The line a judge reads today is the last one: driven at `http://localhost:3000/console` on
+ * 2026-09-23, with the key's Cloud project billed and the Map Tiles API enabled, the probe
+ * returned `ready` and the row read "Google's photorealistic Mumbai, with the water, the routes
+ * and the markers draped on it."
+ *
+ * The `unavailable` sentence comes from `lib/maps/photoreal.ts`, which words one per reason. It
+ * is printed whole rather than summarised: a reason that does not name the page it is fixed on
+ * is not a fix. None of those reasons is reachable on this key - they are kept for the project
+ * that has not yet been through the billing and Map Tiles switches, which is where this one was
+ * earlier the same day.
  */
 export function photorealDetail(state: PhotorealState): string | undefined {
   if (state.kind === "off") return undefined;
@@ -558,7 +568,16 @@ function ConsoleView() {
       routes: routeLines,
       diff: whatIfOpen ? whatIfDiff : null,
     }),
-    [city, layers.threeD, layers.xray, xrayExaggeration, onXray, routeLines, whatIfOpen, whatIfDiff],
+    [
+      city,
+      layers.threeD,
+      layers.xray,
+      xrayExaggeration,
+      onXray,
+      routeLines,
+      whatIfOpen,
+      whatIfDiff,
+    ],
   );
 
   const layerDetails: Partial<Record<LayerKey, string>> = {

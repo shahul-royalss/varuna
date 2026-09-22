@@ -100,13 +100,19 @@ const ROWS: readonly {
  * elevations for the X-ray - the row's detail line says what, rather than the switch doing
  * nothing silently.
  *
- * The photorealistic row's detail line is worth knowing how to read, because the answer depends
- * on *who asks*. Measured on 2026-09-23: from the page at `http://localhost:3000` the root
- * tileset answers and the tiles draw, credits and all; from `curl` on the same machine, with no
- * `Referer` header, the identical request answers **HTTP 404 "Requested entity was not found."**
- * in both the `X-Goog-Api-Key` and the `?key=` form. The key is HTTP-referrer restricted, so a
- * command line is not an honest test of it and a browser is. That 404 has its own line in the
- * console's tests, because it is what a reader gets the day an origin falls off the key's list.
+ * The photorealistic row's detail line reads, today, as the one that says what was drawn.
+ * Measured on 2026-09-23 once the key's Cloud project had billing linked and the Map Tiles API
+ * enabled: the root tileset answers HTTP 200 from curl and from the page alike - with no
+ * `Referer` header, with `http://localhost:3000/`, and in both the `X-Goog-Api-Key` and the
+ * `?key=` form - and driving `http://localhost:3000/console` that day, the row read "Google's
+ * photorealistic Mumbai, with the water, the routes and the markers draped on it." with the
+ * merged Google credits under the map. The key carries no HTTP-referrer restriction, so a
+ * command line tests it as honestly as a browser does.
+ *
+ * The row's other sentences are dormant rather than dead, and each was real on this key's
+ * predecessors earlier the same day: 403 `SERVICE_DISABLED` before the Map Tiles API was switched
+ * on, and 404 `NOT_FOUND` on two projects with no billing linked. They keep their tests because
+ * the next deployment starts where those did.
  *
  * Whatever the answer, the row leaves the map exactly as it was rather than emptying it. The same
  * rule carries the X-ray: a drain layer exported before the invert elevations landed carries

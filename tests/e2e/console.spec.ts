@@ -143,10 +143,11 @@ test.describe("P6.13 the keyboard path", () => {
    *
    * What it asserts instead is the thing that has to hold in *every* state: pressing 3 says
    * something about the photorealistic city, pressing it again stops saying it, and neither logs.
-   * The tiles did draw here on 2026-09-23, but they are referrer-restricted and come from
-   * Google, so a gate that required them would fail on any machine whose origin is not on that
-   * key's list and on any machine with the network off - which CLAUDE.md 17 says is the one the
-   * finale runs on.
+   * The tiles did draw here on 2026-09-23 - the row read "Google's photorealistic Mumbai, with
+   * the water, the routes and the markers draped on it." and the merged Google credits appeared
+   * under the map - but they come from Google over the network, on a key that is not in the
+   * repository. A gate that required them would fail on any checkout without that key and on any
+   * machine with the network off, which CLAUDE.md 17 says is the one the finale runs on.
    */
   test(
     '"3" says what the photorealistic city is doing, and leaving 3D logs nothing',

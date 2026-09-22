@@ -6,10 +6,13 @@
  * more key have just been added, so the registry, the overlay's list and the panel's rows are
  * pinned to each other here rather than kept in step by hand.
  *
- * The detail sentences matter as much as the switches. On this build the Map Tiles API is
- * disabled on the key's Cloud project, so `photorealDetail` is what a judge reads when they press
- * 3 - and a sentence that does not name the switch and the page it is thrown on is not a fix
- * (section 6.8).
+ * The detail sentences matter as much as the switches. Since 2026-09-23 the key's Cloud project
+ * has billing linked and the Map Tiles API on, so pressing 3 draws the photographed city and
+ * `photorealDetail` returns its ready sentence. The unavailable sentences below are therefore
+ * **fixtures, not today's state**: each was real on one of this key's two predecessors earlier the
+ * same day, and each is the first thing a project that has not been through those two switches
+ * will say. A sentence that does not name the switch and the page it is thrown on is not a fix
+ * (section 6.8), which is why they are still asserted here rather than deleted.
  */
 
 import { describe, expect, it } from "vitest";
@@ -55,13 +58,18 @@ describe("photorealDetail", () => {
   });
 
   it("quotes Google verbatim for an answer it has no name for", () => {
-    // Not hypothetical. Measured 2026-09-23: the tileset serves this key from the browser, but
-    // the same GET from curl on the same machine - no Referer, and the key is referrer
-    // restricted - answers HTTP 404 with
-    // {"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}.
-    // That is what a reader sees the day their origin is not on the key's list, and it is not
-    // one of the four reasons VARUNA can name a fix for, so the console prints Google's own
-    // sentence rather than inventing a diagnosis for it.
+    // Not hypothetical, and not today either. Measured 2026-09-23 against this key's two
+    // predecessors, on projects that had the Map Tiles API enabled but **no billing account
+    // linked**: every Map Tiles method answered
+    // {"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}
+    // while Static Maps answered 403 naming billing outright. The key this build now carries is
+    // on a billed project and answers 200 to the same GET - from curl with no Referer, with a
+    // localhost Referer and with an arbitrary one.
+    //
+    // A bare 404 is kept as a case because it is the one answer Google gives that names nothing:
+    // it is not one of the four reasons VARUNA can diagnose, so the console prints Google's own
+    // sentence rather than inventing a cause for it. The billing diagnosis above cost hours to
+    // find precisely because the 404 says nothing, which is the argument for keeping the test.
     const state = classifyPhotorealProbe(
       404,
       JSON.stringify({

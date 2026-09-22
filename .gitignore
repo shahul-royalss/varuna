@@ -85,4 +85,13 @@ data/reports/
 
 # Lighthouse CI output (generated; the HTML report embeds Google's own report template)
 .lighthouseci/
+
+# loaders.gl decoder workers, copied out of node_modules by `make workers` (which `pnpm dev` and
+# `pnpm build` both run first). They are byte-for-byte copies of files pnpm install already
+# places in node_modules, and a committed copy can outlive the dependency it came from: bump
+# @loaders.gl/draco and the stale bundle in public/ keeps being served, which is the mismatch
+# loaders.gl's own validateWorkerVersion complains about at run time. Generating them refuses that
+# by construction, and an offline clone loses nothing, because it must run pnpm install before it
+# can run Next at all.
+apps/command/public/workers/
 .wf/
