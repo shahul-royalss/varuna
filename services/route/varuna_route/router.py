@@ -44,7 +44,7 @@ import structlog
 
 from varuna_route.forecast import DRY_CM, SegmentDepths, load_depths
 from varuna_route.graph import RoadGraph, load_graph
-from varuna_route.profiles import Profile, profile
+from varuna_route.profiles import Profile, hazard_unsafe, profile
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from collections.abc import Iterable
@@ -86,6 +86,22 @@ def _exceedance(depths: SegmentDepths, segment_id: str, threshold_cm: float, ste
     return depths.exceedance(segment_id, threshold_cm, step)
 
 
+def _blocking(depths: SegmentDepths, segment_id: str, vehicle: Profile, step: int) -> float:
+    """The probability a profile is refused a segment at a step.
+
+    The run's own exceedance of the profile's threshold, except that a pedestrian is also
+    refused - with certainty - water whose median depth times flow speed reaches 0.5 m^2/s
+    (:func:`varuna_route.profiles.hazard_unsafe`, Appendix A). Where the run carries no speed that
+    half cannot fire, so for every run baked so far this is exactly :func:`_exceedance`.
+    """
+    p = depths.exceedance(segment_id, vehicle.depth_cm, step)
+    if vehicle.hazard_rule and p < 1.0:
+        velocity = depths.velocity_at(segment_id, step)
+        if velocity is not None and hazard_unsafe(depths.depth_at(segment_id, step), velocity):
+            return 1.0
+    return p
+
+
 @dataclass(frozen=True, slots=True)
 class Leg:
     """One edge of a route, with the water on it at the moment the vehicle gets there."""
@@ -97,7 +113,8 @@ class Leg:
     depth_cm: float
     arrive: datetime
     probability: float = 0.0
-    """``P(depth > this profile's threshold)`` on this edge at :attr:`arrive`."""
+    """``P(depth > this profile's threshold)`` on this edge at :attr:`arrive` - or 1.0 where a
+    pedestrian meets the hazard product (:func:`_blocking`)."""
 
     lanes: float = 1.0
     """Lanes in this direction, for the corridor capacity score (:mod:`varuna_route.spread`)."""
@@ -202,6 +219,10 @@ def _search(
     threshold = vehicle.depth_cm
     tolerance = vehicle.risk_tolerance
     depart_offset_s = depths.depart_offset_s(depart)
+    # The pedestrian's velocity half of the hazard rule, only when there is a speed to apply it
+    # to. None for every other profile and for every run baked so far, so the loop below is the
+    # loop it was and the answers are identical.
+    velocity_by_segment = depths.velocity_ms if vehicle.hazard_rule and depths.velocity_ms else None
 
     while heap:
         elapsed, node = heapq.heappop(heap)
@@ -234,6 +255,12 @@ def _search(
                         p = 0.0
                     else:
                         p = 1.0 if depth > threshold else 0.0
+                if velocity_by_segment is not None and p < tolerance:
+                    vs = velocity_by_segment.get(segment_id)
+                    if vs:
+                        v = vs[step] if step < len(vs) else vs[-1]
+                        if hazard_unsafe(depth, v):
+                            p = 1.0
                 if p >= tolerance:
                     if record_blocked is not None and e not in record_blocked:
                         record_blocked[e] = (depth, p, depart + timedelta(seconds=elapsed))
@@ -303,7 +330,7 @@ def _build_route(
                 seconds=seconds,
                 depth_cm=depth,
                 arrive=depart + timedelta(seconds=elapsed),
-                probability=_exceedance(depths, segment_id, vehicle.depth_cm, step),
+                probability=_blocking(depths, segment_id, vehicle, step),
                 lanes=float(graph.edge_lanes[e]),
             )
         )
@@ -347,7 +374,10 @@ def _safe_until(
         blocked = False
         for segment_id, offset in offsets:
             at = depths.step_at(candidate + timedelta(seconds=offset))
-            if depths.depth_at(segment_id, at) > vehicle.depth_cm:
+            depth = depths.depth_at(segment_id, at)
+            if depth > vehicle.depth_cm or (
+                vehicle.hazard_rule and hazard_unsafe(depth, depths.velocity_at(segment_id, at))
+            ):
                 blocked = True
                 break
         if blocked:
@@ -423,6 +453,9 @@ def plan(
             "p_gt in its segment forecast), so a street is either predicted impassable or it is "
             "not and the risk tolerance has nothing to weigh."
         )
+
+    if base.hazard_rule:
+        notes.append(hazard_note(depths))
 
     if overlay is None:
         overlay = ops.active(city, at=depart)
@@ -649,6 +682,27 @@ def as_dict(result: RouteResult) -> dict[str, Any]:
         "notes": result.notes,
         "ms": round(result.ms, 1),
     }
+
+
+def hazard_note(depths: SegmentDepths) -> str:
+    """What a pedestrian answer applied of Appendix A's rule, said on the response.
+
+    Two halves: ``h >= 0.3 m``, or ``h * v >= 0.5 m^2/s``. The second needs a flow speed, and a
+    run either carries one or it does not; the note says which, so a walker is never told a
+    street is safe on the strength of a rule that was only half checked without being told so.
+    """
+    if depths.has_velocity:
+        return (
+            "Pedestrian: a street is refused at 30 cm, or where the median depth times this "
+            "run's flow speed reaches 0.5 m2/s (Appendix A), whichever comes first."
+        )
+    return (
+        "Pedestrian: only the depth half of the hazard rule is applied here, refusing a street "
+        "at 30 cm. The other half, depth times flow speed at or above 0.5 m2/s, needs a speed, "
+        "and this run carries none - the Twin computes surface fluxes, but no product keeps "
+        "them - so it is not checked and no speed is assumed. Fast, shallow water is not "
+        "caught."
+    )
 
 
 def _segment_path(graph: RoadGraph, segment_id: str) -> tuple[tuple[float, float], ...]:
