@@ -27,6 +27,7 @@ from varuna_schemas.settings import Settings
 
 from varuna_api import __version__
 from varuna_api.routers import (
+    basemap,
     city,
     cycle,
     depth,
@@ -71,6 +72,7 @@ TAGS = [
     {"name": "onboard", "description": "City-in-a-box onboarding jobs."},
     {"name": "verification", "description": "Verification scores per event."},
     {"name": "city", "description": "Static city layers simplified for the map."},
+    {"name": "basemap", "description": "Offline PMTiles basemap built from OSM and WorldCover."},
     {"name": "weather", "description": "Live conditions proxied from Open-Meteo (CC BY 4.0)."},
     {
         "name": "ops",
@@ -244,6 +246,7 @@ def create_app(
     app.include_router(cycle.router)
     app.include_router(live.router)
     app.include_router(city.router)
+    app.include_router(basemap.router)
     app.include_router(replay.router)
     # Before the stubs: the rain routes are real, and the stub router owns the rest of the
     # /v1/nowcast namespace until Phase 5 fills it in.
