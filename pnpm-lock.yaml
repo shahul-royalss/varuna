@@ -59,13 +59,28 @@ importers:
       '@dnd-kit/utilities':
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.8)
+      '@loaders.gl/3d-tiles':
+        specifier: 4.4.5
+        version: 4.4.5(@loaders.gl/core@4.4.5)
       '@loaders.gl/core':
         specifier: 4.4.5
         version: 4.4.5
+      '@loaders.gl/draco':
+        specifier: 4.4.5
+        version: 4.4.5(@loaders.gl/core@4.4.5)
+      '@loaders.gl/gltf':
+        specifier: 4.4.5
+        version: 4.4.5(@loaders.gl/core@4.4.5)
       '@loaders.gl/mvt':
         specifier: 4.4.5
         version: 4.4.5(@loaders.gl/core@4.4.5)
       '@loaders.gl/pmtiles':
+        specifier: 4.4.5
+        version: 4.4.5(@loaders.gl/core@4.4.5)
+      '@loaders.gl/textures':
+        specifier: 4.4.5
+        version: 4.4.5(@loaders.gl/core@4.4.5)
+      '@loaders.gl/tiles':
         specifier: 4.4.5
         version: 4.4.5(@loaders.gl/core@4.4.5)
       '@number-flow/react':

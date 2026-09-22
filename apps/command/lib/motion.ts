@@ -201,7 +201,8 @@ export type MotionId =
   | "M24"
   | "M25"
   | "M26"
-  | "M27";
+  | "M27"
+  | "M28";
 
 /** Framer props for one motion; spread onto a `motion.*` element. */
 export interface MotionPreset {
@@ -504,12 +505,21 @@ export const M: Readonly<Record<MotionId, MotionSpec>> = {
   },
   M27: {
     id: "M27",
-    where: "Citizen dashboard entry",
+    where: "Citizen dashboard entry and ward officer's desk",
     motion:
-      "The vector Earth turns 1.4 s to bring India to the meridian, the frame approaches India over 1.6 s as the sphere flattens, then narrows to the Mumbai AOI over 1.0 s and cross-fades 900 ms into the dashboard map, which is mounted and framed on the same bounds behind it; once per session, and skippable",
-    trigger: "opening the dashboard",
+      "The vector Earth turns 1.4 s to bring India to the meridian, the frame approaches India over 1.6 s as the sphere flattens, then narrows to the Mumbai AOI over 1.0 s and cross-fades 900 ms into the screen's own map, which is mounted and framed on the same bounds behind it; once per session, and skippable",
+    trigger: "opening the dashboard or the desk",
     reduced: "static Mumbai frame, then a cut to the framed map",
     durations: ["globeTurn", "globeApproach", "globeArrive", "heroHandover"],
+  },
+  M28: {
+    id: "M28",
+    where: "Console 3D, drain X-ray",
+    motion:
+      "Google's photorealistic surface fades to 20 % opacity over 300 ms while the inferred pipes beneath it fade up to full",
+    trigger: "X-ray toggle",
+    reduced: "both layers at their final opacity, no fade",
+    durations: ["crossFade"],
   },
 };
 
