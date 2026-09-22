@@ -19,6 +19,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { GlobeIntro } from "@/components/landing/globe-intro";
+import { HeroFrames, type HeroFramesManifest } from "@/components/landing/hero-frames";
 // **Loaded on demand, not in the landing page's first bundle.** `FloodMap` pulls in all of
 // deck.gl, and the hero's opening seconds are an SVG globe that needs none of it - so shipping it
 // up front cost the landing page its Largest Contentful Paint (3.5 s against a 2.5 s budget) and
@@ -35,8 +36,14 @@ const FloodMap = dynamic(
 );
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/varuna/wordmark";
+import { apiUrl } from "@/lib/api/client";
+import type { RunDepth } from "@/lib/api/run-depth";
+import { formatIst } from "@/lib/format";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { DUR, DUR_MS, EASE_UI, presetFor } from "@/lib/motion";
+import { fetchOpeningRunId } from "@/lib/opening-run";
+import { depthLegendStops } from "@/lib/ramps";
+import { DEFAULT_SIM_TIME } from "@/lib/stores/replay";
 
 /** Steps in a run: 36 five-minute frames, three hours (CLAUDE.md 10.3). */
 const N_STEPS = 36;
@@ -49,27 +56,28 @@ const STILL_STEP = 24;
 
 const FRAME_MS = LOOP_MS / N_STEPS;
 
-function useScrubLoop(enabled: boolean): number {
-  // The loop's own position, advanced only from the animation frame. When the loop is off - the
-  // pointer is over the hero, or the reader prefers reduced motion - the *rendered* step is the
-  // still frame instead, derived below rather than written into state, so pausing costs no
-  // render and resuming picks up exactly where it left off.
+export function useScrubLoop(playing: boolean, still: boolean): number {
+  // The loop's own position, advanced only from the animation frame and kept in a ref, so a pause
+  // - the pointer over the hero, or the loop not yet handed over - holds the frame on screen and
+  // resuming carries on from it. Only reduced motion shows the still +120 min frame (M1's
+  // reduced form). Until 2026-09-22 a hover jumped to that still frame and resuming restarted the
+  // loop at +0 min, which is neither "pauses on hover" nor a loop.
   const [step, setStep] = useState(0);
   const frame = useRef(0);
+  const elapsed = useRef(0);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!playing || still) return;
     let raf = 0;
     let last = performance.now();
-    let elapsed = 0;
     const tick = (now: number) => {
       // A hidden tab throttles rAF to about once a second, which would make the loop lurch when
       // the user comes back. Reading the real delta keeps it in step with the clock instead.
       const delta = Math.min(now - last, 250);
       last = now;
       if (!document.hidden) {
-        elapsed += delta;
-        const next = Math.floor((elapsed / FRAME_MS) % N_STEPS);
+        elapsed.current += delta;
+        const next = Math.floor((elapsed.current / FRAME_MS) % N_STEPS);
         if (next !== frame.current) {
           frame.current = next;
           setStep(next);
@@ -79,9 +87,9 @@ function useScrubLoop(enabled: boolean): number {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [enabled]);
+  }, [playing, still]);
 
-  return enabled ? step : STILL_STEP;
+  return still ? STILL_STEP : step;
 }
 
 /**
@@ -152,19 +160,69 @@ export function BlurFade({ children, index }: { children: React.ReactNode; index
   );
 }
 
+/** "07:20 IST · +40 min" for the step the loop is on, from the cycle the frames belong to. */
+export function heroReadout(cycleTs: string | null, step: number, stepMin = 5): string | null {
+  const start = cycleTs ? Date.parse(cycleTs) : NaN;
+  if (!Number.isFinite(start)) return null;
+  const lead = step * stepMin;
+  return `${formatIst(start + lead * 60_000)} IST · +${lead} min`;
+}
+
+/** The depth ramp without its dry band: what the water on the hero's streets means. */
+function HeroLegend() {
+  const stops = depthLegendStops().filter((stop) => stop.key !== "depth-dry");
+  return (
+    <ul className="flex flex-wrap items-center gap-x-3 gap-y-1" aria-label="Depth on the streets">
+      {stops.map((stop) => (
+        <li key={stop.key} className="text-micro text-text-2 flex items-center gap-1.5">
+          <span
+            aria-hidden="true"
+            className="inline-block h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: stop.cssVar }}
+          />
+          <span className="num">{stop.label}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function Hero() {
   const reducedMotion = usePrefersReducedMotion();
   const [hovered, setHovered] = useState(false);
-  // The hand-over needs both halves ready: the globe finished unrolling *and* the run's 36 frames
-  // decoded. Firing on the globe alone left a blank hero for the second or two the map still
-  // needed, which is the worst possible first impression - so the flat world map holds until
-  // there is something to hand over to.
+  // The hand-over needs both halves ready: the globe finished unrolling *and* something to hand
+  // over to - the run's 36 frames decoded, or, with no API, the pre-rendered sequence. Firing on
+  // the globe alone left a blank hero for the second or two the map still needed.
   const [morphDone, setMorphDone] = useState(reducedMotion);
-  const [mapReady, setMapReady] = useState(false);
-  const handedOver = morphDone && mapReady;
+  const [liveRun, setLiveRun] = useState<RunDepth | null>(null);
+  const [mapFailed, setMapFailed] = useState(false);
+  const [recorded, setRecorded] = useState<HeroFramesManifest | null>(null);
+  const handedOver = morphDone && (liveRun !== null || recorded !== null);
   const onMorphDone = useCallback(() => setMorphDone(true), []);
-  const onMapLoaded = useCallback(() => setMapReady(true), []);
-  const step = useScrubLoop(!reducedMotion && !hovered && handedOver);
+  const onMapLoaded = useCallback((run: RunDepth) => setLiveRun(run), []);
+  const onMapStatus = useCallback(
+    (kind: string) => setMapFailed(kind === "error" || kind === "empty"),
+    [],
+  );
+  const step = useScrubLoop(!hovered && handedOver, reducedMotion);
+
+  // The cycle section 7.1's readout names: 06:40 on 2 July, the replay's opening, rather than
+  // the newest run (09:10, after the storm). Asked of the run registry the way the console asks
+  // it; an unreachable registry answers "undefined" and the API's own default is used.
+  const [opening, setOpening] = useState<{ runId?: string } | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetchOpeningRunId("mumbai", DEFAULT_SIM_TIME, apiUrl, controller.signal).then((runId) => {
+      if (!controller.signal.aborted) setOpening({ runId });
+    });
+    return () => controller.abort();
+  }, []);
+
+  const readout = liveRun
+    ? heroReadout(liveRun.provenance.cycleTs, step, liveRun.provenance.stepMin || 5)
+    : recorded
+      ? heroReadout(recorded.cycle_ts, step, recorded.step_min)
+      : null;
 
   return (
     <section
@@ -179,27 +237,40 @@ export function Hero() {
           and the scrub is already running. */}
       <div
         aria-hidden="true"
+        data-hero-map=""
+        data-run-id={liveRun?.provenance.runId ?? recorded?.run_id}
+        data-cycle-ts={liveRun?.provenance.cycleTs ?? recorded?.cycle_ts}
         className="absolute inset-0 motion-safe:transition-opacity motion-safe:duration-[900ms]"
-        style={{ opacity: handedOver ? 1 : 0, transitionDelay: handedOver ? "0ms" : undefined }}
+        style={{
+          opacity: handedOver ? 1 : 0,
+          transitionDelay: handedOver ? "0ms" : undefined,
+        }}
       >
-        <FloodMap
-          mode="hero"
-          step={step}
-          onLoaded={onMapLoaded}
-          // No surcharge pulse on the hero. M8 is a console motion, and it asks deck to redraw on
-          // every animation frame; each redraw re-applies the depth raster's sampler, where
-          // luma.gl 9.3.6 builds a debug string of every GL constant's name whether or not it is
-          // logging (`getGLKeys` in `_setSamplerParameters`). Profiled on the steady loop, that
-          // was 9.8 s of samples in a 10 s window. Without the pulse the map redraws when the
-          // loop moves a step - 4.5 times a second rather than 60.
-          showSurcharge={false}
-          // No footprints on the hero. Section 6.7 draws buildings only from zoom 14 and the hero
-          // frames the whole AOI at about 12, so they were never meant to be seen here - and
-          // they are 11 MB of JSON and 39,259 polygons to tessellate on the main thread while
-          // the loop is trying to start.
-          showBuildings={false}
-          showHotspots
-        />
+        {mapFailed ? (
+          <HeroFrames step={step} onReady={setRecorded} />
+        ) : (
+          <FloodMap
+            mode="hero"
+            step={step}
+            runId={opening?.runId}
+            deferLoad={opening === null}
+            onLoaded={onMapLoaded}
+            onStatus={onMapStatus}
+            // No surcharge pulse on the hero. M8 is a console motion, and it asks deck to redraw
+            // on every animation frame; each redraw re-applies the depth raster's sampler, where
+            // luma.gl 9.3.6 builds a debug string of every GL constant's name whether or not it is
+            // logging (`getGLKeys` in `_setSamplerParameters`). Profiled on the steady loop, that
+            // was 9.8 s of samples in a 10 s window. Without the pulse the map redraws when the
+            // loop moves a step - 4.5 times a second rather than 60.
+            showSurcharge={false}
+            // No footprints on the hero. Section 6.7 draws buildings only from zoom 14 and the
+            // hero frames the whole AOI at about 12, so they were never meant to be seen here -
+            // and they are 11 MB of JSON and 39,259 polygons to tessellate on the main thread
+            // while the loop is trying to start.
+            showBuildings={false}
+            showHotspots
+          />
+        )}
       </div>
 
       {!handedOver ? (
@@ -217,10 +288,14 @@ export function Hero() {
           80 % ink across the whole width is just a dark rectangle over a photograph. */}
       <div
         aria-hidden="true"
+        data-hero-wash=""
         className="from-ink via-ink/70 absolute inset-0 bg-gradient-to-r from-15% via-40% to-transparent to-60%"
       />
 
-      <div className="relative flex min-h-dvh items-center px-6 py-16 sm:px-12 lg:px-24">
+      <div
+        data-hero-copy=""
+        className="relative flex min-h-dvh items-center px-6 py-16 sm:px-12 lg:px-24"
+      >
         <div className="flex max-w-[52ch] flex-col items-start gap-6">
           <BlurFade index={0}>
             <Wordmark size="lg" />
@@ -275,15 +350,22 @@ export function Hero() {
         </div>
       </div>
 
-      {/* The readout, so the loop is legibly a forecast and not an animation. */}
+      {/* The readout and the depth legend, so the loop is legibly a forecast and its colours
+          legibly depths. With no API the panel also says the frames are a recording, and of
+          which run. */}
       <div
         hidden={!handedOver}
-        className="rounded-control border-line bg-ink/70 pointer-events-none absolute right-6 bottom-6 border px-3 py-2 max-lg:hidden"
+        data-hero-readout=""
+        className="rounded-control border-line bg-ink/70 pointer-events-none absolute right-6 bottom-6 flex max-w-[calc(100%-3rem)] flex-col items-end gap-2 border px-3 py-2 max-sm:hidden"
       >
-        <p className="num text-small text-text-2">
-          {String(6 + Math.floor((40 + step * 5) / 60)).padStart(2, "0")}:
-          {String((40 + step * 5) % 60).padStart(2, "0")} IST · +{step * 5} min
-        </p>
+        {readout ? <p className="num text-small text-text-2">{readout}</p> : null}
+        <HeroLegend />
+        {recorded && !liveRun ? (
+          <p className="text-micro text-text-3 max-w-[44ch] text-right">
+            Pre-rendered frames of run {recorded.run_id}. The live map needs the API. Roads:
+            OpenStreetMap · Terrain: Copernicus GLO-30
+          </p>
+        ) : null}
       </div>
     </section>
   );
