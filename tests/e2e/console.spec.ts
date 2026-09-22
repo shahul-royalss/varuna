@@ -31,10 +31,17 @@ const LAYER_KEYS = [
   { key: "d", label: /drain/i },
   { key: "s", label: /surcharge/i },
   { key: "g", label: /ground truth/i },
+  { key: "r", label: /^routes/i },
+  { key: "i", label: /^isochrones/i },
+  { key: "3", label: /3d terrain/i },
 ] as const;
 
-/** Listed in the overlay but not wired to a console layer; each must say "coming in pilot". */
-const PILOT_KEYS = ["routes", "isochrones", "3d", "whatif"] as const;
+/**
+ * Layer keys the overlay may still call "coming in pilot". None: R, I, 3 and W were wired in
+ * the CONSOLE chunk (P6.15, P6.13), so a pilot note on any of them is the overlay describing a
+ * console that no longer exists.
+ */
+const PILOT_KEYS = [] as const;
 
 /** Browser noise that is not the app's fault and would make the gate lie. */
 const IGNORED = [
@@ -113,6 +120,37 @@ test.describe("P6.13 the keyboard path", () => {
       await expect.poll(async () => control.getAttribute("aria-checked")).toBe(before);
     });
   }
+
+  test('"w" opens the what-if drawer over the rail and closes it again', async ({ page }) => {
+    await page.goto("/console");
+    await waitForRun(page);
+    const drawer = page.getByRole("complementary", { name: "What-if" });
+    await page.keyboard.press("w");
+    await expect(drawer).toBeVisible({ timeout: 10_000 });
+    await expect(drawer.getByText("Reduced-order emulator calibrated to VARUNA-Twin")).toBeVisible();
+    await page.keyboard.press("w");
+    await expect(drawer).not.toBeVisible();
+  });
+
+  test(
+    '"3" draws the city on its DEM and says so, and leaving 3D logs nothing',
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.goto("/console");
+      await waitForRun(page);
+      await page.keyboard.press("3");
+      const row = page.getByRole("listitem").filter({ hasText: "3D terrain" });
+      await expect(row).toContainText(/Conditioned 30 m DEM, \d+ x \d+ cells/, {
+        timeout: 30_000,
+      });
+      await page.keyboard.press("3");
+      await expect(row).not.toContainText(/Conditioned 30 m DEM/);
+      // Leaving 3D once re-created the flat map under a dying terrain effect: 286 errors.
+      await page.waitForTimeout(2_000);
+      expect(errors).toEqual([]);
+    },
+  );
 
   test("space plays and pauses the same clock the time bar shows", async ({ page }) => {
     await page.goto("/console");
