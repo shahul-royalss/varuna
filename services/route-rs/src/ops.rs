@@ -129,8 +129,14 @@ mod tests {
         let overlay = active(&path, t("2019-07-02T08:40:00+05:30"));
         assert_eq!(overlay.reason_for("A"), Some("Manhole open"));
         assert_eq!(overlay.closures["A"].user, "ward");
-        assert_eq!(overlay.closures["A"].ts.isoformat(), "2019-07-02T08:12:00+05:30");
-        assert!(overlay.reason_for("B").is_none(), "expired at 08:30 IST (naive is IST)");
+        assert_eq!(
+            overlay.closures["A"].ts.isoformat(),
+            "2019-07-02T08:12:00+05:30"
+        );
+        assert!(
+            overlay.reason_for("B").is_none(),
+            "expired at 08:30 IST (naive is IST)"
+        );
         assert!(overlay.reason_for("C").is_none(), "reopened");
         let early = active(&path, t("2019-07-02T08:20:00+05:30"));
         assert_eq!(early.reason_for("B"), Some("x"));

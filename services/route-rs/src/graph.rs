@@ -141,7 +141,10 @@ impl RoadGraph {
             && e.lanes.len() == m
             && doc.segments.design_intensity_mm_h.len() == s
             && e.indptr.last().copied() == Some(m as u32)
-            && e.head.iter().chain(e.tail.iter()).all(|&v| (v as usize) < n)
+            && e.head
+                .iter()
+                .chain(e.tail.iter())
+                .all(|&v| (v as usize) < n)
             && e.segment.iter().all(|&v| (v as usize) < s);
         if !ok {
             return Err("Route graph export is internally inconsistent; re-export it.".into());

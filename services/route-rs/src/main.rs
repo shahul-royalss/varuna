@@ -85,7 +85,8 @@ fn repo_root() -> Option<PathBuf> {
     let start = std::env::current_dir().ok()?;
     start.ancestors().find_map(|dir| {
         let text = std::fs::read_to_string(dir.join("pyproject.toml")).ok()?;
-        text.contains("[tool.uv.workspace]").then(|| dir.to_path_buf())
+        text.contains("[tool.uv.workspace]")
+            .then(|| dir.to_path_buf())
     })
 }
 
@@ -140,12 +141,22 @@ fn check_ch(args: &Args, graph_path: &Path) {
         eprintln!("{e}");
         std::process::exit(1)
     });
-    println!("graph loaded in {load_ms:.1} ms: {} nodes, {} edges", graph.n_nodes(), graph.n_edges());
+    println!(
+        "graph loaded in {load_ms:.1} ms: {} nodes, {} edges",
+        graph.n_nodes(),
+        graph.n_edges()
+    );
     let started = Instant::now();
     let ch = ChNaive::build(&graph, &graph.profiles);
-    println!("hierarchies built in {:.1} ms (wall, parallel)", started.elapsed().as_secs_f64() * 1000.0);
+    println!(
+        "hierarchies built in {:.1} ms (wall, parallel)",
+        started.elapsed().as_secs_f64() * 1000.0
+    );
     for h in &ch.hierarchies {
-        println!("  speed {:>5}: {} shortcuts, {:.1} ms", h.speed, h.shortcuts, h.build_ms);
+        println!(
+            "  speed {:>5}: {} shortcuts, {:.1} ms",
+            h.speed, h.shortcuts, h.build_ms
+        );
     }
     for profile in &graph.profiles {
         let t = Instant::now();
@@ -159,7 +170,12 @@ fn check_ch(args: &Args, graph_path: &Path) {
     }
     // Query cost, both engines, same pairs.
     let dij = DijkstraNaive;
-    let car = graph.profiles.iter().find(|p| p.key == "car").cloned().unwrap_or_else(|| graph.profiles[0].clone());
+    let car = graph
+        .profiles
+        .iter()
+        .find(|p| p.key == "car")
+        .cloned()
+        .unwrap_or_else(|| graph.profiles[0].clone());
     let n = graph.n_nodes() as u64;
     let mut state = 12_345u64;
     let pairs: Vec<(u32, u32)> = (0..args.pairs)
@@ -173,7 +189,10 @@ fn check_ch(args: &Args, graph_path: &Path) {
             (next(), next())
         })
         .collect();
-    for (name, engine) in [("dijkstra", &dij as &dyn NaiveEngine), ("ch", &ch as &dyn NaiveEngine)] {
+    for (name, engine) in [
+        ("dijkstra", &dij as &dyn NaiveEngine),
+        ("ch", &ch as &dyn NaiveEngine),
+    ] {
         let t = Instant::now();
         for &(s, d) in &pairs {
             std::hint::black_box(engine.naive_path(&graph, s, d, &car));

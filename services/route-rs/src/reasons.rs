@@ -24,8 +24,17 @@ fn avoided_reason(entry: &Avoided, graph: &RoadGraph, threshold_cm: f64) -> Valu
     })
 }
 
-fn design_reason(segment: u32, name: &str, graph: &RoadGraph, depths: &SegmentDepths) -> Option<Value> {
-    let intensity = graph.design_intensity.get(segment as usize).copied().flatten()?;
+fn design_reason(
+    segment: u32,
+    name: &str,
+    graph: &RoadGraph,
+    depths: &SegmentDepths,
+) -> Option<Value> {
+    let intensity = graph
+        .design_intensity
+        .get(segment as usize)
+        .copied()
+        .flatten()?;
     if depths.rain_aoi_mm_h.is_empty() {
         return None;
     }
@@ -94,7 +103,12 @@ fn timing_reason(
     }))
 }
 
-fn closure_reason(segment: u32, name: &str, graph: &RoadGraph, overlay: &OpsOverlay) -> Option<Value> {
+fn closure_reason(
+    segment: u32,
+    name: &str,
+    graph: &RoadGraph,
+    overlay: &OpsOverlay,
+) -> Option<Value> {
     let sid = &graph.segment_ids[segment as usize];
     let closure = overlay.closures.get(sid)?;
     if closure.reason.is_empty() {

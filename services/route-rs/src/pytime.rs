@@ -340,13 +340,22 @@ mod tests {
         ] {
             assert_eq!(aware(text).isoformat(), text);
         }
-        assert_eq!(aware("2019-07-02T03:10:00Z").isoformat(), "2019-07-02T03:10:00+00:00");
+        assert_eq!(
+            aware("2019-07-02T03:10:00Z").isoformat(),
+            "2019-07-02T03:10:00+00:00"
+        );
         assert_eq!(
             aware("2019-07-02T08:40:00.5+05:30").isoformat(),
             "2019-07-02T08:40:00.500000+05:30"
         );
-        assert_eq!(aware("20190702T0840+0530").isoformat(), "2019-07-02T08:40:00+05:30");
-        assert!(matches!(fromisoformat("2019-07-02T08:40"), Some(Parsed::Naive(_))));
+        assert_eq!(
+            aware("20190702T0840+0530").isoformat(),
+            "2019-07-02T08:40:00+05:30"
+        );
+        assert!(matches!(
+            fromisoformat("2019-07-02T08:40"),
+            Some(Parsed::Naive(_))
+        ));
         assert!(fromisoformat("08:40").is_none());
         assert!(fromisoformat("2019-02-30T00:00:00+05:30").is_none());
         assert!(fromisoformat("2019-07-02T08:40:00+05:30 ").is_none());
@@ -370,7 +379,7 @@ mod tests {
         assert_eq!(timedelta_us(123.456_789_4), 123_456_789);
         assert_eq!(timedelta_us(1e-7), 0);
         assert_eq!(timedelta_us(2.5e-6), 2);
-        assert_eq!(timedelta_us(1234.000_002_5), 1_234_000_002);
+        assert_eq!(timedelta_us(1_234.000_002_5), 1_234_000_002);
         assert_eq!(timedelta_us(7.000_000_5), 7_000_000);
     }
 }

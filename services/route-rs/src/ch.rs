@@ -503,14 +503,20 @@ mod tests {
                 }
             }
         }
-        let refs: Vec<(u32, u32, f64, &str)> =
-            edges.iter().map(|e| (e.0, e.1, e.2, e.3.as_str())).collect();
+        let refs: Vec<(u32, u32, f64, &str)> = edges
+            .iter()
+            .map(|e| (e.0, e.1, e.2, e.3.as_str()))
+            .collect();
         let g = RoadGraph::for_test(&coords, &refs);
         let profiles = defaults();
         let ch = ChNaive::build(&g, &profiles);
         for p in &profiles {
             let (same, tie, differ, none) = agreement(&g, &ch, p, 300, 7);
-            assert_eq!(differ, 0, "{}: {same} same, {tie} ties, {none} unreachable", p.key);
+            assert_eq!(
+                differ, 0,
+                "{}: {same} same, {tie} ties, {none} unreachable",
+                p.key
+            );
         }
     }
 }

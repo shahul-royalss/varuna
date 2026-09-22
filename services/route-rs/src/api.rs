@@ -121,7 +121,10 @@ pub fn parse_request(bytes: &[u8], profiles: &[Profile]) -> Result<RouteRequest,
         ApiError::new(
             422,
             "validation_error",
-            format!("Request is invalid: body.{}: JSON decode error. Fix and retry.", e.column()),
+            format!(
+                "Request is invalid: body.{}: JSON decode error. Fix and retry.",
+                e.column()
+            ),
         )
     })?;
     let Value::Object(body) = body else {
@@ -169,7 +172,10 @@ fn parse_fields(body: &Map<String, Value>, profiles: &[Profile]) -> Result<Route
                 return Err(ApiError::new(
                     422,
                     "bad_tolerance",
-                    format!("risk_tolerance must be between 0 and 1, got {}.", repr_float(t)),
+                    format!(
+                        "risk_tolerance must be between 0 and 1, got {}.",
+                        repr_float(t)
+                    ),
                 ));
             }
             Some(t)
@@ -299,13 +305,16 @@ mod tests {
 
     #[test]
     fn fields_default_as_the_python_handler_defaults_them() {
-        let p = parse(json!({"origin": [72.84, 19.0], "destination": {"lon": 72.86, "lat": 19.04}}))
-            .unwrap();
+        let p =
+            parse(json!({"origin": [72.84, 19.0], "destination": {"lon": 72.86, "lat": 19.04}}))
+                .unwrap();
         assert_eq!(p.plan.profile.key, "ambulance");
         assert!(p.plan.spread && p.plan.explain);
         assert!(p.plan.trip_id.is_none() && p.run_id.is_none() && p.plan.depart_at.is_none());
-        let p = parse(json!({"origin": ["72.84", "19.0"], "destination": [72.86, 19.04],
-            "profile": "", "trip_id": "  ", "run_id": "", "risk_tolerance": "0.3"}))
+        let p = parse(
+            json!({"origin": ["72.84", "19.0"], "destination": [72.86, 19.04],
+            "profile": "", "trip_id": "  ", "run_id": "", "risk_tolerance": "0.3"}),
+        )
         .unwrap();
         assert_eq!(p.plan.origin, (72.84, 19.0));
         assert_eq!(p.plan.profile.key, "ambulance");
@@ -315,18 +324,36 @@ mod tests {
 
     #[test]
     fn errors_carry_the_python_codes_and_messages() {
-        let e = parse(json!({"origin": 5, "destination": [1, 2]})).err().unwrap();
-        assert_eq!((e.code.as_str(), e.message.as_str()), ("bad_point", "origin must be [lon, lat] or {lon, lat}."));
-        let e = parse(json!({"origin": [200, 0], "destination": [1, 2]})).err().unwrap();
+        let e = parse(json!({"origin": 5, "destination": [1, 2]}))
+            .err()
+            .unwrap();
+        assert_eq!(
+            (e.code.as_str(), e.message.as_str()),
+            ("bad_point", "origin must be [lon, lat] or {lon, lat}.")
+        );
+        let e = parse(json!({"origin": [200, 0], "destination": [1, 2]}))
+            .err()
+            .unwrap();
         assert_eq!(e.message, "origin is not a coordinate: [200.0, 0.0].");
-        let e = parse(json!({"origin": [1, 2], "destination": [1, 2], "profile": "boat"})).err().unwrap();
+        let e = parse(json!({"origin": [1, 2], "destination": [1, 2], "profile": "boat"}))
+            .err()
+            .unwrap();
         assert_eq!(e.code, "unknown_profile");
         assert_eq!(e.message, "No vehicle profile 'boat'. Valid profiles: ambulance, bus, car, fire_tender, pedestrian, truck, two_wheeler.");
-        let e = parse(json!({"origin": [1, 2], "destination": [1, 2], "risk_tolerance": 2})).err().unwrap();
-        assert_eq!(e.message, "risk_tolerance must be between 0 and 1, got 2.0.");
-        let e = parse(json!({"origin": [1, 2], "destination": [1, 2], "spread": "yes"})).err().unwrap();
+        let e = parse(json!({"origin": [1, 2], "destination": [1, 2], "risk_tolerance": 2}))
+            .err()
+            .unwrap();
+        assert_eq!(
+            e.message,
+            "risk_tolerance must be between 0 and 1, got 2.0."
+        );
+        let e = parse(json!({"origin": [1, 2], "destination": [1, 2], "spread": "yes"}))
+            .err()
+            .unwrap();
         assert_eq!(e.message, "spread must be true or false, got 'yes'.");
-        let e = parse(json!({"origin": [1, 2], "destination": [1, 2], "depart_at": "08:40"})).err().unwrap();
+        let e = parse(json!({"origin": [1, 2], "destination": [1, 2], "depart_at": "08:40"}))
+            .err()
+            .unwrap();
         assert_eq!(e.code, "bad_time");
         let e = parse_request(b"[1]", &defaults()).err().unwrap();
         assert_eq!(e.code, "validation_error");

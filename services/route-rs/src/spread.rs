@@ -101,7 +101,10 @@ fn max_probability(route: &Route, depths: &SegmentDepths, vehicle: &Profile) -> 
     let mut worst = 0.0;
     for leg in &route.legs {
         let step = depths.step_at(leg.arrive);
-        worst = py_max(worst, depths.exceedance(leg.segment, vehicle.depth_cm, step));
+        worst = py_max(
+            worst,
+            depths.exceedance(leg.segment, vehicle.depth_cm, step),
+        );
     }
     worst
 }
