@@ -76,6 +76,29 @@ class SegmentDepths:
     strictly between 0 and 1, so its presence is itself the claim that this run measured a
     spread."""
 
+    velocity_ms: dict[str, list[float]] = field(default_factory=dict)
+    """``{segment_id: [depth-averaged flow speed, m/s, per step]}``, empty when the run has none.
+
+    The pedestrian hazard rule (``h * v >= 0.5 m^2/s``, Appendix A) needs it, and **no run
+    VARUNA bakes carries one** (measured 2026-09-22 on all seven demo cycles): the Twin's solver
+    holds face fluxes ``qx``/``qy`` while it runs, but no product keeps them - ``segments_wet.json``
+    has depth and ``p_gt``, ``segment_forecast.parquet`` has depth quantiles, exceedance and
+    safe-until, and neither has a speed. So this is read from an optional ``velocity_ms`` block in
+    ``segments_wet.json`` - the same ``{segment_id: [per step]}`` shape as ``depth_cm`` - and
+    stays empty until the products stage writes one. Nothing here derives or assumes a speed."""
+
+    @property
+    def has_velocity(self) -> bool:
+        """True when the run carries a flow speed the pedestrian hazard rule can use."""
+        return bool(self.velocity_ms)
+
+    def velocity_at(self, segment_id: str, step: int) -> float | None:
+        """Flow speed in m/s on a segment at a step, or None where the run does not say."""
+        series = self.velocity_ms.get(segment_id)
+        if not series:
+            return None
+        return series[step] if step < len(series) else series[-1]
+
     @property
     def has_exceedance(self) -> bool:
         """True when the run carries per-member exceedance rather than a threshold comparison."""
@@ -217,6 +240,12 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         for threshold, by_segment in (wet.get("p_gt") or {}).items()
     }
 
+    # Optional, and absent from every run baked so far; see SegmentDepths.velocity_ms.
+    velocity = {
+        str(sid): [float(v) for v in series]
+        for sid, series in (wet.get("velocity_ms") or {}).items()
+    }
+
     depths = SegmentDepths(
         run_id=str(wet.get("run_id", path.name)),
         times=times,
@@ -226,6 +255,7 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         ensemble_n=ensemble_n,
         rain_aoi_mm_h=rain,
         p_gt=p_gt,
+        velocity_ms=velocity,
     )
     log.info(
         "route.depths_loaded",
@@ -235,6 +265,7 @@ def _load(path_str: str, mtime_ns: int) -> SegmentDepths:
         steps=n_steps,
         ensemble_n=ensemble_n,
         p_gt=sorted(p_gt),
+        velocity=bool(velocity),
     )
     return depths
 

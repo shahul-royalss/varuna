@@ -79,6 +79,8 @@ class Reachability:
     n_dry: dict[int, int]
     collapsed: bool
     ms: float
+    notes: tuple[str, ...] = ()
+    """Caveats specific to this answer, such as which half of the pedestrian rule applied."""
 
     @property
     def share_of_dry(self) -> float:
@@ -157,7 +159,7 @@ def _sweep(
     search stops expanding as soon as it is beyond the largest band, so on a 15,546-node graph it
     settles a few thousand nodes rather than all of them.
     """
-    from varuna_route.router import _exceedance, _phi
+    from varuna_route.router import _blocking, _phi
 
     best = np.full(graph.n_nodes, np.inf)
     best[source] = 0.0
@@ -176,9 +178,8 @@ def _sweep(
                 depth = depths.depth_at(segment_id, step)
                 # The run's own exceedance since task D-01, so an isochrone shrinks on the same
                 # criterion a route diverts on rather than on a threshold comparison beside it.
-                if _exceedance(depths, segment_id, vehicle.depth_cm, step) >= (
-                    vehicle.risk_tolerance
-                ):
+                # And a pedestrian's velocity half of the hazard rule where the run has a speed.
+                if _blocking(depths, segment_id, vehicle, step) >= vehicle.risk_tolerance:
                     continue
                 cost *= _phi(depth, vehicle.depth_cm)
             nxt = int(graph.head[e])
@@ -247,6 +248,8 @@ def reachability(
     """One facility's isochrones at one instant, with the dry baseline beside them."""
     from time import perf_counter
 
+    from varuna_route.router import hazard_note
+
     started = perf_counter()
     graph = load_graph(city)
     depths = load_depths(run_id, city)
@@ -288,6 +291,7 @@ def reachability(
         n_dry=n_dry,
         collapsed=collapse(reached, n_dry),
         ms=(perf_counter() - started) * 1000.0,
+        notes=(hazard_note(depths),) if vehicle_profile.hazard_rule else (),
     )
     log.info(
         "route.reachability",
@@ -342,5 +346,6 @@ def as_dict(result: Reachability) -> dict[str, Any]:
         "notes": [
             "Catchment measured on the road network the city pipeline derived, against this "
             "facility's own dry-weather catchment. The share is junctions reached, not hull area.",
+            *result.notes,
         ],
     }

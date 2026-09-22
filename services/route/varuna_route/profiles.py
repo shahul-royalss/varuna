@@ -14,7 +14,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-__all__ = ["PROFILES", "Profile", "profile"]
+__all__ = ["HAZARD_M2_S", "PROFILES", "Profile", "hazard_unsafe", "profile"]
+
+HAZARD_M2_S = 0.5
+"""Depth times flow speed, in m^2/s, at which moving water knocks a person over (Appendix A).
+
+The other half of the pedestrian rule, ``h >= 0.3 m``, is the pedestrian profile's own
+``depth_cm`` and is applied by the router the way every other profile's threshold is."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +57,18 @@ PROFILES: dict[str, Profile] = {
     "pedestrian": Profile("pedestrian", "Pedestrian", 30.0, 0.3, 0.06, hazard_rule=True),
 }
 """Every profile CLAUDE.md 7.4 puts in the picker, keyed by the value the API takes."""
+
+
+def hazard_unsafe(depth_cm: float, velocity_ms: float | None) -> bool:
+    """The velocity half of the pedestrian rule: ``h * v >= 0.5 m^2/s`` (Appendix A).
+
+    ``velocity_ms`` of None means the run did not say how fast the water moves. That is answered
+    as *not unsafe on this half*, never as an assumed speed: the depth half still stops the
+    walker at 30 cm, and the response says which half was applied.
+    """
+    if velocity_ms is None or depth_cm <= 0.0:
+        return False
+    return (depth_cm / 100.0) * abs(velocity_ms) >= HAZARD_M2_S
 
 
 def profile(key: str) -> Profile:
