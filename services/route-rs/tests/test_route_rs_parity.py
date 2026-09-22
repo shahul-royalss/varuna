@@ -37,8 +37,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import routers  # noqa: E402
-from routers import RUNS, TRIPS, RustServer, Trip  # noqa: E402
+import routers
+from routers import RUNS, TRIPS, RustServer, Trip
 
 pytestmark = pytest.mark.filterwarnings("ignore::DeprecationWarning")
 
@@ -48,7 +48,10 @@ def _city_ready() -> tuple[bool, str]:
 
     segments = city_dir("mumbai") / "segments.parquet"
     if not segments.is_file():
-        return False, f"{segments} is missing - run `make city CITY=mumbai` (or set VARUNA_CITY_DIR)"
+        return (
+            False,
+            f"{segments} is missing - run `make city CITY=mumbai` (or set VARUNA_CITY_DIR)",
+        )
     return True, ""
 
 
@@ -81,14 +84,38 @@ def harness() -> Iterator[dict[str, Any]]:
     # The plain log: entries that fold to nothing at any demo departure, so the overlay is read
     # and folded by both routers but closes nothing.
     background = [
-        {"kind": "closure", "segment_id": "S-EXPIRED", "reason": "Tree fall", "user": "w1",
-         "ts": "2019-07-02T05:00:00+05:30", "until": "2019-07-02T05:30:00+05:30", "id": "e1"},
-        {"kind": "closure", "segment_id": "S-REOPENED", "reason": "Crane", "user": "w1",
-         "ts": "2019-07-02T05:00:00+05:30", "id": "e2"},
-        {"kind": "reopen", "segment_id": "S-REOPENED", "user": "w1",
-         "ts": "2019-07-02T05:10:00+05:30", "id": "e3"},
-        {"kind": "pump_status", "pump_id": "P-01", "status": "available", "user": "w1",
-         "ts": "2019-07-02T05:00:00+05:30", "id": "e4"},
+        {
+            "kind": "closure",
+            "segment_id": "S-EXPIRED",
+            "reason": "Tree fall",
+            "user": "w1",
+            "ts": "2019-07-02T05:00:00+05:30",
+            "until": "2019-07-02T05:30:00+05:30",
+            "id": "e1",
+        },
+        {
+            "kind": "closure",
+            "segment_id": "S-REOPENED",
+            "reason": "Crane",
+            "user": "w1",
+            "ts": "2019-07-02T05:00:00+05:30",
+            "id": "e2",
+        },
+        {
+            "kind": "reopen",
+            "segment_id": "S-REOPENED",
+            "user": "w1",
+            "ts": "2019-07-02T05:10:00+05:30",
+            "id": "e3",
+        },
+        {
+            "kind": "pump_status",
+            "pump_id": "P-01",
+            "status": "available",
+            "user": "w1",
+            "ts": "2019-07-02T05:00:00+05:30",
+            "id": "e4",
+        },
     ]
     routers.write_ops(plain, background)
 
@@ -100,9 +127,11 @@ def harness() -> Iterator[dict[str, Any]]:
 
         def naive_segments(trip: Trip) -> list[str]:
             result = plan(
-                trip.origin, trip.destination,
+                trip.origin,
+                trip.destination,
                 depart_at=__import__("datetime").datetime.fromisoformat(trip.depart_at),
-                vehicle=trip.profile, run_id=RUNS[trip.run],
+                vehicle=trip.profile,
+                run_id=RUNS[trip.run],
             )
             assert result.naive is not None, trip.name
             return [leg.segment_id for leg in result.naive.legs]
@@ -111,16 +140,38 @@ def harness() -> Iterator[dict[str, Any]]:
         worli = naive_segments(next(t for t in TRIPS if t.trip_id == "closed-2"))
         closures = [
             *background,
-            {"kind": "closure", "segment_id": kem[len(kem) // 2],
-             "reason": "Manhole cover lifted, crew on site", "user": "ward-officer-FN",
-             "ts": "2019-07-02T08:12:00", "id": "c1"},  # naive: IST is assumed, as Python does
-            {"kind": "closure", "segment_id": kem[len(kem) // 3], "reason": "  ",
-             "user": "ward-officer-FN", "ts": "2019-07-02T08:14:00+05:30", "id": "c2"},
-            {"kind": "closure", "segment_id": worli[len(worli) // 3], "reason": "Waterlogged, police barricade",
-             "user": "traffic-police", "ts": "2019-07-02T08:20:00+05:30",
-             "until": "2019-07-02T10:00:00+05:30", "id": "c3"},
-            {"kind": "closure", "segment_id": worli[(2 * len(worli)) // 3], "reason": "Tree down",
-             "ts": "2019-07-02T08:25:00+05:30", "id": "c4"},
+            {
+                "kind": "closure",
+                "segment_id": kem[len(kem) // 2],
+                "reason": "Manhole cover lifted, crew on site",
+                "user": "ward-officer-FN",
+                "ts": "2019-07-02T08:12:00",
+                "id": "c1",
+            },  # naive: IST is assumed, as Python does
+            {
+                "kind": "closure",
+                "segment_id": kem[len(kem) // 3],
+                "reason": "  ",
+                "user": "ward-officer-FN",
+                "ts": "2019-07-02T08:14:00+05:30",
+                "id": "c2",
+            },
+            {
+                "kind": "closure",
+                "segment_id": worli[len(worli) // 3],
+                "reason": "Waterlogged, police barricade",
+                "user": "traffic-police",
+                "ts": "2019-07-02T08:20:00+05:30",
+                "until": "2019-07-02T10:00:00+05:30",
+                "id": "c3",
+            },
+            {
+                "kind": "closure",
+                "segment_id": worli[(2 * len(worli)) // 3],
+                "reason": "Tree down",
+                "ts": "2019-07-02T08:25:00+05:30",
+                "id": "c4",
+            },
         ]
         routers.write_ops(closed, closures)
         (closed / "ops" / "mumbai.jsonl").open("a", encoding="utf-8").write("not a json line\n")
@@ -144,7 +195,9 @@ def harness() -> Iterator[dict[str, Any]]:
                 server.stop()
 
 
-def _route_both(h: dict[str, Any], trip: Trip, server: str) -> tuple[dict[str, Any], dict[str, Any]]:
+def _route_both(
+    h: dict[str, Any], trip: Trip, server: str
+) -> tuple[dict[str, Any], dict[str, Any]]:
     h["mp"].setenv("VARUNA_DATA_DIR", str(h["closed"] if trip.closed else h["plain"]))
     python = routers.python_route(trip)
     status, rust = h["servers"][server].post(trip.body())
@@ -155,7 +208,9 @@ def _route_both(h: dict[str, Any], trip: Trip, server: str) -> tuple[dict[str, A
 def _report(trip: Trip, diffs: list[tuple[str, Any, Any]]) -> str:
     lines = [f"{trip.name}: {len(diffs)} field(s) differ"]
     for path, a, b in diffs[:25]:
-        lines.append(f"  {path}\n    python: {json.dumps(a)[:300]}\n    rust:   {json.dumps(b)[:300]}")
+        lines.append(
+            f"  {path}\n    python: {json.dumps(a)[:300]}\n    rust:   {json.dumps(b)[:300]}"
+        )
     return "\n".join(lines)
 
 
@@ -213,13 +268,34 @@ ERROR_BODIES: list[tuple[str, Any]] = [
     ("origin not a point", {"origin": 5, "destination": [72.85, 19.03]}),
     ("origin not numbers", {"origin": ["a", "b"], "destination": [72.85, 19.03]}),
     ("origin off the world", {"origin": [200, 19], "destination": [72.85, 19.03]}),
-    ("unknown profile", {"origin": list(routers.KEM), "destination": list(routers.SION), "profile": "boat"}),
-    ("tolerance not a number", {"origin": list(routers.KEM), "destination": list(routers.SION), "risk_tolerance": "high"}),
-    ("tolerance out of range", {"origin": list(routers.KEM), "destination": list(routers.SION), "risk_tolerance": 1.5}),
-    ("bad departure", {"origin": list(routers.KEM), "destination": list(routers.SION), "depart_at": "08:40"}),
-    ("bad spread flag", {"origin": list(routers.KEM), "destination": list(routers.SION), "spread": "yes"}),
-    ("bad explain flag", {"origin": list(routers.KEM), "destination": list(routers.SION), "explain": 1}),
-    ("unknown run", {"origin": list(routers.KEM), "destination": list(routers.SION), "run_id": "MUM-NOPE"}),
+    (
+        "unknown profile",
+        {"origin": list(routers.KEM), "destination": list(routers.SION), "profile": "boat"},
+    ),
+    (
+        "tolerance not a number",
+        {"origin": list(routers.KEM), "destination": list(routers.SION), "risk_tolerance": "high"},
+    ),
+    (
+        "tolerance out of range",
+        {"origin": list(routers.KEM), "destination": list(routers.SION), "risk_tolerance": 1.5},
+    ),
+    (
+        "bad departure",
+        {"origin": list(routers.KEM), "destination": list(routers.SION), "depart_at": "08:40"},
+    ),
+    (
+        "bad spread flag",
+        {"origin": list(routers.KEM), "destination": list(routers.SION), "spread": "yes"},
+    ),
+    (
+        "bad explain flag",
+        {"origin": list(routers.KEM), "destination": list(routers.SION), "explain": 1},
+    ),
+    (
+        "unknown run",
+        {"origin": list(routers.KEM), "destination": list(routers.SION), "run_id": "MUM-NOPE"},
+    ),
 ]
 
 

@@ -168,9 +168,7 @@ def is_current(path: Path, city: str) -> bool:
         return False
     now = sources(city)
     then = doc.get("sources", {})
-    return all(
-        now[key].get("sha256") == then.get(key, {}).get("sha256") for key in now
-    )
+    return all(now[key].get("sha256") == then.get(key, {}).get("sha256") for key in now)
 
 
 def export(city: str, out: Path) -> Path:

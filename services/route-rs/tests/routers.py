@@ -94,36 +94,213 @@ def at(hhmm: str) -> str:
 
 
 TRIPS: list[Trip] = [
-    Trip("KEM to Sion, ambulance, 08:40", KEM, SION, "0840", at("08:40"), "ambulance", trip_id="kem-sion"),
+    Trip(
+        "KEM to Sion, ambulance, 08:40",
+        KEM,
+        SION,
+        "0840",
+        at("08:40"),
+        "ambulance",
+        trip_id="kem-sion",
+    ),
     Trip("KEM to Sion, car, 08:40, no trip id", KEM, SION, "0840", at("08:40"), "car"),
-    Trip("KEM to Sion, two-wheeler, 08:40", KEM, SION, "0840", at("08:40"), "two_wheeler", trip_id="kem-2w"),
-    Trip("KEM to Sion, ambulance, tolerance 0.05", KEM, SION, "0840", at("08:40"), "ambulance", 0.05),
+    Trip(
+        "KEM to Sion, two-wheeler, 08:40",
+        KEM,
+        SION,
+        "0840",
+        at("08:40"),
+        "two_wheeler",
+        trip_id="kem-2w",
+    ),
+    Trip(
+        "KEM to Sion, ambulance, tolerance 0.05", KEM, SION, "0840", at("08:40"), "ambulance", 0.05
+    ),
     Trip("KEM to Sion, ambulance, newest run, no departure", KEM, SION, None),
-    Trip("Worli to Chembur, car, 08:40 (cross-city)", WORLI, CHEMBUR, "0840", at("08:40"), "car", trip_id="worli-chembur"),
-    Trip("Worli to Chembur, bus, 09:10", WORLI, CHEMBUR, "0910", at("09:10"), "bus", trip_id="bus-1"),
-    Trip("Worli to Chembur, two-wheeler, 07:10", WORLI, CHEMBUR, "0710", at("07:10"), "two_wheeler", trip_id="x"),
-    Trip("Worli to Chembur, car, explain off", WORLI, CHEMBUR, "0840", at("08:40"), "car", explain=False),
-    Trip("KEM to Chembur, car, spread off", KEM, CHEMBUR, "0840", at("08:40"), "car", trip_id="nospread", spread=False),
-    Trip("Bandra fire station to KEM, fire tender, 08:10", BANDRA_FIRE, KEM, "0810", at("08:10"), "fire_tender", trip_id="ft"),
-    Trip("Milan subway to Hindmata, pedestrian, 08:40", MILAN_SUBWAY, HINDMATA, "0840", at("08:40"), "pedestrian", trip_id="walk"),
-    Trip("Andheri subway to KEM, car, run's own start", ANDHERI_SUBWAY, KEM, "0840", None, "car", trip_id="andheri"),
-    Trip("Chembur to Bandra, truck, tolerance 0.9", CHEMBUR, BANDRA_FIRE, "0810", at("08:10"), "truck", 0.9),
-    Trip("Hinduja to Bhabha Kurla, car, one-member run", HINDUJA, BHABHA_KURLA, "0810-1member", at("08:10"), "car", trip_id="one"),
-    Trip("Worli to Sion, two-wheeler, past the window", WORLI, SION, "0840", at("11:30"), "two_wheeler"),
-    Trip("Dadar TT to Bhabha Kurla, car, before the window", DADAR_TT, BHABHA_KURLA, "0840", at("06:30"), "car", trip_id="early"),
-    Trip("Hindmata to Sion, two-wheeler, 08:40", HINDMATA, SION, "0840", at("08:40"), "two_wheeler", trip_id="hm"),
+    Trip(
+        "Worli to Chembur, car, 08:40 (cross-city)",
+        WORLI,
+        CHEMBUR,
+        "0840",
+        at("08:40"),
+        "car",
+        trip_id="worli-chembur",
+    ),
+    Trip(
+        "Worli to Chembur, bus, 09:10", WORLI, CHEMBUR, "0910", at("09:10"), "bus", trip_id="bus-1"
+    ),
+    Trip(
+        "Worli to Chembur, two-wheeler, 07:10",
+        WORLI,
+        CHEMBUR,
+        "0710",
+        at("07:10"),
+        "two_wheeler",
+        trip_id="x",
+    ),
+    Trip(
+        "Worli to Chembur, car, explain off",
+        WORLI,
+        CHEMBUR,
+        "0840",
+        at("08:40"),
+        "car",
+        explain=False,
+    ),
+    Trip(
+        "KEM to Chembur, car, spread off",
+        KEM,
+        CHEMBUR,
+        "0840",
+        at("08:40"),
+        "car",
+        trip_id="nospread",
+        spread=False,
+    ),
+    Trip(
+        "Bandra fire station to KEM, fire tender, 08:10",
+        BANDRA_FIRE,
+        KEM,
+        "0810",
+        at("08:10"),
+        "fire_tender",
+        trip_id="ft",
+    ),
+    Trip(
+        "Milan subway to Hindmata, pedestrian, 08:40",
+        MILAN_SUBWAY,
+        HINDMATA,
+        "0840",
+        at("08:40"),
+        "pedestrian",
+        trip_id="walk",
+    ),
+    Trip(
+        "Andheri subway to KEM, car, run's own start",
+        ANDHERI_SUBWAY,
+        KEM,
+        "0840",
+        None,
+        "car",
+        trip_id="andheri",
+    ),
+    Trip(
+        "Chembur to Bandra, truck, tolerance 0.9",
+        CHEMBUR,
+        BANDRA_FIRE,
+        "0810",
+        at("08:10"),
+        "truck",
+        0.9,
+    ),
+    Trip(
+        "Hinduja to Bhabha Kurla, car, one-member run",
+        HINDUJA,
+        BHABHA_KURLA,
+        "0810-1member",
+        at("08:10"),
+        "car",
+        trip_id="one",
+    ),
+    Trip(
+        "Worli to Sion, two-wheeler, past the window",
+        WORLI,
+        SION,
+        "0840",
+        at("11:30"),
+        "two_wheeler",
+    ),
+    Trip(
+        "Dadar TT to Bhabha Kurla, car, before the window",
+        DADAR_TT,
+        BHABHA_KURLA,
+        "0840",
+        at("06:30"),
+        "car",
+        trip_id="early",
+    ),
+    Trip(
+        "Hindmata to Sion, two-wheeler, 08:40",
+        HINDMATA,
+        SION,
+        "0840",
+        at("08:40"),
+        "two_wheeler",
+        trip_id="hm",
+    ),
     Trip("KEM to KEM, same junction", KEM, KEM, "0840", at("08:40"), "car", trip_id="same"),
-    Trip("KEM to Sion, car, tolerance 0 refuses every edge", KEM, SION, "0840", at("08:40"), "car", 0.0),
-    Trip("Worli to Chembur, car, 07:40", WORLI, CHEMBUR, "0740", at("07:40"), "car", trip_id="w-0740"),
-    Trip("Worli to Chembur, ambulance, 08:43:17.5 IST", WORLI, CHEMBUR, "0840", "2019-07-02T08:43:17.5+05:30", "ambulance", trip_id="odd"),
-    Trip("Worli to Chembur, car, departure in UTC", WORLI, CHEMBUR, "0840", "2019-07-02T03:10:00Z", "car", trip_id="utc"),
+    Trip(
+        "KEM to Sion, car, tolerance 0 refuses every edge",
+        KEM,
+        SION,
+        "0840",
+        at("08:40"),
+        "car",
+        0.0,
+    ),
+    Trip(
+        "Worli to Chembur, car, 07:40", WORLI, CHEMBUR, "0740", at("07:40"), "car", trip_id="w-0740"
+    ),
+    Trip(
+        "Worli to Chembur, ambulance, 08:43:17.5 IST",
+        WORLI,
+        CHEMBUR,
+        "0840",
+        "2019-07-02T08:43:17.5+05:30",
+        "ambulance",
+        trip_id="odd",
+    ),
+    Trip(
+        "Worli to Chembur, car, departure in UTC",
+        WORLI,
+        CHEMBUR,
+        "0840",
+        "2019-07-02T03:10:00Z",
+        "car",
+        trip_id="utc",
+    ),
     *[
-        Trip(f"Worli to Chembur, car, trip id {tid}", WORLI, CHEMBUR, "0840", at("08:40"), "car", trip_id=tid)
+        Trip(
+            f"Worli to Chembur, car, trip id {tid}",
+            WORLI,
+            CHEMBUR,
+            "0840",
+            at("08:40"),
+            "car",
+            trip_id=tid,
+        )
         for tid in ("alpha", "beta", "gamma", "delta", "epsilon")
     ],
-    Trip("KEM to Sion, car, over a closed street", KEM, SION, "0840", at("08:40"), "car", trip_id="closed-1", closed=True),
-    Trip("Worli to Chembur, two-wheeler, over closed streets", WORLI, CHEMBUR, "0840", at("08:40"), "two_wheeler", trip_id="closed-2", closed=True),
-    Trip("KEM to Sion, ambulance, closure without a reason", KEM, SION, "0840", at("08:40"), "ambulance", trip_id="closed-3", closed=True),
+    Trip(
+        "KEM to Sion, car, over a closed street",
+        KEM,
+        SION,
+        "0840",
+        at("08:40"),
+        "car",
+        trip_id="closed-1",
+        closed=True,
+    ),
+    Trip(
+        "Worli to Chembur, two-wheeler, over closed streets",
+        WORLI,
+        CHEMBUR,
+        "0840",
+        at("08:40"),
+        "two_wheeler",
+        trip_id="closed-2",
+        closed=True,
+    ),
+    Trip(
+        "KEM to Sion, ambulance, closure without a reason",
+        KEM,
+        SION,
+        "0840",
+        at("08:40"),
+        "ambulance",
+        trip_id="closed-3",
+        closed=True,
+    ),
 ]
 
 
@@ -204,8 +381,16 @@ class RustServer:
         self.port = self.port or free_port()
         self.proc = subprocess.Popen(
             [
-                str(EXE), "serve", "--port", str(self.port), "--data-dir", str(self.data_dir),
-                "--graph", str(self.graph), "--naive", self.naive,
+                str(EXE),
+                "serve",
+                "--port",
+                str(self.port),
+                "--data-dir",
+                str(self.data_dir),
+                "--graph",
+                str(self.graph),
+                "--naive",
+                self.naive,
             ],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -278,13 +463,15 @@ def differences(python: Any, rust: Any, path: str = "") -> list[tuple[str, Any, 
             if path == "" and key == "ms":
                 continue
             if key not in python or key not in rust:
-                out.append((f"{path}.{key}", python.get(key, "<absent>"), rust.get(key, "<absent>")))
+                out.append(
+                    (f"{path}.{key}", python.get(key, "<absent>"), rust.get(key, "<absent>"))
+                )
                 continue
             out.extend(differences(python[key], rust[key], f"{path}.{key}"))
     elif isinstance(python, list) and isinstance(rust, list):
         if len(python) != len(rust):
             out.append((f"{path}[len]", len(python), len(rust)))
-        for i, (a, b) in enumerate(zip(python, rust)):
+        for i, (a, b) in enumerate(zip(python, rust, strict=False)):
             out.extend(differences(a, b, f"{path}[{i}]"))
     else:
         same = python == rust and type(python) is type(rust)
@@ -301,7 +488,9 @@ def python_process_count() -> int:
         if os.name == "nt":
             text = subprocess.run(
                 ["tasklist", "/FI", "IMAGENAME eq python.exe", "/FO", "CSV", "/NH"],
-                capture_output=True, text=True, check=False,
+                capture_output=True,
+                text=True,
+                check=False,
             ).stdout
             return sum(1 for line in text.splitlines() if line.startswith('"python.exe"'))
         text = subprocess.run(["pgrep", "-c", "python"], capture_output=True, text=True).stdout
