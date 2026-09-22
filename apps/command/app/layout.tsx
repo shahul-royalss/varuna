@@ -3,6 +3,7 @@ import { Bricolage_Grotesque } from "next/font/google";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 
+import { SwRegister } from "@/components/varuna/sw-register";
 import { Providers } from "@/lib/providers";
 
 import "./globals.css";
@@ -44,8 +45,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`dark h-full ${bricolage.variable} ${GeistSans.variable} ${GeistMono.variable}`}
     >
-      <body className="flex min-h-full flex-col bg-ink font-sans text-text antialiased">
+      <body className="bg-ink text-text flex min-h-full flex-col font-sans antialiased">
         <Providers>{children}</Providers>
+        <SwRegister />
       </body>
     </html>
   );

@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CloudOff } from "lucide-react";
 
 import {
   CityMap,
@@ -39,6 +40,16 @@ import { reversedEdgesAtStep } from "./layers/reversed-flow";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Button } from "@/components/ui/button";
 import { currentCity } from "@/lib/city";
+import {
+  loadOfflineBasemap,
+  OFFLINE_BASEMAP_ATTRIBUTION,
+  offlineBasemapLayers,
+  type OfflineBasemap,
+} from "@/lib/offline/basemap";
+import { offlineLine, queueLine, useOfflineForecast } from "@/lib/offline/forecast-status";
+
+/** The terrain credit, which holds offline too: the depths were solved on it. */
+const TERRAIN_CREDIT = "Terrain: Copernicus GLO-30";
 
 /** Stable empty default for `drains`: a fresh `[]` in the parameter list would change identity on
  * every render and re-run the memo below (and `CityMap`'s layer build) for the screens - the
@@ -191,6 +202,27 @@ export function FloodMap({
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
 
+  // Offline (task P9.10). Only a page the offline worker controls - the public map and the report
+  // flow - can ever read a saved copy; every other screen stays `online` and draws what it drew.
+  const offline = useOfflineForecast();
+  const usingSaved = offline.controlled && offline.mode !== "online";
+  const [basemap, setBasemap] = useState<OfflineBasemap | null>(null);
+  useEffect(() => {
+    if (!usingSaved || basemap) return;
+    const controller = new AbortController();
+    loadOfflineBasemap(city, controller.signal)
+      .then(setBasemap)
+      // No saved basemap: the city's own streets still draw, from the saved street layer.
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [usingSaved, basemap, city]);
+  const vectorBasemap = useMemo(
+    () => (usingSaved ? offlineBasemapLayers(basemap) : []),
+    [usingSaved, basemap],
+  );
+  const offlineNote = usingSaved ? offlineLine(offline.mode, offline.saved) : null;
+  const queueNote = queueLine(offline.pending, offline.sent);
+
   useEffect(() => {
     onStatus?.(status.kind);
   }, [status.kind, onStatus]);
@@ -321,11 +353,21 @@ export function FloodMap({
   }
 
   if (status.kind === "error") {
+    // Offline with nothing saved says what to do about it, not what the fetch threw.
+    const noSavedCopy = usingSaved && !offline.saved;
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-[var(--ink)] p-6">
         <div className="max-w-[420px] text-center">
-          <p className="text-[15px] text-[var(--text)]">The map could not load this run.</p>
-          <p className="mt-2 text-[13px] text-[var(--text-2)]">{status.message}</p>
+          <p className="text-[15px] text-[var(--text)]">
+            {noSavedCopy
+              ? "This phone has no saved forecast yet."
+              : "The map could not load this run."}
+          </p>
+          <p className="mt-2 text-[13px] text-[var(--text-2)]">
+            {noSavedCopy
+              ? "Open the map once with a connection and the forecast is kept for next time."
+              : status.message}
+          </p>
           <Button size="sm" variant="outline" className="mt-4" onClick={retry}>
             Try again
           </Button>
@@ -335,34 +377,59 @@ export function FloodMap({
   }
 
   return (
-    <CityMap
-      mode={mode}
-      frames={status.run.frames}
-      rasterBounds={status.run.bounds}
-      baseSegments={status.baseSegments}
-      segments={status.segments}
-      surcharge={surcharge}
-      reversedEdges={reversedEdges}
-      showSurcharge={showSurcharge}
-      buildings={buildings}
-      drains={drains}
-      showBuildings={showBuildings}
-      showDrains={showDrains}
-      hotspots={rings}
-      labels={labels}
-      isochrones={isochrones}
-      passableBelowCm={passableBelowCm}
-      probabilityThresholdCm={probabilityThresholdCm}
-      truthPins={truthPins}
-      onSegmentPick={onSegmentPick}
-      showSatellite={showSatellite}
-      attribution={attribution}
-      selectedHotspotId={selectedHotspotId}
-      focus={focus}
-      step={Math.min(step, status.run.provenance.nSteps - 1)}
-      showRaster={showRaster}
-      showSegments={showSegments}
-      showHotspots={showHotspots}
-    />
+    <>
+      <CityMap
+        mode={mode}
+        frames={status.run.frames}
+        rasterBounds={status.run.bounds}
+        baseSegments={status.baseSegments}
+        segments={status.segments}
+        surcharge={surcharge}
+        reversedEdges={reversedEdges}
+        showSurcharge={showSurcharge}
+        buildings={buildings}
+        drains={drains}
+        showBuildings={showBuildings}
+        showDrains={showDrains}
+        hotspots={rings}
+        labels={labels}
+        isochrones={isochrones}
+        passableBelowCm={passableBelowCm}
+        probabilityThresholdCm={probabilityThresholdCm}
+        truthPins={truthPins}
+        onSegmentPick={onSegmentPick}
+        // Esri's imagery may not be kept offline (P10.6), so a saved forecast draws over VARUNA's own
+        // basemap instead, with that basemap's credit.
+        showSatellite={showSatellite && !usingSaved}
+        basemapLayers={vectorBasemap}
+        attribution={attribution && !usingSaved}
+        selectedHotspotId={selectedHotspotId}
+        focus={focus}
+        step={Math.min(step, status.run.provenance.nSteps - 1)}
+        showRaster={showRaster}
+        showSegments={showSegments}
+        showHotspots={showHotspots}
+      />
+      {offlineNote || queueNote ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className="rounded-panel border-line bg-deep pointer-events-none absolute inset-x-3 top-3 z-10 border px-3 py-2"
+        >
+          {offlineNote ? (
+            <p className="type-small text-text flex items-start gap-2">
+              <CloudOff aria-hidden="true" className="mt-0.5 size-4 shrink-0" strokeWidth={1.75} />
+              <span className="num">{offlineNote}</span>
+            </p>
+          ) : null}
+          {queueNote ? <p className="type-small text-text-2 mt-1">{queueNote}</p> : null}
+        </div>
+      ) : null}
+      {usingSaved && attribution ? (
+        <p className="type-micro text-text-3 pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 py-2">
+          {basemap?.attribution ?? OFFLINE_BASEMAP_ATTRIBUTION}; {TERRAIN_CREDIT}
+        </p>
+      ) : null}
+    </>
   );
 }
