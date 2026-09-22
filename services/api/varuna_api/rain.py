@@ -23,6 +23,7 @@ twenty can resolve, so nothing meaningful is lost and the payload stays readable
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime
 from functools import lru_cache
 from typing import TYPE_CHECKING, Any
@@ -66,6 +67,17 @@ __all__ = [
     "resolve_point",
     "resolve_rain",
 ]
+
+_LIVE_CYCLE = threading.Lock()
+"""One live Sky cycle at a time in this process.
+
+A computed cycle is a 20-member pySTEPS ensemble over the 120 x 120 radar domain, and its peak
+memory is most of what a small host has. On 2026-09-19 the deployed API logged two of them
+starting in the same second - `sky.merge` twice at 15:58:14.98 UTC - and never logged anything
+again: the container was killed and did not come back, while the platform went on reporting the
+deployment as healthy. A second request that arrives while one is running is refused at once,
+with the reason and what to do instead, rather than doubling the memory and taking the API down
+for every other screen."""
 
 HOTSPOT_REGISTER = "hotspots.geojson"
 """The chronic waterlogging register the city pipeline writes (CLAUDE.md 10.1 step 9)."""
@@ -125,6 +137,14 @@ def _computed(state: AppState, bundle: str | None, when: datetime | None) -> Rai
     wanted = bundle or (clock.bundle_id if clock else state.settings.varuna_bundle)
     if when is None and clock is not None and clock.bundle_id == wanted:
         when = clock.snapshot().sim_time
+    if not _LIVE_CYCLE.acquire(blocking=False):
+        raise api_error(
+            503,
+            "cycle_busy",
+            "A live rain cycle is already running on this server, and running two at once is "
+            "what exhausts its memory. Try again in a minute, or leave compute off to read the "
+            "newest baked run.",
+        )
     try:
         rain = run_bundle_cycle(wanted, when)
     except BundleNotFoundError as exc:
@@ -139,6 +159,8 @@ def _computed(state: AppState, bundle: str | None, when: datetime | None) -> Rai
         raise api_error(
             422, "cycle_not_computable", f"Cannot compute a cycle from {wanted}: {exc}"
         ) from exc
+    finally:
+        _LIVE_CYCLE.release()
     log.info(
         "rain.computed",
         bundle=rain.bundle,
