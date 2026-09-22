@@ -295,15 +295,25 @@ class DrapedTerrainLayer extends TerrainLayer {
   static override defaultProps = {
     ...TerrainLayer.defaultProps,
     drape: { type: "object" as const, value: null, compare: true },
+    meshBounds: { type: "array" as const, value: null, compare: true },
   };
 
   override renderLayers() {
     const rendered = super.renderLayers();
-    const drape = (this.props as unknown as { drape?: HTMLCanvasElement | null }).drape;
+    const { drape, meshBounds } = this.props as unknown as {
+      drape?: HTMLCanvasElement | null;
+      meshBounds?: TerrainMesh["header"]["boundingBox"] | null;
+    };
     if (!rendered || Array.isArray(rendered) || !drape) return rendered;
-    return (rendered as unknown as { clone: (p: object) => typeof rendered }).clone({
-      texture: drape,
-    });
+    const mesh = (
+      rendered as unknown as { clone: (p: object) => { getBounds: () => unknown } }
+    ).clone({ texture: drape });
+    // deck's terrain draping sizes the texture it renders draped layers into from the terrain
+    // layer's `getBounds()`, which a single, non-instanced mesh reports as its one instance
+    // position - a point, so the streets were draped into a texture of no area and vanished.
+    // The mesh's own bounding box, in the layer's degree offsets, gives the drape the city.
+    if (meshBounds) mesh.getBounds = () => meshBounds;
+    return mesh as unknown as typeof rendered;
   }
 }
 
@@ -339,6 +349,7 @@ export function terrainLayers({
       // The ground is where every draped layer lands (deck's TerrainExtension).
       operation: "terrain+draw",
       drape: drapeFor(showRaster ? frame : null, meta.shape),
+      meshBounds: mesh.header.boundingBox,
       pickable: false,
     } as never),
   ];
@@ -352,6 +363,12 @@ export function terrainLayers({
 export function onTerrain(layers: readonly unknown[]): unknown[] {
   return layers.map((layer) => {
     const l = layer as { props: { extensions?: unknown[] }; clone: (p: object) => unknown };
-    return l.clone({ extensions: [...(l.props.extensions ?? []), TERRAIN_EXTENSION] });
+    return l.clone({
+      // A new id, so deck builds the layer fresh with the terrain shader module in it. A clone
+      // under the flat layer's id keeps the flat layer's compiled shaders, which have no
+      // terrain_map binding: luma warns once per layer and the layer draws under the ground.
+      id: `${(l.props as { id?: string }).id ?? "layer"}-3d`,
+      extensions: [...(l.props.extensions ?? []), TERRAIN_EXTENSION],
+    });
   });
 }
