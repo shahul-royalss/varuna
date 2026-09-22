@@ -211,10 +211,12 @@ def _status_from_job(job: LiveJob) -> CycleStatus:
 
 @router.get("/status", response_model=CycleStatus, summary="Orchestrator status and budgets")
 def cycle_status(state: Annotated[AppState, Depends(get_state)]) -> CycleStatus:
-    """The live cycle while one runs (its stage and the stages finished so far); otherwise the
-    last published run's timings, which is what the budget bar shows at rest."""
+    """The live cycle while one runs (its stage and the stages finished so far), or the last one
+    this process ran, with its timings of record; otherwise the newest run's. The newest run is
+    by cycle time, so a live 06:00 cycle computed after the 09:10 bake would otherwise vanish
+    from here the moment it published."""
     job = current_job()
-    if job is not None and (job.running or job.error):
+    if job is not None and (job.running or job.error or job.run_id):
         return _status_from_job(job)
     last = state.latest_run()
     return CycleStatus(
@@ -261,6 +263,10 @@ def _run_job(state: AppState, job: LiveJob) -> None:
     try:
         result = run_cycle(job.bundle, job.cycle_ts, city=job.city, mode="live", overwrite=True)
         job.run_id = result.run_id
+        # The instant asked for is snapped onto the cycle ladder; report the one that ran.
+        meta = state.registry.get(result.run_id)
+        if meta is not None:
+            job.cycle_ts = meta.cycle_ts
         # The numbers of record replace the wrappers' own clocks.
         job.stage_ms = {k: int(v) for k, v in result.stage_ms.items()}
         _publish(
