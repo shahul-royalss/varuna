@@ -40,6 +40,7 @@ from varuna_api.routers import (
     route,
     runs,
     stubs,
+    terrain,
     verify,
     weather,
     whatif,
@@ -244,6 +245,7 @@ def create_app(
     app.include_router(cycle.router)
     app.include_router(live.router)
     app.include_router(city.router)
+    app.include_router(terrain.router)
     app.include_router(replay.router)
     # Before the stubs: the rain routes are real, and the stub router owns the rest of the
     # /v1/nowcast namespace until Phase 5 fills it in.
