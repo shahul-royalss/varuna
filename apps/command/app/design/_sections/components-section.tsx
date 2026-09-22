@@ -620,8 +620,11 @@ export function ComponentsSection() {
         </Panel>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Panel title="Icon rail" description="56 px wide; labels appear on hover and focus.">
-            <div className="w-icon-rail rounded-panel border-line h-[400px] overflow-hidden border">
+          <Panel
+            title="Screen nav"
+            description="Rides in the top bar; labels and keys appear on hover and focus."
+          >
+            <div className="rounded-panel border-line bg-deep h-top-bar flex items-center overflow-x-auto border px-3">
               <IconRail />
             </div>
           </Panel>

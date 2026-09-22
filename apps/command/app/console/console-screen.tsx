@@ -526,8 +526,6 @@ function ConsoleView() {
         ) : (
           <RightRail
             hotspots={hotspots}
-            runId={run?.provenance.runId ?? null}
-            truthPins={truth.passed}
             step={step}
             selectedHotspotId={selectedHotspotId}
             onSelectHotspot={selectHotspot}

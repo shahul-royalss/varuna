@@ -6,6 +6,7 @@ import { Settings2 } from "lucide-react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CitySwitcher } from "@/components/varuna/city-switcher";
+import { IconRail } from "@/components/varuna/icon-rail";
 import { Wordmark } from "@/components/varuna/wordmark";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/stores/ui";
@@ -42,12 +43,15 @@ export function TopBar({ className }: TopBarProps) {
 
       <CitySwitcher />
 
-      {/* The bar carries the wordmark, the city and settings. The mode banner, the run stamp,
-          the verification chip and the search and shortcuts buttons were removed at the team's
-          request. Ctrl+K and ? still open the palette and the shortcuts overlay - the keys are
-          unchanged, only the buttons are gone. CLAUDE.md 7.2 and readiness R1 still describe the
-          older bar. */}
-      <div className="flex min-w-0 flex-1 items-center gap-3" />
+      {/* The bar carries the wordmark, the city, the screen nav and settings. The mode banner, the
+          run stamp, the verification chip and the search and shortcuts buttons were removed at the
+          team's request. Ctrl+K and ? still open the palette and the shortcuts overlay - the keys
+          are unchanged, only the buttons are gone. The nav moved here from the left rail, also at
+          the team's request, so it wraps to a scroll rather than pushing settings off a 1366 px
+          bar. CLAUDE.md 6.5 and 7.2 still describe the older shell. */}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <IconRail className="min-w-0 overflow-x-auto" />
+      </div>
 
       <div className="flex shrink-0 items-center gap-1">
         <Tooltip>
