@@ -49,6 +49,9 @@ const TIERS = [
 
 let senderConfigured = false;
 const acts: { path: string; body: Record<string, unknown> }[] = [];
+/** Every path the stub answered. The escalation matrix is no longer drawn, so a test that needs
+ *  `config/escalation.yaml` to have been read waits on this instead of on a rendered tier. */
+const served: string[] = [];
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -60,10 +63,12 @@ function json(body: unknown, status = 200) {
 beforeEach(() => {
   senderConfigured = false;
   acts.length = 0;
+  served.length = 0;
   clearPassphrase();
   vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
     const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(raw, "http://localhost:8000");
+    served.push(url.pathname);
     if (init?.method === "POST") {
       acts.push({ path: url.pathname, body: JSON.parse(String(init.body ?? "{}")) });
       return json({ run_id: RUN, entry: { id: "e1", kind: "x", ts: "t" }, alert: {}, notes: [] });
@@ -186,16 +191,27 @@ describe("AlertsScreen cross-cycle state", () => {
 });
 
 describe("AlertsScreen escalation, sender and delivery", () => {
-  it("draws the matrix from config/escalation.yaml and escalates one step past the level's tiers", async () => {
+  it("escalates one step past the level's tiers in config/escalation.yaml", async () => {
     writePassphrase("monsoon desk 2026");
     renderScreen();
-    expect(await screen.findByText("Transit (buses, suburban rail)")).toBeInTheDocument();
+    await waitFor(() => expect(served).toContain("/v1/alerts/escalation"));
     const card = await screen.findByRole("article");
     fireEvent.click(within(card).getByRole("button", { name: "Escalate" }));
     await waitFor(() => expect(acts).toHaveLength(1));
     expect(acts[0]!.path).toBe(`/v1/alerts/${ALERT_ID}/escalate`);
     // Severe already reached ward officer, control room and police; the next step is transit.
     expect(acts[0]!.body.escalate_to).toBe("transit");
+  });
+
+  it("keeps the delivery log shut until it is asked for", async () => {
+    renderScreen();
+    await screen.findByRole("article");
+    await screen.findByText("Rendered, not sent");
+    expect(screen.getByText("Rendered, not sent")).not.toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Show" }));
+    expect(screen.getByText("Rendered, not sent")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Hide" }));
+    expect(screen.getByText("Rendered, not sent")).not.toBeVisible();
   });
 
   it("draws no Send to my phone without a configured sender", async () => {
