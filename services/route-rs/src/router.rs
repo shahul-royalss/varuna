@@ -31,6 +31,9 @@ pub const MAX_SLOWDOWN: f64 = 3.0;
 /// Cost multiplier on edges a previous route used, when searching for an alternate.
 pub const ALTERNATE_PENALTY: f64 = 3.0;
 pub const MAX_ALTERNATES: usize = 2;
+
+/// `profiles.HAZARD_M2_S`: the pedestrian hazard product, m^2/s (CLAUDE.md Appendix A).
+pub const HAZARD_M2_S: f64 = 0.5;
 /// Avoided streets worth naming in `reasons` (`reasons.MAX_AVOIDED_REASONS`).
 pub const MAX_AVOIDED_REASONS: usize = 3;
 pub const LABELS: [&str; 3] = ["A", "B", "C"];
@@ -86,6 +89,15 @@ pub fn py_min(a: f64, b: f64) -> f64 {
         b
     } else {
         a
+    }
+}
+
+/// `profiles.hazard_unsafe`: the velocity half of the pedestrian rule, `h * v >= 0.5 m^2/s`
+/// (Appendix A). No speed means "not unsafe on this half", never an assumed speed.
+pub fn hazard_unsafe(depth_cm: f64, velocity_ms: Option<f64>) -> bool {
+    match velocity_ms {
+        Some(v) if depth_cm > 0.0 => (depth_cm / 100.0) * v.abs() >= HAZARD_M2_S,
+        _ => false,
     }
 }
 
@@ -194,6 +206,16 @@ pub fn search(
     let threshold = vehicle.depth_cm;
     let tolerance = vehicle.risk_tolerance;
     let p_by_segment = water.and_then(|w| w.depths.p_for(threshold));
+    // The pedestrian's velocity half of the hazard rule, only where there is a speed to apply it
+    // to. None for every other profile and for every run baked so far, so the loop below is the
+    // loop it was (`router._search`'s `velocity_by_segment`).
+    let velocity_by_segment = water.and_then(|w| {
+        if vehicle.hazard_rule && w.depths.has_velocity {
+            Some(&w.depths.velocity)
+        } else {
+            None
+        }
+    });
     let penalised = penalised.filter(|p| !p.is_empty());
 
     while let Some(Entry {
@@ -243,6 +265,13 @@ pub fn search(
                             }
                         }
                     },
+                };
+                let p = match velocity_by_segment {
+                    Some(vs) if p < tolerance => match vs[seg].as_deref() {
+                        Some(v) if !v.is_empty() && hazard_unsafe(depth, Some(at(v, step))) => 1.0,
+                        _ => p,
+                    },
+                    _ => p,
                 };
                 if p >= tolerance {
                     continue;
@@ -455,6 +484,30 @@ pub fn plan(
              tolerance has nothing to weigh.",
             depths.ensemble_n
         ));
+    }
+
+    if base.hazard_rule {
+        // `router.hazard_note`: which half of the rule was applied, so a walker is never told a
+        // street is safe on the strength of a rule that was only half checked. The text is
+        // byte-for-byte Python's; `concat!` rather than a `\`-continuation, because the
+        // continuation's whitespace stripping put extra spaces into the note and the parity test
+        // caught it.
+        notes.push(if depths.has_velocity {
+            concat!(
+                "Pedestrian: a street is refused at 30 cm, or where the median depth times this ",
+                "run's flow speed reaches 0.5 m2/s (Appendix A), whichever comes first."
+            )
+            .to_string()
+        } else {
+            concat!(
+                "Pedestrian: only the depth half of the hazard rule is applied here, refusing a ",
+                "street at 30 cm. The other half, depth times flow speed at or above 0.5 m2/s, ",
+                "needs a speed, and this run carries none - the Twin computes surface fluxes, ",
+                "but no product keeps them - so it is not checked and no speed is assumed. ",
+                "Fast, shallow water is not caught."
+            )
+            .to_string()
+        });
     }
 
     let overlay = overlay_for(depart);

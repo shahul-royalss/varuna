@@ -7,6 +7,10 @@ allowBuilds:
   sharp: true
   esbuild: true
   "@tailwindcss/oxide": true
+  # Arrive with next-intl for its message-extraction tooling, which this project does not use.
+  # Both ship prebuilt platform binaries, so their install scripts are not run.
+  '@parcel/watcher': false
+  '@swc/core': false
 
 # Transitive dependencies pinned past a published advisory. Each entry is scoped to the
 # vulnerable range so an unaffected major is left alone, and each names what it fixes.
