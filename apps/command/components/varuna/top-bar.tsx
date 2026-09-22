@@ -2,13 +2,10 @@
 
 import type { Route } from "next";
 import Link from "next/link";
-import { Keyboard, Search, Settings2 } from "lucide-react";
+import { Settings2 } from "lucide-react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CitySwitcher } from "@/components/varuna/city-switcher";
-import { ModeBanner } from "@/components/varuna/mode-banner";
-import { RunStamp } from "@/components/varuna/run-stamp";
-import { ServedVerificationChip } from "@/components/varuna/verification-chip";
 import { Wordmark } from "@/components/varuna/wordmark";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/stores/ui";
@@ -24,10 +21,8 @@ export interface TopBarProps {
   className?: string;
 }
 
-/** The 52 px top bar (CLAUDE.md section 7.2): wordmark, city, mode, run stamp, score, controls. */
+/** The 52 px top bar: wordmark, city and settings. */
 export function TopBar({ className }: TopBarProps) {
-  const setCommandPaletteOpen = useUiStore((s) => s.setCommandPaletteOpen);
-  const toggleShortcuts = useUiStore((s) => s.toggleShortcuts);
   const toggleSettings = useUiStore((s) => s.toggleSettings);
 
   return (
@@ -47,53 +42,14 @@ export function TopBar({ className }: TopBarProps) {
 
       <CitySwitcher />
 
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <ModeBanner />
-        <RunStamp className="hidden lg:inline-flex" />
-        <ServedVerificationChip className="hidden xl:inline-flex" />
-      </div>
+      {/* The bar carries the wordmark, the city and settings. The mode banner, the run stamp,
+          the verification chip and the search and shortcuts buttons were removed at the team's
+          request. Ctrl+K and ? still open the palette and the shortcuts overlay - the keys are
+          unchanged, only the buttons are gone. CLAUDE.md 7.2 and readiness R1 still describe the
+          older bar. */}
+      <div className="flex min-w-0 flex-1 items-center gap-3" />
 
       <div className="flex shrink-0 items-center gap-1">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label="Search and commands"
-                onClick={() => setCommandPaletteOpen(true)}
-                className={iconButtonClass}
-              />
-            }
-          >
-            <Search aria-hidden="true" className="size-5" strokeWidth={1.75} />
-            <kbd className="border-line bg-well text-micro text-text-2 rounded-[4px] border px-1.5 font-sans">
-              Ctrl K
-            </kbd>
-          </TooltipTrigger>
-          <TooltipContent>Search and commands</TooltipContent>
-        </Tooltip>
-
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                aria-label="Keyboard shortcuts"
-                onClick={toggleShortcuts}
-                className={cn(iconButtonClass, "w-8")}
-              />
-            }
-          >
-            <Keyboard aria-hidden="true" className="size-5" strokeWidth={1.75} />
-          </TooltipTrigger>
-          <TooltipContent>
-            Keyboard shortcuts
-            <kbd className="border-line bg-well text-micro text-text-2 rounded-[4px] border px-1 font-sans">
-              ?
-            </kbd>
-          </TooltipContent>
-        </Tooltip>
-
         <Tooltip>
           <TooltipTrigger
             render={
