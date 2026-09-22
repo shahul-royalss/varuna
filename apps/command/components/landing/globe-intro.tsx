@@ -20,8 +20,10 @@
  * NASA's Blue Marble imagery through the *inverse* of that same morphed projection, per pixel, with
  * the terminator of the replay's own instant across it and an atmospheric rim on the limb
  * (`globe-texture.ts`). The vectors above it then stop being the picture and become the
- * instrumentation on it: the ocean disc and the country fills fade out, and the coastlines, the
- * India highlight, the AOI box and the Mumbai mark stay. One number,
+ * instrumentation on it: the ocean disc, the country fills *and the coastlines* all fade out -
+ * Blue Marble draws its own coastlines in light on water, and a second set traced a pixel off
+ * them is what made this read as a diagram of a planet rather than a planet - and only what the
+ * photograph cannot say stays: the India highlight, the AOI box and the Mumbai mark. One number,
  * `GlobeFrame.photo`, carries that hand-over, and it is 0 - which is to say the picture is exactly
  * what it was before - whenever the browser has no WebGL2, the texture has not decoded, a token
  * colour could not be read, or the frame is tighter than the texture can honestly fill. There is no
@@ -708,7 +710,15 @@ function GlobeSvg({ onDone, still = false, sequence = "unroll" }: GlobeIntroProp
     const clean = (d: string | null) =>
       d && !d.includes("NaN") && !d.includes("Infinity") ? d : null;
 
-    const lands = (source?.land ?? []).filter((land) => inWindow(land, frame.centre, frame.scale));
+    // Once the photograph carries the picture the plain countries reach no pixel, and projecting
+    // them is the most expensive thing in this memo. The highlighted one is not decoration - it
+    // is act 2 of M27 naming where the frame is going - so it is still built when it is asked for.
+    const wantPlain = dim.landFill > 0.01 || dim.landStroke > 0.01;
+    const lands = (source?.land ?? []).filter(
+      (land) =>
+        (wantPlain || (frame.highlight > 0 && land.name === HIGHLIGHT_NAME)) &&
+        inWindow(land, frame.centre, frame.scale),
+    );
 
     // Every country that is drawn the same way becomes one `d` string and therefore one element.
     // Two hundred and forty `<path>` nodes rebuilt sixty times a second is reconciliation work
@@ -746,7 +756,7 @@ function GlobeSvg({ onDone, still = false, sequence = "unroll" }: GlobeIntroProp
           : null,
       point: projection([MUMBAI_LON, MUMBAI_LAT]),
     };
-  }, [fine, frame, sequence, world]);
+  }, [dim.landFill, dim.landStroke, fine, frame, sequence, world]);
 
   // The dashboard's globe is decoration in front of a map the reader is waiting for, and its
   // skip button is the real control (UI_SPEC 10), so the canvas is hidden from assistive
