@@ -274,8 +274,15 @@ describe("how much of the picture the photograph carries", () => {
     const on = vectorOpacity(1);
     expect(on.sphereFill).toBe(0);
     expect(on.landFill).toBe(0);
-    expect(on.landStroke).toBeGreaterThan(0.5);
-    expect(on.sphereStroke).toBeGreaterThan(0.4);
+    // Every vector goes to nothing: the photograph already has coastlines, and a traced second
+    // set over them is what made the hero read as a diagram (2026-09-23).
+    expect(on.landStroke).toBe(0);
+    expect(on.sphereStroke).toBe(0);
+    // Half way through the fade they are still half drawn, so the hand-over is a fade and not a
+    // cut - a cut would be a motion, and section 8 lists none for it.
+    const half = vectorOpacity(0.5);
+    expect(half.landStroke).toBeCloseTo(0.5, 10);
+    expect(half.sphereStroke).toBeCloseTo(0.5, 10);
   });
 
   it("treats a frame with no `photo` at all as the picture that shipped before", () => {

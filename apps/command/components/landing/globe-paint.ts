@@ -75,9 +75,16 @@ export function photoOf(frame: GlobeFrame): number {
  * How strongly each vector layer is drawn once the photograph is behind it.
  *
  * One place for the numbers so the SVG in `globe-intro.tsx` and the canvas below cannot drift
- * apart. The fills go to nothing - a filled country over a photograph of that country is a sticker
- * over a planet - while the strokes stay more than half their weight, because a thin coastline
- * over imagery is what makes the picture read as an instrument rather than a wallpaper.
+ * apart. **Everything goes to nothing.** The strokes used to keep about half their weight, on the
+ * argument that a thin coastline over imagery reads as an instrument rather than as wallpaper;
+ * looked at on the built page that is not what it does. Blue Marble already has coastlines, drawn
+ * by the light on the water, and a second set in `--line-strong` a pixel off the first reads as a
+ * traced outline over a photograph - the thing that made the hero look like a diagram of a planet
+ * rather than a planet (2026-09-23).
+ *
+ * It is also the whole cost of the loop. At zero opacity the painter was still projecting and
+ * stroking every country outline sixty times a second; `paintUnroll` and the SVG memo both skip
+ * the land entirely once this returns zero, which is why the numbers live here and not inline.
  */
 export function vectorOpacity(photo: number): {
   sphereFill: number;
@@ -87,9 +94,9 @@ export function vectorOpacity(photo: number): {
 } {
   return {
     sphereFill: 1 - photo,
-    sphereStroke: 1 - 0.55 * photo,
+    sphereStroke: 1 - photo,
     landFill: 1 - photo,
-    landStroke: 1 - 0.45 * photo,
+    landStroke: 1 - photo,
   };
 }
 
@@ -189,23 +196,31 @@ export function paintUnroll(
     context.fillStyle = palette.deep;
     context.fill();
   }
-  context.globalAlpha = dim.sphereStroke;
-  context.lineWidth = 1;
-  context.strokeStyle = palette.lineStrong;
-  context.stroke();
-
-  context.beginPath();
-  for (const shape of land) path(shape.feature as never);
-  if (dim.landFill > 0.01) {
-    context.globalAlpha = dim.landFill;
-    context.fillStyle = palette.well;
-    context.fill();
+  if (dim.sphereStroke > 0.01) {
+    context.globalAlpha = dim.sphereStroke;
+    context.lineWidth = 1;
+    context.strokeStyle = palette.lineStrong;
+    context.stroke();
   }
-  context.globalAlpha = dim.landStroke;
-  context.lineWidth = 0.6;
-  context.strokeStyle = palette.lineStrong;
-  context.stroke();
-  context.globalAlpha = 1;
+
+  // Resampling 240 country outlines through the projection is the most expensive thing this
+  // function does, and once the photograph carries the picture none of it reaches a pixel. The
+  // guard is `> 0.01` on both, so the land is still drawn all the way through the fade and stops
+  // exactly when it stops being visible.
+  if (dim.landFill > 0.01 || dim.landStroke > 0.01) {
+    context.beginPath();
+    for (const shape of land) path(shape.feature as never);
+    if (dim.landFill > 0.01) {
+      context.globalAlpha = dim.landFill;
+      context.fillStyle = palette.well;
+      context.fill();
+    }
+    context.globalAlpha = dim.landStroke;
+    context.lineWidth = 0.6;
+    context.strokeStyle = palette.lineStrong;
+    context.stroke();
+    context.globalAlpha = 1;
+  }
 
   // The Mumbai mark, held back until the globe faces the city and grown with the flattening.
   const point = projection([MUMBAI_LON, MUMBAI_LAT]);
