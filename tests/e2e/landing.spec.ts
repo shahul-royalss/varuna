@@ -74,6 +74,28 @@ test.describe("landing page (7.1)", () => {
   });
 
   test(
+    "the proof numbers are fetched from the API when it is reachable",
+    { tag: "@needs-city" },
+    async ({ page, request }) => {
+      // The positive control for the test above it. Both figures are read from the same page, so
+      // a page that always falls back to the committed copy passes the offline test on its own -
+      // and a harness whose browser cannot reach the API at all (a CORS allowlist that does not
+      // name the UI's port will do it) looks exactly like a venue with no network. This test
+      // fails in that case, because the figure it demands is the one only a live fetch produces.
+      const served = (await (
+        await request.get(`${API_URL}/v1/verification?event=MUM-2019-07-02`, { timeout: 120_000 })
+      ).json()) as Verification;
+      let asked = false;
+      page.on("request", (r) => {
+        if (r.url().startsWith(`${API_URL}/v1/verification`)) asked = true;
+      });
+      await page.goto("/", { waitUntil: "domcontentloaded", timeout: NAV_TIMEOUT });
+      await expectProofFigures(page, expectedFigures(served));
+      expect(asked, "the page asked /v1/verification for its proof numbers").toBe(true);
+    },
+  );
+
+  test(
     "the committed copy is what /v1/verification serves today",
     { tag: "@needs-city" },
     async ({ request }) => {
