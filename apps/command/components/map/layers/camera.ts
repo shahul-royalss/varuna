@@ -43,6 +43,17 @@ export interface CityCameraInput {
   reducedMotion: boolean;
   /** The hero map is read-only and never reports camera changes. */
   interactive: boolean;
+  /**
+   * 3D mode (task P6.15): the camera takes CLAUDE.md 6.7's 55 degree pitch, and goes back to the
+   * pitch it had when 3D is turned off.
+   *
+   * It **cuts** rather than tilts, with or without reduced motion: section 8 has no row for a
+   * pitch change, and a motion that is not in the catalogue is not allowed on screen (rule 9).
+   * The reduced-motion branch the task asks for is therefore the only branch there is.
+   */
+  threeD?: boolean;
+  /** Pitch to use in 3D; the caller passes `TERRAIN_PITCH`. */
+  pitch3d?: number;
 }
 
 export interface CityCamera {
@@ -50,8 +61,7 @@ export interface CityCamera {
   size: { width: number; height: number } | null;
   viewState: ViewState;
   onViewStateChange:
-    | ((change: { viewState: ViewState; interactionState?: InteractionState }) => void)
-    | undefined;
+    ((change: { viewState: ViewState; interactionState?: InteractionState }) => void) | undefined;
 }
 
 export function useCityCamera({
@@ -59,6 +69,8 @@ export function useCityCamera({
   focus,
   reducedMotion,
   interactive,
+  threeD = false,
+  pitch3d = 55,
 }: CityCameraInput): CityCamera {
   // **The camera is controlled.** It used to be handed to deck.gl as `initialViewState` on the
   // theory that deck would notice a changed object and move itself. It does not: `initialViewState`
@@ -95,9 +107,9 @@ export function useCityCamera({
       latitude: view.latitude,
       zoom: view.zoom,
       bearing: 0,
-      pitch: 0,
+      pitch: threeD ? pitch3d : 0,
     };
-  }, [size, frame]);
+  }, [size, frame, threeD, pitch3d]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -106,7 +118,8 @@ export function useCityCamera({
       const box = entries[0]?.contentRect;
       if (!box) return;
       setSize((current) =>
-        current && Math.abs(current.width - box.width) < 1 &&
+        current &&
+        Math.abs(current.width - box.width) < 1 &&
         Math.abs(current.height - box.height) < 1
           ? current
           : { width: box.width, height: box.height },
@@ -149,6 +162,26 @@ export function useCityCamera({
     // `focus` is a fresh object each render; `focusKey` is the identity that matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusKey, reducedMotion]);
+
+  // 3D on: a camera the operator has moved takes the 3D pitch, remembering the pitch it had. 3D
+  // off: it goes back to that pitch, so the flat map returns as it was left. A camera nobody has
+  // moved follows the fit, which carries the right pitch already.
+  //
+  // Adjusted during render on the prop change - React's documented alternative to an effect,
+  // which would paint one frame at the old pitch before correcting it.
+  const [pitchMemo, setPitchMemo] = useState({ threeD, before: 0 });
+  if (pitchMemo.threeD !== threeD) {
+    const before = threeD ? (camera?.pitch ?? 0) : pitchMemo.before;
+    setPitchMemo({ threeD, before });
+    if (camera) {
+      setCamera({
+        ...camera,
+        pitch: threeD ? pitch3d : pitchMemo.before,
+        transitionDuration: 0,
+        transitionInterpolator: undefined,
+      });
+    }
+  }
 
   const viewState = owned ? (camera ?? fitted) : fitted;
 
