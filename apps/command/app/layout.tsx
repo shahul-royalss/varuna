@@ -45,7 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`dark h-full ${bricolage.variable} ${GeistSans.variable} ${GeistMono.variable}`}
     >
-      <body className="bg-ink text-text flex min-h-full flex-col font-sans antialiased">
+      <body className="flex min-h-full flex-col bg-ink font-sans text-text antialiased">
         <Providers>{children}</Providers>
         <SwRegister />
       </body>
