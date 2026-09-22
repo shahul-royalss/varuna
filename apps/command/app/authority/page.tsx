@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { AuthorityScreen } from "./authority-screen";
+import { WardMap } from "./ward-map";
 
 export const metadata: Metadata = {
   title: "Ward officer's desk",
@@ -11,5 +12,9 @@ export const metadata: Metadata = {
 };
 
 export default function AuthorityPage() {
-  return <AuthorityScreen />;
+  // The ward map is passed in rather than imported by the screen, so the screen stays a client
+  // component with one job and the map - which pulls `FloodMap`, deck.gl and a run load behind
+  // it - is a child this server component hands over. It must be framed on `ENTRY_AOI` from its
+  // first paint or motion M27's cross-fade lands somewhere the globe was not; `WardMap` is.
+  return <AuthorityScreen wardMap={<WardMap />} />;
 }

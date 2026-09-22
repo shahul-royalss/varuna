@@ -24,14 +24,18 @@ import {
   type TruthPin,
 } from "./city-map";
 import type { CityMapMode } from "./types";
+import type { Bbox } from "./basemap";
 import {
   loadBuildings,
+  loadDrainNodes,
   loadDrains,
   loadFacilityLabels,
   type BuildingPolygon,
   type DrainPath,
   type FacilityLabel,
 } from "@/lib/api/city-layers";
+import { useMapOverlay } from "./layers/overlay-context";
+import type { DrainNode } from "./layers/types";
 import { apiUrl } from "@/lib/api/client";
 import { allSegments, joinSegments, loadRunDepth, type RunDepth } from "@/lib/api/run-depth";
 import type { Hotspot } from "@/lib/api/hotspots";
@@ -104,6 +108,14 @@ export interface FloodMapProps {
    * Omitted, the map draws the whole network at its prior.
    */
   drains?: readonly DrainPath[];
+  /**
+   * The box the camera frames on its *first* paint. Defaults to the city's AOI.
+   *
+   * Passed through to `CityMap`'s camera untouched, so a screen that must open on a known frame -
+   * the ward officer's desk, where motion M27's globe cross-fades into this map and the two have
+   * to be looking at the same place - gets that frame without a fly-to.
+   */
+  bounds?: Bbox;
   /** `hero` makes the map read-only for the landing page's scrub loop (motion M1). */
   mode?: CityMapMode;
   /** Set to draw wet streets in the public map's three colours against this stopping depth. */
@@ -137,6 +149,7 @@ export function FloodMap({
   showBuildings = true,
   showDrains = false,
   drains: learned = NO_LEARNED_DRAINS,
+  bounds,
   focus = null,
   isochrones = [],
   mode = "console",
@@ -241,17 +254,38 @@ export function FloodMap({
     return () => controller.abort();
   }, [city, showBuildings, buildings.length]);
 
+  // The drain X-ray asks for the same network as the Drains layer, so the two share one fetch:
+  // switching the X-ray on after the Drains layer costs nothing, and either way round the 18 MB
+  // is paid once.
+  const overlay = useMapOverlay();
+  const xrayOn = Boolean(overlay.xray);
+  const wantNetwork = showDrains || xrayOn;
+
   // Drains only when asked for: section 6.7 has them off by default, and they are the biggest
   // layer VARUNA serves.
   const [network, setNetwork] = useState<readonly DrainPath[]>([]);
   useEffect(() => {
-    if (!showDrains || network.length > 0) return;
+    if (!wantNetwork || network.length > 0) return;
     const controller = new AbortController();
     loadDrains(city, controller.signal)
       .then(setNetwork)
       .catch(() => undefined);
     return () => controller.abort();
-  }, [city, showDrains, network.length]);
+  }, [city, wantNetwork, network.length]);
+
+  // The graph's 49,897 nodes, about 9 MB, and only the X-ray wants them: they are what a manhole
+  // shaft and an outfall marker are drawn from. Without them the X-ray still draws its pipes and
+  // says in its own summary that the shafts are absent, so a slow or failed load degrades to a
+  // smaller true picture rather than to an invented one.
+  const [nodes, setNodes] = useState<readonly DrainNode[]>([]);
+  useEffect(() => {
+    if (!xrayOn || nodes.length > 0) return;
+    const controller = new AbortController();
+    loadDrainNodes(city, controller.signal)
+      .then(setNodes)
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [city, xrayOn, nodes.length]);
 
   // The whole network at its prior, with the run's learned pipes drawn over it at their
   // posterior - the same join `/drains` makes, so the console's Drains mode and the X-ray
@@ -389,6 +423,8 @@ export function FloodMap({
         showSurcharge={showSurcharge}
         buildings={buildings}
         drains={drains}
+        drainNodes={nodes}
+        bounds={bounds}
         showBuildings={showBuildings}
         showDrains={showDrains}
         hotspots={rings}

@@ -21,8 +21,10 @@ export interface LayerToggles {
   isochrones: boolean;
   /** The demo ambulance trip, naive against VARUNA, at the scrub time. */
   routes: boolean;
-  /** The city on its own conditioned DEM, water draped on it (task P6.15). */
+  /** Google's photorealistic city, with every VARUNA layer draped on it (task P6.15). */
   threeD: boolean;
+  /** The inferred drains drawn at their invert depth beneath the streets (motion M28). */
+  xray: boolean;
 }
 
 export type LayerKey = keyof LayerToggles;
@@ -76,9 +78,15 @@ const ROWS: readonly {
   { key: "hotspots", label: "Ground truth", hint: "The chronic register", shortcut: "G" },
   {
     key: "threeD",
-    label: "3D terrain",
-    hint: "The conditioned 30 m DEM, 2x vertical, with the water draped on it",
+    label: "Photorealistic city",
+    hint: "Google's photographed 3D Mumbai, with the water and the routes draped on it",
     shortcut: "3",
+  },
+  {
+    key: "xray",
+    label: "Drain X-ray",
+    hint: "The inferred pipes at their invert depth under the streets; best in 3D",
+    shortcut: "X",
   },
 ];
 
@@ -87,8 +95,22 @@ const ROWS: readonly {
  *
  * Only layers that exist are listed. CLAUDE.md 17 forbids a dead control, and a switch that does
  * nothing is worse than no switch: it makes the operator wonder whether the data is missing or
- * the map is broken. Where a layer needs something first - a facility for the isochrones, a DEM
- * for 3D - the row's detail line says what, rather than the switch doing nothing silently.
+ * the map is broken. Where a layer needs something first - a facility for the isochrones,
+ * Google's Map Tiles API for the photorealistic city, a re-exported drain layer carrying invert
+ * elevations for the X-ray - the row's detail line says what, rather than the switch doing
+ * nothing silently.
+ *
+ * The photorealistic row's detail line is worth knowing how to read, because the answer depends
+ * on *who asks*. Measured on 2026-09-23: from the page at `http://localhost:3000` the root
+ * tileset answers and the tiles draw, credits and all; from `curl` on the same machine, with no
+ * `Referer` header, the identical request answers **HTTP 404 "Requested entity was not found."**
+ * in both the `X-Goog-Api-Key` and the `?key=` form. The key is HTTP-referrer restricted, so a
+ * command line is not an honest test of it and a browser is. That 404 has its own line in the
+ * console's tests, because it is what a reader gets the day an origin falls off the key's list.
+ *
+ * Whatever the answer, the row leaves the map exactly as it was rather than emptying it. The same
+ * rule carries the X-ray: a drain layer exported before the invert elevations landed carries
+ * none, and the row then names `make city CITY=mumbai` instead of drawing a sewer at sea level.
  */
 export function LayerPanel({ value, onChange, counts = {}, details = {} }: LayerPanelProps) {
   const [open, setOpen] = useState(true);

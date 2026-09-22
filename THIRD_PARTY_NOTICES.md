@@ -39,6 +39,34 @@ Confirm the version before publication if the provenance needs to be exact.
 It is committed rather than fetched at runtime because CLAUDE.md § 17 requires the finale to run
 with the venue's network off, and a hero that needs a CDN is the one thing on the page that cannot.
 
+**`apps/command/public/earth-bluemarble-4096.jpg`** — 704 KB (720,728 bytes), 4096 × 2048
+equirectangular JPEG, sha256
+`67aad248cda49c7de66f1db464e62657d969a903d9f7d4b92e97ede7e23e5249`. It is the photographic Earth
+the landing hero's globe (M26) and the citizen dashboard's approach (M27) are painted with; the
+fragment shader in `apps/command/components/landing/globe-texture.ts` samples it.
+
+Derived from NASA's **Blue Marble: Land Surface, Shallow Water, and Shaded Topography**, retrieved
+2026-09-23 from
+<https://eoimages.gsfc.nasa.gov/images/imagerecords/57000/57752/land_shallow_topo_8192.tif>
+(8192 × 4096 TIFF, 27,797,968 bytes, sha256
+`fec3cb8e729347d1c57807cf66b7867c1f3c669bb2f1fc3a8ad1625562591b36`). The only change is a Lanczos
+downsample to half its linear size and a JPEG encode at quality 78; no pixel was retouched, and the
+projection is untouched, which is what lets the shader treat it as a plain lon/lat grid. The image
+belongs to NASA's Earth Observatory Blue Marble collection,
+<https://science.nasa.gov/earth/earth-observatory/collections/blue-marble/>; the older record page
+`https://visibleearth.nasa.gov/images/57752` now redirects to the Earth Observatory index, which is
+why the image URL above is the citable one.
+
+NASA imagery is in the public domain: "NASA content — images, audio, video, and computer files used
+in the rendition of 3-dimensional models, such as texture maps and polygon data in any format —
+generally are not copyrighted and may be used for educational or informational purposes without
+needing explicit permissions" (<https://www.nasa.gov/nasa-brand-center/images-and-media/>, retrieved
+2026-09-23). No NASA endorsement of VARUNA is claimed or implied.
+
+Committed rather than fetched at runtime for the same reason as the topology above. The page is
+built so that a missing or undecodable texture costs nothing: the globe falls back to the vector
+Earth that shipped before it.
+
 ## 3. Captured reference material
 
 `docs/research/_raw/` holds **172 files captured verbatim from public sources** while researching
@@ -91,4 +119,4 @@ an ADR in `docs/DECISIONS.md`.
 
 ---
 
-*Last reviewed: 2026-09-11.*
+*Last reviewed: 2026-09-23.*

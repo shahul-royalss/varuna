@@ -23,9 +23,30 @@
  * the newest baked run is 09:10 IST, after the storm. The officer picks the cycle here as they do
  * on the console and on the pump board. Closures are not per-cycle - a street is shut or it is
  * not - but the street *list* is, because it is the set this cycle says is in trouble.
+ *
+ * **The desk opens on the ward** (motion M27, widened to this screen 2026-09-23). The same entry
+ * the citizen dashboard uses plays here, for the same reason: an officer who has just been handed
+ * this URL needs to be told which city and which ward before they are asked for a passphrase. It
+ * plays *before* the gate is decided, so nobody is made to watch a globe after typing a
+ * passphrase, and it is a sibling of the page rather than a wrapper, so the ops-log fetch this
+ * screen does on mount is already in flight while the globe turns. It is skippable by any key -
+ * on a screen used during a flood that matters more than it does on the dashboard - and its
+ * session key is its own, so seeing the dashboard's entry does not silence the desk's and a
+ * reload mid-incident does not replay it.
+ *
+ * **The map slot is not the map.** The entry cross-fades into the ward map region at the top of
+ * the desk, mounted from the first paint and framed on {@link ENTRY_AOI} - the box the globe's
+ * last act ends on. The photorealistic city map that belongs in it is another chunk's work; until
+ * it is passed in as {@link AuthorityScreenProps.wardMap} the region says so in its own words
+ * rather than drawing something that is not a map. Two honest consequences: the
+ * handover lands on an empty frame rather than on a city, and the desk is a scrolling column, so
+ * the fade reveals the whole desk with its ward map at the top of the viewport rather than a map
+ * that fills the frame the way the dashboard's does.
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { Map as MapIcon } from "lucide-react";
+import Link from "next/link";
 
 import { AlertPanel } from "@/components/authority/alert-panel";
 import { CitizenInbox } from "@/components/authority/citizen-inbox";
@@ -41,6 +62,8 @@ import { SituationNote } from "@/components/authority/situation-note";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/varuna/app-shell";
 import { CyclePicker } from "@/components/varuna/cycle-picker";
+import { EmptyState } from "@/components/varuna/empty-state";
+import { ENTRY_AOI, GlobeEntry } from "@/components/varuna/globe-entry";
 import { PageHeader } from "@/components/varuna/page-header";
 import {
   clearPassphrase,
@@ -55,7 +78,73 @@ import {
 /** The city this desk acts for until the switcher threads one through (task D-09). */
 const DESK_CITY = "mumbai";
 
-export function AuthorityScreen() {
+/**
+ * Remembers, for this tab only, that the desk's entry has played.
+ *
+ * Its own key, not the dashboard's. `sessionStorage` survives a reload, so an officer who
+ * refreshes the desk during an incident does not watch it again; it is cleared when the tab
+ * closes, so the next rehearsal opens on it.
+ */
+export const DESK_INTRO_SESSION_KEY = "varuna.authority-intro.played";
+
+/** The ward map region's accessible name; the entry hands over to it. */
+export const WARD_MAP_LABEL = "Ward map";
+
+/** `ENTRY_AOI` as the one line the placeholder prints, so the frame names the box it is. */
+function aoiLine([west, south, east, north]: readonly [number, number, number, number]): string {
+  return `${west}–${east} °E, ${south}–${north} °N`;
+}
+
+/**
+ * What the ward map region shows until a map is passed in.
+ *
+ * Not "loading": nothing is loading, and CLAUDE.md rule 6 does not let a screen claim otherwise.
+ * It says what is missing, what will fill it, and where the same forecast can be seen now - and it
+ * prints the AOI so the frame the entry lands on is visibly the box the globe ended on rather than
+ * an empty rectangle.
+ */
+function WardMapPlaceholder() {
+  return (
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-ink">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 opacity-35"
+        style={{
+          backgroundImage:
+            "linear-gradient(to right, var(--line) 1px, transparent 1px), linear-gradient(to bottom, var(--line) 1px, transparent 1px)",
+          backgroundSize: "48px 48px",
+        }}
+      />
+      <EmptyState
+        icon={MapIcon}
+        title="No ward map yet"
+        description="The photorealistic city map is not wired into the desk. Open the console to see this cycle's water on VARUNA's own map."
+        action={
+          <Link href="/console" className="text-tide type-small underline underline-offset-2">
+            Open the console
+          </Link>
+        }
+      />
+      <p className="num text-text-3 type-micro absolute right-3 bottom-2">
+        {aoiLine(ENTRY_AOI)}
+      </p>
+    </div>
+  );
+}
+
+export interface AuthorityScreenProps {
+  /**
+   * The map the entry cross-fades into, drawn across the top of the desk.
+   *
+   * The integrator passes the photorealistic 3D city here from `app/authority/page.tsx`. Whatever
+   * it is, it must fill its box (`absolute inset-0` inside this region's `relative` frame) and be
+   * framed on {@link ENTRY_AOI} on its *first* paint - not after a fly-to - or the handover lands
+   * somewhere the globe was not. When it is absent the region says so rather than pretending.
+   */
+  wardMap?: React.ReactNode;
+}
+
+export function AuthorityScreen({ wardMap }: AuthorityScreenProps = {}) {
   const [status, setStatus] = useState<GateStatus>("checking");
   const [gateReason, setGateReason] = useState<string | null>(null);
   const [officer, setOfficer] = useState<string | null>(null);
@@ -65,6 +154,11 @@ export function AuthorityScreen() {
   const [entries, setEntries] = useState<OpsEntry[] | null>(null);
   const [total, setTotal] = useState(0);
   const [logError, setLogError] = useState<string | null>(null);
+  // Whether the entry has handed over. Nothing on the desk is hidden behind it - the map region
+  // is mounted and framed from the first paint, which is the handover rule - so this only marks
+  // the region for a reader of the DOM and for the tests that assert the desk survives the entry.
+  const [handedOver, setHandedOver] = useState(false);
+  const entryDone = useCallback(() => setHandedOver(true), []);
 
   // The log is the one read that answers both questions this screen opens with: what has been
   // done, and whether this API accepts writes at all.
@@ -123,6 +217,17 @@ export function AuthorityScreen() {
     <AppShell>
       <div className="h-full min-h-0 overflow-y-auto">
         <div className="flex flex-col gap-6 p-6">
+          {/* Mounted before the gate is decided and framed on the AOI, so the entry's cross-fade
+              lands on a frame that was already there (UI_SPEC 2's handover rule). */}
+          <section
+            data-slot="ward-map"
+            data-handover={handedOver ? "done" : "playing"}
+            aria-label={WARD_MAP_LABEL}
+            className="rounded-panel border-line relative h-[clamp(220px,32vh,380px)] shrink-0 overflow-hidden border"
+          >
+            {wardMap ?? <WardMapPlaceholder />}
+          </section>
+
           <PageHeader
             title="Ward officer's desk"
             description="Tell VARUNA what it cannot know. A closure, a broken pump and an acknowledgement are read back by the router, the optimiser and the alert queue; a note is read by people."
@@ -210,6 +315,14 @@ export function AuthorityScreen() {
           </div>
         </div>
       </div>
+
+      {/* Last in the tree and `fixed` in its own right: a sibling of the desk, not a wrapper
+          around it, so nothing on the desk waits for it (M27). */}
+      <GlobeEntry
+        sessionKey={DESK_INTRO_SESSION_KEY}
+        slot="authority-intro"
+        onDone={entryDone}
+      />
     </AppShell>
   );
 }

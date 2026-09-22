@@ -40,6 +40,12 @@ export const SCAN_DIRS = [
   "apps/command/components/varuna",
   "apps/command/components/v0",
   "apps/command/components/map",
+  // Added 2026-09-23. These two were never scanned, so CLAUDE.md rule 9 had simply never been
+  // enforced on the landing page, the globe or the citizen screens - the whole of `/`, and most
+  // of `/dashboard`. Both folders were clean when the linter was first pointed at them, so this
+  // adds no exceptions; it closes a gate that was open.
+  "apps/command/components/landing",
+  "apps/command/components/citizen",
   "apps/command/lib",
 ];
 

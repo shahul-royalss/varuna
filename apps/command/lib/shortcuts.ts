@@ -33,7 +33,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: "routes", keys: ["R"], label: "Routes", group: "Layers", availability: "run" },
   { id: "isochrones", keys: ["I"], label: "Isochrones", group: "Layers", availability: "run" },
   { id: "ground-truth", keys: ["G"], label: "Ground truth", group: "Layers", availability: "run" },
-  { id: "3d", keys: ["3"], label: "3D terrain", group: "Layers", availability: "run" },
+  { id: "3d", keys: ["3"], label: "Photorealistic city", group: "Layers", availability: "run" },
+  { id: "xray", keys: ["X"], label: "Drain X-ray", group: "Layers", availability: "run" },
   { id: "whatif", keys: ["W"], label: "What-if drawer", group: "Panels", availability: "run" },
   { id: "palette", keys: ["Ctrl K"], label: "Command palette", group: "Panels", availability: "always" },
   { id: "shortcuts", keys: ["?"], label: "Keyboard shortcuts", group: "Panels", availability: "always" },
@@ -48,7 +49,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
 ];
 
 /** Layer keys (lower case) that Phase 6 wires to map layers; nothing happens until a handler is registered. */
-export const LAYER_KEYS = ["p", "d", "s", "r", "i", "g", "3", "w"] as const;
+export const LAYER_KEYS = ["p", "d", "s", "r", "i", "g", "3", "x", "w"] as const;
 export type LayerKey = (typeof LAYER_KEYS)[number];
 
 type LayerHandler = () => void;

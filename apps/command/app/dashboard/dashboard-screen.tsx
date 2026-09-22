@@ -39,7 +39,6 @@ import { loadPlaces, planRoute, type Place, type RoutePlan } from "@/lib/api/rou
 import { formatDate, formatIst, shortenRunId } from "@/lib/format";
 import { useMediaQuery } from "@/lib/hooks";
 import type { CitizenRun } from "@/lib/maps/citizen-run";
-import { cn } from "@/lib/utils";
 
 const REPORT_ROUTE = "/report" as Route;
 
@@ -561,7 +560,12 @@ export function DashboardScreen() {
 
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
         {/* The pane owns the height; the map is absolute inside it (UI_SPEC 3). */}
-        <div ref={stageRef} className="relative min-h-0 flex-1">
+        <div
+          ref={stageRef}
+          data-slot="dashboard-stage"
+          data-handover={introDone ? "done" : "playing"}
+          className="relative min-h-0 flex-1"
+        >
           <CitizenMap
             city={city}
             profile={profile}
@@ -609,15 +613,20 @@ export function DashboardScreen() {
             </>
           )}
 
-          {/* The map is mounted and framed behind the entry, so the cross-fade lands on a framed
-              city rather than on an unframed world (UI_SPEC 2). */}
-          <div
-            aria-hidden={introDone}
-            hidden={introDone}
-            className={cn("bg-ink absolute inset-0 z-30")}
-          >
-            <DashboardIntro onDone={onIntroDone} />
-          </div>
+          {/* The map above is mounted and framed behind the entry, so the cross-fade lands on a
+              framed city rather than on an unframed world (UI_SPEC 2).
+
+              **No wrapper.** This used to sit inside an opaque `bg-ink absolute inset-0 z-30` div
+              carrying `hidden={introDone}`, and that div broke the motion it was meant to serve in
+              two ways. It had to be `hidden`, because otherwise an opaque `--ink` rectangle stays
+              over the map for ever once the entry returns null; and being `hidden` the moment
+              `onDone` fired meant the 900 ms cross-fade of M27's third act was cut to nothing,
+              since `reveal()` runs *before* the fade begins. Together with the hydration defect
+              fixed in `globe-entry.tsx` - `onDone` firing at about 1.5 s, before the globe had
+              drawn a frame - the entry was `display: none` for its entire four seconds. `GlobeEntry`
+              is its own `fixed inset-0 z-50` overlay on `--ink` and removes itself when it is
+              finished, so it needs nothing around it. */}
+          <DashboardIntro onDone={onIntroDone} />
         </div>
 
         {wide ? (

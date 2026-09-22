@@ -42,11 +42,52 @@ export type BuildingPolygon = [number, number][];
 
 /** One inferred drain edge, coloured by its blockage prior. */
 export interface DrainPath {
+  /** Edge id, where the caller has one. Optional because `layers/drains.ts` never needed it and
+   * the layers are fed from more than one place; the API client's own `DrainPath` always sets it. */
+  id?: string;
   path: [number, number][];
   /** Blockage 0-1; the magenta ramp of section 6.2. */
   beta: number;
   /** Pipe diameter in metres, which sets the drawn width (section 6.7: 1-4 px). */
   diameter: number;
+  /**
+   * Invert elevation in metres at the edge's from-node and to-node, in the DEM's own vertical
+   * frame. What the X-ray (`layers/drains-3d.ts`) places the pipe at.
+   *
+   * Optional, and that is not defensive coding: the map layer's property allow-list
+   * (`services/city/varuna_city/export.py`, `MAP_KEEP_COLUMNS`) did not carry these until the
+   * elevations were added to it, so a deployed API serving a city exported before that change
+   * answers with neither. The X-ray reports that rather than drawing the sewer at zero.
+   */
+  zUpM?: number;
+  zDnM?: number;
+  /** The node ids at each end, so the nodes layer's ground elevations can be joined on. */
+  fromNode?: string;
+  toNode?: string;
+}
+
+/**
+ * One node of the inferred drain graph: a manhole, an inlet, a depression bottom, a trunk
+ * junction or an outfall.
+ *
+ * `kind` is the string the city pipeline writes. Mumbai's export has exactly five values,
+ * counted from `city/mumbai/map/drain_nodes.geojson` on 2026-09-23: inlet 46,247,
+ * depression 2,448, trunk 1,047, outfall 127, hotspot 28. It is typed as a string rather than
+ * a union so a city built with a newer pipeline does not fail to parse over a sixth kind.
+ */
+export interface DrainNode {
+  id: string;
+  lon: number;
+  lat: number;
+  kind: string;
+  /** Street level above the node, metres. The top of its shaft. */
+  zGroundM: number;
+  /** Pipe invert at the node, metres. The bottom of its shaft. */
+  zInvertM: number;
+  /** True where the network discharges to a waterway or the sea. */
+  isOutfall: boolean;
+  /** True for an outfall whose stage is the tide: where the reversed flow comes in. */
+  tidal: boolean;
 }
 
 /** One drawn route: the naive shortest path, the VARUNA route, or an alternate. */
