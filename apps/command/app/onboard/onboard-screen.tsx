@@ -34,6 +34,8 @@ import {
   type RunDepth,
 } from "@/lib/api/run-depth";
 import { apiUrl } from "@/lib/api/client";
+import { useLive, type LiveTopicFilter } from "@/lib/api/live";
+import type { LiveEvent } from "@/lib/api/schemas";
 import { useLayerFade } from "@/lib/hooks/use-layer-fade";
 import { formatIst } from "@/lib/format";
 import { OnboardLayers, type WizardLayerId, type WizardLayerState } from "./onboard-layers";
@@ -47,6 +49,9 @@ const DESIGN_STORM = "CHN-IDF-25yr";
 
 /** How often the job is polled. A build is minutes long; a second is smooth and costs nothing. */
 const POLL_MS = 1000;
+
+/** The one socket topic the wizard listens to. Module-level so `useLive` never re-subscribes. */
+const ONBOARD_TOPICS: readonly LiveTopicFilter[] = ["onboard.progress"];
 
 /** Chennai's AOI (CLAUDE.md 3.3), so the map frames the right place before any layer arrives. */
 const CHENNAI_BOUNDS: [[number, number], [number, number]] = [
@@ -213,6 +218,26 @@ export function OnboardScreen() {
     return () => controller.abort();
   }, []);
 
+  // The pipeline's own `onboard.progress` events over the live socket (CLAUDE.md 7.9: "streams
+  // progress over the WebSocket"). Each step start and finish for this city asks for the job at
+  // once, so a step lands on screen when the pipeline reports it rather than on the next poll
+  // tick; the job endpoint is what carries the log tail, so the event is the trigger and the job
+  // is the state. The poll below stays as the fallback for a dropped socket.
+  const liveJobId = job?.status === "running" || job?.status === "queued" ? job.jobId : null;
+  const [streamed, setStreamed] = useState(0);
+  const onProgress = useCallback(
+    (event: LiveEvent) => {
+      const payload = (event.payload ?? {}) as { city?: unknown };
+      if (!liveJobId || payload.city !== CITY) return;
+      setStreamed((n) => n + 1);
+      pollOnboard(liveJobId)
+        .then(setJob)
+        .catch(() => undefined);
+    },
+    [liveJobId],
+  );
+  useLive({ topics: ONBOARD_TOPICS, onEvent: onProgress, enabled: liveJobId !== null });
+
   // Poll while the job is live. Stops the moment it finishes or fails.
   useEffect(() => {
     const id = job?.jobId;
@@ -354,7 +379,11 @@ export function OnboardScreen() {
             </Button>
             <p className="type-micro text-text-3 max-w-[52ch]">
               {running
-                ? `Step ${Math.round((job?.progress ?? 0) * 100)} %, ${Math.round(job?.elapsedS ?? 0)} s elapsed.`
+                ? `Step ${Math.round((job?.progress ?? 0) * 100)} %, ${Math.round(job?.elapsedS ?? 0)} s elapsed.${
+                    streamed > 0
+                      ? ` ${streamed} progress ${streamed === 1 ? "event" : "events"} streamed over the live socket.`
+                      : ""
+                  }`
                 : "Runs from city/cache/chennai: terrain, roads and land cover are already downloaded."}
             </p>
           </div>
