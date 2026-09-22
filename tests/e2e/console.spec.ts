@@ -78,8 +78,8 @@ test.describe("P6.13 the keyboard path", () => {
     const overlay = page.getByRole("dialog").filter({ hasText: /shortcut/i });
     await expect(overlay).toBeVisible();
 
-    // Section 17: never a dead control. Four layer keys have no console handler, and the
-    // overlay has to say so rather than listing them as if pressing them did something.
+    // Section 17: never a dead control, and never a live control described as dead. Every layer
+    // key has a console handler now, so no row may still say it is coming in pilot.
     const pilotNotes = overlay.getByText(/coming in pilot/i);
     await expect(pilotNotes).toHaveCount(PILOT_KEYS.length);
 
@@ -127,7 +127,9 @@ test.describe("P6.13 the keyboard path", () => {
     const drawer = page.getByRole("complementary", { name: "What-if" });
     await page.keyboard.press("w");
     await expect(drawer).toBeVisible({ timeout: 10_000 });
-    await expect(drawer.getByText("Reduced-order emulator calibrated to VARUNA-Twin")).toBeVisible();
+    await expect(
+      drawer.getByText("Reduced-order emulator calibrated to VARUNA-Twin"),
+    ).toBeVisible();
     await page.keyboard.press("w");
     await expect(drawer).not.toBeVisible();
   });
