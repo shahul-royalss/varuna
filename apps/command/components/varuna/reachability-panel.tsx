@@ -19,6 +19,8 @@ import { EmptyState } from "@/components/varuna/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatIst } from "@/lib/format";
 import { loadPlaces, loadReachability, type Place, type ReachabilityResult } from "@/lib/api/route";
+import { useRunStore } from "@/lib/stores/run";
+import { parseIso, toIstIso } from "@/lib/stores/time";
 
 /** Facilities offered in the picker: the demo's two hospitals plus every fire station. */
 const DEMO_HOSPITALS = ["(KEM)", "(LTMG)"];
@@ -34,6 +36,32 @@ const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
  * A gauge in the rail is a single stroke on a panel: at 14 % it would be invisible. So the rings
  * are `--tide` at full strength and the band is named beside each one. */
 const RING_CLASS = "text-tide";
+
+/** The forecast's own step. A catchment cannot change inside one, so the panel asks once per step. */
+const STEP_MS = 5 * 60 * 1000;
+
+/**
+ * The scrub time floored to its five-minute forecast step, as IST ISO.
+ *
+ * Answer-neutral: the API reads the step an instant falls in (`SegmentDepths.step_at`), and every
+ * run's steps sit on five-minute marks, so 08:43 and 08:40 are the same question. Asking once per
+ * step rather than once per clock tick is what lets an answer land during playback at all - at
+ * 30x the clock moves faster than a 1-2 s reachability sweep, and each tick aborted the last.
+ */
+export function reachabilityStep(at: string): string {
+  const date = parseIso(at);
+  if (!date) return at;
+  return toIstIso(new Date(Math.floor(date.getTime() / STEP_MS) * STEP_MS));
+}
+
+/**
+ * How long a scrub must rest on a step before the panel asks.
+ *
+ * Aborting a request stops the browser waiting, not the server sweeping: in the browser on
+ * 2026-09-22 a drag across eight steps sent eight requests, seven aborted, and the API ran all
+ * eight 1-2 s sweeps. A drag now asks once, where it stops.
+ */
+export const SCRUB_SETTLE_MS = 250;
 
 export interface ReachabilityPanelProps {
   /** The instant to measure at: the console's scrub time. */
@@ -84,7 +112,11 @@ function Ring({ minutes, share }: { minutes: number; share: number }) {
   );
 }
 
-export function ReachabilityPanel({ at, onIsochrones }: ReachabilityPanelProps) {
+export function ReachabilityPanel({ at: scrubAt, onIsochrones }: ReachabilityPanelProps) {
+  // The run the console is drawing. Without it the API answered from the newest cycle whatever
+  // the map showed, so the rings were of another forecast than the water under them.
+  const runId = useRunStore((s) => s.currentRun?.run_id);
+  const at = reachabilityStep(scrubAt);
   const [places, setPlaces] = useState<Place[]>([]);
   const [selected, setSelected] = useState<string>("");
   // The answer carries the question it answers. That is what lets "loading" and "error" be
@@ -111,27 +143,32 @@ export function ReachabilityPanel({ at, onIsochrones }: ReachabilityPanelProps) 
     return () => controller.abort();
   }, []);
 
-  const key = `${selected}|${at}`;
+  const key = `${selected}|${at}|${runId ?? ""}`;
 
   useEffect(() => {
     if (!selected || !at) return;
     const controller = new AbortController();
-    loadReachability(selected, at, "ambulance", controller.signal)
-      .then((next) => {
-        if (controller.signal.aborted) return;
-        setAnswer({ key, result: next, error: null });
-        onIsochrones?.(next.bands.map((b) => ({ minutes: b.minutes, rings: b.rings })));
-      })
-      .catch((failure: unknown) => {
-        if (controller.signal.aborted) return;
-        setAnswer({
-          key,
-          result: null,
-          error: failure instanceof Error ? failure.message : String(failure),
+    const timer = setTimeout(() => {
+      loadReachability(selected, at, "ambulance", controller.signal, runId)
+        .then((next) => {
+          if (controller.signal.aborted) return;
+          setAnswer({ key, result: next, error: null });
+          onIsochrones?.(next.bands.map((b) => ({ minutes: b.minutes, rings: b.rings })));
+        })
+        .catch((failure: unknown) => {
+          if (controller.signal.aborted) return;
+          setAnswer({
+            key,
+            result: null,
+            error: failure instanceof Error ? failure.message : String(failure),
+          });
         });
-      });
-    return () => controller.abort();
-  }, [selected, at, key, onIsochrones]);
+    }, SCRUB_SETTLE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [selected, at, key, runId, onIsochrones]);
 
   const current = answer?.key === key ? answer : null;
   const result = current?.result ?? null;
@@ -159,12 +196,12 @@ export function ReachabilityPanel({ at, onIsochrones }: ReachabilityPanelProps) 
   return (
     <div className="flex flex-col gap-4">
       <div className="space-y-2">
-        <label htmlFor="reach-facility" className="block type-small font-medium text-text">
+        <label htmlFor="reach-facility" className="type-small text-text block font-medium">
           Facility
         </label>
         <select
           id="reach-facility"
-          className="h-8 w-full rounded-control border border-line bg-well px-2 type-small text-text outline-none focus-visible:border-line-strong focus-visible:ring-3 focus-visible:ring-tide/50"
+          className="rounded-control border-line bg-well type-small text-text focus-visible:border-line-strong focus-visible:ring-tide/50 h-8 w-full border px-2 outline-none focus-visible:ring-3"
           value={selected}
           onChange={(event) => setSelected(event.target.value)}
         >
@@ -189,8 +226,13 @@ export function ReachabilityPanel({ at, onIsochrones }: ReachabilityPanelProps) 
       {result ? (
         <>
           {result.collapsed ? (
-            <p className="flex items-start gap-2 rounded-control border border-line bg-well p-2 type-small text-text-2">
-              <AlertTriangle size={16} strokeWidth={1.75} aria-hidden="true" className="mt-0.5 shrink-0" />
+            <p className="rounded-control border-line bg-well type-small text-text-2 flex items-start gap-2 border p-2">
+              <AlertTriangle
+                size={16}
+                strokeWidth={1.75}
+                aria-hidden="true"
+                className="mt-0.5 shrink-0"
+              />
               <span>
                 Catchment collapsed: this facility reaches under 40 % of the junctions it reaches on
                 a dry morning.
@@ -202,7 +244,7 @@ export function ReachabilityPanel({ at, onIsochrones }: ReachabilityPanelProps) 
             {shares.map(({ minutes, share, band }) => (
               <li
                 key={minutes}
-                className="flex items-center gap-3 rounded-control border border-line bg-well p-2"
+                className="rounded-control border-line bg-well flex items-center gap-3 border p-2"
               >
                 <Ring minutes={minutes} share={share} />
                 <div className="min-w-0">

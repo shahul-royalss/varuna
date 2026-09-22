@@ -577,7 +577,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "route-casing",
@@ -1448,7 +1458,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "route-casing",
@@ -2220,7 +2240,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "route-casing",
@@ -3097,7 +3127,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "truth-ripple-P-1",
@@ -3835,7 +3875,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "truth-ripple-P-1",
@@ -5038,7 +5088,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "route-casing",
@@ -5929,7 +5989,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "route-casing",
@@ -6820,7 +6890,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "route-casing",
@@ -8472,7 +8552,17 @@
     ],
     "lineWidthUnits": "pixels",
     "pickable": false,
-    "stroked": true
+    "stroked": true,
+    "transitions": {
+     "getFillColor": {
+      "duration": 300,
+      "easing": "[function]"
+     },
+     "getPolygon": {
+      "duration": 300,
+      "easing": "[function]"
+     }
+    }
    },
    {
     "id": "route-casing",
