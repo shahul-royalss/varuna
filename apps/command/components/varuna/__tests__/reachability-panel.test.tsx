@@ -86,7 +86,8 @@ vi.mock("@/lib/api/route", async (importOriginal) => {
   };
 });
 
-const { ReachabilityPanel, reachabilityStep } = await import("../reachability-panel");
+const { ReachabilityPanel, SCRUB_SETTLE_MS, reachabilityStep } =
+  await import("../reachability-panel");
 
 const RUN_0840 = "MUM-20190702T0310Z-sky1.0-twin1.0-flash0.1-baked";
 
@@ -135,6 +136,17 @@ describe("ReachabilityPanel", () => {
     await waitFor(() => expect(asked).toHaveLength(2));
     expect(asked[1].at).toBe("2019-07-02T10:40:00+05:30");
     await waitFor(() => expect(onIsochrones).toHaveBeenCalledTimes(2));
+  });
+
+  it("a drag across several steps asks once, where it stops", async () => {
+    const { rerender } = render(<ReachabilityPanel at="2019-07-02T10:15:00+05:30" />);
+    rerender(<ReachabilityPanel at="2019-07-02T10:20:00+05:30" />);
+    rerender(<ReachabilityPanel at="2019-07-02T10:25:00+05:30" />);
+    rerender(<ReachabilityPanel at="2019-07-02T10:55:00+05:30" />);
+    await waitFor(() => expect(asked).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, SCRUB_SETTLE_MS * 2));
+    expect(asked).toHaveLength(1);
+    expect(asked[0].at).toBe("2019-07-02T10:55:00+05:30");
   });
 
   it("measures on the run the console is drawing", async () => {

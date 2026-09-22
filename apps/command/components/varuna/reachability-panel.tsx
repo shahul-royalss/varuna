@@ -54,6 +54,15 @@ export function reachabilityStep(at: string): string {
   return toIstIso(new Date(Math.floor(date.getTime() / STEP_MS) * STEP_MS));
 }
 
+/**
+ * How long a scrub must rest on a step before the panel asks.
+ *
+ * Aborting a request stops the browser waiting, not the server sweeping: in the browser on
+ * 2026-09-22 a drag across eight steps sent eight requests, seven aborted, and the API ran all
+ * eight 1-2 s sweeps. A drag now asks once, where it stops.
+ */
+export const SCRUB_SETTLE_MS = 250;
+
 export interface ReachabilityPanelProps {
   /** The instant to measure at: the console's scrub time. */
   at: string;
@@ -139,21 +148,26 @@ export function ReachabilityPanel({ at: scrubAt, onIsochrones }: ReachabilityPan
   useEffect(() => {
     if (!selected || !at) return;
     const controller = new AbortController();
-    loadReachability(selected, at, "ambulance", controller.signal, runId)
-      .then((next) => {
-        if (controller.signal.aborted) return;
-        setAnswer({ key, result: next, error: null });
-        onIsochrones?.(next.bands.map((b) => ({ minutes: b.minutes, rings: b.rings })));
-      })
-      .catch((failure: unknown) => {
-        if (controller.signal.aborted) return;
-        setAnswer({
-          key,
-          result: null,
-          error: failure instanceof Error ? failure.message : String(failure),
+    const timer = setTimeout(() => {
+      loadReachability(selected, at, "ambulance", controller.signal, runId)
+        .then((next) => {
+          if (controller.signal.aborted) return;
+          setAnswer({ key, result: next, error: null });
+          onIsochrones?.(next.bands.map((b) => ({ minutes: b.minutes, rings: b.rings })));
+        })
+        .catch((failure: unknown) => {
+          if (controller.signal.aborted) return;
+          setAnswer({
+            key,
+            result: null,
+            error: failure instanceof Error ? failure.message : String(failure),
+          });
         });
-      });
-    return () => controller.abort();
+    }, SCRUB_SETTLE_MS);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [selected, at, key, runId, onIsochrones]);
 
   const current = answer?.key === key ? answer : null;
