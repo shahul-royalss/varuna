@@ -120,8 +120,9 @@ export function PumpsScreen() {
       const done = await dispatchPumps({ runId: plan.runId, user: "control room" });
       setDispatched({
         messages: done.phoneMessages.map((m, i) => ({
+          // No time on the bubble: the order was given now, on the wall clock, and the phone's
+          // status bar reads the replay's 2019 clock - two clocks on one card read as one.
           id: m.alertId ?? `${m.hotspotId}-${i}`,
-          time: done.dispatchedTs,
           text: m.text,
         })),
         instructions: done.alertInstructions,

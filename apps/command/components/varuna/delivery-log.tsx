@@ -18,6 +18,8 @@ export interface DeliveryLogRow {
   id: string;
   /** "Dashboard", "WhatsApp mock", "SMS mock", "Real send (twilio)". */
   label: string;
+  /** The place the alert is about, so rows for different alerts can be told apart. */
+  alert?: string | null;
   kind: "mock" | "real";
   /** "Shown on the alert queue", "Rendered, not sent", "Sent", "Failed", "Refused". */
   status: string;
@@ -103,6 +105,9 @@ export function DeliveryLog({
               <TableRow key={row.id} data-kind={row.kind}>
                 <TableCell className="whitespace-normal">
                   {row.label}
+                  {row.alert ? (
+                    <span className="type-micro text-text-3 block">{row.alert}</span>
+                  ) : null}
                   {row.kind === "real" && row.toMasked ? (
                     <span className="type-micro text-text-3 block">to {row.toMasked}</span>
                   ) : null}

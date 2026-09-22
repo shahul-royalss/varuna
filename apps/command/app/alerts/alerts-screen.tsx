@@ -141,7 +141,9 @@ export function AlertsScreen() {
   // The delivery log moves with the queue: a new cycle, an acknowledgement or a real send.
   useEffect(() => {
     const controller = new AbortController();
-    loadDelivery(runId, controller.signal)
+    // The worst four alerts: three renders each, plus any real send. A log of sixty alerts is
+    // one nobody reads, and the queue beside it already lists every alert.
+    loadDelivery(runId, controller.signal, 4)
       .then((log) => {
         setDelivery(log);
         setDeliveryError(null);
@@ -246,7 +248,7 @@ export function AlertsScreen() {
           escalateTo: next.id,
         });
         toast("Escalated", {
-          description: `To ${next.recipient}, logged with your name and time.`,
+          description: `To ${next.recipient}. Recorded in the ops log with who and when.`,
         });
         setReload((current) => current + 1);
       } catch (error) {
@@ -460,7 +462,12 @@ export function AlertsScreen() {
                 description="Channel, status and time. The mocks are renders on this screen."
               >
                 <DeliveryLog
-                  rows={delivery?.rows ?? null}
+                  rows={
+                    delivery?.rows.map((row) => ({
+                      ...row,
+                      alert: raised.find((a) => a.id === row.alertId)?.areaDesc ?? null,
+                    })) ?? null
+                  }
                   loading={delivery === null && deliveryError === null}
                   error={deliveryError}
                   notes={delivery?.notes}
