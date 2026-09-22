@@ -1,60 +1,17 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Flame, Hospital, TrainFront, Warehouse } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
 
-import type { GroundTruthPin } from "@/lib/api/ground-truth";
 import type { FacilityKind, Hotspot } from "@/lib/api/hotspots";
+import { Button } from "@/components/ui/button";
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Sparkline } from "@/components/varuna/sparkline";
-import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
-import { formatPinTime } from "@/lib/hooks/use-truth-pins";
-import { DUR, tween } from "@/lib/motion";
 import { formatIstTime } from "@/lib/stores/time";
 import { cn } from "@/lib/utils";
 
-/** A ticker pin, with the replay clock it was listed against when the console knows it. */
-export type TickerPin = GroundTruthPin & { clockTs?: string };
-
-/** Motion M18's ticker row: slides down 8 px into place while it fades in, on the catalogue easing
- * over the micro duration. Exported so the tests read the same values the row is given. */
-export const TICKER_ROW_FROM = { opacity: 0, y: -8 } as const;
-export const TICKER_ROW_TO = { opacity: 1, y: 0 } as const;
-export const TICKER_ROW_TRANSITION = tween(DUR.micro);
-
-/**
- * One "As it happened" row. A pin from a different day than the replay clock carries its date -
- * six of the 2 July bundle's pins are from 1 July, and "11:52" beside an 08:45 clock would read as
- * an event still to come.
- */
-function TickerRow({ pin }: { pin: TickerPin }) {
-  return (
-    <>
-      <span className="num text-text">{formatPinTime(pin.ts, pin.clockTs)}</span> · {pin.name}
-      {pin.depthPhrase ? ` · ${pin.depthPhrase}` : ""}
-      {pin.sourceUrl ? (
-        <>
-          {" · "}
-          <a
-            href={pin.sourceUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-tide underline underline-offset-2"
-          >
-            source
-          </a>
-        </>
-      ) : null}
-    </>
-  );
-}
-
 export interface HotspotRailProps {
-  /** Sourced pins the replay clock has passed, newest first (task P6.12). Each carries the URL
-   * it was read from, which is the whole point of showing them. */
-  truthPins?: readonly TickerPin[];
   hotspots: readonly Hotspot[];
   /** Current step on the time bar; the chip shows the depth *now*, not at the peak. */
   step: number;
@@ -67,6 +24,10 @@ export interface HotspotRailProps {
   /** True while the run is still loading; the rail shows nothing rather than a stale order. */
   loading?: boolean;
 }
+
+/** How many spots the rail opens on. The register ranks 28, and a list that long scrolls the
+ *  worst ones off the top of a 768 px rail; the rest are one button away. */
+const HOTSPOT_PREVIEW = 5;
 
 const FACILITY_ICONS: Record<FacilityKind, typeof Hospital> = {
   hospital: Hospital,
@@ -92,7 +53,13 @@ function peakLabel(hotspot: Hotspot): string {
  * The console's ranked hotspot rail (CLAUDE.md section 7.2, task P6.7).
  *
  * Each row is one chronic spot from the sourced register, carrying what an operator scanning the
- * rail actually decides on: how deep it gets, when, and what is next to it. The depth chip follows
+ * rail actually decides on: how deep it gets, when, and what is next to it.
+ *
+ * It also carried the "As it happened" ticker of sourced ground-truth pins (task P6.12, motion
+ * M18), removed at the team's request because it pushed the ranked list up the rail. The pins
+ * still drop on the map as the clock passes them, and `/verify` lists every one with the URL it
+ * was read from, so nothing sourced is lost. CLAUDE.md 7.2 and demo beat 2:40 still name a ticker
+ * here. The depth chip follows
  * the time bar so the rail and the map always agree about *now*, while the sparkline keeps the
  * whole three hours in view — the row tells you both where the water is and where it is going.
  *
@@ -107,13 +74,22 @@ export function HotspotRail({
   onSelect,
   ranking,
   impassableThresholdCm = 30,
-  truthPins = [],
   loading = false,
 }: HotspotRailProps) {
   const listRef = useRef<HTMLOListElement>(null);
-  const reducedMotion = usePrefersReducedMotion();
+  const [showAll, setShowAll] = useState(false);
+
+  // Ranked worst-first, so the opening five are the five to read first. The selected spot is kept
+  // whatever its rank: clicking a ring on the map that ranks below the preview would otherwise
+  // mark a row that is not drawn, and the rail would look like it ignored the click. Keeping it
+  // rather than expanding on its behalf is what lets "Show fewer" always mean what it says.
+  const visible = showAll
+    ? hotspots
+    : hotspots.filter((h, i) => i < HOTSPOT_PREVIEW || h.id === selectedId);
+  const hidden = hotspots.length - visible.length;
 
   // Keep the selected row in view when the selection comes from the map rather than the rail.
+  // Keyed on `showAll` too, so a row revealed by the line above is scrolled to once it is drawn.
   useEffect(() => {
     if (!selectedId) return;
     const row = listRef.current?.querySelector<HTMLElement>(
@@ -121,10 +97,12 @@ export function HotspotRail({
     );
     // Optional call because jsdom has no layout and so no `scrollIntoView`; every browser does.
     row?.scrollIntoView?.({ block: "nearest" });
-  }, [selectedId]);
+  }, [selectedId, showAll]);
 
+  // The arrows walk what is drawn. Indexing the full list here would focus a row that is not in
+  // the DOM while the preview is collapsed, and the focus ring would simply vanish.
   const move = (from: number, delta: number) => {
-    const next = hotspots[Math.min(Math.max(from + delta, 0), hotspots.length - 1)];
+    const next = visible[Math.min(Math.max(from + delta, 0), visible.length - 1)];
     if (!next) return;
     onSelect?.(next);
     listRef.current
@@ -164,7 +142,7 @@ export function HotspotRail({
           </div>
         ) : (
           <ol ref={listRef} className="divide-y divide-line" aria-label="Ranked hotspots">
-            {hotspots.map((h, i) => {
+            {visible.map((h, i) => {
               const selected = h.id === selectedId;
               const now = h.depthCm[Math.min(step, h.depthCm.length - 1)] ?? 0;
               return (
@@ -229,44 +207,20 @@ export function HotspotRail({
             })}
           </ol>
         )}
-      </div>
 
-      <section aria-label="As it happened" className="max-h-[14rem] shrink-0 overflow-y-auto border-t border-line p-4">
-        <h3 className="type-small font-medium text-text">As it happened</h3>
-        {truthPins.length === 0 ? (
-          <p className="mt-2 type-micro text-text-3">
-            Ground-truth pins appear as the replay clock passes them.
-          </p>
-        ) : reducedMotion ? (
-          // Section 8's fallback for M18's ticker: the row is simply there.
-          <ol className="mt-2 space-y-2">
-            {truthPins.slice(0, 8).map((pin) => (
-              <li key={pin.id} className="type-micro text-text-2">
-                <TickerRow pin={pin} />
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <ol className="mt-2 space-y-2">
-            {/* `initial={false}`: rows already passed when the ticker first shows do not slide in;
-                only a pin the clock passes while the operator watches does (motion M18). */}
-            <AnimatePresence initial={false}>
-              {truthPins.slice(0, 8).map((pin) => (
-                <motion.li
-                  key={pin.id}
-                  layout="position"
-                  initial={TICKER_ROW_FROM}
-                  animate={TICKER_ROW_TO}
-                  transition={TICKER_ROW_TRANSITION}
-                  className="type-micro text-text-2"
-                >
-                  <TickerRow pin={pin} />
-                </motion.li>
-              ))}
-            </AnimatePresence>
-          </ol>
-        )}
-      </section>
+        {hotspots.length > HOTSPOT_PREVIEW ? (
+          <div className="border-t border-line p-3">
+            <Button
+              variant="outline"
+              size="sm"
+              aria-expanded={showAll}
+              onClick={() => setShowAll((open) => !open)}
+            >
+              {showAll ? "Show fewer" : `Show all ${hotspots.length} hotspots (${hidden} more)`}
+            </Button>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

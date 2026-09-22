@@ -1,6 +1,5 @@
 "use client";
 
-import { IconRail } from "@/components/varuna/icon-rail";
 import { useLatestRun } from "@/lib/hooks/use-latest-run";
 import { TopBar } from "@/components/varuna/top-bar";
 import { cn } from "@/lib/utils";
@@ -15,9 +14,10 @@ export interface AppShellProps {
 }
 
 /**
- * The console shell (CLAUDE.md section 6.5): 52 px top bar, 56 px icon rail, the main canvas,
- * an optional 360 px right rail and an optional 96 px bottom bar. Fills the viewport and never
- * scrolls as a page; each region scrolls on its own.
+ * The console shell (CLAUDE.md section 6.5): a 52 px top bar, the main canvas, an optional 360 px
+ * right rail and an optional 96 px bottom bar. Fills the viewport and never scrolls as a page;
+ * each region scrolls on its own. The screen nav used to be a 56 px rail down the left of this
+ * row and now rides in the top bar at the team's request, so the canvas starts at the window edge.
  */
 export function AppShell({ children, rightRail, bottomBar, className }: AppShellProps) {
   // Every screen wearing this chrome shows the same run stamp, so every screen loads the run.
@@ -30,7 +30,6 @@ export function AppShell({ children, rightRail, bottomBar, className }: AppShell
     >
       <TopBar />
       <div className="flex min-h-0 flex-1">
-        <IconRail />
         <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">{children}</main>
         {rightRail ? (
           <aside

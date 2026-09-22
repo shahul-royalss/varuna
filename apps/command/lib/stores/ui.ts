@@ -3,8 +3,11 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-/** Right-rail tabs on the console (CLAUDE.md section 7.2). */
-export const RIGHT_RAIL_TABS = ["hotspots", "alerts", "pumps", "reachability"] as const;
+/**
+ * Right-rail tabs on the console (CLAUDE.md section 7.2). The Alerts and Pumps mirrors were
+ * removed at the team's request: /alerts and /pumps own those screens, and the rail repeated them.
+ */
+export const RIGHT_RAIL_TABS = ["hotspots", "reachability"] as const;
 export type RightRailTab = (typeof RIGHT_RAIL_TABS)[number];
 
 /** Vehicle profiles used by routing and safe-until (CLAUDE.md section 11.8). */

@@ -4,15 +4,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { HotspotRail } from "@/components/varuna/hotspot-rail";
 import { ReachabilityPanel } from "@/components/varuna/reachability-panel";
-import { RailAlerts, RailPumps } from "@/components/varuna/rail-mirrors";
-import type { GroundTruthPin } from "@/lib/api/ground-truth";
 import type { Hotspot, HotspotSet } from "@/lib/api/hotspots";
 import { RIGHT_RAIL_TABS, useUiStore, type RightRailTab } from "@/lib/stores/ui";
 
 const TAB_LABELS: Record<RightRailTab, string> = {
   hotspots: "Hotspots",
-  alerts: "Alerts",
-  pumps: "Pumps",
   reachability: "Reachability",
 };
 
@@ -28,23 +24,21 @@ export interface RightRailProps {
   simTime?: string | null;
   /** The console draws the bands this hands back on its own map. */
   onIsochrones?: (rings: { minutes: number; rings: [number, number][][] }[]) => void;
-  /** Sourced ground-truth pins the replay clock has passed, for the "As it happened" ticker. */
-  truthPins?: readonly GroundTruthPin[];
-  /** The run whose alerts and pump plan the rail mirrors. The pages own the full versions of
-   * both; the rail is the operator's glance at them without leaving the map (CLAUDE.md 7.2). */
-  runId?: string | null;
 }
 
 function isRightRailTab(value: unknown): value is RightRailTab {
   return typeof value === "string" && (RIGHT_RAIL_TABS as readonly string[]).includes(value);
 }
 
-/** The console's right rail (CLAUDE.md section 6.5): Hotspots, Alerts, Pumps and Reachability tabs. */
+/**
+ * The console's right rail (CLAUDE.md section 6.5). It carried Hotspots, Alerts, Pumps and
+ * Reachability; the Alerts and Pumps mirrors were removed at the team's request, because /alerts
+ * and /pumps own those screens in full and the mirrors repeated them beside the map. CLAUDE.md
+ * 6.5, 7.2 and task P8.11 still describe the four-tab rail.
+ */
 export function RightRail({
   hotspots = null,
   step = 0,
-  runId = null,
-  truthPins = [],
   selectedHotspotId = null,
   onSelectHotspot,
   hotspotsLoading = false,
@@ -77,18 +71,9 @@ export function RightRail({
           selectedId={selectedHotspotId}
           onSelect={onSelectHotspot}
           ranking={hotspots?.ranking}
-          truthPins={truthPins}
           impassableThresholdCm={hotspots?.impassableThresholdCm}
           loading={hotspotsLoading}
         />
-      </TabsContent>
-
-      <TabsContent value="alerts" className="min-h-0 flex-1 overflow-y-auto p-4">
-        <RailAlerts runId={runId} />
-      </TabsContent>
-
-      <TabsContent value="pumps" className="min-h-0 flex-1 overflow-y-auto">
-        <RailPumps runId={runId} />
       </TabsContent>
 
       <TabsContent value="reachability" className="min-h-0 flex-1 overflow-y-auto p-4">

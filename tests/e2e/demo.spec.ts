@@ -91,12 +91,15 @@ test.describe("the demo script", () => {
   });
 
   test("2:40 the ground-truth pins carry the source they were read from", async ({ page }) => {
-    await open(page, "/console");
-    const ticker = page.getByRole("region", { name: "As it happened" });
-    await expect(ticker).toBeVisible({ timeout: SETTLE });
-    // Either pins have landed with their sources, or the clock has not reached one yet - both are
-    // honest, but a pin without a link never is (rule 7).
-    const sources = ticker.getByRole("link", { name: "source" });
+    // The console's "As it happened" ticker was removed from the hotspot rail at the team's
+    // request. The pins still drop on the map as the clock passes them, but that is WebGL and has
+    // no markup to assert on, so the sourcing - which is what rule 7 is about and what this beat
+    // is for - is asserted where it is now read: /verify lists every scored pin with its URL.
+    await open(page, "/verify");
+    await expect(page.getByText(/Ground-truth pins:/)).toBeVisible({ timeout: SETTLE });
+    // Either pins have been scored and carry their sources, or the event has none to show - both
+    // are honest, but a pin without a link never is (rule 7).
+    const sources = page.getByRole("link", { name: "Source" });
     if ((await sources.count()) > 0) {
       await expect(sources.first()).toHaveAttribute("href", /^https?:\/\//);
     }
