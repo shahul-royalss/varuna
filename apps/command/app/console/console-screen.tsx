@@ -16,7 +16,8 @@ import type { MapFocus } from "@/components/map/city-map";
 import { loadSurcharge, type SurchargeSet } from "@/lib/api/surcharge";
 import { reversedFlowSummary } from "@/components/map/layers/reversed-flow";
 import { MapOverlayContext, type MapOverlay } from "@/components/map/layers/overlay-context";
-import { useTerrain, type TerrainState } from "@/components/map/layers/terrain";
+import { drainXraySummary, exaggerationLabel, type Drains3dResult } from "@/components/map/layers/drains-3d";
+import { usePhotorealTileset, type PhotorealState } from "@/lib/maps/photoreal";
 import { AppShell } from "@/components/varuna/app-shell";
 import { MapSlot } from "@/components/varuna/map-slot";
 import { PanelErrorBoundary } from "@/components/varuna/panel-error-boundary";
@@ -82,13 +83,49 @@ function routeDetail(state: ConsoleRouteState): string | undefined {
   );
 }
 
-/** What the 3D row says while the ground loads, once it is up, or why it cannot be drawn. */
-function terrainDetail(state: TerrainState): string | undefined {
+/**
+ * What the photorealistic-city row says: what it is waiting for, what it drew, or which switch is
+ * off and where to throw it.
+ *
+ * The `unavailable` sentence comes from `lib/maps/photoreal.ts`, which words one per reason, and
+ * on this build that is the Map Tiles API being disabled on the key's Cloud project - so this is
+ * the line a judge reads unless somebody enables it. It is printed whole rather than summarised:
+ * a reason that does not name the page it is fixed on is not a fix.
+ */
+export function photorealDetail(state: PhotorealState): string | undefined {
   if (state.kind === "off") return undefined;
-  if (state.kind === "loading") return "Loading the conditioned DEM.";
-  if (state.kind === "error") return state.message;
-  const [rows, cols] = state.meta.shape;
-  return `Conditioned 30 m DEM, ${cols} x ${rows} cells, heights ${state.meta.min_m} to ${state.meta.max_m} m drawn 2x.`;
+  if (state.kind === "loading") return "Asking Google for the photorealistic city.";
+  if (state.kind === "unavailable") return state.message;
+  return "Google's photorealistic Mumbai, with the water, the routes and the markers draped on it.";
+}
+
+/**
+ * What the X-ray row says, which is the X-ray's own summary plus the two things only this screen
+ * knows: whether the ground it is meant to be read under is actually drawn, and that the pipes
+ * are in the DEM's vertical frame rather than the tiles'.
+ *
+ * The datum clause is not hedging. The inverts are orthometric heights on Copernicus GLO-30 and
+ * Google's photorealistic mesh is at WGS84 ellipsoidal height; over western India the geoid
+ * separation is tens of metres and nobody here has measured it, so the offset is left at 0 and
+ * the screen says the two frames have not been reconciled (`.wf/DRAINS-requests.md` section 5).
+ * Quietly shipping a guessed offset would look right and be wrong.
+ */
+export function xrayDetail(
+  result: Drains3dResult,
+  threeD: boolean,
+  exaggeration: number,
+): string | undefined {
+  if (result.kind === "off") return undefined;
+  const parts = [drainXraySummary(result)];
+  if (result.kind === "ready") {
+    if (exaggeration !== 1) parts.push(`${exaggerationLabel(exaggeration)}.`);
+    parts.push(
+      threeD
+        ? "Depths are in the DEM's vertical frame; its offset from Google's ellipsoidal ground has not been measured, so the network may sit high or low as a whole."
+        : "Switch the photorealistic city on to look along them under the street.",
+    );
+  }
+  return parts.join(" ");
 }
 
 /** The one socket topic the console itself listens to: a published live run. */
@@ -96,6 +133,18 @@ const LIVE_RUN_TOPICS = ["runs.published"] as const;
 
 /** Stable empty bands, for when I has hidden the isochrones. */
 const NO_ISOCHRONES: Isochrone[] = [];
+
+/**
+ * The stretches the X-ray offers, as whole multiples so `exaggerationLabel` reads as a sentence.
+ *
+ * 1 is the truth, and the truth is thin: the pipeline lays every node at a fixed cover, measured
+ * over `city/mumbai/drain_nodes.parquet` on 2026-09-23 as exactly 1.50 m on all 49,897 nodes bar
+ * the trunks, which are 3.00 m (median 1.50, p10 1.50, p90 1.50, max 3.00). At 30 m ground
+ * resolution and a 55 degree camera that is a couple of pixels of separation. 4 puts the ordinary
+ * cover at 6 m, about a storey, which reads; 8 puts it at 12 m, which is for following one pipe
+ * rather than for reading the network. Both are labelled on screen as stretches.
+ */
+const XRAY_EXAGGERATIONS = [1, 4, 8] as const;
 
 /** Motion M7: 5-minute steps advance about three a second while playing. */
 const PLAY_INTERVAL_MS = 320;
@@ -243,9 +292,22 @@ function ConsoleView() {
     isochrones: true,
     // Off: a route is a question about one trip, and it costs a request the scrub would not.
     routes: false,
-    // Off: 3D is the P1 view (CLAUDE.md 3.2); the flat map is the one the demo reads from.
+    // Off: 3D is the P1 view (CLAUDE.md 3.2); the flat map is the one the demo reads from, and
+    // Google's photorealistic ground is the one layer on this screen that needs a network.
     threeD: false,
+    // Off: the X-ray is a second 18 MB network plus 9 MB of nodes, asked for rather than assumed.
+    xray: false,
   });
+  /**
+   * How far the X-ray stretches each pipe's cover, so a 1.5 m sewer under a photographed street
+   * is visible at all from a 55 degree camera. 1 is the truth and the default; the control says
+   * plainly what any other value is doing (`exaggerationLabel`), because a stretched depth that
+   * is not labelled is a fake number on screen (CLAUDE.md rule 6).
+   */
+  const [xrayExaggeration, setXrayExaggeration] = useState(1);
+  /** What the map's X-ray actually drew, reported back through the overlay context. */
+  const [xrayState, setXrayState] = useState<Drains3dResult>({ kind: "off" });
+  const onXray = useCallback((result: Drains3dResult) => setXrayState(result), []);
   // The exceedance the probability layer asks about. CLAUDE.md 7.2's four: the depth at which
   // each class of vehicle stops, so the question is always "who is stopped here?".
   const [probabilityThresholdCm, setProbabilityThresholdCm] = useState(30);
@@ -445,6 +507,7 @@ function ConsoleView() {
       r: "routes",
       i: "isochrones",
       "3": "threeD",
+      x: "xray",
     };
     const unsubscribes = Object.entries(toggles).map(([key, layer]) =>
       registerLayerShortcut(key as ShortcutLayerKey, () =>
@@ -456,9 +519,10 @@ function ConsoleView() {
     return () => unsubscribes.forEach((off) => off());
   }, [run]);
 
-  // 3D mode's ground (task P6.15). The map builds it too, from the same cached load; the console
-  // reads it only to say in the layer panel what 3D is waiting on or why it cannot draw.
-  const terrain = useTerrain(city, layers.threeD);
+  // 3D mode's ground (task P6.15). The map probes it too, and the verdict is cached per key for
+  // the life of the tab, so this second call costs no second request; the console reads it only
+  // to say in the layer panel what 3D is waiting on or which switch is off.
+  const photoreal = usePhotorealTileset(layers.threeD);
 
   // The Routes layer: the demo ambulance trip at the scrub time, re-planned when the scrub rests.
   const routeState = useConsoleRoutes(
@@ -488,10 +552,13 @@ function ConsoleView() {
     () => ({
       city,
       threeD: layers.threeD,
+      xray: layers.xray,
+      xrayExaggeration,
+      onXray,
       routes: routeLines,
       diff: whatIfOpen ? whatIfDiff : null,
     }),
-    [city, layers.threeD, routeLines, whatIfOpen, whatIfDiff],
+    [city, layers.threeD, layers.xray, xrayExaggeration, onXray, routeLines, whatIfOpen, whatIfDiff],
   );
 
   const layerDetails: Partial<Record<LayerKey, string>> = {
@@ -501,7 +568,8 @@ function ConsoleView() {
         ? "Pick a facility under Reachability to draw its 5, 10 and 15 minute reach."
         : undefined,
     routes: routeDetail(routeState),
-    threeD: terrainDetail(terrain),
+    threeD: photorealDetail(photoreal),
+    xray: xrayDetail(xrayState, photoreal.kind === "ready", xrayExaggeration),
   };
 
   return (
@@ -672,6 +740,28 @@ function ConsoleView() {
               onThresholdChange={setProbabilityThresholdCm}
               deterministic={(run?.provenance.ensembleN ?? 1) <= 1}
             />
+          ) : null}
+          {/* The X-ray's one control. A 1.5 m cover under a photographed street is about four
+              pixels at the zoom this view is read at, so stretching it is what makes the network
+              legible - and the label says what the stretch is doing, every time it is not 1
+              (CLAUDE.md rule 6: a number on screen that is not the measurement has to say so). */}
+          {layers.xray ? (
+            <div className="rounded-panel border-line w-[248px] border bg-[var(--ink)]/85 p-3 backdrop-blur-[12px]">
+              <p className="type-small text-text-2">{exaggerationLabel(xrayExaggeration)}</p>
+              <div role="group" aria-label="Drain depth exaggeration" className="mt-2 flex gap-1">
+                {XRAY_EXAGGERATIONS.map((factor) => (
+                  <Button
+                    key={factor}
+                    size="sm"
+                    variant={factor === xrayExaggeration ? "default" : "outline"}
+                    aria-pressed={factor === xrayExaggeration}
+                    onClick={() => setXrayExaggeration(factor)}
+                  >
+                    {factor === 1 ? "Real" : `${factor}x`}
+                  </Button>
+                ))}
+              </div>
+            </div>
           ) : null}
           {/* What the Drains layer is actually showing. An honesty label, not fine print
               (CLAUDE.md 6.8): most of this graph has never been observed, and the operator has to

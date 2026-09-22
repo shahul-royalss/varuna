@@ -19,6 +19,21 @@
  * them is the thing no basemap has. A judge reads the city from the data VARUNA derived, which
  * is the honest version of this map anyway.
  *
+ * **3D is the one exception, and it is opt-in.** With `threeD` asked for and Google's Map Tiles
+ * API answering, the ground becomes Google's photorealistic mesh and every VARUNA layer is draped
+ * on it (`layers/photoreal.ts`), so the water sits on a photographed Mumbai. That ground is
+ * online-only by construction, which is exactly why it is a toggle and never the default: with
+ * the venue's network off, or with Google declining the key, 3D simply does not turn on and the
+ * flat map above stays exactly as it was. It replaced a Terrarium heightmap built from the city's
+ * own DEM (`layers/terrain.ts`, ADR-0065), which is deleted. Seen drawing on 2026-09-23 at
+ * `/console`, `/dashboard` and over Dadar at street level; the tiles are referrer-restricted, so
+ * a `curl` of the same tileset answers 404 and only a browser is a real test of it.
+ *
+ * **The drain X-ray** (motion M28) is the view the 3D ground exists for: the surface fades to
+ * 20 % while `layers/drains-3d.ts` draws the inferred pipes at their invert elevations beneath
+ * it, with a shaft up to the street at every manhole. It is the only way to look *along* a sewer
+ * under the road it follows rather than at a line on a plan.
+ *
  * **This file is the host.** It owns the memoised composition, the props and the DOM around the
  * canvas. Every layer is built by one module under `layers/` (task MO1), and the camera (the fit,
  * the fly-to, who owns the view) by `layers/camera.ts`, so a motion or a new layer edits that
@@ -34,7 +49,7 @@
  */
 
 import DeckGL from "@deck.gl/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { cityBounds, type Bbox } from "./basemap";
 import { buildingsLayers, dryStreetsLayers } from "./layers/base";
@@ -51,18 +66,19 @@ import { pointsInView, useReversedFlowLayers, viewBounds } from "./layers/revers
 import { routeLayers, useRouteProgress } from "./layers/routes";
 import { wetStreetsLayers } from "./layers/streets";
 import { deckAnimates, surchargeLayers } from "./layers/surcharge";
+import { drains3dLayers, viewKey } from "./layers/drains-3d";
 import {
-  TERRAIN_PITCH,
+  PHOTOREAL_PITCH,
   hiddenLayers,
-  onTerrain,
-  terrainLayers,
-  useTerrain,
-} from "./layers/terrain";
+  onSurface,
+  photorealLayers,
+} from "./layers/photoreal";
 import { mapTooltip } from "./layers/tooltip";
 import { truthPinLayers } from "./layers/truth-pins";
 import { useMapOverlay } from "./layers/overlay-context";
 import type {
   BuildingPolygon,
+  DrainNode,
   DrainPath,
   DrainPick,
   HotspotRing,
@@ -80,7 +96,11 @@ import type {
 import type { MapLabel } from "./labels";
 import { MAP_ATTRIBUTION, satelliteLayers } from "./satellite";
 import type { CityMapMode } from "./types";
+import { MapAttribution } from "@/components/varuna/map-attribution";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
+import { createCreditStore, useMapCredits, usePhotorealTileset } from "@/lib/maps/photoreal";
+import { googleMapsKey } from "@/lib/maps/google";
+import { DUR_MS } from "@/lib/motion";
 
 // The data types lived here before the split; importers still find them here.
 export type * from "./layers/types";
@@ -89,6 +109,10 @@ export type * from "./layers/types";
 const NO_ROUTES: readonly RouteLine[] = [];
 /** Stable empty default, so a caller that passes nothing does not rebuild the basemap memo. */
 const NO_LAYERS: readonly unknown[] = [];
+/** Stable empty default for the X-ray's nodes: a fresh `[]` would rebuild its memo every render. */
+const NO_NODES: readonly DrainNode[] = [];
+/** How far the photographed surface fades under the X-ray (motion row M28: "to 20 % opacity"). */
+const XRAY_SURFACE_OPACITY = 0.2;
 
 export interface CityMapProps {
   mode?: CityMapMode;
@@ -104,6 +128,14 @@ export interface CityMapProps {
   buildings?: readonly BuildingPolygon[];
   /** The inferred drain graph, off by default (section 6.7). */
   drains?: readonly DrainPath[];
+  /**
+   * The drain graph's nodes, for the X-ray's manhole shafts and outfall markers.
+   *
+   * Loaded only when the X-ray is asked for (about 9 MB for Mumbai) and optional even then: with
+   * none, `drains3dLayers` draws the pipes and says in its own summary that the shafts are
+   * missing rather than inventing a depth for them.
+   */
+  drainNodes?: readonly DrainNode[];
   /** Routes to draw over everything else (section 6.7's layer order). */
   routes?: readonly RouteLine[];
   /** Reachability bands, under the routes and over the streets. */
@@ -187,6 +219,7 @@ export function CityMap({
   hotspots,
   buildings = [],
   drains = [],
+  drainNodes = NO_NODES,
   routes: routesProp = NO_ROUTES,
   isochrones = [],
   truthPins = [],
@@ -224,9 +257,20 @@ export function CityMap({
   // What the console asks for beyond these props: 3D, its routes layer and the what-if
   // difference layer (`layers/overlay-context.ts`). Every other screen provides nothing.
   const overlay = useMapOverlay();
-  const terrain = useTerrain(overlay.city, Boolean(overlay.threeD) && interactive);
+
+  // Google's photorealistic ground, probed the first time 3D is asked for. `usePhotorealTileset`
+  // returns `off` until then, so a screen nobody has switched to 3D never touches Google.
+  const photoreal = usePhotorealTileset(Boolean(overlay.threeD) && interactive);
   // 3D is drawn only once the ground exists; until then the flat map stays exactly as it was.
-  const threeD = terrain.kind === "ready";
+  // Anything but `ready` - no key, the Map Tiles API disabled, a refused referrer, no network -
+  // leaves the flat map alone, and the screen prints the state's own sentence beside the toggle.
+  const threeD = photoreal.kind === "ready";
+  // Read once, like the probe: Next inlines the key at build time and it cannot change in-page.
+  const [googleKey] = useState(() => googleMapsKey());
+  // The credits of the tiles currently on screen. A store rather than state: the tileset hands
+  // them over on every traversal, and only the merged line reaching React is affordable.
+  const creditStore = useMemo(() => createCreditStore(), []);
+  const credits = useMapCredits(creditStore);
 
   const overlayRoutes = overlay.routes;
   const routes = useMemo(
@@ -272,7 +316,7 @@ export function CityMap({
     reducedMotion,
     interactive,
     threeD,
-    pitch3d: TERRAIN_PITCH,
+    pitch3d: PHOTOREAL_PITCH,
   });
 
   // ---- Layers ---------------------------------------------------------------------------
@@ -284,22 +328,31 @@ export function CityMap({
   // throw that cache away on every scrub.
   //
   // Not in 3D: the imagery is flat and the ground stands above it, so every tile would be drawn
-  // and then hidden. The terrain carries the city's shape there instead.
+  // and then hidden. Google's photographed mesh carries the city's surface there instead.
   const imagery = showSatellite && !threeD;
   const basemapLayers = useMemo(
     () => [...satelliteLayers({ enabled: showSatellite, dimmed: showRaster }), ...extraBasemap],
     [showSatellite, showRaster, extraBasemap],
   );
 
-  // The ground, with the current step's water draped on it (task P6.15). A scrub swaps a cached
-  // texture, as the flat raster swaps a bitmap.
-  const currentFrame = frames[step] ?? null;
+  // The ground: Google's photorealistic mesh (task P6.15, ADR-0065 superseded). Unlike the
+  // Terrarium heightmap it replaced, this ground carries no water of its own - the depth raster
+  // is draped onto it like every other layer, which is what `onSurface` does and `onTerrain`
+  // deliberately did not.
+  //
+  // Motion M28: the X-ray fades this to 20 % over `DUR_MS.crossFade` while the pipes beneath it
+  // come up. Under `prefers-reduced-motion` the duration is 0, which deck reads as a cut.
+  const surfaceOpacity = overlay.xray ? XRAY_SURFACE_OPACITY : 1;
   const groundLayers = useMemo(
     () =>
-      threeD && overlay.city
-        ? terrainLayers({ city: overlay.city, terrain, frame: currentFrame, showRaster })
-        : [],
-    [threeD, overlay.city, terrain, currentFrame, showRaster],
+      photorealLayers({
+        key: googleKey,
+        state: photoreal,
+        opacity: surfaceOpacity,
+        fadeMs: reducedMotion ? 0 : DUR_MS.crossFade,
+        onCredits: creditStore.setCredits,
+      }),
+    [googleKey, photoreal, surfaceOpacity, reducedMotion, creditStore],
   );
 
   // Each layer's M19 opacity, read out here so the memos below depend on a number rather than on
@@ -393,6 +446,58 @@ export function CityMap({
     [reversedFlow.layers, inlets, showDrains],
   );
 
+  // The drain X-ray (motion M28). Keyed on `viewKey` rather than on the raw camera: a pan that
+  // moves nothing more than 110 m, or a zoom inside a half step, rebuilds nothing.
+  const xrayOn = Boolean(overlay.xray);
+  const xrayExaggeration = overlay.xrayExaggeration ?? 1;
+  const xrayCamera = viewKey(viewState.zoom, visible);
+  const xray = useMemo(
+    () =>
+      drains3dLayers({
+        city: overlay.city ?? "mumbai",
+        drains,
+        nodes: drainNodes,
+        show: xrayOn,
+        zoom: viewState.zoom,
+        bounds: visible,
+        depthExaggeration: xrayExaggeration,
+      }),
+    // `visible` and `viewState.zoom` are read above and deliberately not listed: `xrayCamera` is
+    // their identity, and listing them raw would rebuild 49,770 pipes on every mouse move.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [overlay.city, drains, drainNodes, xrayOn, xrayCamera, xrayExaggeration],
+  );
+  /**
+   * The X-ray's pipes, and the one thing that makes them an X-ray rather than a buried secret.
+   *
+   * Drawn straight, they lose the depth test to the ground above them: Google's mesh is opaque
+   * geometry, it writes depth first, and a pipe 1.5 m under a photographed street is rejected
+   * before it is shaded. Driven in a browser over Mumbai central on 2026-09-23, the network was
+   * there while the camera was wide and the mesh coarse, and gone once the tiles refined over it.
+   * That reads as a bug and is physics.
+   *
+   * So in 3D the pipes are drawn with the depth test off. That is what an X-ray is: the whole
+   * network is visible through the surface rather than only the parts nothing covers. It changes
+   * nothing about where they are - the positions are still the true inverts - only what occludes
+   * them, and it is paired with M28 fading the surface to 20 % so the photograph still reads as
+   * the thing they run under. On the flat map the depth test is left alone; there is no ground.
+   */
+  const xrayLayers = useMemo(() => {
+    if (xray.kind !== "ready") return NO_LAYERS;
+    if (!threeD) return xray.layers;
+    return xray.layers.map((layer) =>
+      (layer as { clone: (p: object) => unknown }).clone({ parameters: { depthTest: false } }),
+    );
+  }, [xray, threeD]);
+
+  // What the X-ray managed to draw, back to the screen that switched it on, so the layer panel
+  // prints counts rather than a claim. An effect, not a render-time call: the counts depend on
+  // the camera, and a parent setState during this component's render is a React warning.
+  const onXray = overlay.onXray;
+  useEffect(() => {
+    onXray?.(xray);
+  }, [onXray, xray]);
+
   // The pulse runs on deck's clock (a shader uniform), so the markers rebuild only with their data.
   const markerLayers = useMemo(
     () => surchargeLayers({ surcharge, show: showSurcharge, reducedMotion, style: surchargeStyle }),
@@ -438,12 +543,21 @@ export function CityMap({
     // finalises them, and re-creating them on the way out of 3D ran into the terrain effect being
     // torn down in the same frame - an assertion per layer and a wave of WebGL errors. Hidden,
     // they are never re-initialised, and the satellite keeps its tile cache.
+    // The X-ray's pipes are the one thing that is *not* draped: they carry their own invert
+    // elevation and belong under the ground, which is the whole point of the view. Everything
+    // else is lifted onto the photographed surface.
     return threeD
-      ? [...hiddenLayers([...basemapLayers, ...above]), ...groundLayers, ...onTerrain(above)]
-      : [...basemapLayers, ...above];
+      ? [
+          ...hiddenLayers([...basemapLayers, ...above]),
+          ...groundLayers,
+          ...xrayLayers,
+          ...onSurface(above),
+        ]
+      : [...basemapLayers, ...above, ...xrayLayers];
   }, [
     threeD,
     groundLayers,
+    xrayLayers,
     basemapLayers,
     cityLayers,
     streetLayers,
@@ -497,6 +611,19 @@ export function CityMap({
           }
         />
       ) : null}
+
+      {/* Google's Map Tiles policy requires the Google attribution and the providers of the tiles
+          *currently on screen* whenever they are drawn, so this is mounted on `threeD` and not on
+          the `attribution` prop: a host that draws its own credit line elsewhere does not get to
+          switch Google's off.
+
+          It sits in the bottom-right corner, where nothing else does. The two neighbours were
+          checked rather than assumed: `MapSlot`'s depth legend (section 6.7) is `bottom-10` and
+          starts 40 px up, and the full-width credit line below it is a `<p>` whose text - 75
+          characters of Esri, OpenStreetMap and Copernicus - runs out well before the right edge
+          at any width this mode is used at. On a phone it would collide, and 3D is not offered
+          on the public map. */}
+      {threeD ? <MapAttribution credits={credits} /> : null}
 
       {/* Esri's imagery is free to use and requires the credit while it is on screen. The console
           mounts `MapSlot` behind this map and that draws the same line; `attribution={false}`

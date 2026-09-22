@@ -21,13 +21,28 @@
  *
  * Nothing here logs to the console in either path. CLAUDE.md 14 makes a console error a failing
  * gate, and a key that is absent by design is not an error.
+ *
+ * **The photorealistic city is a third path, and it is off until asked for.** The same key can
+ * unlock Google's Photorealistic 3D Tiles, which put this screen's water on a photographed Mumbai
+ * rather than on a street diagram of it. That needs a *different* Google product with its own
+ * switch in the Cloud console, so it gets its own probe (`lib/maps/photoreal.ts`) and its own
+ * sentence. Driven in a browser on 2026-09-23 it works: switching it on at
+ * `http://localhost:3000/dashboard` replaced the basemap with Google's photographed Mumbai and
+ * VARUNA's streets kept their depths on top of it. When it does not work - no key, a referrer
+ * Google will not serve, no network - the switch prints that instead and leaves the basemap
+ * exactly as it was. The existing fallback chain is untouched by it: no key, a timeout,
+ * `gm_authFailure` and a refused referrer all still land on VARUNA's own map with the sentence
+ * that says which map this is.
  */
 
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { APIProvider, Map as GoogleMap, useMap } from "@vis.gl/react-google-maps";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { Box } from "lucide-react";
+
 import { CityMap } from "@/components/map/city-map";
+import { MapOverlayContext, type MapOverlay } from "@/components/map/layers/overlay-context";
 import { cityBounds } from "@/components/map/basemap";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Skeleton } from "@/components/varuna/skeleton";
@@ -47,6 +62,7 @@ import {
   type GoogleFallbackReason,
 } from "@/lib/maps/google";
 import { darkMapStyle } from "@/lib/maps/google-style";
+import { usePhotorealTileset, type PhotorealState } from "@/lib/maps/photoreal";
 import { useGoogleDeckOverlay } from "@/lib/maps/overlay";
 import { usePrefersReducedMotion } from "@/lib/hooks";
 import type { RouteCorridor, RoutePlan } from "@/lib/api/route";
@@ -223,6 +239,46 @@ function RunState({ state }: { state: CitizenRunState }) {
   );
 }
 
+/**
+ * The switch between the map the reader knows and the city they recognise.
+ *
+ * It is offered whether or not the photorealistic tiles turn out to be available, because finding
+ * out costs a request to Google and CLAUDE.md 17's "never a dead control" is satisfied by a switch
+ * that answers rather than by one that is hidden: pressing it either draws the photographed city
+ * or prints the sentence saying which switch in the Cloud console is off.
+ */
+function ThreeDToggle({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      data-slot="citizen-3d-toggle"
+      onClick={() => onChange(!on)}
+      className={cn(
+        "rounded-control border-line type-small absolute top-3 right-3 z-10 flex h-11 items-center gap-2 border px-3",
+        on ? "border-tide bg-tide/20 text-text" : "bg-ink/80 text-text-2",
+      )}
+    >
+      <Box aria-hidden="true" size={16} strokeWidth={1.75} />
+      Photorealistic city
+    </button>
+  );
+}
+
+/** Why the photorealistic city is not drawn, in Google's own terms and VARUNA's own words. */
+function PhotorealNotice({ state }: { state: PhotorealState }) {
+  if (state.kind === "ready" || state.kind === "off") return null;
+  return (
+    <p
+      data-slot="photoreal-notice"
+      className="rounded-control border-line bg-ink/80 text-text-2 type-micro absolute top-16 right-3 z-10 max-w-[min(90%,40ch)] border px-2.5 py-1.5"
+    >
+      {state.kind === "loading" ? "Asking Google for the photorealistic city." : state.message}
+    </p>
+  );
+}
+
 /** One sentence, always present, saying which basemap the reader is looking at. */
 function FallbackNotice({ reason }: { reason: GoogleFallbackReason }) {
   return (
@@ -253,6 +309,11 @@ export function CitizenMap({
   /** Google has actually painted tiles. Until then its map is covered: see the return below. */
   const [tilesDrawn, setTilesDrawn] = useState(false);
   const [picked, setPicked] = useState<MapPoint | null>(null);
+  /** The reader has asked for the photographed city. Off on load: it is a second Google product,
+   * it needs a network, and the flat map is the one that answers "can I get through?" fastest. */
+  const [wantThreeD, setWantThreeD] = useState(false);
+  const photoreal = usePhotorealTileset(wantThreeD);
+  const showThreeD = wantThreeD && photoreal.kind === "ready";
 
   const state = useCitizenRun(city, runId);
   const run = state.kind === "ready" ? state.run : null;
@@ -308,6 +369,8 @@ export function CitizenMap({
   );
 
   const bounds = useMemo(() => cityBounds(city), [city]);
+  /** The one thing the 3D path asks `CityMap` for, memoised so it is one identity per city. */
+  const threeDOverlay = useMemo<MapOverlay>(() => ({ city, threeD: true }), [city]);
   // Resolved inside the component, not at module scope, so a theme override reaches the tiles.
   const styles = useMemo(() => darkMapStyle(), []);
 
@@ -321,6 +384,41 @@ export function CitizenMap({
     },
     [onPickPoint],
   );
+
+  // The photographed city. Deck stands alone here, as it does on the console: Google's tiles are
+  // the ground and every VARUNA layer is draped on it, so there is no Google *basemap* to mount
+  // underneath and the JS API is not loaded on this path at all. The water, the route and the
+  // pin are the same layer modules the other two paths use.
+  if (showThreeD) {
+    return (
+      <div className={cn("bg-ink absolute inset-0", className)} data-slot="citizen-map">
+        <MapOverlayContext.Provider value={threeDOverlay}>
+          <CityMap
+            frames={NO_FRAMES}
+            rasterBounds={null}
+            baseSegments={run?.baseSegments ?? []}
+            segments={run?.segments ?? []}
+            surcharge={NO_SURCHARGE}
+            hotspots={NO_HOTSPOTS}
+            routes={routes}
+            labels={labels}
+            passableBelowCm={STOPS_AT_CM[profile]}
+            step={NOW_STEP}
+            bounds={bounds}
+            showRaster={false}
+            showBuildings={false}
+            showSurcharge={false}
+            showHotspots={false}
+            // Esri's flat imagery would be drawn and then hidden under the mesh; `CityMap` drops
+            // it in 3D anyway, and saying so here keeps the intent readable.
+            showSatellite={false}
+          />
+        </MapOverlayContext.Provider>
+        <RunState state={state} />
+        <ThreeDToggle on={wantThreeD} onChange={setWantThreeD} />
+      </div>
+    );
+  }
 
   if (fallback || !apiKey) {
     const reason: GoogleFallbackReason = fallback ?? "no-key";
@@ -351,6 +449,8 @@ export function CitizenMap({
         />
         <RunState state={state} />
         <FallbackNotice reason={reason} />
+        <ThreeDToggle on={wantThreeD} onChange={setWantThreeD} />
+        <PhotorealNotice state={photoreal} />
       </div>
     );
   }
@@ -386,6 +486,8 @@ export function CitizenMap({
           <Skeleton className="size-full rounded-none" />
         </div>
       )}
+      <ThreeDToggle on={wantThreeD} onChange={setWantThreeD} />
+      <PhotorealNotice state={photoreal} />
     </div>
   );
 }

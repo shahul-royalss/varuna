@@ -91,6 +91,20 @@ MAP_KEEP_COLUMNS: dict[str, tuple[str, ...]] = {
         "beta_mean",
         "beta_sd",
         "confidence",
+        # The three the underground X-ray draws with. The geometry is 2D, so without these a
+        # pipe can only be drawn lying on the street it follows; with them it sits at the depth
+        # it was sized for. Measured on the Mumbai graph before adding them: all 49,770 edges
+        # run from_node -> to_node (endpoint match 0.0000 m against the node positions) and
+        # z_invert_up_m / z_invert_dn_m equal the from/to nodes' own z_invert_m on every one of
+        # them, so the up invert belongs to the first vertex and the dn invert to the last.
+        # `slope` is the *design* slope Manning capacity was sized on, clamped at 10.1 step 7's
+        # 0.3 % and therefore never negative: it is not the bed slope, and anything asking
+        # "does this pipe climb?" has to take the fall from the two inverts instead. On the
+        # current graph the two disagree on 26,622 edges and 18,994 (38.2 %) run adverse
+        # (ADR-0048, re-measured 2026-09-23 with `varuna city audit-gravity`).
+        "z_invert_up_m",
+        "z_invert_dn_m",
+        "slope",
     ),
     "drain_nodes": (
         "node_id",
@@ -113,7 +127,20 @@ MAP_KEEP_COLUMNS: dict[str, tuple[str, ...]] = {
 """Properties the map layer keeps. The GeoParquet under ``export/`` keeps every column; the
 console only needs what it draws and what a popover shows, and a 50k-edge GeoJSON is worth
 trimming. A layer that is not listed keeps everything (assets and hotspots are small and
-their provenance fields are the point)."""
+their provenance fields are the point).
+
+The drain elevations are the one place that trimming was paid for rather than assumed.
+Adding ``z_invert_up_m``, ``z_invert_dn_m`` and ``slope`` takes Mumbai's ``map/drains.geojson``
+from 17,916,346 to 20,905,959 bytes (+2.99 MB, +16.7 %), and 1,341,898 to 1,874,404 gzipped
+(+533 KB, +39.7 %), which is what actually crosses the wire since the API gzips anything over
+1 KB. 72 % of that growth is the three key names and their punctuation, 43 bytes on every one
+of the 49,770 features, so it cannot be compressed away by shortening values. Rounding the
+inverts to centimetres and the slope to 1e-4 was measured and **not** taken: it saves 147,287
+bytes plain (0.70 %) and 77,109 gzipped (4.11 %), the stored values already carry at most
+three decimals rather than float64 noise, and :func:`round_coordinates` deliberately walks
+only the geometry so that a float property keeps the precision the pipeline wrote. Spending a
+new per-property rounding mechanism on 77 KB is not a trade worth making; if the layer ever
+has to shrink, the honest lever is vector tiles, not fewer decimals."""
 
 COORD_DIGITS = 6
 """Decimal places kept in map GeoJSON coordinates: 1e-6 degrees is about 0.11 m."""

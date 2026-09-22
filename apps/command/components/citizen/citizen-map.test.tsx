@@ -1,7 +1,10 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RouteCorridor, RouteLeg, RoutePlan } from "@/lib/api/route";
+
+import { resetPhotorealVerdicts } from "@/lib/maps/photoreal";
 
 import { CitizenMap, routeLines, STOPS_AT_CM } from "./citizen-map";
 
@@ -34,6 +37,9 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  // A `ready` verdict is cached for the life of the module, so one test's Google must not decide
+  // the next one's.
+  resetPhotorealVerdicts();
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -53,6 +59,66 @@ describe("CitizenMap without a Google key", () => {
     render(<CitizenMap profile="two-wheeler" />);
     await screen.findByTestId("varuna-map");
 
+    expect(errors).toEqual([]);
+    expect(warnings).toEqual([]);
+  });
+});
+
+describe("CitizenMap's photorealistic city", () => {
+  it("offers the switch even without a Google key, and leaves the map alone until it is pressed", async () => {
+    // CLAUDE.md 17 is satisfied by a switch that answers, not by one that is hidden: finding out
+    // whether Google will serve tiles costs a request, so the control is offered and the answer
+    // is printed when it is asked for.
+    vi.stubEnv(KEY, "");
+    render(<CitizenMap profile="car" />);
+
+    const toggle = await screen.findByRole("switch", { name: /Photorealistic city/ });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByText(/photorealistic basemap is off/)).not.toBeInTheDocument();
+  });
+
+  it("names the missing key rather than emptying the map when it is switched on", async () => {
+    vi.stubEnv(KEY, "");
+    render(<CitizenMap profile="car" />);
+
+    await userEvent.click(await screen.findByRole("switch", { name: /Photorealistic city/ }));
+
+    // The fallback chain is untouched: VARUNA's own map is still drawn, and now says why the
+    // photographed one is not.
+    expect(screen.getByTestId("varuna-map")).toBeInTheDocument();
+    expect(screen.getByText(/showing VARUNA's own map/)).toBeInTheDocument();
+    expect(screen.getByText(/NEXT_PUBLIC_GOOGLE_MAPS_API_KEY/)).toBeInTheDocument();
+  });
+
+  it("names the disabled Map Tiles API when that is what Google says", async () => {
+    // A 403 body of the shape Google sends when the Map Tiles API is switched off for a project.
+    // It is not what this key gets today - 2026-09-23 it gets a 404, covered in the console's own
+    // test - but it is the case the reader can actually fix, so it is worth pinning.
+    vi.stubEnv(KEY, "test-key");
+    resetPhotorealVerdicts();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) =>
+        String(input).includes("tile.googleapis.com")
+          ? new Response(
+              JSON.stringify({
+                error: {
+                  code: 403,
+                  message: "Map Tiles API has not been used in project 1 before or it is disabled.",
+                  status: "PERMISSION_DENIED",
+                  details: [{ reason: "SERVICE_DISABLED" }],
+                },
+              }),
+              { status: 403 },
+            )
+          : new Response("{}", { status: 503 }),
+      ),
+    );
+    render(<CitizenMap profile="car" />);
+
+    await userEvent.click(await screen.findByRole("switch", { name: /Photorealistic city/ }));
+
+    expect(await screen.findByText(/Map Tiles API is not enabled/)).toBeInTheDocument();
     expect(errors).toEqual([]);
     expect(warnings).toEqual([]);
   });

@@ -33,7 +33,8 @@ const LAYER_KEYS = [
   { key: "g", label: /ground truth/i },
   { key: "r", label: /^routes/i },
   { key: "i", label: /^isochrones/i },
-  { key: "3", label: /3d terrain/i },
+  { key: "3", label: /photorealistic city/i },
+  { key: "x", label: /drain x-ray/i },
 ] as const;
 
 /**
@@ -134,22 +135,53 @@ test.describe("P6.13 the keyboard path", () => {
     await expect(drawer).not.toBeVisible();
   });
 
+  /*
+   * This test used to assert "Conditioned 30 m DEM, N x N cells" - the Terrarium heightmap 3D
+   * mode was built on (ADR-0065). That ground is gone: 3D is now Google's photorealistic tileset
+   * and the DEM sentence describes a feature that no longer exists, so the assertion is replaced
+   * rather than relaxed.
+   *
+   * What it asserts instead is the thing that has to hold in *every* state: pressing 3 says
+   * something about the photorealistic city, pressing it again stops saying it, and neither logs.
+   * The tiles did draw here on 2026-09-23, but they are referrer-restricted and come from
+   * Google, so a gate that required them would fail on any machine whose origin is not on that
+   * key's list and on any machine with the network off - which CLAUDE.md 17 says is the one the
+   * finale runs on.
+   */
   test(
-    '"3" draws the city on its DEM and says so, and leaving 3D logs nothing',
+    '"3" says what the photorealistic city is doing, and leaving 3D logs nothing',
     { tag: "@needs-city" },
     async ({ page }) => {
       const errors = collectErrors(page);
       await page.goto("/console");
       await waitForRun(page);
       await page.keyboard.press("3");
-      const row = page.getByRole("listitem").filter({ hasText: "3D terrain" });
-      await expect(row).toContainText(/Conditioned 30 m DEM, \d+ x \d+ cells/, {
-        timeout: 30_000,
-      });
+      const row = page.getByRole("listitem").filter({ hasText: "Photorealistic city" });
+      await expect(row).toContainText(/photorealistic/i, { timeout: 30_000 });
       await page.keyboard.press("3");
-      await expect(row).not.toContainText(/Conditioned 30 m DEM/);
-      // Leaving 3D once re-created the flat map under a dying terrain effect: 286 errors.
+      await expect(row).not.toContainText(/Asking Google|Map Tiles API|draped on it/);
+      // Leaving 3D once re-created the flat map under a dying ground effect: 286 errors.
       await page.waitForTimeout(2_000);
+      expect(errors).toEqual([]);
+    },
+  );
+
+  test(
+    '"x" opens the drain X-ray and the row counts what it drew',
+    { tag: "@needs-city" },
+    async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.goto("/console");
+      await waitForRun(page);
+      await page.keyboard.press("x");
+      const row = page.getByRole("listitem").filter({ hasText: "Drain X-ray" });
+      // Whichever state the served drain layer is in, the row says which: pipes drawn at their
+      // invert depth, or the re-export that would give them one. Never silence.
+      await expect(row).toContainText(/invert depth|make city CITY=|Loading the inferred/, {
+        timeout: 60_000,
+      });
+      await page.keyboard.press("x");
+      await page.waitForTimeout(1_000);
       expect(errors).toEqual([]);
     },
   );

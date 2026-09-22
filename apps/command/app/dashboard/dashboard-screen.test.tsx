@@ -173,4 +173,32 @@ describe("DashboardScreen", () => {
     }
     vi.unstubAllGlobals();
   });
+
+  /**
+   * The entry used to sit inside an opaque `bg-ink absolute inset-0 z-30` div that carried
+   * `hidden={introDone}`. That div had to be hidden, or it covered the map for ever; being hidden
+   * the moment `onDone` fired cut M27's 900 ms cross-fade to nothing, and together with the
+   * hydration defect fixed in `globe-entry.tsx` it hid the globe for its whole four seconds. The
+   * overlay is its own `fixed` layer and removes itself, so it needs nothing around it.
+   */
+  it("mounts the entry with no hidden wrapper over it", () => {
+    window.sessionStorage.clear();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("{}", { status: 503 })),
+    );
+    render(<DashboardScreen />);
+
+    const overlay = document.querySelector('[data-slot="dashboard-intro"]');
+    expect(overlay).not.toBeNull();
+    for (let node = overlay?.parentElement; node; node = node.parentElement) {
+      expect(node.hasAttribute("hidden")).toBe(false);
+      expect(node.getAttribute("aria-hidden")).not.toBe("true");
+    }
+    // The pane the entry hands over to is mounted and still waiting for it.
+    expect(
+      document.querySelector('[data-slot="dashboard-stage"]')?.getAttribute("data-handover"),
+    ).toBe("playing");
+    vi.unstubAllGlobals();
+  });
 });

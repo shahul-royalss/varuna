@@ -52,7 +52,7 @@ export interface CityCameraInput {
    * The reduced-motion branch the task asks for is therefore the only branch there is.
    */
   threeD?: boolean;
-  /** Pitch to use in 3D; the caller passes `TERRAIN_PITCH`. */
+  /** Pitch to use in 3D; the caller passes `PHOTOREAL_PITCH` (CLAUDE.md 6.7 fixes it at 55). */
   pitch3d?: number;
 }
 
