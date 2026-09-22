@@ -83,9 +83,9 @@ describe("offline scopes", () => {
         { scope: "/map", updateViaCache: "none" },
         { scope: "/report", updateViaCache: "none" },
       ]);
-      expect(register.mock.calls.every((call) => (call as unknown[])[0] === "/sw.js?v=abc123")).toBe(
-        true,
-      );
+      expect(
+        register.mock.calls.every((call) => (call as unknown[])[0] === "/sw.js?v=abc123"),
+      ).toBe(true);
       expect(postMessage).toHaveBeenCalledTimes(1);
       vi.advanceTimersByTime(15_000);
       expect(postMessage).toHaveBeenCalledTimes(2);
