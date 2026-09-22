@@ -51,7 +51,13 @@ import { pointsInView, useReversedFlowLayers, viewBounds } from "./layers/revers
 import { routeLayers, useRouteProgress } from "./layers/routes";
 import { wetStreetsLayers } from "./layers/streets";
 import { deckAnimates, surchargeLayers } from "./layers/surcharge";
-import { TERRAIN_PITCH, onTerrain, terrainLayers, useTerrain } from "./layers/terrain";
+import {
+  TERRAIN_PITCH,
+  hiddenLayers,
+  onTerrain,
+  terrainLayers,
+  useTerrain,
+} from "./layers/terrain";
 import { mapTooltip } from "./layers/tooltip";
 import { truthPinLayers } from "./layers/truth-pins";
 import { useMapOverlay } from "./layers/overlay-context";
@@ -275,8 +281,8 @@ export function CityMap({
   // and then hidden. The terrain carries the city's shape there instead.
   const imagery = showSatellite && !threeD;
   const basemapLayers = useMemo(
-    () => satelliteLayers({ enabled: imagery, dimmed: showRaster }),
-    [imagery, showRaster],
+    () => satelliteLayers({ enabled: showSatellite, dimmed: showRaster }),
+    [showSatellite, showRaster],
   );
 
   // The ground, with the current step's water draped on it (task P6.15). A scrub swaps a cached
@@ -321,9 +327,9 @@ export function CityMap({
       ...depthRasterLayers({
         frame: frames[step] ?? null,
         bounds: rasterBounds,
-        // In 3D the frame is the terrain's texture; drawing it flat as well would put the
-        // water twice, once under the ground.
-        show: showRaster && !threeD,
+        // In 3D the frame is the terrain's texture, and this flat copy is hidden with the rest
+        // of the flat map (see `hiddenLayers`) rather than removed.
+        show: showRaster,
         fade: fadeRaster,
       }),
       ...wetStreetsLayers({
@@ -363,7 +369,6 @@ export function CityMap({
       playing,
       reducedMotion,
       fadeRaster,
-      threeD,
     ],
   );
 
@@ -422,7 +427,14 @@ export function CityMap({
     ];
     // In 3D everything above the ground is laid on it: streets, rings and markers are drawn at
     // z = 0, which would put them under a ground that averages 20 m up once exaggerated.
-    return threeD ? [...groundLayers, ...onTerrain(above)] : [...basemapLayers, ...above];
+    //
+    // The flat layers stay in the list, hidden, rather than being dropped: dropped, deck
+    // finalises them, and re-creating them on the way out of 3D ran into the terrain effect being
+    // torn down in the same frame - an assertion per layer and a wave of WebGL errors. Hidden,
+    // they are never re-initialised, and the satellite keeps its tile cache.
+    return threeD
+      ? [...hiddenLayers([...basemapLayers, ...above]), ...groundLayers, ...onTerrain(above)]
+      : [...basemapLayers, ...above];
   }, [
     threeD,
     groundLayers,
