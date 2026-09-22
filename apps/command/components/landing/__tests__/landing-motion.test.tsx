@@ -6,11 +6,17 @@ import {
   installIntersectionObserver,
   mockReducedMotion,
 } from "@/components/landing/__tests__/browser-stubs";
-import { BlurFade } from "@/components/landing/hero";
+import {
+  BlurFade,
+  M2_FIRST_PAINT_OPACITY,
+  M2_KEYFRAMES,
+  m2Animation,
+  m2Stylesheet,
+} from "@/components/landing/hero";
 import { Figure, LIMITATIONS_HREF, Proof } from "@/components/landing/proof";
 import { Roadmap, ROADMAP } from "@/components/landing/roadmap";
 import { TracingBeam } from "@/components/ui/tracing-beam";
-import { DUR, presetFor } from "@/lib/motion";
+import { DUR, EASE_UI, presetFor } from "@/lib/motion";
 
 // Records the props a motion.div was given, so the test can compare them with the catalogue.
 vi.mock("motion/react", async (importOriginal) => {
@@ -53,8 +59,7 @@ afterEach(() => {
 });
 
 describe("M2 hero copy blur-fade", () => {
-  it("uses the catalogue's M2 preset and a 60 ms stagger", () => {
-    mockReducedMotion(false);
+  it("runs the catalogue's M2 preset as a CSS animation with a 60 ms stagger", () => {
     render(
       <BlurFade index={3}>
         <p>Every street. Three hours early.</p>
@@ -62,21 +67,35 @@ describe("M2 hero copy blur-fade", () => {
     );
     const wrapper = screen.getByText("Every street. Three hours early.").parentElement!;
     const m2 = presetFor("M2", false);
-    expect(JSON.parse(wrapper.dataset.initial!)).toEqual(m2.initial);
-    expect(JSON.parse(wrapper.dataset.transition!)).toEqual(
-      JSON.parse(JSON.stringify({ ...m2.transition, delay: 3 * DUR.staggerCopy })),
+    const seconds = (m2.transition as { duration: number }).duration;
+    expect(wrapper).toHaveAttribute("data-motion", "M2");
+    // Duration and easing are the preset's; the delay is three staggers.
+    expect(m2Animation(3)).toBe(
+      `${M2_KEYFRAMES} ${Math.round(seconds * 1000)}ms cubic-bezier(${EASE_UI.join(",")}) ${
+        3 * DUR.staggerCopy * 1000
+      }ms both`,
     );
+    expect(wrapper.getAttribute("style")).toContain(M2_KEYFRAMES);
   });
 
-  it("renders the copy with no motion wrapper under reduced motion", () => {
-    mockReducedMotion(true);
-    const { container } = render(
-      <BlurFade index={1}>
-        <p>Every street. Three hours early.</p>
-      </BlurFade>,
+  it("builds its keyframes from the preset's start and end", () => {
+    const css = m2Stylesheet();
+    const { initial, animate } = presetFor("M2", false) as {
+      initial: { filter: string; y: number };
+      animate: { filter: string; y: number };
+    };
+    expect(css).toContain(`filter:${initial.filter}`);
+    expect(css).toContain(`transform:translateY(${initial.y}px)`);
+    expect(css).toContain(`filter:${animate.filter}`);
+    // Zero opacity would leave the page with no Largest Contentful Paint; see the constant.
+    expect(css).toContain(`opacity:${M2_FIRST_PAINT_OPACITY}`);
+    expect(M2_FIRST_PAINT_OPACITY).toBeLessThanOrEqual(0.01);
+  });
+
+  it("is removed outright under reduced motion, so no line waits out its delay invisible", () => {
+    expect(m2Stylesheet()).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)\{\[data-motion="M2"\]\{animation:none!important\}\}/,
     );
-    expect(container.querySelector("[data-transition]")).toBeNull();
-    expect(screen.getByText("Every street. Three hours early.")).toBeInTheDocument();
   });
 });
 
