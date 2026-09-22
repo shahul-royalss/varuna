@@ -17,7 +17,6 @@
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion } from "motion/react";
 
 import { GlobeIntro } from "@/components/landing/globe-intro";
 // **Loaded on demand, not in the landing page's first bundle.** `FloodMap` pulls in all of
@@ -37,7 +36,7 @@ const FloodMap = dynamic(
 import { Button } from "@/components/ui/button";
 import { Wordmark } from "@/components/varuna/wordmark";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
-import { DUR, presetFor } from "@/lib/motion";
+import { DUR, DUR_MS, EASE_UI, presetFor } from "@/lib/motion";
 
 /** Steps in a run: 36 five-minute frames, three hours (CLAUDE.md 10.3). */
 const N_STEPS = 36;
@@ -86,22 +85,70 @@ function useScrubLoop(enabled: boolean): number {
 }
 
 /**
+ * The least opacity the first keyframe paints at.
+ *
+ * Chrome never records a Largest Contentful Paint for text painted at exactly zero opacity, and a
+ * composited opacity animation does not repaint the text as it fades in - so a CSS fade from 0
+ * leaves the page with **no LCP at all** (Lighthouse: `NO_LCP`, measured 2026-09-22). One per cent
+ * is invisible on `--ink` and lets the headline's first paint count as the paint it is. The
+ * catalogue's 0 is still what the preset says and what the parity test reads.
+ */
+export const M2_FIRST_PAINT_OPACITY = 0.01;
+
+/** A motion preset's `initial` or `animate` target as the CSS a keyframe can carry. */
+function m2KeyframeCss(target: Record<string, unknown>): string {
+  const opacity = Math.max(Number(target.opacity ?? 1), M2_FIRST_PAINT_OPACITY);
+  const filter = String(target.filter ?? "none");
+  const y = Number(target.y ?? 0);
+  return `opacity:${opacity};filter:${filter};transform:translateY(${y}px)`;
+}
+
+/** The keyframes' name; one rule for every line of hero copy. */
+export const M2_KEYFRAMES = "varuna-m2-blur-fade";
+
+/**
+ * The stylesheet M2 runs on, built from the catalogue's preset rather than written out, so the
+ * parity test on section 8 still covers every value. Reduced motion removes the animation
+ * outright: the global escape hatch only shortens durations, and a copy line with a 300 ms
+ * `animation-delay` would otherwise sit invisible for that long (M2's reduced form is "instant").
+ */
+export function m2Stylesheet(): string {
+  const { initial, animate } = presetFor("M2", false);
+  const from = m2KeyframeCss((initial || {}) as Record<string, unknown>);
+  const to = m2KeyframeCss(animate as Record<string, unknown>);
+  return (
+    `@keyframes ${M2_KEYFRAMES}{from{${from}}to{${to}}}` +
+    `@media (prefers-reduced-motion: reduce){[data-motion="M2"]{animation:none!important}}`
+  );
+}
+
+/** The `animation` shorthand for the line at `index`: the preset's duration, easing and stagger. */
+export function m2Animation(index: number): string {
+  const { transition } = presetFor("M2", false);
+  const seconds = Number((transition as { duration?: number }).duration ?? DUR.panel);
+  const ease = (transition as { ease?: readonly number[] }).ease ?? EASE_UI;
+  return `${M2_KEYFRAMES} ${Math.round(seconds * 1000)}ms cubic-bezier(${ease.join(",")}) ${
+    index * DUR_MS.staggerCopy
+  }ms both`;
+}
+
+/**
  * Motion M2: the hero copy's blur-fade entrance, once, 60 ms apart. The values are the catalogue's
  * (`presetFor("M2")` and `DUR.staggerCopy` in lib/motion.ts), not local literals, so the parity
- * test on section 8 covers them. Under reduced motion the copy is simply there (M2's "instant").
+ * test on section 8 covers them.
+ *
+ * **It is a CSS animation, not a `motion.div`.** A framer entrance starts from `opacity: 0` in the
+ * server HTML and waits for hydration to reveal anything, so the headline - the page's Largest
+ * Contentful Paint - painted only once every script on the page had run: 4.7-5.5 s on a 4x
+ * throttled phone, 8.96 s in Lighthouse's mobile run. The same preset as keyframes starts with the
+ * first paint and needs no JavaScript at all. Under reduced motion the stylesheet removes the
+ * animation, so the copy is simply there (M2's "instant").
  */
 export function BlurFade({ children, index }: { children: React.ReactNode; index: number }) {
-  const reducedMotion = usePrefersReducedMotion();
-  if (reducedMotion) return <>{children}</>;
-  const { initial, animate, transition } = presetFor("M2", false);
   return (
-    <motion.div
-      initial={initial}
-      animate={animate}
-      transition={{ ...transition, delay: index * DUR.staggerCopy }}
-    >
+    <div data-motion="M2" style={{ animation: m2Animation(index) }}>
       {children}
-    </motion.div>
+    </div>
   );
 }
 
@@ -125,6 +172,8 @@ export function Hero() {
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
+      {/* M2's keyframes, in the server HTML so the copy enters before any script runs. */}
+      <style dangerouslySetInnerHTML={{ __html: m2Stylesheet() }} />
       {/* The city map is mounted from the start and revealed underneath, so the hand-over is a
           fade rather than a load: by the time the globe is gone the run's 36 frames are decoded
           and the scrub is already running. */}
