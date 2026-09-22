@@ -67,10 +67,12 @@ __all__ = [
     "BENEFIT_LABEL",
     "BENEFIT_LABELS",
     "EMULATOR_LABEL",
+    "MAX_PLACEMENTS",
     "MODEL_PATHS",
     "PUMP_THRESHOLD_CM",
     "TRAVEL_SPEED_KMH",
     "build_pump_plan",
+    "price_placements",
     "rain_for_run",
     "write_pump_plan",
 ]
@@ -359,6 +361,106 @@ def _emulator(
     return _EmulatorBenefit(fitted, list(rain_mm_h), city_root)
 
 
+def _fleet(
+    city_root: Path,
+    pump_status: Mapping[str, str] | None,
+    pump_depots: Mapping[str, tuple[float, float]] | None,
+) -> list[dict[str, Any]] | None:
+    """The synthetic fleet with the desk's statuses and depots over it, largest first.
+
+    None when the city carries no inventory at all, which is a different answer from an empty
+    fleet: the caller says "no inventory" rather than "no pump could help".
+    """
+    assets_path = city_root / "assets.geojson"
+    if not assets_path.is_file():
+        return None
+
+    features = json.loads(assets_path.read_text(encoding="utf-8")).get("features", [])
+    pumps = []
+    for feature in features:
+        props = feature.get("properties", {})
+        if props.get("kind") != "mobile_pump":
+            continue
+        lon, lat = feature["geometry"]["coordinates"][:2]
+        pump_id = str(props.get("asset_id"))
+        # The desk's word beats the inventory's: the status on the asset is synthetic and fixed
+        # at build time, and an officer who marked a lorry unavailable this morning is the only
+        # one of the two who has looked at it (TECH_SPEC 3.6).
+        status = str((pump_status or {}).get(pump_id) or props.get("status") or "available")
+        moved_to = (pump_depots or {}).get(pump_id)
+        pumps.append(
+            {
+                "pump_id": pump_id,
+                "capacity_m3_per_h": float(props.get("capacity_m3_per_h") or 0.0),
+                "depot": props.get("depot"),
+                "status": status,
+                "assignable": status in ASSIGNABLE_STATES,
+                "lon": float(moved_to[0]) if moved_to else float(lon),
+                "lat": float(moved_to[1]) if moved_to else float(lat),
+                "moved": bool(moved_to),
+                "synthetic": bool(props.get("synthetic", True)),
+            }
+        )
+    pumps.sort(key=lambda p: -p["capacity_m3_per_h"])
+    return pumps
+
+
+def _candidates(
+    hotspots: list[dict[str, Any]],
+    streets: dict[str, list[float]] | None,
+    street_points: dict[str, tuple[float, float]] | None,
+    step_min: int,
+) -> list[dict[str, Any]]:
+    """Every place that crosses the threshold: the register, then named streets, worst first."""
+    candidates: list[dict[str, Any]] = []
+    for hotspot in hotspots:
+        series = [float(v) for v in hotspot.get("depth_cm", [])]
+        before = _minutes_above(series, PUMP_THRESHOLD_CM, step_min)
+        if before <= 0:
+            continue
+        candidates.append({"hotspot": hotspot, "series": series, "minutes_before": before})
+
+    for street, series in (streets or {}).items():
+        point = (street_points or {}).get(street)
+        if point is None:
+            continue  # no coordinate, nowhere to send a lorry
+        values = [float(v) for v in series]
+        before = _minutes_above(values, PUMP_THRESHOLD_CM, step_min)
+        if before <= 0:
+            continue
+        candidates.append(
+            {
+                # Shaped like a hotspot so the loop below does not care which it is; the id is
+                # prefixed so a street can never collide with a register entry.
+                "hotspot": {
+                    "hotspot_id": f"street:{street}",
+                    "name": street,
+                    "lon": point[0],
+                    "lat": point[1],
+                    "exposure": {"weight": 0.5},
+                },
+                "series": values,
+                "minutes_before": before,
+            }
+        )
+    candidates.sort(key=lambda c: -c["minutes_before"])
+    return candidates
+
+
+def _travel_min(pump: Mapping[str, Any], hotspot: Mapping[str, Any]) -> float:
+    return (
+        _haversine_km(pump["lon"], pump["lat"], hotspot["lon"], hotspot["lat"])
+        / TRAVEL_SPEED_KMH
+        * 60.0
+    )
+
+
+def _rate_cm_per_step(capacity_m3_per_h: float, step_min: int) -> float:
+    """m3/h over the hotspot's disc, as cm of depth per forecast step."""
+    area_m2 = math.pi * HOTSPOT_RADIUS_M**2
+    return capacity_m3_per_h / area_m2 * 100.0 * (step_min / 60.0)
+
+
 def build_pump_plan(
     hotspots: list[dict[str, Any]],
     city_root: Path,
@@ -395,72 +497,11 @@ def build_pump_plan(
     Without both of those the benefit falls back to the bathtub model, and ``benefit_model`` on
     the plan and on every assignment says which one produced the number.
     """
-    assets_path = city_root / "assets.geojson"
-    if not assets_path.is_file():
+    pumps = _fleet(city_root, pump_status, pump_depots)
+    if pumps is None:
         return {"run_id": run_id, "pumps": [], "assignments": [], "unassigned": []}
 
-    features = json.loads(assets_path.read_text(encoding="utf-8")).get("features", [])
-    pumps = []
-    for feature in features:
-        props = feature.get("properties", {})
-        if props.get("kind") != "mobile_pump":
-            continue
-        lon, lat = feature["geometry"]["coordinates"][:2]
-        pump_id = str(props.get("asset_id"))
-        # The desk's word beats the inventory's: the status on the asset is synthetic and fixed
-        # at build time, and an officer who marked a lorry unavailable this morning is the only
-        # one of the two who has looked at it (TECH_SPEC 3.6).
-        status = str((pump_status or {}).get(pump_id) or props.get("status") or "available")
-        moved_to = (pump_depots or {}).get(pump_id)
-        pumps.append(
-            {
-                "pump_id": pump_id,
-                "capacity_m3_per_h": float(props.get("capacity_m3_per_h") or 0.0),
-                "depot": props.get("depot"),
-                "status": status,
-                "assignable": status in ASSIGNABLE_STATES,
-                "lon": float(moved_to[0]) if moved_to else float(lon),
-                "lat": float(moved_to[1]) if moved_to else float(lat),
-                "moved": bool(moved_to),
-                "synthetic": bool(props.get("synthetic", True)),
-            }
-        )
-    pumps.sort(key=lambda p: -p["capacity_m3_per_h"])
-
-    area_m2 = math.pi * HOTSPOT_RADIUS_M**2
-    candidates: list[dict[str, Any]] = []
-    for hotspot in hotspots:
-        series = [float(v) for v in hotspot.get("depth_cm", [])]
-        before = _minutes_above(series, PUMP_THRESHOLD_CM, step_min)
-        if before <= 0:
-            continue
-        candidates.append({"hotspot": hotspot, "series": series, "minutes_before": before})
-
-    for street, series in (streets or {}).items():
-        point = (street_points or {}).get(street)
-        if point is None:
-            continue  # no coordinate, nowhere to send a lorry
-        values = [float(v) for v in series]
-        before = _minutes_above(values, PUMP_THRESHOLD_CM, step_min)
-        if before <= 0:
-            continue
-        candidates.append(
-            {
-                # Shaped like a hotspot so the loop below does not care which it is; the id is
-                # prefixed so a street can never collide with a register entry.
-                "hotspot": {
-                    "hotspot_id": f"street:{street}",
-                    "name": street,
-                    "lon": point[0],
-                    "lat": point[1],
-                    "exposure": {"weight": 0.5},
-                },
-                "series": values,
-                "minutes_before": before,
-            }
-        )
-    candidates.sort(key=lambda c: -c["minutes_before"])
-
+    candidates = _candidates(hotspots, streets, street_points, step_min)
     emulator = _emulator(city_root, run_id, model, rain_mm_h) if candidates else None
 
     assignments: list[dict[str, Any]] = []
@@ -475,17 +516,12 @@ def build_pump_plan(
             if key in taken:
                 continue
 
-            travel_min = (
-                _haversine_km(pump["lon"], pump["lat"], hotspot["lon"], hotspot["lat"])
-                / TRAVEL_SPEED_KMH
-                * 60.0
-            )
+            travel_min = _travel_min(pump, hotspot)
             arrive_step = int(travel_min // step_min)
             if arrive_step >= len(candidate["series"]):
                 continue  # arrives after the forecast ends; it cannot help in this window
 
-            # m3/h over the disc, as cm of depth per 5-minute step.
-            rate_cm_per_step = pump["capacity_m3_per_h"] / area_m2 * 100.0 * (step_min / 60.0)
+            rate_cm_per_step = _rate_cm_per_step(pump["capacity_m3_per_h"], step_min)
             delta = (
                 emulator.drawdown(key, hotspot, rate_cm_per_step) if emulator is not None else None
             )
@@ -569,6 +605,200 @@ def build_pump_plan(
         minutes_saved=plan["total_minutes_saved"],
     )
     return plan
+
+
+MAX_PLACEMENTS = 64
+"""A board holds at most one card per pump; this bounds a request that claims otherwise."""
+
+
+def price_placements(
+    hotspots: list[dict[str, Any]],
+    city_root: Path,
+    run_id: str,
+    placements: Sequence[tuple[str, str]],
+    step_min: int = 5,
+    streets: dict[str, list[float]] | None = None,
+    street_points: dict[str, tuple[float, float]] | None = None,
+    *,
+    model: FlashModel | None = None,
+    rain_mm_h: Sequence[float] | None = None,
+    pump_status: Mapping[str, str] | None = None,
+    pump_depots: Mapping[str, tuple[float, float]] | None = None,
+) -> dict[str, Any]:
+    """Price a plan the operator made by hand: the benefit of *these* pumps at *these* places.
+
+    CLAUDE.md 7.6 AC2: a drag re-prices through the emulator rather than leaving the optimiser's
+    figure beside a plan the optimiser did not make. ``placements`` is ``(pump_id, target_id)``,
+    the target being a candidate id exactly as the plan names it (``MUM-HS-..`` or
+    ``street:<name>``). Each is priced with the same model and the same arithmetic the greedy
+    uses, so an unmoved plan prices to the optimiser's own numbers.
+
+    **Two pumps on one place** are priced in arrival order, each by its *marginal* drawdown: the
+    emulator run at the combined rate minus the run at the rate already there, applied from when
+    that pump arrives. The emulator saturates, so the second lorry at a junction the first has
+    drained buys less - which is the point of pricing it. On the bathtub fallback rates add.
+
+    A pump on a place that does not cross the threshold saves 0 minutes and says why; a pump the
+    desk has withheld, or one not in the fleet, is refused per placement rather than priced.
+    """
+    if len(placements) > MAX_PLACEMENTS:
+        msg = f"{len(placements)} placements; a board holds at most {MAX_PLACEMENTS}"
+        raise ValueError(msg)
+    pumps = _fleet(city_root, pump_status, pump_depots)
+    if pumps is None:
+        return {
+            "run_id": run_id,
+            "placements": [],
+            "targets": [],
+            "total_minutes_saved": 0,
+            "benefit_model": "reduced_model",
+            "benefit_label": BENEFIT_LABELS["reduced_model"],
+            "inventory": "synthetic",
+            "refused": [
+                {"pump_id": p, "target_id": t, "reason": "This city has no pump inventory."}
+                for p, t in placements
+            ],
+        }
+    by_pump = {p["pump_id"]: p for p in pumps}
+    candidates = {
+        str(c["hotspot"].get("hotspot_id")): c
+        for c in _candidates(hotspots, streets, street_points, step_min)
+    }
+    emulator = _emulator(city_root, run_id, model, rain_mm_h) if candidates else None
+
+    refused: list[dict[str, Any]] = []
+    grouped: dict[str, list[tuple[float, dict[str, Any]]]] = {}
+    seen: set[str] = set()
+    for pump_id, target_id in placements:
+        pump = by_pump.get(pump_id)
+        reason = None
+        if pump is None:
+            reason = f"{pump_id} is not in this city's fleet."
+        elif not pump["assignable"]:
+            reason = f"{pump_id} is marked {pump['status']} by the desk and cannot be sent."
+        elif pump_id in seen:
+            reason = f"{pump_id} is placed twice; a lorry is in one place."
+        if reason is not None:
+            refused.append({"pump_id": pump_id, "target_id": target_id, "reason": reason})
+            continue
+        seen.add(pump_id)
+        candidate = candidates.get(target_id)
+        travel = _travel_min(pump, candidate["hotspot"]) if candidate else 0.0
+        grouped.setdefault(target_id, []).append((travel, pump))
+
+    priced: list[dict[str, Any]] = []
+    targets: list[dict[str, Any]] = []
+    models_used: set[str] = set()
+    for target_id in sorted(grouped):
+        candidate = candidates.get(target_id)
+        arrivals = sorted(grouped[target_id], key=lambda item: (item[0], item[1]["pump_id"]))
+        if candidate is None:
+            for _travel, pump in arrivals:
+                priced.append(
+                    {
+                        "pump_id": pump["pump_id"],
+                        "hotspot_id": target_id,
+                        "hotspot_name": None,
+                        "depot": pump["depot"],
+                        "capacity_m3_per_h": pump["capacity_m3_per_h"],
+                        "eta_min": None,
+                        "minutes_saved": 0,
+                        "benefit_model": None,
+                        "note": (
+                            "This place does not cross 45 cm in this cycle's forecast, so a pump "
+                            "there avoids nothing the forecast can count."
+                        ),
+                    }
+                )
+            targets.append(
+                {
+                    "hotspot_id": target_id,
+                    "hotspot_name": None,
+                    "minutes_before": 0,
+                    "minutes_after": 0,
+                    "minutes_saved": 0,
+                }
+            )
+            continue
+
+        hotspot = candidate["hotspot"]
+        series = list(candidate["series"])
+        before = candidate["minutes_before"]
+        current = before
+        rate_so_far = 0.0
+        delta_so_far: tuple[float, ...] | None = None
+        for travel, pump in arrivals:
+            arrive_step = int(travel // step_min)
+            rate = _rate_cm_per_step(pump["capacity_m3_per_h"], step_min)
+            model_name = "reduced_model"
+            if arrive_step >= len(series):
+                saved = 0
+                note = "Arrives after the three-hour forecast ends; it cannot help in this window."
+            else:
+                combined = (
+                    emulator.drawdown(target_id, hotspot, rate_so_far + rate)
+                    if emulator is not None
+                    else None
+                )
+                if combined is not None:
+                    already = delta_so_far or tuple(0.0 for _ in combined)
+                    marginal = tuple(
+                        max(c - a, 0.0) for c, a in zip(combined, already, strict=True)
+                    )
+                    series = _after_delta(series, marginal, arrive_step)
+                    delta_so_far = combined
+                    model_name = "emulator"
+                else:
+                    series = _drawn_down(series, rate, arrive_step)
+                after = _minutes_above(series, PUMP_THRESHOLD_CM, step_min)
+                saved = current - after
+                current = after
+                note = None
+            rate_so_far += rate
+            models_used.add(model_name)
+            priced.append(
+                {
+                    "pump_id": pump["pump_id"],
+                    "hotspot_id": target_id,
+                    "hotspot_name": hotspot.get("name"),
+                    "depot": pump["depot"],
+                    "capacity_m3_per_h": pump["capacity_m3_per_h"],
+                    "eta_min": round(travel),
+                    "minutes_saved": saved,
+                    "benefit_model": model_name,
+                    "note": note,
+                }
+            )
+        targets.append(
+            {
+                "hotspot_id": target_id,
+                "hotspot_name": hotspot.get("name"),
+                "minutes_before": before,
+                "minutes_after": current,
+                "minutes_saved": before - current,
+            }
+        )
+
+    if not models_used or models_used == {"reduced_model"}:
+        benefit_model = "reduced_model"
+    elif models_used == {"emulator"}:
+        benefit_model = "emulator"
+    else:
+        benefit_model = "mixed"
+    result: dict[str, Any] = {
+        "run_id": run_id,
+        "threshold_cm": PUMP_THRESHOLD_CM,
+        "placements": priced,
+        "targets": targets,
+        "refused": refused,
+        "total_minutes_saved": sum(t["minutes_saved"] for t in targets),
+        "benefit_model": benefit_model,
+        "benefit_label": BENEFIT_LABELS[benefit_model],
+        "inventory": "synthetic",
+    }
+    if emulator is not None:
+        result["emulator"] = emulator.provenance
+    return result
 
 
 def write_pump_plan(run_dir: Path, plan: dict[str, Any]) -> None:
