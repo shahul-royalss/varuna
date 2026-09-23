@@ -17,6 +17,7 @@ somebody else built. A layer that is not there is reported as missing, never fak
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -286,6 +287,35 @@ def write_geojson(gdf: gpd.GeoDataFrame, path: Path, *, compact: bool = True) ->
     return path
 
 
+def map_export_fingerprint() -> str:
+    """A digest of everything that decides the *shape* of ``city/<city>/map/*.geojson``.
+
+    The deployed API serves these files from a 500 MB volume, and the entrypoint only rebuilds a
+    city whose ``pipeline.json`` says a step failed. So a change to :data:`MAP_KEEP_COLUMNS`
+    ships in the image, the city on the volume is still complete, the export is skipped, and the
+    API serves last month's columns from new code - silently, because nothing is broken enough to
+    notice. That is exactly what happened on 2026-09-23: the drain invert elevations were added
+    here, the build succeeded, and ``/v1/city/mumbai/layers/drains`` went on serving twelve
+    properties without them.
+
+    A fingerprint rather than a hand-bumped version number, because a version number is a thing
+    somebody has to remember on the one commit where they are thinking about columns and not
+    about deployment. This cannot be forgotten: change what the map layers contain and the digest
+    moves by construction.
+    """
+    payload = json.dumps(
+        {
+            "layers": list(MAP_LAYERS),
+            "keep": {k: list(v) for k, v in sorted(MAP_KEEP_COLUMNS.items())},
+            "tolerance_m": SIMPLIFY_TOLERANCE_M,
+            "coord_digits": COORD_DIGITS,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
 def export_city(
     city: str = "mumbai",
     *,
@@ -338,6 +368,25 @@ def export_city(
         result.bytes_written[f"map/{layer}"] = map_path.stat().st_size
 
     result.written.update(export_graph_tables(city, out_dir=root, result=result, frames=supplied))
+    # The marker the deployed entrypoint reads to decide whether these files came from this
+    # code. Written last, so a run that dies half way leaves no claim that it finished.
+    marker = root / "map" / "EXPORT.json"
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text(
+        json.dumps(
+            {
+                "fingerprint": map_export_fingerprint(),
+                "layers": sorted(result.counts),
+                "keep_columns": {k: list(v) for k, v in sorted(MAP_KEEP_COLUMNS.items())},
+            },
+            indent=1,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    result.written["map/EXPORT"] = marker
+
     manifest = root / "export" / "MANIFEST.json"
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(
@@ -399,6 +448,7 @@ __all__ = [
     "export_city",
     "export_graph_tables",
     "find_layer_source",
+    "map_export_fingerprint",
     "read_layer",
     "round_coordinates",
     "simplify_for_map",

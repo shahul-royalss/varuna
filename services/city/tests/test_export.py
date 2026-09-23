@@ -18,7 +18,12 @@ from pathlib import Path
 import geopandas as gpd
 import pytest
 from shapely.geometry import LineString, Point
-from varuna_city.export import MAP_KEEP_COLUMNS, export_city, simplify_for_map
+from varuna_city.export import (
+    MAP_KEEP_COLUMNS,
+    export_city,
+    map_export_fingerprint,
+    simplify_for_map,
+)
 
 CRS = "EPSG:32643"
 
@@ -216,3 +221,45 @@ def test_geometry_direction_is_what_the_inverts_are_draped_on(tmp_path: Path) ->
             point = wgs84_nodes.geometry.loc[feature["properties"][end]]
             lon, lat = line[node_id]
             assert (lon, lat) == pytest.approx((point.x, point.y), abs=1e-6)
+
+
+def test_the_export_marker_records_the_shape_the_layers_were_written_with(tmp_path: Path) -> None:
+    """``map/EXPORT.json`` is how a deployed volume knows its layers predate the running code.
+
+    The deployed entrypoint only rebuilds a city whose ``pipeline.json`` records a failure, so a
+    change to :data:`MAP_KEEP_COLUMNS` otherwise ships in the image while the volume keeps
+    serving the old columns - which is exactly what happened to the drain inverts on 2026-09-23,
+    through a deployment that reported SUCCESS.
+    """
+    frame = gpd.GeoDataFrame(
+        {
+            "edge_id": ["MUM-E1"],
+            "from_node": ["a"],
+            "to_node": ["b"],
+            "length_m": [40.0],
+            "z_invert_up_m": [8.32],
+            "z_invert_dn_m": [7.94],
+            "slope": [0.0107],
+            "diameter_m": [0.45],
+            "geometry": [LineString([(72.84, 19.01), (72.841, 19.011)])],
+        },
+        crs="EPSG:4326",
+    )
+    export_city(city="mumbai", out_dir=tmp_path, layers=("drains",), frames={"drains": frame})
+
+    marker = json.loads((tmp_path / "map" / "EXPORT.json").read_text(encoding="utf-8"))
+    assert marker["fingerprint"] == map_export_fingerprint()
+    assert marker["keep_columns"]["drains"] == list(MAP_KEEP_COLUMNS["drains"])
+
+
+def test_the_fingerprint_moves_when_the_kept_columns_move() -> None:
+    """A hand-bumped version number is a thing somebody has to remember on exactly the commit
+    where they are thinking about columns and not about deployment. This cannot be forgotten."""
+    before = map_export_fingerprint()
+    kept = MAP_KEEP_COLUMNS["drains"]
+    MAP_KEEP_COLUMNS["drains"] = (*kept, "a_new_column")
+    try:
+        assert map_export_fingerprint() != before
+    finally:
+        MAP_KEEP_COLUMNS["drains"] = kept
+    assert map_export_fingerprint() == before
