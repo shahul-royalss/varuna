@@ -71,7 +71,13 @@ export const PHOTOREAL_TILESET_URL = "https://tile.googleapis.com/v1/3dtiles/roo
 export const PHOTOREAL_KEY_HEADER = "X-GOOG-API-KEY";
 
 /** Why there are no photorealistic tiles to draw. */
-export type PhotorealReason = "no-key" | "api-disabled" | "refused" | "offline" | "error";
+export type PhotorealReason =
+  | "no-key"
+  | "api-disabled"
+  | "no-billing"
+  | "refused"
+  | "offline"
+  | "error";
 
 export type PhotorealState =
   | { kind: "off" }
@@ -96,6 +102,15 @@ export function photorealNotice(reason: PhotorealReason, detail?: string): strin
       return "No Google Maps key is configured, so the photorealistic basemap is off; set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY and restart the app.";
     case "api-disabled":
       return "Google's Map Tiles API is not enabled on this key's Google Cloud project, so there are no photorealistic tiles to draw; enable the Map Tiles API on that project and switch 3D on again.";
+    case "no-billing":
+      // Measured twice on 2026-09-23, on three different Cloud projects: an unbilled project
+      // answers **every** Map Tiles method with a bare 404 "Requested entity was not found.",
+      // naming neither billing nor the project, while Static Maps on the same key says "You must
+      // enable Billing" outright. The first time, that 404 cost an hour. The second time it was
+      // this key, hours after it had been serving 200s, when the billing came off the project
+      // again - and the console told the reader only that Google had said something it did not
+      // recognise. It recognises it now.
+      return "Google answers this key with a 404, which for the Map Tiles API means the Cloud project has no billing account linked, so the photorealistic basemap is off; link a billing account to that project and switch 3D on again.";
     case "refused":
       return "Google refused this key for the Map Tiles API, so the photorealistic basemap is off; check the key's API and referrer restrictions in the Google Cloud console.";
     case "offline":
@@ -156,6 +171,18 @@ export function classifyPhotorealProbe(status: number, body: string): PhotorealS
       reason: "api-disabled",
       message: photorealNotice("api-disabled"),
     };
+  }
+  // A 404 from this endpoint is not a wrong URL: the tileset URL is a constant in this module, so
+  // the only thing a reader can get wrong about it is the project behind the key. Empirically it
+  // is always the billing link. Checked before `denied` because the body carries no code at all -
+  // it would otherwise fall through to the "something we do not recognise" sentence, which is
+  // what it did on 2026-09-23 while the fix was one line in a Cloud console.
+  const notFound =
+    status === 404 ||
+    body.includes("NOT_FOUND") ||
+    body.includes("Requested entity was not found");
+  if (notFound) {
+    return { kind: "unavailable", reason: "no-billing", message: photorealNotice("no-billing") };
   }
   const denied = /REQUEST_DENIED|PERMISSION_DENIED|referer|referrer|API key/i.test(body);
   if (status === 401 || status === 403 || denied) {

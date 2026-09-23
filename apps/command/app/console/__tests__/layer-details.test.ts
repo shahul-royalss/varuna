@@ -57,29 +57,29 @@ describe("photorealDetail", () => {
     expect(message).toMatch(/enable/i);
   });
 
-  it("quotes Google verbatim for an answer it has no name for", () => {
-    // Not hypothetical, and not today either. Measured 2026-09-23 against this key's two
-    // predecessors, on projects that had the Map Tiles API enabled but **no billing account
-    // linked**: every Map Tiles method answered
-    // {"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}
-    // while Static Maps answered 403 naming billing outright. The key this build now carries is
-    // on a billed project and answers 200 to the same GET - from curl with no Referer, with a
-    // localhost Referer and with an arbitrary one.
+  it("names billing for the 404, which is the only thing that 404 ever means", () => {
+    // Measured twice on 2026-09-23. First on this key's two predecessors, whose projects had the
+    // Map Tiles API enabled but no billing account linked; then on this key itself, hours after
+    // it had been serving 200s, when the billing came off its project too. Every Map Tiles method
+    // answers the body below, naming neither billing nor the project, while Static Maps on the
+    // same key says "You must enable Billing" outright.
     //
-    // A bare 404 is kept as a case because it is the one answer Google gives that names nothing:
-    // it is not one of the four reasons VARUNA can diagnose, so the console prints Google's own
-    // sentence rather than inventing a cause for it. The billing diagnosis above cost hours to
-    // find precisely because the 404 says nothing, which is the argument for keeping the test.
+    // Until this test was rewritten it asserted `reason: "error"` - it expected the console to
+    // quote that sentence back at the reader, which reads as a broken URL and sent the first
+    // diagnosis on an hour-long detour. A 404 here cannot be a wrong URL: the tileset URL is a
+    // constant in `lib/maps/photoreal.ts`. It is the billing link, every time, so the console
+    // says so.
     const state = classifyPhotorealProbe(
       404,
       JSON.stringify({
         error: { code: 404, message: "Requested entity was not found.", status: "NOT_FOUND" },
       }),
     );
-    expect(state).toMatchObject({ kind: "unavailable", reason: "error" });
+    expect(state).toMatchObject({ kind: "unavailable", reason: "no-billing" });
     const line = photorealDetail(state);
-    expect(line).toContain("Requested entity was not found.");
-    expect(line).toMatch(/Google Cloud console/);
+    expect(line).toMatch(/billing/i);
+    expect(line).toMatch(/link a billing account/i);
+    expect(line).not.toMatch(/does not recognise/i);
   });
 
   it("describes what is drawn once the tiles are answering", () => {
