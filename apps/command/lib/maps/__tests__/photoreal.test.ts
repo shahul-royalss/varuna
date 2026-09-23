@@ -110,13 +110,18 @@ describe("classifyPhotorealProbe", () => {
   });
 
   it("carries the server's own sentence through an unrecognised answer", () => {
+    // This case used the 404 "Requested entity was not found." body until 2026-09-23, which made
+    // the test an expectation of the defect: that answer is not unrecognised, it is an unbilled
+    // project, and quoting it back to the reader sent them looking for a broken URL. It is
+    // classified as `no-billing` now and covered in its own block below; an answer that really is
+    // unrecognised looks like this one.
     const state = classifyPhotorealProbe(
-      404,
-      '{"error":{"code":404,"message":"Requested entity was not found."}}',
+      502,
+      '{"error":{"code":502,"message":"Backend did not respond within the deadline."}}',
     );
     expect(state).toMatchObject({ reason: "error" });
     if (state.kind !== "unavailable") throw new Error("expected an unavailable state");
-    expect(state.message).toContain("Requested entity was not found.");
+    expect(state.message).toContain("Backend did not respond within the deadline.");
   });
 
   it("still says the status when the server gave no words at all", () => {
@@ -128,7 +133,14 @@ describe("classifyPhotorealProbe", () => {
 });
 
 describe("photorealNotice", () => {
-  const reasons: PhotorealReason[] = ["no-key", "api-disabled", "refused", "offline", "error"];
+  const reasons: PhotorealReason[] = [
+    "no-key",
+    "api-disabled",
+    "no-billing",
+    "refused",
+    "offline",
+    "error",
+  ];
 
   it("says what happened and what to do, never only that something went wrong", () => {
     for (const reason of reasons) {
@@ -332,5 +344,39 @@ describe("usePhotorealTileset", () => {
     const second = renderHook(() => usePhotorealTileset(true));
     await waitFor(() => expect(second.result.current).toEqual({ kind: "ready" }));
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("the 404 that means the project has no billing", () => {
+  // The real body, copied from this key on 2026-09-23 after billing came off the project it had
+  // been serving from all morning. Every Map Tiles method answers exactly this, and it names
+  // neither billing nor the project - which is why it has to be recognised by shape.
+  const UNBILLED = JSON.stringify({
+    error: { code: 404, message: "Requested entity was not found.", status: "NOT_FOUND" },
+  });
+
+  it("names billing rather than quoting Google's silence back at the reader", () => {
+    const state = classifyPhotorealProbe(404, UNBILLED);
+    expect(state.kind).toBe("unavailable");
+    if (state.kind !== "unavailable") return;
+    expect(state.reason).toBe("no-billing");
+    expect(state.message).toMatch(/billing/i);
+    expect(state.message).toMatch(/link a billing account/i);
+    // The sentence it used to produce, which sent a reader to look for a broken URL.
+    expect(state.message).not.toMatch(/does not recognise/i);
+  });
+
+  it("is not mistaken for a disabled API or a refused key, which have different fixes", () => {
+    const disabled = classifyPhotorealProbe(
+      403,
+      JSON.stringify({ error: { status: "PERMISSION_DENIED", message: "SERVICE_DISABLED" } }),
+    );
+    expect(disabled.kind === "unavailable" && disabled.reason).toBe("api-disabled");
+    const refused = classifyPhotorealProbe(403, "REQUEST_DENIED");
+    expect(refused.kind === "unavailable" && refused.reason).toBe("refused");
+  });
+
+  it("still reads a 200 as ready", () => {
+    expect(classifyPhotorealProbe(200, "{}").kind).toBe("ready");
   });
 });
