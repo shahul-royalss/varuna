@@ -141,7 +141,35 @@ reclaim_volume
 # skipped when their file is already on the volume. Without them `/v1/city/<city>/terrain` and
 # `/v1/city/<city>/basemap.pmtiles` answer 404 on the deployed API and two shipped features are
 # dark in production, which is exactly the kind of gap that is only ever found on stage.
+# The map layers are generated artifacts on a persistent volume, and build_city only rebuilds a
+# city whose pipeline.json records a failure. So when the exporter's output *shape* changes -
+# a column added to MAP_KEEP_COLUMNS, a different simplification tolerance - the new code ships
+# in the image, the city on the volume is still "complete", the export is skipped, and the API
+# serves the old columns from the new build. Nothing errors; the feature that needed the column
+# is just quietly dark.
+#
+# That is not hypothetical. On 2026-09-23 the drain invert elevations were added to the drains
+# layer so the console's X-ray could draw a pipe at the depth it sits at. The image built, the
+# deployment reported SUCCESS, and /v1/city/mumbai/layers/drains went on returning the same
+# twelve properties it had before, without them.
+#
+# map_export_fingerprint() digests everything that decides that shape, and export_city writes it
+# into map/EXPORT.json. A mismatch re-runs step 12 alone, which loads the cached upstream steps
+# and costs seconds rather than a city rebuild.
+map_export_is_current() {
+  marker="${CITY_DIR}/${CITY}/map/EXPORT.json"
+  [ -f "${marker}" ] || return 1
+  # `uv run`, not bare `python`: this one imports varuna_city, where city_is_complete above only
+  # needs the standard library. A check that cannot run reports "stale", so the worst case is a
+  # re-export that costs seconds, never a silently stale layer.
+  uv run python -c "import json,sys;from varuna_city.export import map_export_fingerprint as f;sys.exit(0 if json.load(open(sys.argv[1])).get('fingerprint')==f() else 1)" "${marker}" 2>/dev/null
+}
+
 build_map_products() {
+  if ! map_export_is_current; then
+    log "map layers on the volume predate this build's export schema; re-exporting"
+    uv run varuna city --city "${CITY}" --only export       && log "map layers re-exported from the cached pipeline"       || log "map re-export failed; the API keeps the layers already on the volume"
+  fi
   if [ ! -f "${CITY_DIR}/${CITY}/map/terrain.png" ]; then
     uv run python -m varuna_city.terrain_export --city "${CITY}"       && log "terrain heightmap written; 3D mode can load it"       || log "terrain export failed; /v1/city/${CITY}/terrain keeps its 404"
   fi
