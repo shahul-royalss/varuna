@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -455,3 +456,39 @@ __all__ = [
     "write_geojson",
     "write_geoparquet",
 ]
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Re-export the map layers from the parquet the city folder already holds.
+
+    This exists for the deployed entrypoint. Going through ``varuna city --only export`` runs the
+    pipeline's step graph - which loads every upstream step, then runs ``report`` after this one -
+    and on the deployed volume that failed in four seconds for a reason the log threw away
+    (2026-09-23). The export itself needs none of that: :func:`export_city` reads each layer off
+    disk through :func:`find_layer_source`, and the parquet is what a built city folder is made
+    of. Fewer moving parts between a stale layer and a fresh one.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        prog="python -m varuna_city.export",
+        description="Re-write city/<city>/map/*.geojson and export/*.parquet from the city folder.",
+    )
+    parser.add_argument("--city", default="mumbai")
+    parser.add_argument("--out-dir", default=None, help="City folder; defaults to city/<city>/.")
+    args = parser.parse_args(argv)
+    try:
+        result = export_city(city=args.city, out_dir=Path(args.out_dir) if args.out_dir else None)
+    except (FileNotFoundError, OSError, ValueError) as error:
+        print(f"{type(error).__name__}: {error}", file=sys.stderr)
+        return 2
+    if result.missing:
+        print(f"missing layers: {', '.join(sorted(result.missing))}", file=sys.stderr)
+    counted = ", ".join(f"{k} {v}" for k, v in sorted(result.counts.items()))
+    print(f"Exported {args.city}: {counted}")
+    print(f"Fingerprint {map_export_fingerprint()} written to map/EXPORT.json")
+    return 0 if result.counts else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

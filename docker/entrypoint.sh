@@ -168,7 +168,20 @@ map_export_is_current() {
 build_map_products() {
   if ! map_export_is_current; then
     log "map layers on the volume predate this build's export schema; re-exporting"
-    uv run varuna city --city "${CITY}" --only export       && log "map layers re-exported from the cached pipeline"       || log "map re-export failed; the API keeps the layers already on the volume"
+    # Straight to export_city, not through `varuna city --only export`. The step graph loads every
+    # upstream step and runs `report` after this one, and on this volume it failed in four seconds
+    # on 2026-09-23 for a reason the log then threw away. export_city reads each layer off disk
+    # through find_layer_source, which is what a built city folder is made of: 17.7 s locally for
+    # all eleven layers, and nothing between a stale file and a fresh one.
+    if map_out=$(uv run python -m varuna_city.export --city "${CITY}" 2>&1); then
+      log "map layers re-exported"
+      printf '%s\n' "${map_out}" | tail -n 3
+    else
+      log "map re-export failed; the API keeps the layers already on the volume"
+      # The reason, not just the fact. A silent failure here is how the drain inverts sat
+      # undelivered through two green deployments.
+      printf '%s\n' "${map_out}" | tail -n 25
+    fi
   fi
   if [ ! -f "${CITY_DIR}/${CITY}/map/terrain.png" ]; then
     uv run python -m varuna_city.terrain_export --city "${CITY}"       && log "terrain heightmap written; 3D mode can load it"       || log "terrain export failed; /v1/city/${CITY}/terrain keeps its 404"
