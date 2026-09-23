@@ -720,3 +720,50 @@ The key now in use carries **no** referrer restriction and answers Static Maps, 
 Directions as well as Map Tiles, all measured 2026-09-23. Since it is read as a `NEXT_PUBLIC_*`
 value and therefore inlined into the JavaScript every visitor downloads, restricting it is a
 prerequisite for deploying, tracked as `TASKS.md` D-26.
+
+## "Does the water balance?" - and the honest answer changed on 2026-09-23
+
+Mass balance is the check that says the coupled solver is neither inventing nor losing water, and
+section 11.3 budgets it at **0.1 % of inflow**. Re-baking the seven demo cycles on 2026-09-23 put
+every one of them over it:
+
+| cycle (IST) | mass balance | peak depth | wet segments | cycle time |
+|---|---|---|---|---|
+| 06:10 | 0.127 % | 19.7 cm | 21 | 59.1 s |
+| 06:40 | **0.535 %** | 141.8 cm | 2,924 | 53.0 s |
+| 07:10 | 0.145 % | 19.3 cm | 24 | 43.5 s |
+| 07:40 | 0.260 % | 134.7 cm | 2,384 | 50.7 s |
+| 08:10 | 0.306 % | 159.4 cm | 4,762 | 54.1 s |
+| 08:40 | 0.204 % | 189.0 cm | 6,684 | 60.5 s |
+| 09:10 | 0.310 % | 116.0 cm | 1,768 | 59.2 s |
+
+The previous bake read **0.014-0.091 %** on six of these and 0.215 % at 06:40, so this is a
+**regression** rather than a budget that was never met - and 06:40 is now over by more than five
+times. It is **not diagnosed**. These are the first runs to combine four changes that had never run
+together: ADR-0055's tide-datum conversion, ADR-0039's hotspot fix, ADR-0044's ES-MDA Pulse update
+and ADR-0052's reversed-edge geometry join. The tide conversion is the first suspect, because it
+moved the boundary stage by 2.70 m and the coupled balance divides by this run's own inflow. The
+previous runs are backed up, so the choice between diagnosing, shipping-and-recording, and rolling
+back is still open.
+
+## "Can you show the reversed flow at the tide-locked outfall?"
+
+Since 2026-09-23, yes - and before that date, no, on any run that had ever been baked. The same
+re-bake is the first to store reversed edges **with their geometry**:
+
+| cycle (IST) | reversed edges | stored | without geometry | at the tidal outfall | surcharging nodes |
+|---|---|---|---|---|---|
+| 06:10 | 18,375 | 500 | 0 | 0 | 2,725 |
+| 06:40 | 20,168 | 500 | 0 | 1 | 7,046 |
+| 07:10 | 18,513 | 500 | 0 | 1 | 3,010 |
+| 07:40 | 19,935 | 500 | 0 | 1 | 6,395 |
+| 08:10 | 20,383 | 500 | 0 | 1 | 7,736 |
+| 08:40 | 21,392 | 500 | 0 | 1 | 8,834 |
+| 09:10 | 19,850 | 500 | 0 | 1 | 6,417 |
+
+Motion M9, the animated dash along a reversed edge, was built on 2026-09-15 and had drawn nothing
+until now: every run predated the join that carries each edge's line (ADR-0052), and the layer
+panel said so. Six of the seven cycles now put reversed flow at the tidal outfall, which is what
+section 7.2's acceptance criterion and the 1:40 demo beat both ask for.
+
+**R3 is still unticked.** The data exists; "visible" means seen on screen, and it has not been.
