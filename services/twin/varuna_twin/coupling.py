@@ -39,7 +39,7 @@ Determinism (rule 8): no randomness, fixed traversal order, float64 throughout.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import structlog
@@ -60,6 +60,7 @@ __all__ = [
     "compute_exchange",
     "coupling_to_drain_rates",
     "coupling_to_surface_rates",
+    "scatter_node_volumes_to_cells",
 ]
 
 # ------------------------------------------------------------------ coefficients from Appendix A
@@ -148,23 +149,32 @@ class ExchangeBuffers:
         )
 
 
-_NODE_CACHE: dict[int, dict[str, object]] = {}
+_NODE_CACHE: dict[int, tuple[DrainNetwork, dict[str, object]]] = {}
+"""Per-node kernel constants for one network, and a **strong reference to that network**.
+
+Keyed on ``id(network)`` and previously validated by node count, which is not enough and was not
+a theoretical worry: ``drain1d._SCRATCH`` had the same shape and, on 2026-09-24, handed one
+10-node test fixture another 10-node fixture's outfall types. Holding the key object alive makes
+its address unrecyclable while the entry is cached, so ``is`` below cannot get a false hit."""
 
 
 def _node_arrays(network: DrainNetwork) -> dict[str, object]:
     """The per-node constants the kernel needs, in its dtypes, built once per network.
 
-    **The length is checked, not just the id.** CPython reuses `id()` once an object is collected,
-    so a freed network's arrays were being handed back for a different network that happened to
-    land at the same address - and since the new one had more nodes, the kernel read past the end
-    of `row` and `col` and scattered into whatever integer it found. Numba does not bounds-check,
-    so that surfaced as a Windows access violation in an unrelated test rather than an IndexError
-    at the line that caused it.
+    **The network itself is checked, not its id or its length.** CPython reuses `id()` once an
+    object is collected, so a freed network's arrays were being handed back for a different
+    network that happened to land at the same address - and since the new one had more nodes, the
+    kernel read past the end of `row` and `col` and scattered into whatever integer it found.
+    Numba does not bounds-check, so that surfaced as a Windows access violation in an unrelated
+    test rather than an IndexError at the line that caused it. A length check was the first fix
+    and is not enough: two networks of the same size are what the test fixtures are, and on
+    2026-09-24 the identically-shaped cache in `drain1d` handed one 10-node fixture another's
+    outfall types, silently. See :data:`_NODE_CACHE`.
     """
     key = id(network)
     found = _NODE_CACHE.get(key)
-    if found is not None and len(found["row"]) == network.n_nodes:  # type: ignore[arg-type]
-        return found
+    if found is not None and found[0] is network:
+        return found[1]
     made: dict[str, object] = {
         "row": np.ascontiguousarray(network.cell_row, dtype=np.int64),
         "col": np.ascontiguousarray(network.cell_col, dtype=np.int64),
@@ -175,7 +185,7 @@ def _node_arrays(network: DrainNetwork) -> dict[str, object]:
         "storage_area": np.maximum(np.asarray(network.storage_area, dtype=np.float64), 0.01),
     }
     _NODE_CACHE.clear()
-    _NODE_CACHE[key] = made
+    _NODE_CACHE[key] = (network, made)
     return made
 
 
@@ -189,6 +199,7 @@ def compute_exchange(
     sync_s: float = 5.0,
     compiled: bool = True,
     out: ExchangeBuffers | None = None,
+    blocked: NDArray[np.bool_] | None = None,
 ) -> ExchangeResult:
     """Compute the inlet capture and surcharge fluxes for one sync interval.
 
@@ -204,6 +215,14 @@ def compute_exchange(
             move water that is not there. Passing a value that does not match the interval the
             caller then integrates over would break that guarantee, which is why it is an
             argument rather than a constant.
+        blocked: the 2D solver's building mask, ``True`` where a cell never holds water. A node
+            whose cell is blocked exchanges nothing at all (task P4.5). It is not a refinement:
+            ``swe2d._update_depth`` sets a blocked cell's depth to zero and skips it *before*
+            tallying, so surcharge scattered there is discarded without appearing in any ledger.
+            Measured on the 08:40 cycle of 2 July 2019 that was 5,185.4 m3 destroyed, 0.46 % of
+            the surcharge and 0.17 % of the inflow - and the building mask is dense over exactly
+            the wards where the drain graph is densest (ADR-0039). Passing ``None`` keeps the old
+            behaviour, which is only safe when the grid has no blocked cells.
 
     Returns:
         An :class:`ExchangeResult` with per-node and per-cell rates.
@@ -213,15 +232,20 @@ def compute_exchange(
 
     if compiled:
         return _compute_exchange_compiled(
-            surface_h, surface_z, drain_head, network, solver, cell_area_m2, sync_s, out
+            surface_h, surface_z, drain_head, network, solver, cell_area_m2, sync_s, out, blocked
         )
 
     # Gather the 2D depth and elevation at each node's cell
     row = np.asarray(network.cell_row, dtype=np.intp)
     col = np.asarray(network.cell_col, dtype=np.intp)
 
-    # Nodes that have no 2D cell (row == -1) cannot exchange
+    # Nodes that have no 2D cell (row == -1) cannot exchange; nor can a node under a building,
+    # because the cell it would exchange with is one the 2D solver holds at zero depth.
     has_cell = (row >= 0) & (col >= 0)
+    if blocked is not None:
+        on_building = np.zeros(n_nodes, dtype=bool)
+        on_building[has_cell] = np.asarray(blocked, dtype=bool)[row[has_cell], col[has_cell]]
+        has_cell &= ~on_building
 
     h_at_node = np.zeros(n_nodes, dtype=np.float64)
     z_at_node = np.zeros(n_nodes, dtype=np.float64)
@@ -342,6 +366,69 @@ def compute_exchange(
     )
 
 
+def scatter_node_volumes_to_cells(
+    network: DrainNetwork,
+    solver: DrainSolver,
+    volume_m3: NDArray[np.floating],
+    duration_s: float,
+    cell_area_m2: float,
+    out: NDArray[np.floating],
+) -> NDArray[np.floating]:
+    """Turn a per-node volume over ``duration_s`` into the per-cell rate in m/s the 2D solver reads.
+
+    The mirror of the scatter inside :func:`compute_exchange`, and it exists for the mass balance
+    (task P4.5). ``compute_exchange`` says how much surcharge each node *should* emit; the drain's
+    supply check then scales that down wherever a node's pipes and manhole together want more
+    water than the node holds. Handing the surface the requested rate while the drain applied the
+    scaled one invents exactly the difference - 6,052.7 m3 on the 08:40 cycle of 2 July 2019,
+    which was 99.8 % of that run's 0.204 % mass-balance failure. So the runner steps the drain
+    first and passes what it actually emitted through here.
+
+    ``out`` is zeroed and filled in place; it is the caller's buffer for the same reason
+    :class:`ExchangeBuffers` is. Nodes without a 2D cell and fixed-head outfalls are skipped,
+    which matches :func:`compute_exchange` - they never emitted onto a street to begin with.
+    """
+    active_rows, active_cols, active = _scatter_index(network, solver)
+    out[:, :] = 0.0
+    dt = max(float(duration_s), 1e-9)
+    factor = 1.0 / (dt * cell_area_m2)
+    # `np.add.at`, not fancy-index assignment: inlets sit every 40 m along a road on a 30 m grid,
+    # so several nodes routinely share a cell and a buffered scatter would keep only one of them.
+    np.add.at(out, (active_rows, active_cols), np.asarray(volume_m3)[active] * factor)
+    return out
+
+
+_SCATTER_CACHE: dict[
+    int, tuple[DrainNetwork, DrainSolver, NDArray[np.int64], NDArray[np.int64], NDArray[np.bool_]]
+] = {}
+
+
+def _scatter_index(
+    network: DrainNetwork, solver: DrainSolver
+) -> tuple[NDArray[np.int64], NDArray[np.int64], NDArray[np.bool_]]:
+    """The rows, columns and node mask the surcharge scatter uses, built once per network.
+
+    The runner scatters 2,160 times a cycle; rebuilding the mask and its two index arrays each
+    time is three 50,110-element allocations per sync for something that never changes. Keyed and
+    length-checked exactly as :func:`_node_arrays` is, and for the reason written there: CPython
+    reuses `id()`, and a stale entry of the wrong length would be read past the end.
+    """
+    key = id(network)
+    found = _SCATTER_CACHE.get(key)
+    # Both objects, by identity: the mask reads `solver.fixed_head`, so a solver rebuilt on the
+    # same network - which VARUNA-Pulse does every cycle when the posterior moves - is a miss.
+    if found is not None and found[0] is network and found[1] is solver:
+        return found[2:]
+    nodes = _node_arrays(network)
+    row = cast("NDArray[np.int64]", nodes["row"])
+    col = cast("NDArray[np.int64]", nodes["col"])
+    active = (row >= 0) & (col >= 0) & ~np.asarray(solver.fixed_head)
+    made = (row[active], col[active], active)
+    _SCATTER_CACHE.clear()
+    _SCATTER_CACHE[key] = (network, solver, *made)
+    return made
+
+
 def coupling_to_surface_rates(
     exchange: ExchangeResult,
 ) -> tuple[NDArray[np.floating], NDArray[np.floating]]:
@@ -356,6 +443,27 @@ def coupling_to_drain_rates(
     return exchange.q_inlet_node, exchange.q_surcharge_node
 
 
+_NO_BLOCKED: dict[tuple[int, int], NDArray[np.bool_]] = {}
+
+
+def _blocked_or_empty(
+    blocked: NDArray[np.bool_] | None, shape: tuple[int, ...]
+) -> NDArray[np.bool_]:
+    """The mask the kernel reads: the caller's, or an all-False one cached per grid shape.
+
+    Numba needs a typed array rather than ``None``, and allocating a 323 x 522 array of zeros on
+    each of the 2,160 syncs to say "no buildings" would cost more than the mask saves. The cache
+    is keyed on the shape, so a second grid gets its own."""
+    if blocked is not None:
+        return np.ascontiguousarray(blocked, dtype=np.bool_)
+    grid = (int(shape[0]), int(shape[1]))
+    found = _NO_BLOCKED.get(grid)
+    if found is None:
+        found = np.zeros(grid, dtype=np.bool_)
+        _NO_BLOCKED[grid] = found
+    return found
+
+
 def _compute_exchange_compiled(
     surface_h: NDArray[np.floating],
     surface_z: NDArray[np.floating],
@@ -365,6 +473,7 @@ def _compute_exchange_compiled(
     cell_area_m2: float,
     sync_s: float,
     out: ExchangeBuffers | None,
+    blocked: NDArray[np.bool_] | None = None,
 ) -> ExchangeResult:
     """:func:`compute_exchange` through the compiled kernel (task P4.6)."""
     from varuna_twin.coupling_kernel import exchange_kernel
@@ -382,6 +491,7 @@ def _compute_exchange_compiled(
         nodes["inlet_area"],
         nodes["storage_area"],
         np.ascontiguousarray(solver.fixed_head),
+        _blocked_or_empty(blocked, surface_h.shape),
         np.ascontiguousarray(surface_h, dtype=np.float64),
         np.ascontiguousarray(surface_z, dtype=np.float64),
         np.ascontiguousarray(drain_head, dtype=np.float64),

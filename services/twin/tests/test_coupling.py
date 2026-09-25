@@ -342,3 +342,110 @@ class TestExchangeConservation:
         cf = exchange.as_coupling_fluxes()
         assert np.array_equal(cf.q_inlet, exchange.q_inlet_node)
         assert np.array_equal(cf.q_surcharge, exchange.q_surcharge_node)
+
+
+class TestBlockedCells:
+    """A node under a building exchanges nothing (task P4.5).
+
+    `swe2d._update_depth` sets a blocked cell's depth to zero and `continue`s *before* it tallies
+    rain, surcharge or capture, so a surcharge scattered onto a building is deleted without
+    appearing in any ledger - the 2D solver's own audit still closes, because the water was never
+    counted as having arrived. Measured on the 08:40 cycle of 2 July 2019 on the Mumbai graph,
+    that was 5,185.4 m3 destroyed over three hours, 0.46 % of all surcharge; the building mask is
+    densest over exactly the wards where the inlets are (ADR-0039). So the exchange refuses the
+    node rather than the surface swallowing it.
+    """
+
+    def _surcharged(self) -> tuple[DrainNetwork, np.ndarray, np.ndarray, np.ndarray]:
+        network, surface_h, surface_z = _coupled_network()
+        head = np.asarray(network.z_invert, dtype=np.float64).copy()
+        head[0] = network.z_ground[0] + 0.5  # node 0 half a metre over its street
+        return network, surface_h, surface_z, head
+
+    @pytest.mark.parametrize("compiled", [False, True])
+    def test_a_node_under_a_building_neither_captures_nor_surcharges(self, compiled: bool) -> None:
+        network, surface_h, surface_z, head = self._surcharged()
+        solver = prepare(network)
+        surface_h[2, 2] = 0.3  # node 1's street is wet, so it would otherwise capture
+
+        free = compute_exchange(
+            surface_h=surface_h,
+            surface_z=surface_z,
+            drain_head=head,
+            network=network,
+            solver=solver,
+            cell_area_m2=900.0,
+            sync_s=5.0,
+            compiled=compiled,
+        )
+        assert free.q_surcharge_node[0] > 0.0, "the fixture must surcharge to be worth testing"
+        assert free.q_inlet_node[1] > 0.0, "the fixture must capture to be worth testing"
+
+        blocked = np.zeros(surface_h.shape, dtype=bool)
+        blocked[1, 1] = True  # node 0's cell
+        blocked[2, 2] = True  # node 1's cell
+        walled = compute_exchange(
+            surface_h=surface_h,
+            surface_z=surface_z,
+            drain_head=head,
+            network=network,
+            solver=solver,
+            cell_area_m2=900.0,
+            sync_s=5.0,
+            compiled=compiled,
+            blocked=blocked,
+        )
+        assert walled.q_surcharge_node[0] == 0.0
+        assert walled.q_inlet_node[1] == 0.0
+        assert not walled.q_surcharge_cell.any()
+        assert not walled.q_inlet_cell.any()
+
+    def test_the_kernel_and_numpy_paths_agree_on_a_blocked_grid(self) -> None:
+        """The parity `coupling_kernel` claims, exercised with the mask rather than without it."""
+        network, surface_h, surface_z, head = self._surcharged()
+        solver = prepare(network)
+        surface_h[2, 2] = 0.3
+        blocked = np.zeros(surface_h.shape, dtype=bool)
+        blocked[1, 1] = True
+
+        kwargs = dict(
+            surface_h=surface_h,
+            surface_z=surface_z,
+            drain_head=head,
+            network=network,
+            solver=solver,
+            cell_area_m2=900.0,
+            sync_s=5.0,
+            blocked=blocked,
+        )
+        numpy_path = compute_exchange(compiled=False, **kwargs)
+        kernel_path = compute_exchange(compiled=True, **kwargs)
+        for name in ("q_inlet_node", "q_surcharge_node", "q_inlet_cell", "q_surcharge_cell"):
+            np.testing.assert_allclose(
+                getattr(numpy_path, name),
+                getattr(kernel_path, name),
+                rtol=0.0,
+                atol=0.0,
+                err_msg=name,
+            )
+
+    @pytest.mark.parametrize("compiled", [False, True])
+    def test_passing_no_mask_is_the_same_as_an_empty_one(self, compiled: bool) -> None:
+        """`blocked=None` must not be a third behaviour; it is the all-False mask."""
+        network, surface_h, surface_z, head = self._surcharged()
+        solver = prepare(network)
+        surface_h[2, 2] = 0.3
+        kwargs = dict(
+            surface_h=surface_h,
+            surface_z=surface_z,
+            drain_head=head,
+            network=network,
+            solver=solver,
+            cell_area_m2=900.0,
+            sync_s=5.0,
+            compiled=compiled,
+        )
+        without = compute_exchange(blocked=None, **kwargs)
+        empty = compute_exchange(blocked=np.zeros(surface_h.shape, dtype=bool), **kwargs)
+        np.testing.assert_array_equal(without.q_surcharge_node, empty.q_surcharge_node)
+        np.testing.assert_array_equal(without.q_inlet_cell, empty.q_inlet_cell)

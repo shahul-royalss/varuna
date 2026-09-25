@@ -314,6 +314,37 @@ class MassBalance:
     audit fell back to an absolute limit on :attr:`residual_m3`. ``None`` means the relative
     budget applies."""
 
+    # -------------------------------------------------------------- where the residual sits
+    # A residual is a number to report; *which side lost the water* is what says whether it is
+    # a bug. These four sum to `residual_m3` on a coupled run and are zero on an uncoupled one.
+    # They exist because the 2026-09-23 re-bake put every demo cycle over budget and the only
+    # way to tell a leak from an honest denominator was to decompose it (task P4.5).
+
+    surface_residual_m3: float = 0.0
+    """The 2D solver against its own sources. Non-zero means `swe2d` is losing water."""
+
+    drain_residual_m3: float = 0.0
+    """The 1D solver against its own sources. Non-zero means `drain1d` is losing water."""
+
+    inlet_gap_m3: float = 0.0
+    """Capture the surface gave up minus capture the network took.
+
+    Positive destroys water, negative invents it. It is not identically zero: the surface hands
+    over ``min(wanted, available)`` at each CFL sub-step and a cell can be drained by its
+    neighbours part-way through a sync, while the network accepts whatever it was offered.
+    Measured at 14.5 m3 on the 08:40 cycle of 2 July 2019 against 2,970,218 m3 of rain -
+    0.00049 %, the whole of that run's remaining error and 205x inside CLAUDE.md 11.3's budget.
+    Closing it exactly needs the offer limited per *cell* rather than per node, which is not
+    built."""
+
+    surcharge_gap_m3: float = 0.0
+    """Surcharge the network gave up minus surcharge the surface received.
+
+    Zero by construction since the runner began stepping the drain first and passing on what it
+    actually emitted. Before that it was -6,052.7 m3 on the 08:40 cycle - water that appeared on
+    a street without leaving a pipe, because the coupling's request and the drain's supply check
+    disagreed and each solver was told a different number."""
+
     @property
     def ok(self) -> bool:
         if self.residual_limit_m3 is not None:

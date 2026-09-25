@@ -205,17 +205,30 @@ They were taken from ``run_twin`` at commit 1bc503a, before task P4.2 touched th
 re-taken after it: every array, every time and every mass-balance float matched bit for bit.
 Numba compiles the kernels for the host with ``fastmath``, so another CPU may round a reduction
 differently without anything being wrong; there the test skips rather than fail, and the
-explicit-cold-state test above still holds the cold path on every machine."""
+explicit-cold-state test above still holds the cold path on every machine.
+
+**Re-taken once more on 2026-09-24 (task P4.5/P4.6), and what moved is worth stating.** Two of
+the four fixtures changed, in ``head_m`` and ``edge_flow`` only - ``depth_m`` and
+``q_surcharge`` are bit-identical in all four, and so is ``error_fraction``. The size of it:
+``plain``'s ``volume_out_m3`` went from 1.9655596751334399 to 1.9655596751334408 m3, **4 ULP**.
+
+It is not the coupling fix. That was checked rather than assumed: neutralising the new
+``blocked=`` argument reproduces the *new* numbers bit for bit, none of these fixtures has a
+node on a building, and none of them surcharges at all, so the reorder hands the surface the
+same zero it handed it before. What moved them is that `drain_kernel`'s first edge pass was
+lifted into an `inline="always"` helper so the serial and parallel kernels cannot drift apart,
+and `fastmath` reassociates the inlined form differently. `test_drain_kernel` still holds that
+kernel to the NumPy specification at 1e-9, which bounds the difference from the other side."""
 
 GOLDEN = {
     "plain": {
         "depth_m": "a60e139e62222f3c35f875617ac43cf3b5b69c576d228ea78008e5f59bb6311d",
         "head_m": "49734adf9d0d4dde00e916d6f2ea43960223dae08fd674063b7d40dd8ab8e145",
         "q_surcharge": "e9f54cab93d0e52ee636da663cadc49af0801c9e7fd652816084cd8eeaed51e2",
-        "edge_flow": "6ccf248bb558ea0531be41912c196c905abb5215b4a495bafba215daa022bd4c",
+        "edge_flow": "2b28382e9d267b8c7f88b48604b60faa20bb80664ba724426fa0c8c8992168ac",
         "mb": (
             "0x1.c3df30ddabec2p+10",
-            "0x1.f72eeb3b08d59p+0",
+            "0x1.f72eeb3b08d5dp+0",
             "0x1.c3616522dd296p+10",
             "0x1.465296db69174p-50",
         ),
@@ -241,9 +254,9 @@ GOLDEN = {
     },
     "heavy6": {
         "depth_m": "9505585b2f4ec98ac7f173c554a84c56f02d103306e812f60b4a187ab5a3d14e",
-        "head_m": "a69d39f76b6a0f66d2fc1c8614d69fb5ce83f76ef7bdfbbbac9e2dc730f25857",
+        "head_m": "903bcd667d69bcf3f7f127a3a21f6292cf6e6d2d715e41d113643a61c2168a99",
         "q_surcharge": "b2248849e1d2a5cc5b5d90c7da1fbe93f33f4385e43d78d59520010b0c9d5e6e",
-        "edge_flow": "82d9138e6f92050dcf61f44f899cdead4b39e1b9e3eb833664a634826bac4884",
+        "edge_flow": "9b008e1bb21cbfeaec75636561235dd730ced301cc1a95b42ad73af0f288a52a",
         "mb": (
             "0x1.15a382bdacc9ep+12",
             "0x1.2851e8cff8ea4p+4",

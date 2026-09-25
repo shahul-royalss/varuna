@@ -174,12 +174,14 @@ class _RunSurfaceEachSync:
         self.terrain = terrain
         self.sea_mask = sea_mask
         self.rain = None
+        self.initial_m3 = state.volume_m3(terrain.cell_area_m2)
+        self.totals = dict.fromkeys(LEDGER, 0.0)
 
     def set_rain(self, r_eff_ms) -> None:
         self.rain = r_eff_ms
 
     def advance(self, duration_s, *, q_inlet_ms, q_surcharge_ms, tide_stage_m, max_dt_s):
-        return swe2d.run_surface(
+        run = swe2d.run_surface(
             self.state,
             self.terrain,
             duration_s,
@@ -190,9 +192,30 @@ class _RunSurfaceEachSync:
             tide_stage_m=tide_stage_m,
             max_dt_s=max_dt_s,
         )
+        for name in LEDGER:
+            self.totals[name] += getattr(run, name)
+        return run
 
-    def finish(self) -> None:
-        return None
+    def finish(self):
+        """The run-long ledger, summed over the per-sync calls.
+
+        The stepper keeps this itself; the pre-stepper implementation had to add it up, and it
+        has to here too, because the runner's closing decomposition (task P4.5) reads it to say
+        which side of the coupling a residual sits on. Returning ``None`` instead would make this
+        double the only caller that cannot be audited - and it is precisely the one asserting the
+        two implementations agree.
+        """
+        return swe2d.SurfaceRun(
+            state=self.state,
+            volume_initial_m3=self.initial_m3,
+            volume_stored_m3=self.state.volume_m3(self.terrain.cell_area_m2),
+            n_steps=0,
+            dt_min_s=0.0,
+            dt_max_s=0.0,
+            elapsed_ms=0,
+            notes=(),
+            **self.totals,
+        )
 
 
 def _tidal_inputs() -> TwinInputs:

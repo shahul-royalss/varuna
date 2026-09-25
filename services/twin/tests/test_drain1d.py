@@ -13,6 +13,7 @@ Tests:
 from __future__ import annotations
 
 import numpy as np
+import pytest
 from varuna_twin.drain1d import (
     BOUNDARY_FREE,
     BOUNDARY_TIDAL,
@@ -394,3 +395,142 @@ class TestDeterminism:
 
         assert state1.head.tobytes() == state2.head.tobytes()
         assert state1.flow.tobytes() == state2.flow.tobytes()
+
+
+class TestAppliedSurcharge:
+    """What the network actually emitted, which is not what it was asked for (task P4.5).
+
+    ``step``'s supply check scales every outflow from a node together - pipes, manhole and sinks
+    - when they would take more water than the node holds. Until 2026-09-24 only the *drain* knew
+    about that scaling: the runner handed the surface the unscaled request, and the difference was
+    water on a street that had left no pipe. On the Mumbai graph's 08:40 cycle of 2 July 2019 that
+    was 6,052.7 m3, 99.8 % of a 0.204 % mass-balance failure against a 0.1 % budget.
+
+    So ``simulate`` now reports the applied volume per node when the caller gives it a buffer.
+    These tests pin both halves: that the buffer agrees with the scalar total the report already
+    carried, and that it really is smaller than the request when the check bites - without which
+    the runner's ``surcharge_gap_m3 == 0`` would be true for the uninteresting reason.
+    """
+
+    def _drained_node(self) -> tuple[object, DrainState, np.ndarray]:
+        """A near-empty node asked to surcharge far more than it holds."""
+        network = _simple_network(n_nodes=4)
+        solver = prepare(network)
+        state = _init_state(network)
+        # A centimetre of water over the invert, and a request of 1 m3/s from a 1 m2 manhole.
+        state.head[0] = network.z_invert[0] + 0.01
+        q_surcharge = np.zeros(network.n_nodes)
+        q_surcharge[0] = 1.0
+        return solver, state, q_surcharge
+
+    def test_the_applied_volume_is_less_than_the_request_when_supply_bites(self) -> None:
+        solver, state, q_surcharge = self._drained_node()
+        applied = np.zeros(state.head.shape[0])
+
+        report = simulate(
+            solver,
+            state,
+            duration_s=5.0,
+            dt_s=1.0,
+            q_surcharge=q_surcharge,
+            applied_surcharge_out=applied,
+        )
+
+        requested = 5.0 * float(q_surcharge.sum())
+        assert report.surcharge_m3 < requested, (
+            "fixture: the supply check never bit, so this asserts nothing"
+        )
+        assert float(applied.sum()) < requested
+        assert float(applied.sum()) == pytest.approx(report.surcharge_m3, rel=1e-12)
+        assert float(applied[0]) >= 0.0
+
+    def test_the_buffer_is_zeroed_so_a_reused_one_cannot_accumulate(self) -> None:
+        """The runner reuses one buffer across 2,160 syncs; a stale one would double-count."""
+        solver, state, q_surcharge = self._drained_node()
+        applied = np.full(state.head.shape[0], 999.0)
+
+        simulate(
+            solver,
+            state,
+            duration_s=5.0,
+            dt_s=1.0,
+            q_surcharge=q_surcharge,
+            applied_surcharge_out=applied,
+        )
+
+        assert float(applied[1]) == 0.0, "a node that never surcharged must read zero, not 999"
+
+    def test_the_compiled_and_numpy_paths_report_the_same_applied_volume(self) -> None:
+        """The parity the repository holds every kernel to (ADR-0035)."""
+        volumes = []
+        for compiled in (False, True):
+            solver, state, q_surcharge = self._drained_node()
+            applied = np.zeros(state.head.shape[0])
+            simulate(
+                solver,
+                state,
+                duration_s=5.0,
+                dt_s=1.0,
+                q_surcharge=q_surcharge,
+                compiled=compiled,
+                applied_surcharge_out=applied,
+            )
+            volumes.append(applied.copy())
+        np.testing.assert_allclose(volumes[0], volumes[1], rtol=1e-12, atol=1e-12)
+
+
+class TestScratchCacheIdentity:
+    """A solver must never be stepped with another solver's buffers.
+
+    `drain1d._SCRATCH` and `coupling._NODE_CACHE` are keyed on `id()`, which CPython reuses the
+    moment the object at that address is collected. Both were validated by *size*, and two
+    networks of the same size are exactly what this repository's fixtures are: on 2026-09-24
+    `test_hot_start`'s tide-locked fixture began reporting the free-outfall fixture's drain
+    numbers to the digit - outfall +2.0 m3 where the tide should push 5.2 m3 back up the trunk -
+    because `_Scratch` carries copies of ``boundary`` and ``flap_gate``. Nothing raised; the run
+    simply had the wrong sea.
+
+    The caches now hold the key object and compare it with ``is``, which both makes the check
+    sound and keeps the address unrecyclable while the entry lives. This test forces the
+    collision rather than waiting for the allocator to produce it.
+    """
+
+    def test_a_recycled_id_does_not_hand_over_the_previous_outfalls(self) -> None:
+        free = _simple_network(n_nodes=6)
+        tidal = _simple_network(n_nodes=6, has_tidal_outfall=True)
+        assert free.n_nodes == tidal.n_nodes and free.n_edges == tidal.n_edges, (
+            "fixture: the two networks must be the same size or no size check could be fooled"
+        )
+
+        stage = float(tidal.z_ground[-1]) + 1.0  # a sea well above the outfall crown
+
+        def run(network, solver) -> float:
+            state = _init_state(network)
+            q_inlet = np.zeros(network.n_nodes)
+            q_inlet[0] = 0.05
+            report = simulate(
+                solver, state, duration_s=20.0, dt_s=1.0, q_inlet=q_inlet, tide_stage_m=stage
+            )
+            return report.boundary_m3
+
+        alone = run(tidal, prepare(tidal))
+
+        # Now step the free-outfall solver first, drop it, and step the tidal one. If the cache
+        # keyed on a recycled address, the second call gets the first's `boundary` array and the
+        # tide stops existing.
+        free_solver = prepare(free)
+        run(free, free_solver)
+        del free_solver
+        import gc
+
+        gc.collect()
+        after = run(tidal, prepare(tidal))
+
+        assert after == alone, (
+            "the tide-locked run changed after a free-outfall run of the same size; the scratch "
+            "cache handed it the other network's outfalls"
+        )
+        assert alone < 0.0, (
+            "fixture: the sea must be pushing water back up the trunk, or the two outfall types "
+            "would be indistinguishable and this would pass for the wrong reason"
+        )
