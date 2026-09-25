@@ -12,11 +12,11 @@
     <urgency>Expected</urgency>
     <severity>Minor</severity>
     <certainty>Likely</certainty>
-    <onset>2019-07-02T12:00:00+05:30</onset>
+    <onset>2019-07-02T12:05:00+05:30</onset>
     <expires>2019-07-02T12:10:00+05:30</expires>
-    <headline>Sahar Road: depth above 15 cm from 12:00 to 12:10</headline>
+    <headline>Sahar Road: depth above 15 cm from 12:05 to 12:10</headline>
     <description>VARUNA nowcast run MUM-20190702T0340Z-sky1.0-twin1.0-flash0.1-baked.</description>
-    <instruction>Avoid Sahar Road for the window. Peak forecast 17 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
+    <instruction>Avoid Sahar Road for the window. Peak forecast 15 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sahar Road</areaDesc>
       <circle>19.111260349999995,72.85009285000001 0.5</circle>

@@ -12,11 +12,11 @@
     <urgency>Expected</urgency>
     <severity>Severe</severity>
     <certainty>Likely</certainty>
-    <onset>2019-07-02T10:45:00+05:30</onset>
+    <onset>2019-07-02T10:20:00+05:30</onset>
     <expires>2019-07-02T11:40:00+05:30</expires>
-    <headline>SL Raheja Hospital Marg: depth above 45 cm from 10:45 to 11:40</headline>
+    <headline>SL Raheja Hospital Marg: depth above 45 cm from 10:20 to 11:40</headline>
     <description>VARUNA nowcast run MUM-20190702T0310Z-sky1.0-twin1.0-flash0.1-baked.</description>
-    <instruction>Avoid SL Raheja Hospital Marg for the window. Peak forecast 55 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
+    <instruction>Avoid SL Raheja Hospital Marg for the window. Peak forecast 59 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>SL Raheja Hospital Marg</areaDesc>
       <circle>19.0447698,72.8392958 0.5</circle>

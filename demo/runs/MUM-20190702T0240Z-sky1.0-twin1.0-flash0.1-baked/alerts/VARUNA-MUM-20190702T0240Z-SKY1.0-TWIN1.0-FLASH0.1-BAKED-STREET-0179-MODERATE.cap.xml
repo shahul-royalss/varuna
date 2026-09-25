@@ -12,11 +12,11 @@
     <urgency>Expected</urgency>
     <severity>Moderate</severity>
     <certainty>Likely</certainty>
-    <onset>2019-07-02T11:00:00+05:30</onset>
+    <onset>2019-07-02T10:35:00+05:30</onset>
     <expires>2019-07-02T11:10:00+05:30</expires>
-    <headline>CD Barfiwala Road: depth above 30 cm from 11:00 to 11:10</headline>
+    <headline>CD Barfiwala Road: depth above 30 cm from 10:35 to 11:10</headline>
     <description>VARUNA nowcast run MUM-20190702T0240Z-sky1.0-twin1.0-flash0.1-baked.</description>
-    <instruction>Avoid CD Barfiwala Road for the window. Peak forecast 32 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
+    <instruction>Avoid CD Barfiwala Road for the window. Peak forecast 36 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>CD Barfiwala Road</areaDesc>
       <circle>19.11582815,72.83427714999999 0.5</circle>

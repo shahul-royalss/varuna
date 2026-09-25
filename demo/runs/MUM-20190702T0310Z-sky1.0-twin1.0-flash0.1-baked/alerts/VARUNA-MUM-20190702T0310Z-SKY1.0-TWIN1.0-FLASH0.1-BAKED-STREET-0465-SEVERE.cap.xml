@@ -12,11 +12,11 @@
     <urgency>Expected</urgency>
     <severity>Severe</severity>
     <certainty>Likely</certainty>
-    <onset>2019-07-02T11:30:00+05:30</onset>
+    <onset>2019-07-02T11:05:00+05:30</onset>
     <expires>2019-07-02T11:40:00+05:30</expires>
-    <headline>Kabutarkhana: depth above 45 cm from 11:30 to 11:40</headline>
+    <headline>Kabutarkhana: depth above 45 cm from 11:05 to 11:40</headline>
     <description>VARUNA nowcast run MUM-20190702T0310Z-sky1.0-twin1.0-flash0.1-baked.</description>
-    <instruction>Avoid Kabutarkhana for the window. Peak forecast 46 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
+    <instruction>Avoid Kabutarkhana for the window. Peak forecast 50 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Kabutarkhana</areaDesc>
       <circle>19.01901031079258,72.84043112428871 0.5</circle>
