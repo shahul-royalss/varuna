@@ -103,7 +103,10 @@ export function formatLead(minutes: number | null | undefined): string {
 }
 
 /** "18:20 (+40 min)". */
-export function formatTimeWithLead(input: DateInput, leadMinutes: number | null | undefined): string {
+export function formatTimeWithLead(
+  input: DateInput,
+  leadMinutes: number | null | undefined,
+): string {
   const time = formatIst(input);
   if (time === MISSING) return MISSING;
   return `${time} (${formatLead(leadMinutes)})`;
@@ -113,6 +116,25 @@ export function formatTimeWithLead(input: DateInput, leadMinutes: number | null 
 export function formatCm(cm: number | null | undefined): string {
   if (!isFinite(cm)) return MISSING;
   return `${integerFormatter.format(Math.max(0, Math.round(cm)))} cm`;
+}
+
+/**
+ * "5.1 cm": one decimal, for a comparison against a stated tolerance. Whole centimetres are right
+ * for a depth on a street, and wrong beside a 5 cm tolerance: 5.07 cm rounded to "5 cm" next to
+ * "Outside tolerance" reads as a contradiction.
+ */
+export function formatCmPrecise(cm: number | null | undefined): string {
+  if (!isFinite(cm)) return MISSING;
+  return `${oneDecimalFormatter.format(Math.max(0, cm))} cm`;
+}
+
+/** "+3.4 cm" / "−1.1 cm": a signed change in depth, where the direction is the point. */
+export function formatCmSigned(cm: number | null | undefined): string {
+  if (!isFinite(cm)) return MISSING;
+  const rounded = Math.round(cm * 10) / 10;
+  if (rounded === 0) return "0.0 cm";
+  const sign = rounded > 0 ? "+" : "−";
+  return `${sign}${oneDecimalFormatter.format(Math.abs(rounded))} cm`;
 }
 
 /** "55 → 20 cm" for before/after depth pairs (drain X-ray, what-if). */

@@ -3,7 +3,7 @@
 import { motion } from "motion/react";
 
 import { EmptyState } from "@/components/varuna/empty-state";
-import { formatCm } from "@/lib/format";
+import { formatCmPrecise } from "@/lib/format";
 import { useMotionPref } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -59,15 +59,10 @@ export function AgreementBar({
       <div className="flex items-baseline justify-between gap-3">
         <p className="type-small text-text">
           Emulator vs physics: max difference{" "}
-          <span className="num font-medium">{formatCm(result.maxDiffCm)}</span>
+          <span className="num font-medium">{formatCmPrecise(result.maxDiffCm)}</span>
           {where}
         </p>
-        <span
-          className={cn(
-            "type-micro",
-            withinTolerance ? "text-tide" : "text-text-2",
-          )}
-        >
+        <span className={cn("type-micro", withinTolerance ? "text-tide" : "text-text-2")}>
           {withinTolerance ? "Within tolerance" : "Outside tolerance"}
         </span>
       </div>
@@ -77,23 +72,21 @@ export function AgreementBar({
         aria-valuemin={0}
         aria-valuemax={scale}
         aria-valuenow={Math.min(scale, result.maxDiffCm)}
-        aria-valuetext={`${formatCm(result.maxDiffCm)}, tolerance ${formatCm(toleranceCm)}`}
-        className="relative h-2 w-full overflow-hidden rounded-chip bg-well"
+        aria-valuetext={`${formatCmPrecise(result.maxDiffCm)}, tolerance ${formatCmPrecise(toleranceCm)}`}
+        className="rounded-chip bg-well relative h-2 w-full overflow-hidden"
       >
         <motion.div
-          className={cn("h-full rounded-chip", withinTolerance ? "bg-tide" : "")}
+          className={cn("rounded-chip h-full", withinTolerance ? "bg-tide" : "")}
           style={withinTolerance ? undefined : { background: "var(--status-degraded)" }}
           initial={false}
           animate={{ width: `${fraction * 100}%` }}
           transition={preset("M21").transition}
         />
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-0 left-1/2 w-px bg-line-strong"
-        />
+        <span aria-hidden="true" className="bg-line-strong absolute inset-y-0 left-1/2 w-px" />
       </div>
       <p className="num type-micro text-text-3">
-        Tolerance {formatCm(toleranceCm)} at the tick; the bar ends at {formatCm(scale)}.
+        Tolerance {formatCmPrecise(toleranceCm)} at the tick; the bar ends at{" "}
+        {formatCmPrecise(scale)}.
       </p>
     </div>
   );

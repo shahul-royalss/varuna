@@ -7,8 +7,9 @@
  * showing, with the answer drawn on the console's own map as the difference layer (motion M13).
  * It takes the right rail's slot, as the hotspot drawer does, so the map keeps its whole width.
  *
- * What the lab refuses, this refuses with the same words: the top-14 ranking (ADR-0042), the
- * pump-plan lever (no field on the endpoint) and the physics check (P7.8).
+ * What the lab refuses, this refuses with the same words: a city-wide top-14 ranking (pipes are
+ * ranked per junction in the hotspot drawer, ADR-0071) and the pump-plan lever (no field on the
+ * endpoint). The physics check is the lab's too, through the same hook.
  */
 
 import { X } from "lucide-react";
@@ -17,6 +18,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { DeltaTable, type DeltaRow } from "@/components/varuna/delta-table";
+import { PhysicsCheckPanel } from "@/components/varuna/physics-check-result";
 import {
   DEFAULT_WHATIF_VALUES,
   WhatIfControls,
@@ -24,6 +26,7 @@ import {
 } from "@/components/varuna/whatif-controls";
 import { runWhatIf, type WhatIfResult } from "@/lib/api/whatif";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
+import { usePhysicsCheck } from "@/lib/hooks/use-physics-check";
 import { DUR, DUR_MS, EASE_UI } from "@/lib/motion";
 
 /** Motion M13: the difference layer wipes left to right over 500 ms (CLAUDE.md 8). */
@@ -32,12 +35,9 @@ const WIPE_MS = DUR_MS.diffWipe;
 /** Rows in the drawer's table; the full list is the lab's. */
 const MAX_ROWS = 8;
 
-const PHYSICS_DISABLED_REASON =
-  "Runs the Twin on the same scenario; a full-AOI Mumbai run measures 58-114 s against a 10 s " +
-  "budget, so it is not wired to this button yet";
 const CLEAN_DISABLED_REASON =
-  "Ranking pipes by beta needs attribution, which Flash-lite cannot compute (ADR-0042). Use a " +
-  "hotspot's Clean in what-if instead";
+  "Pipes are ranked per junction, in the hotspot's drawer (ADR-0071). Press “Clean in what-if” " +
+  "there to bring its pipes here";
 const PUMP_DISABLED_REASON = "The pump plan is not a what-if lever yet (P7.7)";
 
 export interface WhatIfDiff {
@@ -58,6 +58,7 @@ export function WhatIfDrawer({ runId, onDiff, onClose }: WhatIfDrawerProps) {
   const [result, setResult] = useState<WhatIfResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
+  const physics = usePhysicsCheck(runId);
 
   // A different cycle is a different question: the answer is dropped, not re-labelled.
   const [answeredFor, setAnsweredFor] = useState(runId);
@@ -147,7 +148,8 @@ export function WhatIfDrawer({ runId, onDiff, onClose }: WhatIfDrawerProps) {
         <WhatIfControls
           initial={DEFAULT_WHATIF_VALUES}
           onRun={(scenario) => void run(scenario)}
-          physicsDisabledReason={PHYSICS_DISABLED_REASON}
+          onPhysicsCheck={physics.running ? undefined : physics.check}
+          physicsDisabledReason="Checking: the Twin is running the scenario"
           cleanDisabled
           cleanDisabledReason={CLEAN_DISABLED_REASON}
           pumpDisabled
@@ -174,6 +176,18 @@ export function WhatIfDrawer({ runId, onDiff, onClose }: WhatIfDrawerProps) {
           <div className="mt-3">
             <DeltaTable rows={rows} />
           </div>
+        </section>
+      ) : null}
+
+      {physics.result || physics.running || physics.error ? (
+        <section className="border-line border-b p-4">
+          <h3 className="type-small text-text mb-2 font-medium">Physics check</h3>
+          <PhysicsCheckPanel
+            result={physics.result}
+            running={physics.running}
+            error={physics.error}
+            maxRows={4}
+          />
         </section>
       ) : null}
     </motion.aside>

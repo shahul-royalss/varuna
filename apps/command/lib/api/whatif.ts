@@ -121,3 +121,94 @@ export async function runWhatIf(
     notes: (body.notes as string[]) ?? [],
   };
 }
+
+/** One junction the physics check compared: the emulator's change against the Twin's. */
+export interface PhysicsCheckHotspot {
+  hotspotId: string;
+  name: string;
+  emulatorDeltaCm: number;
+  twinDeltaCm: number;
+  /** `|emulator - Twin|`, the number the check is about. */
+  diffCm: number;
+}
+
+/**
+ * `POST /v1/whatif/physics-check` (CLAUDE.md 7.7, P7.8): the same scenario re-run on the coupled
+ * Twin over a window around the run's worst junction, compared as changes and not as levels.
+ */
+export interface PhysicsCheckResult {
+  runId: string;
+  /** Section 7.7's sentence, from the endpoint: "Emulator vs physics: max difference ...". */
+  summary: string;
+  toleranceCm: number;
+  agrees: boolean;
+  maxDiffCm: number | null;
+  maxDiffHotspot: string | null;
+  hotspots: PhysicsCheckHotspot[];
+  /** Junctions ranked high enough to check that fell outside the one window, named. */
+  outside: string[];
+  window: { sizeM: number; nodes: number; edges: number; centre: string };
+  massBalance: { baseline: number; scenario: number; budget: number };
+  ms: number;
+  budgetMs: number;
+  notes: string[];
+}
+
+/** Run the physics check on a scenario. Throws with the API's own message when it refuses one. */
+export async function runPhysicsCheck(
+  scenario: WhatIfScenario,
+  signal?: AbortSignal,
+): Promise<PhysicsCheckResult> {
+  const response = await fetch(apiUrl("/v1/whatif/physics-check"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    signal,
+    body: JSON.stringify({
+      run_id: scenario.runId,
+      rain_scale: scenario.rainScale,
+      tide_offset_m: scenario.tideOffsetM,
+      cleaned_segments: scenario.cleanedSegments ?? [],
+    }),
+  });
+
+  const body = (await response.json()) as Record<string, unknown>;
+  if (!response.ok) {
+    const envelope = body.error as { message?: string } | undefined;
+    throw new Error(envelope?.message ?? `Physics check failed: HTTP ${response.status}`);
+  }
+
+  const window = (body.window ?? {}) as Record<string, unknown>;
+  const balance = (body.mass_balance ?? {}) as Record<string, unknown>;
+  const optionalNumber = (value: unknown) =>
+    value === null || value === undefined ? null : Number(value);
+  return {
+    runId: String(body.run_id ?? ""),
+    summary: String(body.summary ?? ""),
+    toleranceCm: Number(body.tolerance_cm ?? 5),
+    agrees: Boolean(body.agrees),
+    maxDiffCm: optionalNumber(body.max_diff_cm),
+    maxDiffHotspot: body.max_diff_hotspot ? String(body.max_diff_hotspot) : null,
+    hotspots: ((body.hotspots as Record<string, unknown>[]) ?? []).map((r) => ({
+      hotspotId: String(r.hotspot_id ?? ""),
+      name: String(r.name ?? r.hotspot_id ?? ""),
+      emulatorDeltaCm: Number(r.emulator_delta_cm ?? 0),
+      twinDeltaCm: Number(r.twin_delta_cm ?? 0),
+      diffCm: Number(r.diff_cm ?? 0),
+    })),
+    outside: (body.hotspots_outside_window as string[]) ?? [],
+    window: {
+      sizeM: Number(window.size_m ?? 0),
+      nodes: Number(window.nodes ?? 0),
+      edges: Number(window.edges ?? 0),
+      centre: String(window.centre_hotspot ?? ""),
+    },
+    massBalance: {
+      baseline: Number(balance.baseline ?? 0),
+      scenario: Number(balance.scenario ?? 0),
+      budget: Number(balance.budget ?? 1e-3),
+    },
+    ms: Number(body.ms ?? 0),
+    budgetMs: Number(body.budget_ms ?? 10_000),
+    notes: (body.notes as string[]) ?? [],
+  };
+}
