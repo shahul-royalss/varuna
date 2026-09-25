@@ -16,6 +16,7 @@ import platform
 import re
 import shutil
 import sys
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,7 +81,7 @@ PLACEHOLDER_PHASES: dict[str, tuple[int, str]] = {
     # what the CLI does - the real command wins - but the phase-gate test drove every entry in
     # this dict expecting a refusal, so it invoked the real target and wrote an 830 MB package
     # on every full test run before failing on the exit code.
-    "demo-video": (10, "Polish, rehearsal, packaging"),
+    # `demo-video` left on 2026-09-26 (P10.7): it records the take now.
 }
 
 NO_BUNDLE_MESSAGE = (
@@ -651,9 +652,49 @@ def pack() -> None:
         raise SystemExit(1)
 
 
-def demo_video() -> None:
-    """Record the demo path with Playwright video (Phase 10)."""
-    not_implemented("demo-video")
+def default_video_path() -> Path:
+    """Where a take goes by default: beside the repository, never inside it (P10.7)."""
+    stamp = time.strftime("%Y%m%d-%H%M")
+    return repo_root().parent / "varuna-demo-video" / f"varuna-demo-{stamp}.webm"
+
+
+def demo_video(
+    out: Annotated[
+        Path | None,
+        typer.Option(
+            help="Where to write the take; default ../varuna-demo-video/ beside the repo."
+        ),
+    ] = None,
+) -> None:
+    """Record the eight-minute demo as one 1080p take, paced to CLAUDE.md 15's clock (P10.7).
+
+    Runs `tests/e2e/demo-video.spec.ts` through the root Playwright config, which starts the API
+    and the console or reuses a running `make demo`. The file is written outside the repository:
+    a take is a fallback for the stage, copied to the demo laptops and USB sticks, not source.
+    """
+    root = repo_root()
+    target = (out or default_video_path()).resolve()
+    if target.is_relative_to(root):
+        console.print(
+            f"[red]{target} is inside the repository.[/red] A take is about 100 MB of video and "
+            "does not belong in git; pass --out somewhere outside it."
+        )
+        raise typer.Exit(code=2)
+    argv = procs.pnpm(
+        "exec",
+        "playwright",
+        "test",
+        "--config",
+        str(root / "playwright.config.ts"),
+        # A filter, not a path: Playwright reads its arguments as regular expressions, and a
+        # Windows path is all backslashes.
+        "demo-video.spec.ts",
+    )
+    env = {"VARUNA_DEMO_VIDEO": "1", "VARUNA_DEMO_VIDEO_OUT": str(target)}
+    result = procs.run(argv, cwd=command_app_dir(), env=env)
+    if target.is_file():
+        console.print(f"[green]Demo take written to {target}[/green]")
+    raise typer.Exit(code=result.returncode)
 
 
 def _services(
