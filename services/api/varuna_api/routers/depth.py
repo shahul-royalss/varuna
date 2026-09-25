@@ -129,6 +129,9 @@ def raster_bounds(
         "ensemble_n": meta.get("ensemble_n", 1),
         "mass_balance_err": meta.get("mass_balance_err"),
         "stage_ms": meta.get("stage_ms", {}),
+        # The time bar's spread band (CLAUDE.md 7.2): p10/p50/p90 of mean street depth per step,
+        # absent on a run with fewer than two members or baked before the band existed.
+        "aoi_depth_band": meta.get("aoi_depth_band"),
         "notes": meta.get("notes", []),
         "frames": [
             f"/v1/nowcast/raster?run_id={meta.get('run_id', path.name)}&step={i}"

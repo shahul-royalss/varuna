@@ -233,6 +233,14 @@ class RunMeta(VarunaModel):
         default_factory=list,
         description="Honesty notes shown in the run stamp, e.g. 'reconstructed replay'.",
     )
+    aoi_depth_band: dict[str, list[float]] | None = Field(
+        default=None,
+        description=(
+            "p10, p50 and p90 of mean street depth in cm at each forecast step, taken across the "
+            "ensemble's members: the band the time bar draws (CLAUDE.md 7.2). None when the run "
+            "has fewer than two members, so a deterministic run never draws a band of no width."
+        ),
+    )
     rain_aoi_mm_h: list[float] = Field(
         default_factory=list,
         description=(

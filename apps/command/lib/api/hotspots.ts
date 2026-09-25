@@ -22,19 +22,54 @@ export interface HotspotExposure {
 }
 
 /**
- * One pipe named as responsible for a junction's peak, once anything can name one.
+ * One pipe named as responsible for a junction's peak.
  *
- * The shape the products service would write (`varuna_flash.whatif.attribute`), carried here so
- * the drawer has a type to render against. No run produces a row today — ADR-0042 measured that
- * a per-segment emulator cannot attribute across segments — so every `attribution` is empty and
- * `attributionLabel` says why.
+ * Written by `varuna_flash.whatif.attribute_pipes`: `drain1d` re-run on the junction's own
+ * catchment with the street depth frozen at what the Twin produced, once per candidate pipe
+ * within five upstream hops, ranked by how much more water the drain then takes off the
+ * junction. It replaced the Flash-lite finite difference of ADR-0042, which was element-wise
+ * per segment and so could only ever score the target's own street.
+ *
+ * A run can still carry no rows: at a junction whose inlets rather than whose pipes are the
+ * constraint, nothing clears the floor, and `attributionLabel` carries the measured reason.
  */
 export interface HotspotAttribution {
   rank: number;
-  segmentId: string;
-  /** Posterior blockage on the pipe under that segment. */
+  /**
+   * The inferred pipe, `MUM-E…`; what the drain X-ray and the desilting CSV are keyed on.
+   *
+   * Optional because it is what P7.7 added: a row from a run baked before the hydraulic
+   * operator existed is keyed on a road segment and has no pipe. The drawer falls back to the
+   * segment rather than printing an empty cell.
+   */
+  pipeId?: string;
+  /** The road segment the pipe runs under, when the drain graph records one. */
+  segmentId: string | null;
+  /** Blockage on that pipe in the run this was measured on. */
   beta: number;
-  /** Centimetres the junction's peak drops when this pipe alone is cleaned. */
+  /**
+   * Centimetres of the junction's peak this pipe alone explains.
+   *
+   * Positive means cleaning it makes the junction shallower; **negative means deeper**, which
+   * is a real answer at a junction that is already surcharging - a clear pipe above it delivers
+   * more water than the cleaning takes away. The ranking is by magnitude.
+   */
+  depthExplainedCm: number;
+  /** The peak it is explaining part of, so a row can read "1.6 of 9.2 cm". Added with P7.7. */
+  depthBeforeCm?: number;
+}
+
+/**
+ * Cleaning the whole ranking at once — CLAUDE.md 7.2's "cleaning these 14 pipes: 55 → 20 cm".
+ *
+ * A separate run rather than the sum of the rows, because pipes in series share the water they
+ * carry. It can come back *negative*: cleaning the pipes above a junction can deliver more water
+ * to it than the cleaning takes away, and the drawer prints that rather than clamping it.
+ */
+export interface HotspotAttributionCombined {
+  nCleaned: number;
+  depthBeforeCm: number;
+  depthAfterCm: number;
   depthExplainedCm: number;
 }
 
@@ -64,10 +99,36 @@ export interface Hotspot {
   exposure: HotspotExposure;
   /** The road segments the junction is made of; what a what-if deep link carries. */
   segmentIds: string[];
-  /** Responsible pipes, deepest first. Empty on every run so far — see `attributionLabel`. */
+  /** Responsible pipes, deepest first. Empty exactly when `attributionLabel` is set. */
   attribution: HotspotAttribution[];
-  /** Why the ranking is empty, when it is; null once a run carries rows and labels them. */
+  /** Why the ranking is empty, when it is: measured refusal, or not attempted on this run. */
   attributionLabel: string | null;
+  /**
+   * Cleaning every listed pipe together; null or absent when there is no ranking.
+   *
+   * These three fields are optional because they arrived with P7.7: a run baked before it, and
+   * a fixture written against the older shape, simply does not carry them.
+   */
+  attributionCombined?: HotspotAttributionCombined | null;
+  /** How the ranking was measured, printed beside it so the operator is never guessing. */
+  attributionMethod?: string | null;
+  /** How many pipes were evaluated, so a short list is not read as a short candidate set. */
+  attributionCandidates?: number | null;
+  /**
+   * Which state an empty list is in: `refused` means pipes were re-run and none cleared the
+   * floor, `not_attempted` means this junction was under the wet floor or past the budget, so an
+   * empty list is never read as "no pipe is responsible" when nobody looked.
+   */
+  attributionStatus?: "ranked" | "refused" | "not_attempted" | "unavailable" | "off" | null;
+  /**
+   * The ensemble's p10 and p90 at this junction, per step: its own Twin level plus the member
+   * spread of its registered streets (ADR-0076). Absent on a run baked before the band existed,
+   * or when none of its streets is in the forecast; the drawer then draws the series flat.
+   */
+  depthP10Cm?: number[] | null;
+  depthP90Cm?: number[] | null;
+  /** How many of the junction's streets the band was averaged over; 0 means no band. */
+  bandSegments?: number | null;
 }
 
 export interface HotspotSet {
@@ -110,12 +171,28 @@ interface RawHotspot {
   segment_ids?: string[];
   attribution?: RawAttribution[];
   attribution_label?: string | null;
+  attribution_combined?: RawCombined;
+  attribution_method?: string | null;
+  attribution_candidates?: number | null;
+  attribution_status?: "ranked" | "refused" | "not_attempted" | "unavailable" | "off" | null;
+  depth_p10_cm?: number[] | null;
+  depth_p90_cm?: number[] | null;
+  band_segments?: number | null;
 }
 
 interface RawAttribution {
   rank?: number;
-  segment_id?: string;
+  pipe_id?: string;
+  segment_id?: string | null;
   beta?: number;
+  depth_explained_cm?: number;
+  depth_before_cm?: number;
+}
+
+interface RawCombined {
+  n_cleaned?: number;
+  depth_before_cm?: number;
+  depth_after_cm?: number;
   depth_explained_cm?: number;
 }
 
@@ -180,11 +257,27 @@ export async function loadHotspots(
       segmentIds: h.segment_ids ?? [],
       attribution: (h.attribution ?? []).map((row, j) => ({
         rank: row.rank ?? j + 1,
-        segmentId: row.segment_id ?? "",
+        pipeId: row.pipe_id ?? "",
+        segmentId: row.segment_id ?? null,
         beta: row.beta ?? 0,
         depthExplainedCm: row.depth_explained_cm ?? 0,
+        depthBeforeCm: row.depth_before_cm ?? h.peak_depth_cm ?? 0,
       })),
       attributionLabel: h.attribution_label ?? null,
+      attributionCombined: h.attribution_combined
+        ? {
+            nCleaned: h.attribution_combined.n_cleaned ?? 0,
+            depthBeforeCm: h.attribution_combined.depth_before_cm ?? 0,
+            depthAfterCm: h.attribution_combined.depth_after_cm ?? 0,
+            depthExplainedCm: h.attribution_combined.depth_explained_cm ?? 0,
+          }
+        : null,
+      attributionMethod: h.attribution_method ?? null,
+      attributionCandidates: h.attribution_candidates ?? null,
+      attributionStatus: h.attribution_status ?? null,
+      depthP10Cm: h.depth_p10_cm ?? null,
+      depthP90Cm: h.depth_p90_cm ?? null,
+      bandSegments: h.band_segments ?? null,
     })),
   };
 }

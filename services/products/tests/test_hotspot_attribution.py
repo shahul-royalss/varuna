@@ -250,3 +250,33 @@ def test_every_entry_ends_with_exactly_one_of_a_ranking_and_a_reason(
         assert "_window" not in entry
         assert "_register_index" not in entry
         assert bool(entry["attribution"]) != bool(entry["attribution_label"])
+
+
+def test_a_junction_takes_its_band_from_the_streets_around_it() -> None:
+    """ADR-0076: the Twin's level at the junction, with its segments' member spread either side."""
+    import pandas as pd
+    from varuna_products.hotspots import attach_ensemble_band
+
+    frame = pd.DataFrame(
+        {
+            "segment_id": ["A", "A", "B", "B", "C", "C"],
+            "valid_ts": [0, 1, 0, 1, 0, 1],
+            "depth_p10_cm": [8.0, 18.0, 4.0, 14.0, 0.0, 0.0],
+            "depth_p50_cm": [10.0, 20.0, 10.0, 20.0, 0.0, 0.0],
+            "depth_p90_cm": [14.0, 26.0, 12.0, 22.0, 0.0, 0.0],
+        }
+    )
+    ranked = [
+        {"depth_cm": [30.0, 40.0], "segment_ids": ["A", "B"]},
+        {"depth_cm": [5.0, 5.0], "segment_ids": ["Z"]},
+    ]
+    attach_ensemble_band(ranked, frame)
+
+    # Below: mean of (-2, -6) = -4 at both steps. Above: mean of (+4, +2) = +3 and (+6, +2) = +4.
+    assert ranked[0]["depth_p10_cm"] == [26.0, 36.0]
+    assert ranked[0]["depth_p90_cm"] == [33.0, 44.0]
+    assert ranked[0]["band_segments"] == 2
+    # No street of its own in the forecast: no band, and the count says so rather than a zero-width
+    # band being invented.
+    assert ranked[1]["band_segments"] == 0
+    assert "depth_p10_cm" not in ranked[1]

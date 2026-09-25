@@ -54,17 +54,41 @@ function firstUnsafeStep(depthCm: readonly number[], thresholdCm: number): numbe
 }
 
 /**
- * The what-if lab, opened on this junction's own road segments (task P7.11).
+ * The road segments the "Clean in what-if" link preselects (task P7.11).
+ *
+ * When the run carries an attribution these are the streets the *ranked pipes* run under, in
+ * rank order and de-duplicated - several pipes in series often share one street, so fourteen
+ * pipes can be four segments. That is the deep link P7.11 asks for: the lab opens on what
+ * attribution actually named, not on the junction's whole address book.
+ *
+ * With no ranking it falls back to the junction's own segments in the register's order, which is
+ * what the drawer did before anything could rank pipes. The caption says which of the two
+ * happened, because "the streets attribution named" and "every street at this junction" are
+ * different claims (rule 6).
+ */
+function cleanedSegments(hotspot: Hotspot): { ids: string[]; fromAttribution: boolean } {
+  const ranked: string[] = [];
+  for (const row of hotspot.attribution) {
+    if (row.segmentId && !ranked.includes(row.segmentId)) ranked.push(row.segmentId);
+  }
+  if (ranked.length > 0) {
+    return { ids: ranked.slice(0, MAX_CLEANED_SEGMENTS), fromAttribution: true };
+  }
+  return { ids: hotspot.segmentIds.slice(0, MAX_CLEANED_SEGMENTS), fromAttribution: false };
+}
+
+/**
+ * The what-if lab, opened on those segments.
  *
  * The ids are road segments, which is the vocabulary `POST /v1/whatif` cleans on; the run travels
  * with them because a what-if is a question about one cycle, and the lab's own default is the
  * newest run rather than the one the operator is looking at.
  */
-function cleanInWhatIfHref(hotspot: Hotspot, runId: string | null) {
+function cleanInWhatIfHref(hotspot: Hotspot, runId: string | null, ids: string[]) {
   // A `UrlObject` rather than a template string: typed routes reject an interpolated path, and
   // the query is encoded for us, which matters because a hotspot's name carries commas.
   const query: Record<string, string> = {
-    segments: hotspot.segmentIds.slice(0, MAX_CLEANED_SEGMENTS).join(","),
+    segments: ids.join(","),
     from: hotspot.name,
   };
   if (runId) query.run = runId;
@@ -93,16 +117,23 @@ export function HotspotDrawer({
   if (!hotspot) return null;
 
   const now = hotspot.depthCm[Math.min(step, hotspot.depthCm.length - 1)] ?? 0;
-  const cleanedCount = Math.min(hotspot.segmentIds.length, MAX_CLEANED_SEGMENTS);
+  const cleaned = cleanedSegments(hotspot);
+  const cleanedCount = cleaned.ids.length;
 
-  // One deterministic Twin run, so p10 = p50 = p90. The band is drawn flat rather than invented,
-  // and the caption below says why it has no width (rule 6).
+  // The junction's band is the streets' (ADR-0076): its own Twin level with the member spread of
+  // its registered segments either side. A run baked before the band existed carries none, and
+  // then the series is drawn flat - p10 = p50 = p90 - rather than invented.
+  const hasBand =
+    Array.isArray(hotspot.depthP10Cm) &&
+    Array.isArray(hotspot.depthP90Cm) &&
+    hotspot.depthP10Cm.length === hotspot.depthCm.length &&
+    hotspot.depthP90Cm.length === hotspot.depthCm.length;
   const points: FanChartPoint[] = hotspot.depthCm.map((cm, i) => ({
     validTs: validTs[i] ?? "",
     leadMin: i * stepMin,
-    p10: cm,
+    p10: hasBand ? (hotspot.depthP10Cm?.[i] ?? cm) : cm,
     p50: cm,
-    p90: cm,
+    p90: hasBand ? (hotspot.depthP90Cm?.[i] ?? cm) : cm,
   }));
 
   return (
@@ -168,8 +199,11 @@ export function HotspotDrawer({
           />
         </div>
         <p className="type-micro text-text-3 mt-2">
-          One deterministic Twin run, so the band has no width. The 50-member spread arrives with
-          Flash-lite.
+          {hasBand
+            ? `The line is the Twin's depth here; the band is the ensemble's p10 to p90 over the ${hotspot.bandSegments ?? 0} streets registered to this junction.`
+            : hotspot.bandSegments === 0
+              ? "One deterministic Twin run for this junction, so the band has no width: none of its streets is in this run's ensemble."
+              : "One deterministic Twin run for this junction, so the band has no width: this run was baked before junctions carried the ensemble's band."}
         </p>
       </section>
 
@@ -242,17 +276,96 @@ export function HotspotDrawer({
         <h3 id="hotspot-why" className="type-small text-text font-medium">
           Why this junction floods
         </h3>
-        {/* This was a busy skeleton captioned "once Pulse has learned this junction's blockage".
-            Pulse has: the baked runs move 202 of 6,000 edges off their prior on the 08:40 cycle
-            and 270 on 09:10, so the stated precondition was already met and the skeleton could
-            never resolve - a region that stays busy forever also fails 6.10. The ranking is
-            missing for a structural reason instead (ADR-0042), so the panel states it. */}
-        <EmptyState
-          size="sm"
-          className="mt-1"
-          title="Attribution is not computed on this run"
-          description="Flash-lite is element-wise per segment, so cleaning a pipe that is not under this junction has exactly zero effect — ADR-0042."
-        />
+        {/* Two states only, never three: a ranking with its combined effect, or an empty list
+            with the reason the run recorded. Since P7.7 that reason is a *measured* refusal
+            ("51 pipes were re-run; the best explains 0.003 cm") rather than ADR-0042's
+            structural one, because `drain1d` is in the loop now and does see across segments. A
+            row is only ever drawn for a pipe that cleared the floor. */}
+        {hotspot.attribution.length > 0 ? (
+          <>
+            <table className="mt-2 w-full">
+              <caption className="sr-only">
+                Inferred pipes ranked by the depth each explains at {hotspot.name}
+              </caption>
+              <thead>
+                <tr className="type-micro text-text-3">
+                  <th scope="col" className="w-6 text-left font-normal">
+                    #
+                  </th>
+                  <th scope="col" className="text-left font-normal">
+                    Pipe
+                  </th>
+                  <th scope="col" className="w-14 text-right font-normal">
+                    Blockage
+                  </th>
+                  <th scope="col" className="w-20 text-right font-normal">
+                    Explains
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-line divide-y">
+                {hotspot.attribution.map((row) => (
+                  // A row from a run baked before P7.7 has no pipe id, only the road segment it
+                  // was keyed on; it is named by that rather than left blank.
+                  <tr key={row.pipeId ?? row.segmentId ?? row.rank} className="h-8">
+                    <td className="num type-micro text-text-3">{row.rank}</td>
+                    <td className="type-small text-text-2 min-w-0 truncate">
+                      {row.pipeId ?? row.segmentId ?? "unnamed"}
+                      {row.pipeId && row.segmentId ? (
+                        <span className="type-micro text-text-3"> · {row.segmentId}</span>
+                      ) : null}
+                    </td>
+                    <td className="num type-small text-text-2 text-right">{row.beta.toFixed(2)}</td>
+                    <td className="num type-small text-text text-right">
+                      {row.depthExplainedCm.toFixed(2)} cm
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {hotspot.attributionCombined ? (
+              <p className="type-small text-text-2 mt-2">
+                {/* The sign is printed, not assumed. Cleaning the pipes above a junction can
+                    deliver more water to it than the cleaning takes away, and on the 08:40 cycle
+                    Sion Circle's seven pipes do exactly that (-0.06 cm). Clamping it at zero
+                    would hide a real hydraulic answer. */}
+                Cleaning these <span className="num">{hotspot.attributionCombined.nCleaned}</span>{" "}
+                pipes together:{" "}
+                <span className="num">{hotspot.attributionCombined.depthBeforeCm.toFixed(1)}</span>{" "}
+                to{" "}
+                <span className="num">{hotspot.attributionCombined.depthAfterCm.toFixed(1)}</span>{" "}
+                cm at the peak
+                {hotspot.attributionCombined.depthExplainedCm < 0
+                  ? ", deeper than before: cleaning upstream delivers more water than it removes"
+                  : ""}
+                .
+              </p>
+            ) : null}
+            <p className="type-micro text-text-3 mt-2">
+              {hotspot.attributionCandidates ? (
+                <>
+                  <span className="num">{hotspot.attribution.length}</span> of{" "}
+                  <span className="num">{hotspot.attributionCandidates}</span> pipes within 5
+                  upstream hops explain enough to be named.{" "}
+                </>
+              ) : null}
+              {hotspot.attributionMethod ? `Measured on ${hotspot.attributionMethod}: ` : ""}the
+              street depth is held at this run&rsquo;s forecast, so each figure is the water the
+              drain takes off the junction and an upper bound on what a coupled re-run would remove.
+              The drain graph is inferred.
+            </p>
+          </>
+        ) : (
+          <EmptyState
+            size="sm"
+            className="mt-1"
+            title="No pipe is named for this junction"
+            description={
+              hotspot.attributionLabel ??
+              "This run carries no attribution, so nothing was measured for this junction."
+            }
+          />
+        )}
       </section>
 
       <footer className="space-y-3 p-4">
@@ -265,30 +378,35 @@ export function HotspotDrawer({
             <Button
               variant="outline"
               className="w-full"
-              render={<Link href={cleanInWhatIfHref(hotspot, runId)} />}
+              render={<Link href={cleanInWhatIfHref(hotspot, runId, cleaned.ids)} />}
               nativeButton={false}
             >
               Clean in what-if
             </Button>
             <p className="type-micro text-text-3">
-              {/* "The first n of m" when the cap bites: the ids are in the register's own order,
-                  not ranked by anything, so a bare count would let fourteen arbitrary segments
-                  read as the junction's whole set (rule 6). */}
-              Opens the lab with{" "}
-              {hotspot.segmentIds.length > cleanedCount ? (
+              {/* Which of the two sets travelled is stated, because "the streets attribution
+                  named" and "every street at this junction" are different claims (rule 6). */}
+              {cleaned.fromAttribution ? (
                 <>
-                  the first <span className="num">{cleanedCount}</span> of this junction&rsquo;s{" "}
-                  <span className="num">{hotspot.segmentIds.length}</span> road segments
+                  Opens the lab on the <span className="num">{cleanedCount}</span> street
+                  {cleanedCount === 1 ? "" : "s"} the ranked pipes run under
+                </>
+              ) : hotspot.segmentIds.length > cleanedCount ? (
+                <>
+                  Opens the lab with the first <span className="num">{cleanedCount}</span> of this
+                  junction&rsquo;s <span className="num">{hotspot.segmentIds.length}</span> road
+                  segments
                 </>
               ) : (
                 <>
-                  this junction&rsquo;s <span className="num">{cleanedCount}</span> road segment
+                  Opens the lab with this junction&rsquo;s{" "}
+                  <span className="num">{cleanedCount}</span> road segment
                   {cleanedCount === 1 ? "" : "s"}
                 </>
-              )}{" "}
-              picked
-              {runId ? ", on this cycle" : ""}. Cleaning is element-wise per segment, so it moves
-              these streets and no others (ADR-0042).
+              )}
+              {runId ? ", on this cycle" : ""}. The lab&rsquo;s own cleaning runs on Flash-lite,
+              which is element-wise per segment, so it moves these streets and no others (ADR-0042);
+              the ranking above is the hydraulic answer.
             </p>
           </div>
         ) : (

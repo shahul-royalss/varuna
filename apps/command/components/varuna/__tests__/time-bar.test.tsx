@@ -57,6 +57,44 @@ describe("TimeBar", () => {
     expect(screen.getByText("Ensemble spread appears with the first run")).toBeInTheDocument();
   });
 
+  it("draws the ensemble's spread under the track once a run carries one (7.2)", () => {
+    // Three steps, widest at +10 min: the label names the widest point in the run's own numbers.
+    act(() => {
+      useRunStore.getState().setRun({
+        run_id: "MUM-20190702T0310Z-sky1.0-twin1.0-flash0.1-baked",
+        city: "mumbai",
+        cycle_ts: "2019-07-02T08:40:00+05:30",
+        mode: "replay",
+        replay_mode: "baked",
+        ensemble_n: 50,
+        step_min: 5,
+        aoi_depth_band: { p10: [1.0, 1.2, 1.5], p50: [1.2, 1.6, 1.8], p90: [1.4, 2.4, 2.1] },
+      });
+    });
+    renderTimeBar();
+    expect(
+      screen.getByRole("img", {
+        name: "Ensemble spread of mean street depth, p10 to p90: widest 1.2 cm, at +5 min",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Ensemble spread appears/)).not.toBeInTheDocument();
+  });
+
+  it("says a loaded run has no spread rather than promising one later", () => {
+    act(() => {
+      useRunStore.getState().setRun({
+        run_id: "MUM-20190702T0310Z-sky1.0-twin1.0-flash0.0-baked",
+        city: "mumbai",
+        cycle_ts: "2019-07-02T08:40:00+05:30",
+        mode: "replay",
+        replay_mode: "baked",
+        ensemble_n: 1,
+      });
+    });
+    renderTimeBar();
+    expect(screen.getByText("This run has no ensemble spread to draw")).toBeInTheDocument();
+  });
+
   it("reflects leadMin on the slider and the label after setLeadMin(45)", () => {
     renderTimeBar();
     act(() => {

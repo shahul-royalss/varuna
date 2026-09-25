@@ -549,6 +549,7 @@ def run_cycle(
         write_alerts,
     )
     from varuna_products.depth import (
+        aoi_depth_band,
         depth_bounds,
         segment_cell_index,
         segment_forecast,
@@ -557,7 +558,7 @@ def run_cycle(
         write_depth_rasters,
         write_wet_segments,
     )
-    from varuna_products.hotspots import rank_hotspots
+    from varuna_products.hotspots import attach_ensemble_band, rank_hotspots
     from varuna_products.pumps import build_pump_plan, write_pump_plan
     from varuna_products.surcharge import surcharge_product, write_surcharge
     from varuna_pulse.cycle import run_pulse
@@ -684,6 +685,9 @@ def run_cycle(
     )
     if "attribution" in product_timings:
         stage_ms["products_attribution"] = product_timings["attribution"]
+    # The junction's fan chart takes its band from the streets around it (ADR-0076): the
+    # hotspot's own Twin level plus its segments' member spread.
+    attach_ensemble_band(hotspots, frame)
     # Alerts are about named places, so the per-segment series are collapsed onto street names
     # first (`street_series`); a segment id in an alert headline is no use to a ward officer.
     names = segment_names(city_dir(city))
@@ -750,6 +754,7 @@ def run_cycle(
         stage_ms=stage_ms,
         mass_balance_err=float(twin.mass_balance.error_fraction),
         mass_balance_ledger=mass_balance_ledger(twin.mass_balance),
+        aoi_depth_band=aoi_depth_band(depth_cm, members),
         bundle=bundle,
         created_at=datetime.now(tz=IST),
         grid=GridSpec(

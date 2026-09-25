@@ -42,6 +42,7 @@ import { edgeFadeStyle, useScrollEdges } from "./use-scroll-edges";
 import { useConsoleRoutes, type ConsoleRouteState } from "./use-console-routes";
 import { WhatIfDrawer, type WhatIfDiff } from "./whatif-drawer";
 import { fetchOpeningRunId } from "@/lib/opening-run";
+import { formatMassBalance } from "@/lib/format";
 import { DEFAULT_CITY, cityFromSearch } from "@/lib/city";
 import { DEFAULT_SIM_TIME } from "@/lib/stores/replay";
 import { useRunStore } from "@/lib/stores/run";
@@ -229,6 +230,8 @@ function ConsoleView() {
         // time to print, and its total rule (top-level stages only, ADR-0046) never ran.
         stage_ms: p.stageMs,
         bundle: p.bundle,
+        step_min: p.stepMin,
+        aoi_depth_band: p.aoiDepthBand,
       });
       // The replay panel is open on an empty console because it holds the command that fixes
       // that (P0.12). Once a run has landed the map is the screen, so the panel gets out of its
@@ -693,7 +696,7 @@ function ConsoleView() {
                 ? "1 member (deterministic)"
                 : `${run.provenance.ensembleN} members`}
               {run.provenance.massBalanceErr != null
-                ? ` · mass balance ${(run.provenance.massBalanceErr * 100).toFixed(3)} %`
+                ? ` · mass balance ${formatMassBalance(run.provenance.massBalanceErr)}`
                 : ""}
             </p>
           </div>

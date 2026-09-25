@@ -161,6 +161,25 @@
   "additionalProperties": false,
   "description": "``run.json``: provenance for one cycle's artifacts (CLAUDE.md 10.3, blueprint 9.1 ``run``).",
   "properties": {
+    "aoi_depth_band": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "p10, p50 and p90 of mean street depth in cm at each forecast step, taken across the ensemble's members: the band the time bar draws (CLAUDE.md 7.2). None when the run has fewer than two members, so a deterministic run never draws a band of no width.",
+      "title": "Aoi Depth Band"
+    },
     "bundle": {
       "anyOf": [
         {

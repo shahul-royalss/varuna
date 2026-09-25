@@ -32,6 +32,10 @@ export interface RunMeta {
   /** Feeds missing in this cycle, e.g. ["radar"]; non-empty means degraded. */
   degraded_feeds?: string[];
   versions?: { sky?: string; twin?: string; flash?: string };
+  /** Minutes between forecast steps; 5 on every run so far. */
+  step_min?: number;
+  /** p10/p50/p90 of mean street depth per step across members: the time bar's band (7.2). */
+  aoi_depth_band?: { p10: number[]; p50: number[]; p90: number[] } | null;
 }
 
 export interface RunState {

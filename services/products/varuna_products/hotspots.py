@@ -336,6 +336,52 @@ def _drain_attribution(
     )
 
 
+def attach_ensemble_band(ranked: list[dict[str, Any]], frame: Any) -> None:
+    """Give every hotspot a p10-p90 band from the street ensemble around it, in place.
+
+    A hotspot's series (``depth_cm``) is the 90th percentile of the Twin's depth over its window:
+    one deterministic run. The ensemble lives per road segment in the segment forecast, where each
+    street's p10 and p90 are its Twin level plus the members' spread (ADR-0025). The junction takes
+    the same construction: its own Twin level, plus the mean of its registered segments' spread
+    below and above their median, step by step. So the level on screen is still the Twin's and the
+    band is the ensemble's, exactly as on the streets.
+
+    A hotspot with none of its segments in the forecast, or a forecast without quantiles, gets no
+    band and says so with ``band_segments = 0``; the drawer then draws its series flat and names
+    why, rather than inventing a spread.
+    """
+    columns = {"segment_id", "depth_p10_cm", "depth_p50_cm", "depth_p90_cm"}
+    if frame is None or not columns.issubset(getattr(frame, "columns", ())):
+        for entry in ranked:
+            entry["band_segments"] = 0
+        return
+
+    wanted = {sid for entry in ranked for sid in entry.get("segment_ids") or []}
+    rows = frame.loc[frame["segment_id"].isin(wanted)].sort_values(["segment_id", "valid_ts"])
+    spread: dict[str, tuple[NDArray[np.floating], NDArray[np.floating]]] = {}
+    for segment_id, group in rows.groupby("segment_id", sort=False):
+        p50 = group["depth_p50_cm"].to_numpy(dtype=np.float64)
+        spread[str(segment_id)] = (
+            group["depth_p10_cm"].to_numpy(dtype=np.float64) - p50,
+            group["depth_p90_cm"].to_numpy(dtype=np.float64) - p50,
+        )
+
+    for entry in ranked:
+        level = np.asarray(entry.get("depth_cm") or [], dtype=np.float64)
+        ids = [
+            sid
+            for sid in entry.get("segment_ids") or []
+            if sid in spread and spread[sid][0].shape == level.shape
+        ]
+        entry["band_segments"] = len(ids)
+        if not ids or level.size == 0:
+            continue
+        below = np.mean([spread[sid][0] for sid in ids], axis=0)
+        above = np.mean([spread[sid][1] for sid in ids], axis=0)
+        entry["depth_p10_cm"] = [round(float(v), 1) for v in np.maximum(level + below, 0.0)]
+        entry["depth_p90_cm"] = [round(float(v), 1) for v in np.maximum(level + above, level)]
+
+
 def rank_hotspots(
     depth_m: NDArray[np.floating],
     times: tuple[datetime, ...],
