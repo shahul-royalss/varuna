@@ -18,6 +18,19 @@ changes shape.
 for a place a few tens of metres across, and a 30 m grid cell either contains the dip or misses
 it. So depth is read over a small neighbourhood and the 90th percentile taken, the same rule and
 the same reasoning as the road segments in :mod:`varuna_products.depth`.
+
+**Attribution** (CLAUDE.md 7.2, 11.7; task P7.7). Each ranked entry can carry the pipes that
+explain its peak, measured by :func:`varuna_flash.whatif.attribute_pipes` - `drain1d` re-run on
+the junction's own catchment with the street depth frozen at what the Twin produced, once per
+candidate pipe within five upstream hops. It replaces the Flash-lite finite difference ADR-0042
+retired, which could not move a junction from a pipe that was not under it.
+
+It is **not** computed for every hotspot, and the reason is cost: measured on this laptop
+(Intel i5-1155G7, 10-12 python processes) the whole 28-point Mumbai register takes 24.2-27.0 s,
+against CLAUDE.md 11.8's 2 s for the entire products stage. So it runs for the worst
+:data:`ATTRIBUTION_MAX_HOTSPOTS` junctions that are wetter than :data:`ATTRIBUTION_MIN_PEAK_CM`,
+and every other entry carries ``attribution_label`` saying it was not attempted rather than an
+empty list that would read as "no pipe is responsible".
 """
 
 from __future__ import annotations
@@ -36,7 +49,28 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 
 log = structlog.get_logger("varuna.products.hotspots")
 
-__all__ = ["HOTSPOT_RADIUS_M", "IMPASSABLE_CM", "rank_hotspots"]
+__all__ = [
+    "ATTRIBUTION_MAX_HOTSPOTS",
+    "ATTRIBUTION_MIN_PEAK_CM",
+    "HOTSPOT_RADIUS_M",
+    "IMPASSABLE_CM",
+    "rank_hotspots",
+]
+
+ATTRIBUTION_MAX_HOTSPOTS = 10
+"""How many junctions get a pipe ranking, worst first.
+
+A budget, stated as one. Attribution is a `drain1d` run per candidate pipe (see the module
+docstring), and at 24.2-27.0 s for the register it is the most expensive thing in the products
+stage by an order of magnitude. Ten covers every junction the 2 July replay puts above the
+5 cm mark with room to spare - on the 08:40 cycle the register has twelve - so the cut falls
+among junctions that are barely wet rather than among the ones an operator is looking at."""
+
+ATTRIBUTION_MIN_PEAK_CM = 5.0
+"""Peak depth a junction needs before its pipes are worth ranking, in cm.
+
+CLAUDE.md 6.2's ``--depth-dry`` band: below 5 cm the map does not even draw the street as wet.
+Asking which pipe explains a 0.87 cm peak spends seconds to rank noise."""
 
 HOTSPOT_RADIUS_M = 45.0
 """Half-width of the neighbourhood a hotspot's depth is read over, in metres.
@@ -138,6 +172,170 @@ def _facilities(city_root: Path, lon: float, lat: float) -> dict[str, Any]:
     return out
 
 
+_BLOCKAGE_PHRASE = {
+    "posterior": "this cycle's Pulse posterior",
+    "prior": "the city's prior",
+}
+"""How an attribution names the blockage its pipes were cleaned from."""
+
+
+def _drain_attribution(
+    ranked: list[dict[str, Any]],
+    windows: list[set[int]],
+    depth_m: NDArray[np.floating],
+    city_root: Path,
+    *,
+    max_hotspots: int,
+    min_peak_cm: float,
+    network: Any = None,
+    blockage_source: str = "prior",
+    timings: dict[str, int] | None = None,
+) -> None:
+    """Attach the responsible pipes to the worst junctions, in place.
+
+    Every entry ends up with ``attribution`` and ``attribution_label``: a ranking and ``None``,
+    or an empty list and the reason it is empty. There is deliberately no third state - a
+    consumer that finds an empty list without a label would have no way to tell "no pipe is
+    responsible" from "nobody asked".
+
+    ``network`` is the drain graph to clean pipes on, carrying the blockage the ranking should
+    be measured at: the cycle passes this cycle's Pulse posterior, and ``blockage_source`` names
+    which one it was so every label can say so. Without one the graph is loaded from the city
+    with its prior. A city with no graph, or a Flash service without the hydraulic operator,
+    labels every entry and moves on: the rail, the map and the alerts do not depend on this.
+    """
+    from time import perf_counter
+
+    for entry in ranked:
+        entry["attribution"] = []
+        entry["attribution_label"] = None
+        # Which of the four states an entry is in, so a consumer reading the array alone can
+        # tell "no pipe explains this" from "nobody looked": ranked, refused (looked, and no
+        # pipe cleared the floor), not_attempted (under the wet floor or past the budget), or
+        # unavailable (no graph, another city's graph, no solver).
+        entry["attribution_status"] = "unavailable"
+
+    try:
+        from varuna_flash.whatif import CELL_AREA_M2, attribute_pipes, build_adjacency
+        from varuna_twin.city import load_network
+    except ImportError as exc:  # pragma: no cover - only when varuna-twin is absent
+        for entry in ranked:
+            entry["attribution_label"] = f"Attribution needs the drain solver: {exc}"
+        return
+
+    from varuna_schemas.paths import city_dir
+
+    # `load_network` takes a city *name* and resolves it under the repo's own `city/` root, so
+    # the name is only safe to use when the caller's root is that same directory. A products run
+    # pointed at a fixture or an unpacked copy elsewhere would otherwise silently attribute
+    # against whatever `city/<name>` happens to hold - a graph whose node indices mean nothing
+    # here. Checked rather than assumed, and named when it does not hold.
+    city = city_root.name
+    if city_dir(city).resolve() != city_root.resolve():
+        for entry in ranked:
+            entry["attribution_label"] = (
+                f"Attribution reads the drain graph from {city_dir(city)}, and this run's city "
+                f"layers are at {city_root}. It is skipped rather than run against another "
+                f"city's network."
+            )
+        return
+
+    try:
+        if network is None:
+            network = load_network(city)
+            blockage_source = "prior"
+    except (FileNotFoundError, ValueError) as exc:
+        # Named rather than swallowed: "no attribution" and "this city has no drain graph" are
+        # different facts and only one of them is about the pipes.
+        for entry in ranked:
+            entry["attribution_label"] = f"No inferred drain graph for {city}: {exc}"
+        log.warning("products.attribution_no_graph", city=city, error=str(exc))
+        return
+
+    n_steps, n_rows, n_cols = depth_m.shape
+    row = np.asarray(network.cell_row, dtype=np.int64)
+    col = np.asarray(network.cell_col, dtype=np.int64)
+    has_cell = (row >= 0) & (col >= 0) & (row < n_rows) & (col < n_cols)
+    if not bool(has_cell.any()):
+        for entry in ranked:
+            entry["attribution_label"] = (
+                "No drain node in this graph is joined to a grid cell, so the street depth "
+                "cannot be frozen onto the network."
+            )
+        return
+
+    # The street depth every node sees, frozen from this run. One gather for the whole city,
+    # because every junction reads the same array.
+    surface = np.zeros((n_steps, network.n_nodes), dtype=np.float64)
+    surface[:, has_cell] = np.asarray(depth_m, dtype=np.float64)[:, row[has_cell], col[has_cell]]
+    cell_of_node = row * n_cols + col
+
+    node_segment_ids: list[str | None] | None = None
+    graph_nodes = city_root / "graph" / "nodes.parquet"
+    if graph_nodes.is_file():
+        import pandas as pd
+
+        table = pd.read_parquet(graph_nodes, columns=["segment_id"])
+        node_segment_ids = table["segment_id"].tolist()
+
+    adjacency = build_adjacency(network)
+    started = perf_counter()
+    attempted = 0
+    for entry, window in zip(ranked, windows, strict=True):
+        # Depth before count, deliberately: a junction the map does not even draw as wet must
+        # not spend one of the budgeted slots, and it must say *why* it was skipped rather than
+        # inheriting the budget's reason from whatever rank it happened to land at.
+        if entry["peak_depth_cm"] < min_peak_cm:
+            entry["attribution_status"] = "not_attempted"
+            entry["attribution_label"] = (
+                f"Not attributed: this junction peaks at {entry['peak_depth_cm']:.1f} cm, under "
+                f"the {min_peak_cm:.0f} cm the map draws as wet."
+            )
+            continue
+        if attempted >= max_hotspots:
+            entry["attribution_status"] = "not_attempted"
+            entry["attribution_label"] = (
+                f"Not attributed: only the worst {max_hotspots} junctions are, because each one "
+                f"is a drain1d run per candidate pipe."
+            )
+            continue
+
+        targets = np.flatnonzero(has_cell & np.isin(cell_of_node, list(window)))
+        attempted += 1
+        result = attribute_pipes(
+            network,
+            surface,
+            target_nodes=targets,
+            peak_step=int(entry["time_to_peak_min"]) // 5,
+            adjacency=adjacency,
+            target_label=entry.get("name") or entry.get("hotspot_id") or "",
+            depth_before_cm=float(entry["peak_depth_cm"]),
+            cell_area_m2=CELL_AREA_M2,
+            node_segment_ids=node_segment_ids,
+        )
+        entry["attribution"] = [dict(r) for r in result.rows]
+        entry["attribution_status"] = "ranked" if result.rows else "refused"
+        entry["attribution_label"] = result.reason
+        entry["attribution_method"] = (
+            f"{result.method}, blockage at {_BLOCKAGE_PHRASE.get(blockage_source, blockage_source)}"
+        )
+        entry["attribution_blockage"] = blockage_source
+        entry["attribution_candidates"] = result.n_candidates
+        if result.combined is not None:
+            entry["attribution_combined"] = result.combined
+
+    elapsed_ms = round((perf_counter() - started) * 1000.0)
+    if timings is not None:
+        timings["attribution"] = elapsed_ms
+    log.info(
+        "products.attribution",
+        attempted=attempted,
+        named=sum(1 for e in ranked if e["attribution"]),
+        blockage=blockage_source,
+        ms=elapsed_ms,
+    )
+
+
 def rank_hotspots(
     depth_m: NDArray[np.floating],
     times: tuple[datetime, ...],
@@ -146,11 +344,22 @@ def rank_hotspots(
     crs: str,
     run_id: str,
     index: tuple[tuple[str, ...], NDArray[np.int64], NDArray[np.int64]] | None = None,
+    *,
+    attribution: bool = True,
+    max_attributed: int = ATTRIBUTION_MAX_HOTSPOTS,
+    min_attributed_peak_cm: float = ATTRIBUTION_MIN_PEAK_CM,
+    network: Any = None,
+    blockage_source: str = "prior",
+    timings: dict[str, int] | None = None,
 ) -> list[dict[str, Any]]:
     """Rank the register's hotspots by the peak depth this run gives them.
 
     Every entry carries the register's own ``source_url``, because a hotspot on screen is a claim
     that this junction floods and CLAUDE.md rule 7 requires that claim to be traceable.
+
+    ``network`` and ``blockage_source`` choose the drain graph attribution cleans pipes on and
+    say which blockage it carries; ``timings`` receives the attribution's wall clock as
+    ``"attribution"`` so the cycle can report its share of the products stage.
     """
     register = city_root / "hotspots.geojson"
     if not register.is_file():
@@ -191,6 +400,7 @@ def rank_hotspots(
 
         ranked.append(
             {
+                "_register_index": len(ranked),
                 "hotspot_id": props.get("hotspot_id"),
                 "name": props.get("name"),
                 "slug": props.get("slug"),
@@ -220,6 +430,10 @@ def rank_hotspots(
         strict=True,
     ):
         entry["segment_ids"] = segment_ids
+        # Carried on the entry rather than in a parallel list, because the ranking below
+        # re-orders the entries and a junction attributed against another junction's window
+        # would be a silent defect. Popped before the entry is written out.
+        entry["_window"] = windows[entry["_register_index"]]
         entry["exposure"] = {"weight": weight, **facilities}
         # CLAUDE.md 11.8's score, reported even though the ordering below does not use it: on a
         # deterministic run its probability factor is 0 or 1, so it sorts into two tiers rather
@@ -229,6 +443,28 @@ def rank_hotspots(
     ranked.sort(key=lambda h: h["peak_depth_cm"], reverse=True)
     for position, entry in enumerate(ranked, start=1):
         entry["rank"] = position
+        entry.pop("_register_index", None)
+
+    windows_ranked = [entry.pop("_window") for entry in ranked]
+    if attribution:
+        _drain_attribution(
+            ranked,
+            windows_ranked,
+            depth_m,
+            city_root,
+            max_hotspots=max_attributed,
+            min_peak_cm=min_attributed_peak_cm,
+            network=network,
+            blockage_source=blockage_source,
+            timings=timings,
+        )
+    else:
+        # Off is a state the product records, not a silence: a reader who finds no ranking
+        # should be able to tell "nobody asked" from "no pipe is responsible" (CLAUDE.md 6.8).
+        for entry in ranked:
+            entry["attribution"] = []
+            entry["attribution_status"] = "off"
+            entry["attribution_label"] = "Attribution was not run for this product."
 
     log.info(
         "products.hotspots_ranked",
