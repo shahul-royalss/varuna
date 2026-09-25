@@ -142,6 +142,13 @@ def _make_rain_cube(
     return cube
 
 
+def _blocked_at(terrain: TerrainGrid, network: DrainNetwork) -> np.ndarray:
+    """The terrain's building mask with every drain node's own cell blocked as well."""
+    blocked = np.asarray(terrain.blocked, dtype=bool).copy()
+    blocked[np.asarray(network.cell_row), np.asarray(network.cell_col)] = True
+    return blocked
+
+
 # ============================================================================ P4.2: end-to-end
 
 
@@ -260,6 +267,84 @@ class TestMassBalance:
         # Rain in, minus what left, is what is standing - to within the budget. Any term the
         # audit forgets shows up here, whatever its sign.
         assert abs(stored - (mb.volume_in_m3 - mb.volume_out_m3)) < 1e-3 * mb.volume_in_m3
+
+    def test_a_surcharging_run_gives_both_sides_the_same_volume(self) -> None:
+        """The surcharge the surface receives is the one the drain actually emitted (P4.5).
+
+        `drain1d.step`'s supply check scales *everything* a node gives away in one step - its
+        pipe outflows, its manhole and its sinks together - when they would take more water than
+        the node holds. The coupling's own cap looks only at the manhole, so a node draining
+        through its pipes is routinely asked for more surcharge than it can give. The runner used
+        to hand the surface the request and the drain the scaled value, and the difference was
+        water that appeared on a street without leaving a pipe.
+
+        Measured on the 08:40 cycle of 2 July 2019, the Mumbai graph and its 49,770 pipes: the
+        surface received 1,165,934.2 m3 of surcharge against 1,159,881.5 m3 the drain gave up, so
+        6,052.7 m3 was invented - 99.8 % of that run's 0.204 % failure against a 0.1 % budget.
+
+        The fixture is the demo's own mechanism: the sea held above every pipe crown, so the
+        trunk cannot discharge, heads climb past the street and the manholes blow (CLAUDE.md
+        11.4's tide-lock test, coupled). `surcharge_gap_m3` is asserted directly rather than
+        through the residual, because a residual can be small for the wrong reasons.
+        """
+        terrain = _make_terrain(shape=(15, 15))
+        network = _make_network(terrain, n_nodes=10, has_tidal_outfall=True)
+        rain = _make_rain_cube(n_steps=6, shape=(15, 15), peak_mm_h=240.0)
+        stage = float(np.max(network.z_ground)) + 0.5
+        times = tuple(T0 + timedelta(minutes=5 * k) for k in range(8))
+        tide = TideSeries(
+            times=times,
+            stage_m=np.full(len(times), stage, dtype=np.float64),
+            source="illustrative: a sea held above every crown, so the trunk is locked",
+        )
+
+        result = run_twin(
+            TwinInputs(terrain=terrain, network=network, rain_mm_h=rain, t0=T0, tide=tide)
+        )
+
+        assert float(np.max(result.q_surcharge)) > 0.0, (
+            "fixture: nothing surcharged, so this test asserts nothing"
+        )
+        mb = result.mass_balance
+        assert mb.surcharge_gap_m3 == 0.0, (
+            f"the surface and the drains disagree by {mb.surcharge_gap_m3:.3f} m3 of surcharge"
+        )
+        assert mb.surface_residual_m3 == pytest.approx(0.0, abs=1e-6)
+        assert mb.drain_residual_m3 == pytest.approx(0.0, abs=1e-6)
+        assert mb.error_fraction < 1e-3, (
+            f"Coupled mass balance {mb.error_fraction:.4%} over the 0.1 % budget with surcharge"
+        )
+
+    def test_a_node_under_a_building_does_not_delete_its_surcharge(self) -> None:
+        """Every node sits on a blocked cell, so the run must move no water between the two.
+
+        `swe2d._update_depth` holds a blocked cell at zero depth and skips it *before* it tallies,
+        so surcharge scattered onto a building leaves the network and is never counted arriving.
+        The surface's own audit still closes - it never saw the water - which is what made this
+        invisible until the coupled residual was decomposed. On the Mumbai graph it destroyed
+        5,185.4 m3 over the 08:40 cycle, 0.17 % of the inflow on its own.
+
+        With every node walled in, the exchange must be identically zero: no capture, no
+        surcharge, and a balance that closes on rain alone.
+        """
+        terrain = _make_terrain(shape=(15, 15))
+        network = _make_network(terrain, n_nodes=10)
+        walled = TerrainGrid(
+            z=terrain.z,
+            manning_n=terrain.manning_n,
+            blocked=_blocked_at(terrain, network),
+            imperviousness=terrain.imperviousness,
+            cn=terrain.cn,
+            res_m=terrain.res_m,
+            crs=terrain.crs,
+            transform=terrain.transform,
+        )
+        rain = _make_rain_cube(n_steps=4, shape=(15, 15), peak_mm_h=120.0)
+
+        result = run_twin(TwinInputs(terrain=walled, network=network, rain_mm_h=rain, t0=T0))
+
+        assert float(np.max(np.abs(result.q_surcharge))) == 0.0
+        assert result.mass_balance.error_fraction < 1e-3
 
     def test_stage_timings_are_populated(self) -> None:
         terrain = _make_terrain(shape=(10, 10))

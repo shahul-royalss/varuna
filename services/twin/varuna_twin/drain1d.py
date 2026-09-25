@@ -273,6 +273,31 @@ class DrainSolver:
     fixed_head: NDArray[np.bool_]
     """True at outfalls, whose head is imposed rather than integrated."""
 
+    colour_edges: NDArray[np.int64] | None = None
+    """Edge indices grouped so that no two edges in a group touch the same node (task P4.6).
+
+    The two edge passes in the kernel are scatter-adds onto nodes - several edges write the same
+    ``q_out[j]`` and ``net_edge[j]`` - so a plain ``prange`` over edges races. Colouring removes
+    the race rather than papering over it with atomics or per-thread buffers: inside one colour
+    every node is written by at most one edge, so the threads never meet, and across colours the
+    order is the colour order. That is what keeps ``make bake`` byte-identical whatever the thread
+    count (rule 8), which a per-thread reduction would not, because float addition is not
+    associative and the partial sums would depend on how many threads ran.
+
+    ``None`` on a network too small to be worth a parallel launch; the serial kernel then runs."""
+
+    colour_start: NDArray[np.int64] | None = None
+    """``n_colours + 1`` offsets into :attr:`colour_edges`; colour ``c`` is ``[start[c], start[c+1])``."""
+
+    n_parallel_colours: int = 0
+    """How many leading colours are large enough to hand to threads.
+
+    Greedy colouring of the Mumbai graph gives 22 colours of 21,225, 18,333, 7,990, 1,386, 263,
+    178 ... 1 edges: a long tail that is 4.5 % of the edges and would be 19 of the 22 `prange`
+    launches. The kernel runs 10,800 times a cycle with one launch per colour per pass, so the
+    tail would cost some 400,000 launches to parallelise 2,222 edges. The leading colours run in
+    parallel and the tail runs serially in colour order, which is conflict-free either way."""
+
     @property
     def n_nodes(self) -> int:
         return self.network.n_nodes
@@ -282,8 +307,91 @@ class DrainSolver:
         return self.network.n_edges
 
 
-def prepare(network: DrainNetwork) -> DrainSolver:
-    """Precompute the per-edge conveyance and per-node storage curve of ``network``."""
+MIN_EDGES_FOR_COLOURING = 4096
+"""Below this many edges the parallel kernel is not worth its launch overhead.
+
+Measured, not guessed: a `prange` launch costs a few microseconds and the kernel runs 10,800
+times per cycle with one launch per colour per pass, so a network of a few hundred edges pays
+more in launches than the loops themselves cost. The Mumbai graph has 49,770 edges; the test
+fixtures have four to twenty, and they run the serial kernel, which is also what keeps the
+parity tests comparing two paths rather than one path with itself."""
+
+
+MIN_COLOUR_FOR_PRANGE = 4096
+"""The smallest colour worth handing to threads, in edges. See `n_parallel_colours`."""
+
+
+def edge_colouring(network: DrainNetwork) -> tuple[NDArray[np.int64], NDArray[np.int64]]:
+    """Group edges so that no two in a group share a node (task P4.6).
+
+    Greedy, in edge order: each edge takes the lowest colour neither of its endpoints has used.
+    Measured on Mumbai's 49,770 edges: **22 colours** of 21,225, 18,333, 7,990, 1,386, 263, 178,
+    123, 86, 64, 44, 25, 20, 11, 6, 5, 3, 3 and then six of one or two - 0.12 s to compute, once.
+    Three of the 22 are large enough to be worth a thread launch and carry 95.5 % of the edges;
+    see :attr:`DrainSolver.n_parallel_colours` for what happens to the tail.
+
+    Greedy is the right algorithm here and not a compromise: the optimum (Vizing) is at most one
+    colour better, the colouring is computed once per network and cached on the solver, and what
+    matters for correctness is only that the classes are *conflict-free*, which greedy guarantees
+    by construction. :func:`~varuna_twin.tests.test_drain_kernel` asserts that property directly
+    rather than trusting this docstring.
+
+    Returns:
+        ``(colour_edges, colour_start)``: a permutation of ``0..n_edges`` grouped by colour, and
+        the ``n_colours + 1`` offsets that bound each colour.
+    """
+    from_node = np.asarray(network.from_node, dtype=np.int64)
+    to_node = np.asarray(network.to_node, dtype=np.int64)
+    n_edges = int(from_node.shape[0])
+    n_nodes = int(network.n_nodes)
+
+    # `last_colour[j]` is the highest colour already used at node j, as a bitmask would be if the
+    # degree were bounded; a small per-node set is cheaper than a mask when the degree is 2 or 3.
+    used_at: list[set[int]] = [set() for _ in range(n_nodes)]
+    colour_of = np.empty(n_edges, dtype=np.int64)
+    n_colours = 0
+    for e in range(n_edges):
+        a = int(from_node[e])
+        b = int(to_node[e])
+        taken = used_at[a] | used_at[b]
+        c = 0
+        while c in taken:
+            c += 1
+        colour_of[e] = c
+        used_at[a].add(c)
+        used_at[b].add(c)
+        if c + 1 > n_colours:
+            n_colours = c + 1
+
+    counts = np.bincount(colour_of, minlength=n_colours)
+    colour_start = np.zeros(n_colours + 1, dtype=np.int64)
+    np.cumsum(counts, out=colour_start[1:])
+    # Stable sort, so the edges inside a colour stay in index order and the permutation - and
+    # therefore every float addition order in the kernel - is a function of the network alone.
+    colour_edges = np.argsort(colour_of, kind="stable").astype(np.int64)
+
+    log.info(
+        "drain1d.coloured",
+        n_edges=n_edges,
+        n_colours=n_colours,
+        largest_colour=int(counts.max()) if n_colours else 0,
+    )
+    return colour_edges, colour_start
+
+
+def prepare(network: DrainNetwork, *, colour: bool = False) -> DrainSolver:
+    """Precompute the per-edge conveyance and per-node storage curve of ``network``.
+
+    ``colour`` asks for the edge colouring the parallel kernel needs (task P4.6). It is off by
+    default and :mod:`varuna_twin.runner` is the only caller that turns it on, because the runner
+    is the only caller whose shape was measured: 10,800 inner steps over 49,770 edges, where the
+    coloured kernel is 3.49x the serial one. `varuna_flash.whatif` prepares a tiled network for a
+    handful of steps at a time, where a `prange` launch per colour per pass may well cost more
+    than it saves and where Pulse's 3 s budget is already met only warm - so it keeps the serial
+    kernel until someone measures it there rather than assuming the gain transfers.
+
+    The colouring itself costs 10 ms at 10,000 edges and 55 ms at 50,000, once per solver.
+    """
     n_nodes = network.n_nodes
     from_node = np.asarray(network.from_node, dtype=np.intp)
     to_node = np.asarray(network.to_node, dtype=np.intp)
@@ -324,6 +432,16 @@ def prepare(network: DrainNetwork) -> DrainSolver:
     boundary = np.asarray(network.boundary)
     fixed_head = boundary != BOUNDARY_INTERIOR
 
+    colour_edges = colour_start = None
+    n_parallel_colours = 0
+    if colour and int(network.n_edges) >= MIN_EDGES_FOR_COLOURING:
+        colour_edges, colour_start = edge_colouring(network)
+        sizes = np.diff(colour_start)
+        # The leading run of colours big enough to be worth a launch; `argmin` on the boolean
+        # gives the first that is not, and the colours are in descending size by construction.
+        big = sizes >= MIN_COLOUR_FOR_PRANGE
+        n_parallel_colours = int(np.argmin(big)) if not big.all() else int(big.size)
+
     log.info(
         "drain1d.prepared",
         n_nodes=n_nodes,
@@ -341,6 +459,9 @@ def prepare(network: DrainNetwork) -> DrainSolver:
         slot_area=slot_area,
         crown_depth=crown_depth,
         fixed_head=fixed_head,
+        colour_edges=colour_edges,
+        colour_start=colour_start,
+        n_parallel_colours=n_parallel_colours,
     )
 
 
@@ -621,6 +742,19 @@ class DrainRunReport:
     stored_start_m3: float
     stored_end_m3: float
     limited_edges: int
+    applied_surcharge_m3: NDArray[np.floating] | None = None
+    """Per node, the volume the network *actually* pushed onto the street over this call.
+
+    Not ``dt * q_surcharge``: the supply check scales every outflow from a node - pipes,
+    surcharge and sinks together - when they would take more than the node holds, so a node
+    draining hard through its pipes surcharges less than the coupling asked for. Filled only
+    when the caller passes ``applied_surcharge_out``, because the coupled runner is the only
+    caller that needs it and a 50,110-element array per sync is not free.
+
+    **Why it exists** (task P4.5). The runner used to hand the surface the *requested* surcharge
+    while the drain applied the scaled one, so every scaled node put water on the street that no
+    node ever gave up. Measured on the 08:40 cycle of 2 July 2019: 6,052.7 m3 invented against
+    2,970,218 m3 of rain - 0.204 % - which is the whole of that run's mass-balance failure."""
 
     @property
     def mass_balance(self) -> MassBalance:
@@ -665,7 +799,19 @@ class _Scratch:
     boundary: NDArray[np.integer]
 
 
-_SCRATCH: dict[int, _Scratch] = {}
+_SCRATCH: dict[int, tuple[DrainSolver, _Scratch]] = {}
+"""The kernel buffers for one solver, and a **strong reference to that solver**.
+
+The reference is the correctness, not an accident. This was keyed on ``id(solver)`` and validated
+by node and edge count, and that is not enough: CPython reuses an address as soon as the object at
+it is collected, and two solvers of the same size are exactly what this repository's test fixtures
+are. `_Scratch` carries copies of ``boundary`` and ``flap_gate``, so a stale hit steps the new
+network with the old one's outfalls - a tide-locked outfall as a free one. It was found on
+2026-09-24 when `test_hot_start`'s `tidal` fixture started reporting the `plain` fixture's drain
+numbers exactly (outfall +2.0 m3 where the tide should push -5.2 m3 back up the trunk), and it
+fires or not depending on what the allocator did earlier in the process, which is why it had never
+shown. Keeping the solver alive makes the address unrecyclable while the entry is cached, so the
+``is`` check below cannot be fooled."""
 
 _STORED: dict[int, tuple[NDArray[np.floating], float]] = {}
 """The stored volume each drain state ended its last compiled run at.
@@ -685,18 +831,11 @@ def _stored_start(solver: DrainSolver, state: DrainState) -> float:
 
 
 def _scratch(solver: DrainSolver) -> _Scratch:
-    """The kernel's reusable buffers for one solver, built once."""
-    # Both lengths checked, not just the id: CPython reuses `id()` after a collection, and the
-    # kernel indexes these without bounds checks. See `coupling._node_arrays` for the crash this
-    # class of cache caused there.
+    """The kernel's reusable buffers for one solver, built once. See :data:`_SCRATCH`."""
     key = id(solver)
     found = _SCRATCH.get(key)
-    if (
-        found is not None
-        and found.q.shape[0] == solver.n_edges
-        and found.q_out.shape[0] == solver.n_nodes
-    ):
-        return found
+    if found is not None and found[0] is solver:
+        return found[1]
     net = solver.network
     n_nodes = solver.n_nodes
     made = _Scratch(
@@ -717,7 +856,7 @@ def _scratch(solver: DrainSolver) -> _Scratch:
     # One solver is live at a time, so clearing keeps a long bake from holding the buffers of
     # every solver it has ever built.
     _SCRATCH.clear()
-    _SCRATCH[key] = made
+    _SCRATCH[key] = (solver, made)
     return made
 
 
@@ -733,6 +872,7 @@ def simulate(
     sinks: ControlledSink | None = None,
     sink_state: SinkState | None = None,
     compiled: bool = True,
+    applied_surcharge_out: NDArray[np.floating] | None = None,
 ) -> DrainRunReport:
     """Run the drain solver over one sync interval with the forcing held constant.
 
@@ -743,6 +883,13 @@ def simulate(
     ``compiled`` runs the Numba kernel in :mod:`varuna_twin.drain_kernel` - the same arithmetic
     with no temporaries (task P4.6). ``compiled=False`` runs the NumPy path, which is the readable
     specification and what the kernel is tested against.
+
+    ``applied_surcharge_out`` is an ``n_nodes`` buffer the **caller owns**, zeroed and filled here
+    with the volume each node actually surcharged (see
+    :attr:`DrainRunReport.applied_surcharge_m3`). It is a parameter rather than a fresh array
+    because the coupled runner makes 2,160 of these calls per cycle, and it is the caller's
+    buffer rather than the solver's scratch because two reports sharing one scratch array is the
+    aliasing defect ADR-0035 already had to fix once.
     """
     n_steps = max(round(duration_s / dt_s), 0)
     # **Carried between calls, not recomputed.** `stored_volume_m3` is a full NumPy pass over
@@ -753,6 +900,8 @@ def simulate(
     started = _stored_start(solver, state)
     inlet = surch = sink = boundary = 0.0
     limited = 0
+    if applied_surcharge_out is not None:
+        applied_surcharge_out[:] = 0.0
 
     if compiled and n_steps > 0:
         return _simulate_compiled(
@@ -766,6 +915,7 @@ def simulate(
             sinks=sinks,
             sink_state=sink_state,
             started=started,
+            applied_surcharge_out=applied_surcharge_out,
         )
 
     for _ in range(n_steps):
@@ -784,6 +934,8 @@ def simulate(
         sink += report.sink_m3
         boundary += report.boundary_m3
         limited += report.limited_edges
+        if applied_surcharge_out is not None:
+            applied_surcharge_out += dt_s * report.applied_surcharge
     return DrainRunReport(
         n_steps=n_steps,
         inlet_m3=inlet,
@@ -793,6 +945,7 @@ def simulate(
         stored_start_m3=started,
         stored_end_m3=stored_volume_m3(solver, state.head),
         limited_edges=limited,
+        applied_surcharge_m3=applied_surcharge_out,
     )
 
 
@@ -808,9 +961,15 @@ def _simulate_compiled(
     sinks: ControlledSink | None,
     sink_state: SinkState | None,
     started: float,
+    applied_surcharge_out: NDArray[np.floating] | None = None,
 ) -> DrainRunReport:
     """:func:`simulate` through the compiled kernel. Same arithmetic, no temporaries."""
-    from varuna_twin.drain_kernel import step_kernel
+    from varuna_twin.drain_kernel import step_kernel, step_kernel_parallel
+
+    # The coloured kernel when `prepare` found the network worth colouring (task P4.6); the
+    # serial one otherwise, and on every test fixture, which is what keeps the parity test
+    # comparing two paths rather than one path with itself.
+    coloured = solver.colour_edges is not None and solver.n_parallel_colours > 0
 
     scratch = _scratch(solver)
     n_nodes = solver.n_nodes
@@ -840,43 +999,54 @@ def _simulate_compiled(
     if not has_sinks:
         draw[:] = 0.0
 
+    # Every element is the same object on every inner step - `sink_draw` writes into `draw`
+    # in place and the state arrays are updated in place by the kernel - so the tuple is built
+    # once rather than 10,800 times.
+    args = (
+        scratch.from_node,
+        scratch.to_node,
+        scratch.length,
+        solver.conveyance,
+        solver.q_cap,
+        solver.inv_diameter,
+        solver.network.z_invert,
+        solver.storage_base,
+        solver.slot_area,
+        solver.crown_depth,
+        solver.fixed_head,
+        scratch.flap_gate,
+        scratch.boundary,
+        head,
+        state.flow,
+        inlet,
+        surch,
+        draw,
+        float(dt_s),
+        scratch.tide,
+        have_tide,
+        MIN_HEAD_GRADIENT_M,
+        MIN_FLOW_DEPTH_M,
+        BOUNDARY_FREE,
+        BOUNDARY_TIDAL,
+        scratch.q,
+        scratch.q_out,
+        scratch.scale,
+        scratch.net_edge,
+        scratch.applied_surch,
+        scratch.applied_draw,
+    )
+
     for _ in range(n_steps):
         # Sinks draw on the *current* head, so they are recomputed per step exactly as the NumPy
         # path does. `n_units` is a handful of tanks and pumps; NumPy is the right tool for it.
         if has_sinks:
             sink_draw(sinks, sink_state, solver, head, dt_s, out=draw)
-        report = step_kernel(
-            scratch.from_node,
-            scratch.to_node,
-            scratch.length,
-            solver.conveyance,
-            solver.q_cap,
-            solver.inv_diameter,
-            solver.network.z_invert,
-            solver.storage_base,
-            solver.slot_area,
-            solver.crown_depth,
-            solver.fixed_head,
-            scratch.flap_gate,
-            scratch.boundary,
-            head,
-            state.flow,
-            inlet,
-            surch,
-            draw,
-            float(dt_s),
-            scratch.tide,
-            have_tide,
-            MIN_HEAD_GRADIENT_M,
-            MIN_FLOW_DEPTH_M,
-            BOUNDARY_FREE,
-            BOUNDARY_TIDAL,
-            scratch.q,
-            scratch.q_out,
-            scratch.scale,
-            scratch.net_edge,
-            scratch.applied_surch,
-            scratch.applied_draw,
+        report = (
+            step_kernel_parallel(
+                *args, solver.colour_edges, solver.colour_start, solver.n_parallel_colours
+            )
+            if coloured
+            else step_kernel(*args)
         )
         # Element-wise rather than a slice add, which would allocate a temporary per step.
         totals[0] += report[0]
@@ -888,6 +1058,10 @@ def _simulate_compiled(
 
         if sinks is not None and sink_state is not None and sinks.n_units > 0:
             sink_state.filled_m3 += dt_s * scratch.applied_draw[sinks.node]
+        if applied_surcharge_out is not None:
+            # The kernel leaves the step's applied rate in the scratch buffer; the volume is the
+            # sum over inner steps, which is what the surface has to be given.
+            applied_surcharge_out += dt_s * scratch.applied_surch
 
     stored_end = float(totals[4])
     _STORED[id(state)] = (state.head, stored_end)
@@ -900,4 +1074,5 @@ def _simulate_compiled(
         stored_start_m3=started,
         stored_end_m3=stored_end,
         limited_edges=limited,
+        applied_surcharge_m3=applied_surcharge_out,
     )

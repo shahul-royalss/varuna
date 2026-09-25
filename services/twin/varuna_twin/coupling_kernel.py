@@ -37,6 +37,7 @@ def exchange_kernel(
     inlet_area: np.ndarray,
     storage_area: np.ndarray,
     fixed_head: np.ndarray,
+    blocked: np.ndarray,
     # --- state ----------------------------------------------------------------------------
     surface_h: np.ndarray,
     surface_z: np.ndarray,
@@ -70,6 +71,11 @@ def exchange_kernel(
         c = col[j]
         if r < 0 or c < 0:
             continue  # no 2D cell: this node cannot exchange
+        if blocked[r, c]:
+            # A node under a building. `swe2d._update_depth` zeroes a blocked cell and skips it
+            # before it tallies anything, so water sent there is destroyed silently: 5,185.4 m3
+            # on the 08:40 cycle of 2 July 2019. There is no street here to surcharge onto.
+            continue
 
         h = surface_h[r, c]
         z = surface_z[r, c]

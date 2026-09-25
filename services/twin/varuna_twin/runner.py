@@ -44,7 +44,11 @@ entered during this run only. ``V_start`` is zero on a cold start. Below
 is held to :data:`MASS_BALANCE_MIN_RESIDUAL_M3` instead.
 The surface's own audit runs every 100 CFL sub-steps across the run inside the
 ``SurfaceStepper`` and once more at the end; the drain's runs inside ``simulate``. This final
-audit is the coupled one that catches exchange leaks.
+audit is the coupled one that catches exchange leaks, and ``twin.run.ledger`` breaks its
+residual into the surface's own, the drain's own and the two exchange gaps - because which
+side lost the water is the difference between a number to report and a bug to fix. On the
+08:40 cycle of 2 July 2019 both solvers were exactly closed and the whole 6,064.7 m3 sat in
+the surcharge gap.
 
 **Performance** (CLAUDE.md 14). The target is a 3-hour AOI run <= 8 s on an 8-core CPU.
 The 2D solver is Numba-parallel; the 1D solver is vectorised numpy. The coupling loop adds
@@ -66,7 +70,11 @@ import numpy as np
 import structlog
 
 from varuna_twin import drain1d, swe2d
-from varuna_twin.coupling import ExchangeBuffers, compute_exchange
+from varuna_twin.coupling import (
+    ExchangeBuffers,
+    compute_exchange,
+    scatter_node_volumes_to_cells,
+)
 from varuna_twin.hydrology import HydrologyState, effective_rain
 from varuna_twin.types import (
     DrainState,
@@ -159,13 +167,22 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     # from `terrain.z` instead wrote past the end of the buffer - `prepare_terrain` can pad -
     # and Numba does not bounds-check, so it was an access violation rather than an IndexError.
     exchange_buffers = ExchangeBuffers.allocate(network.n_nodes, kernel_terrain.z.shape)
+    # The drain's applied surcharge for the current sync, and its scatter onto the grid. Owned
+    # here rather than inside `simulate` and `scatter_node_volumes_to_cells` for the reason
+    # `ExchangeBuffers` documents: both are consumed within the sync that filled them, and a
+    # buffer the callee owned would alias across calls.
+    applied_surcharge_m3 = np.zeros(network.n_nodes, dtype=np.float64)
+    surcharge_cell_buffer = np.zeros(kernel_terrain.z.shape, dtype=np.float64)
     hydro_state = HydrologyState.for_terrain(terrain)
     if initial is not None:
         # `retention_s_mm` stays the one just derived from this city's `cn.tif`; only the two
         # event accumulators are memory.
         hydro_state.depression_remaining_mm = _owned(initial.depression_remaining_mm)
         hydro_state.cumulative_rain_mm = _owned(initial.cumulative_rain_mm)
-    drain_solver = drain1d.prepare(network)
+    # `colour=True`: this is the caller P4.6's colouring was measured for - 10,800 inner steps
+    # over 49,770 edges, where the coloured kernel measured 3.49x the serial one at the runner's
+    # own call shape. `prepare` costs 55 ms more for it, once.
+    drain_solver = drain1d.prepare(network, colour=True)
 
     # Initial drain state: heads at the inverts (empty pipes), or the checkpoint's.
     if initial is None:
@@ -209,9 +226,9 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
 
     # Water already in the city when the run starts: zero on a cold start. Taken after the
     # boundary pin, though `stored_volume_m3` leaves fixed-head nodes out either way.
-    stored_start = surface.volume_m3(kernel_terrain.cell_area_m2) + drain1d.stored_volume_m3(
-        drain_solver, drain_state.head
-    )
+    surface_stored_start = surface.volume_m3(kernel_terrain.cell_area_m2)
+    drain_stored_start = drain1d.stored_volume_m3(drain_solver, drain_state.head)
+    stored_start = surface_stored_start + drain_stored_start
 
     # ---- Output buffers -----------------------------------------------------
     depth_out = np.zeros((n_steps, terrain.n_rows, terrain.n_cols), dtype=np.float64)
@@ -223,6 +240,21 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     total_rain_in_m3 = 0.0
     total_tide_in_m3 = 0.0
     total_tide_out_m3 = 0.0
+    total_drain_inlet_m3 = 0.0
+    """Volume the 1D network actually accepted at its inlets, summed over every sync.
+
+    Not the same number as the surface's own inlet tally: the surface gives up
+    ``min(wanted, available)`` and the drain accepts ``min(offered, node capacity)``, so the two
+    can disagree and the difference is water neither solver holds. Carried separately so the
+    closing ledger can name that gap instead of burying it in the residual."""
+
+    total_drain_surcharge_m3 = 0.0
+    """Volume the network pushed back out through its manholes, the mirror of the above."""
+
+    total_sink_m3 = 0.0
+    """Volume withdrawn by pumps and holding tanks. Zero until they are wired (Phase 7), and
+    counted here so that wiring them cannot silently open a hole in the audit."""
+
     total_outfall_m3 = 0.0
     """Net volume the drain network discharged at its outfalls, positive out to sea.
 
@@ -284,27 +316,24 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
                 # The result is read and applied before the next sync computes another, so one
                 # set of buffers serves the whole run rather than four allocations per sync.
                 out=exchange_buffers,
+                # A node under a building exchanges nothing: the cell it would exchange with is
+                # one the 2D solver holds at zero depth and skips before it tallies, so anything
+                # sent there vanishes from the audit (task P4.5).
+                blocked=kernel_terrain.blocked,
             )
             t_coupling += int((perf_counter() - t0) * 1000)
 
-            # Accumulate surcharge for snapshot
-            step_surcharge += exchange.q_surcharge_node
-            step_surcharge_count += 1
-
-            # 2b. Advance the 2D surface
-            t0 = perf_counter()
-            surface_run = surface_stepper.advance(
-                actual_sync_s,
-                q_inlet_ms=exchange.q_inlet_cell,
-                q_surcharge_ms=exchange.q_surcharge_cell,
-                tide_stage_m=tide_stage,
-                max_dt_s=actual_sync_s,
-            )
-            t_surface += int((perf_counter() - t0) * 1000)
-            total_tide_in_m3 += surface_run.volume_tide_in_m3
-            total_tide_out_m3 += surface_run.volume_tide_out_m3
-
-            # 2c. Advance the 1D drains
+            # 2b. Advance the 1D drains, **before** the surface (task P4.5).
+            #
+            # The order is the mass balance, not a preference. Both solvers are given the same
+            # frozen exchange rates, and neither reads the other's state while it sub-steps, so
+            # stepping the drain first changes no depth by itself. What it changes is which of
+            # the two gets the last word on how much water moved: the drain's supply check scales
+            # a node's whole outflow - pipes, manhole and sinks together - when they would take
+            # more than the node holds, so a node draining hard through its pipes surcharges less
+            # than `compute_exchange` asked for. Handing the surface the requested rate while the
+            # drain applied the scaled one put water on the street that no node ever gave up:
+            # 6,052.7 m3 on this cycle, 99.8 % of a 0.204 % failure against a 0.1 % budget.
             t0 = perf_counter()
             drain_run = drain1d.simulate(
                 drain_solver,
@@ -316,20 +345,55 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
                 tide_stage_m=tide_stage,
                 sinks=sinks,
                 sink_state=sink_state,
+                applied_surcharge_out=applied_surcharge_m3,
             )
             total_outfall_m3 += drain_run.boundary_m3
+            total_drain_inlet_m3 += drain_run.inlet_m3
+            total_drain_surcharge_m3 += drain_run.surcharge_m3
+            total_sink_m3 += drain_run.sink_m3
             t_drain += int((perf_counter() - t0) * 1000)
+
+            # The surcharge the snapshot reports is the one that reached the street, so that the
+            # console's surcharge markers stand for water a manhole actually emitted.
+            t0 = perf_counter()
+            surcharge_cell = scatter_node_volumes_to_cells(
+                network,
+                drain_solver,
+                applied_surcharge_m3,
+                actual_sync_s,
+                kernel_terrain.cell_area_m2,
+                out=surcharge_cell_buffer,
+            )
+            t_coupling += int((perf_counter() - t0) * 1000)
+            # In place: `step_surcharge += applied / sync` allocated a 50,110-element temporary
+            # on each of the 2,160 syncs. Volumes here; the snapshot divides by the total time.
+            np.add(step_surcharge, applied_surcharge_m3, out=step_surcharge)
+            step_surcharge_count += 1
+
+            # 2c. Advance the 2D surface with the volume the drains actually emitted.
+            t0 = perf_counter()
+            surface_run = surface_stepper.advance(
+                actual_sync_s,
+                q_inlet_ms=exchange.q_inlet_cell,
+                q_surcharge_ms=surcharge_cell,
+                tide_stage_m=tide_stage,
+                max_dt_s=actual_sync_s,
+            )
+            t_surface += int((perf_counter() - t0) * 1000)
+            total_tide_in_m3 += surface_run.volume_tide_in_m3
+            total_tide_out_m3 += surface_run.volume_tide_out_m3
 
         # 3. Snapshot
         depth_out[step_idx] = surface.h.copy()
         head_out[step_idx] = drain_state.head.copy()
         if step_surcharge_count > 0:
-            q_surcharge_out[step_idx] = step_surcharge / step_surcharge_count
+            # Volume over the step, back to the mean rate the snapshot reports in m3/s.
+            q_surcharge_out[step_idx] = step_surcharge / (step_surcharge_count * actual_sync_s)
         edge_flow_out[step_idx] = drain_state.flow.copy()
 
     # The surface's closing audit: the window since its last 100-sub-step check, and the run.
     t0 = perf_counter()
-    surface_stepper.finish()
+    surface_run_total = surface_stepper.finish()
     t_surface += int((perf_counter() - t0) * 1000)
 
     # ---- Stage timings -------------------------------------------------------
@@ -363,6 +427,48 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         error_fraction = 0.0
         residual_limit = MASS_BALANCE_MIN_RESIDUAL_M3
 
+    # ---- Where the residual sits (task P4.5) --------------------------------------------
+    # The audit above says how much water is unaccounted for; these three say which side of the
+    # coupling lost it, which is the difference between a number to report and a bug to fix.
+    # Each solver is closed against its own sources, and the two exchange terms are the volumes
+    # one side gave up and the other never received.
+    surface_residual = (surface_stored - surface_stored_start) - (
+        surface_run_total.volume_rain_m3
+        + surface_run_total.volume_surcharge_m3
+        + surface_run_total.volume_tide_in_m3
+        + surface_run_total.volume_created_m3
+        - surface_run_total.volume_inlet_m3
+        - surface_run_total.volume_tide_out_m3
+    )
+    drain_residual = (drain_stored - drain_stored_start) - (
+        total_drain_inlet_m3
+        + max(-total_outfall_m3, 0.0)
+        - total_drain_surcharge_m3
+        - total_sink_m3
+        - max(total_outfall_m3, 0.0)
+    )
+    # Positive means the surface let go of water the network never took, i.e. it was destroyed;
+    # negative means the network accepted water the surface never gave up, i.e. it was invented.
+    inlet_gap = surface_run_total.volume_inlet_m3 - total_drain_inlet_m3
+    surcharge_gap = total_drain_surcharge_m3 - surface_run_total.volume_surcharge_m3
+    log.info(
+        "twin.run.ledger",
+        residual_m3=round(residual, 3),
+        surface_residual_m3=round(surface_residual, 3),
+        drain_residual_m3=round(drain_residual, 3),
+        inlet_gap_m3=round(inlet_gap, 3),
+        surcharge_gap_m3=round(surcharge_gap, 3),
+        clamp_created_m3=round(surface_run_total.volume_created_m3, 6),
+        rain_in_m3=round(total_rain_in_m3, 1),
+        tide_in_m3=round(total_tide_in_m3, 1),
+        tide_out_m3=round(total_tide_out_m3, 1),
+        outfall_m3=round(total_outfall_m3, 1),
+        drain_inlet_m3=round(total_drain_inlet_m3, 1),
+        drain_surcharge_m3=round(total_drain_surcharge_m3, 1),
+        surface_inlet_m3=round(surface_run_total.volume_inlet_m3, 1),
+        surface_surcharge_m3=round(surface_run_total.volume_surcharge_m3, 1),
+    )
+
     mass_balance = MassBalance(
         volume_in_m3=total_in,
         volume_out_m3=total_out,
@@ -371,6 +477,10 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         volume_stored_start_m3=stored_start,
         residual_m3=residual,
         residual_limit_m3=residual_limit,
+        surface_residual_m3=surface_residual,
+        drain_residual_m3=drain_residual,
+        inlet_gap_m3=inlet_gap,
+        surcharge_gap_m3=surcharge_gap,
     )
 
     if inputs.tide is None and has_sea:
