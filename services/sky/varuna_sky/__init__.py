@@ -12,6 +12,13 @@ The six stages of CLAUDE.md 11.1, each a pure function over the structures in
 
 Importing a stage does not import the others' heavy dependencies: only the names below are
 re-exported eagerly, and each stage module is small. ``run_sky`` is what the cycle calls.
+
+Stage 5 has one piece of machinery beside it: :mod:`varuna_sky.ensemble_pool` runs the STEPS
+members in worker processes, because the nowcast measures as 322 ms per member with almost no
+shared cost and 57 % of that is GIL-holding C code (P3.7). It produces the same cube as a
+single call, element for element. A batch caller that knows it is about to run many cycles -
+``make bake`` - can pay the workers' spawn up front with
+:func:`~varuna_sky.ensemble_pool.warm_pool`; a live cycle should not, and never waits for it.
 """
 
 from varuna_sky.analysis import AnalysisRain, AnalysisSeries, analysis_rain, analysis_series

@@ -253,3 +253,156 @@ def test_pysteps_is_deterministic_for_a_fixed_seed() -> None:
     first = steps.nowcast(rain[-1], motion, inputs, MP)
     second = steps.nowcast(rain[-1], motion, inputs, MP)
     assert np.array_equal(first.rain_mm_h, second.rain_mm_h)
+
+
+# ============================================================ the split ensemble (P3.7)
+# CLAUDE.md 11.1 budgets Sky at 5 s and it missed at 6.32 s warm, almost all of it the pySTEPS
+# nowcast, which measures as pure per-member cost (see varuna_sky.ensemble_pool). So the members
+# are split across worker processes. The split is only legitimate if it reproduces the cube the
+# single call produces - the seven demo cycles are already baked, and rule 8 says a re-bake is
+# byte-identical - and that is what these tests pin. They also pin VARUNA to a pySTEPS internal:
+# the per-member seed chain. If pySTEPS changes it, the first test here goes red, which is where
+# that should be found rather than in a silently different bake.
+def test_splitting_the_ensemble_reproduces_the_single_call_element_for_element() -> None:
+    """Eight members as 4 + 4, with each group given the seed pySTEPS would have held there."""
+    from dataclasses import replace
+
+    from varuna_sky.ensemble_pool import member_seed
+
+    rain, motion, inputs = storm_setup(n_members=8, n_steps=4)
+    whole = steps.steps_nowcast(rain[-1], motion, inputs, MP).rain_mm_h
+
+    parts = []
+    for offset in (0, 4):
+        group = replace(inputs, n_members=4, seed=member_seed(inputs.seed, offset))
+        parts.append(steps.steps_nowcast(rain[-1], motion, group, MP).rain_mm_h)
+    split = np.concatenate(parts, axis=0)
+
+    assert np.array_equal(whole, split), (
+        "a group starting at member m must be pySTEPS' member m; if this fails, pySTEPS has "
+        "changed how it chains per-member random states and ensemble_pool.member_seed is stale"
+    )
+
+
+def test_a_worker_group_is_not_the_first_group_by_accident() -> None:
+    """The guard on the test above: members 4-7 must differ from members 0-3, or "identical"
+    would be satisfied by a chain that ignored the offset."""
+    from varuna_sky.ensemble_pool import member_seed
+
+    rain, motion, inputs = storm_setup(n_members=8, n_steps=4)
+    assert member_seed(inputs.seed, 0) == inputs.seed
+    assert member_seed(inputs.seed, 4) != inputs.seed
+    cube = steps.steps_nowcast(rain[-1], motion, inputs, MP).rain_mm_h
+    assert not np.array_equal(cube[:4], cube[4:])
+
+
+def test_member_groups_spread_the_remainder_over_the_leading_groups() -> None:
+    """The stage ends when its slowest group ends, so 20 over 3 is 7 + 7 + 6, not 6 + 6 + 8."""
+    from varuna_sky.ensemble_pool import member_groups
+
+    assert member_groups(20, 4) == ((0, 5), (5, 5), (10, 5), (15, 5))
+    assert member_groups(20, 3) == ((0, 7), (7, 7), (14, 6))
+    assert member_groups(3, 8) == ((0, 1), (1, 1), (2, 1))
+    assert member_groups(1, 4) == ((0, 1),)
+
+
+def test_the_worker_count_can_be_pinned_from_the_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``VARUNA_SKY_WORKERS=1`` is the escape hatch for a machine where a pool cannot start."""
+    from varuna_sky.ensemble_pool import WORKERS_ENV, worker_count
+
+    monkeypatch.setenv(WORKERS_ENV, "1")
+    assert worker_count(20) == 1
+    monkeypatch.setenv(WORKERS_ENV, "3")
+    assert worker_count(20) == 3
+    monkeypatch.setenv(WORKERS_ENV, "not a number")
+    assert worker_count(20) >= 1, "a bad value is ignored, never raised into a cycle"
+    monkeypatch.delenv(WORKERS_ENV)
+    assert worker_count(2) == 1, "two members are not worth a worker's pickle round trip"
+
+
+# ============================================================ interpolated-lead mass (11.1)
+# VARUNA asks for 5-minute leads from 10-minute radar, so half the lead times land between two
+# of pySTEPS' integer steps, and pySTEPS reaches those by blending the bracketing states in dBR
+# - a geometric mean in rain, which is below the arithmetic one wherever the two fields differ.
+# varuna_sky.steps.correct_interpolated_mass carries the measured saw-tooth this produced and
+# what it is corrected to. These tests pin the two properties that make the correction honest
+# rather than a fudge: it hits the target the neighbours imply, and it does not push the tail
+# above what the same lead's neighbours already carry (which is what ADR-0040 rejected
+# probmatching="mean" for).
+def _bracketed_totals(cube: np.ndarray, analysis: np.ndarray) -> tuple[float, float, float]:
+    """``(target, actual, analysis)`` domain totals for the first interpolated lead.
+
+    With 10-minute frames and 5-minute steps, output 0 is lead 0.5 and output 1 is lead 1.0,
+    so the two whole steps bracketing output 0 are the analysis itself and output 1.
+    """
+    member = np.nan_to_num(cube[0])
+    analysis_total = float(np.nan_to_num(analysis).sum())
+    next_whole = float(member[1].sum())
+    return 0.5 * (analysis_total + next_whole), float(member[0].sum()), analysis_total
+
+
+def test_an_interpolated_lead_carries_the_mass_its_whole_step_neighbours_imply() -> None:
+    rain, motion, inputs = storm_setup(n_members=4, n_steps=4)
+    cube = steps.steps_nowcast(rain[-1], motion, inputs, MP).rain_mm_h
+    target, actual, _ = _bracketed_totals(cube, rain[-1])
+    assert actual == pytest.approx(target, rel=0.02), (
+        f"the interpolated lead holds {actual:.0f} mm/h against the {target:.0f} mm/h its "
+        "whole-step neighbours imply; the dBR blend has been left uncorrected"
+    )
+
+
+TAIL_ORDER_TOL = 0.05
+"""Slack on the tail ordering below, because this file's fixture cannot resolve it.
+
+``storm_setup`` is one Gaussian translating a few pixels over a uniform background, so the
+analysis, the interpolated lead and the following whole step have almost the same 99.9th
+percentile - measured 30.55, 30.20 and 30.28 mm/h, a spread of 1 %. A strict ordering there
+would be a coin toss on rounding. The ordering is *measured* on the storm designer's own field
+in ``test_pipeline.py``, where the three are 73.06, 29.51 and 26.64 mm/h and the ordering is
+the whole point; this test is the cheap guard that the correction has not run away.
+"""
+
+
+def test_the_mass_correction_restores_a_tail_rather_than_inventing_one() -> None:
+    """The corrected lead's 99.9th percentile must sit between the two fields it lies between
+    in time - below the analysis it decays from, above the whole step it decays towards.
+
+    Uncorrected it sits *below both*, which is the signature of the log blend rather than of a
+    forecast, and is why the ordering is the assertion. ADR-0040 rejected
+    ``probmatching_method="mean"`` for the same mass deficit because it raised the 99.9th
+    percentile 52 % above the analysis; an upper bound of the analysis' own tail is the
+    property that rejection was really about.
+    """
+    rain, motion, inputs = storm_setup(n_members=4, n_steps=4)
+    cube = np.nan_to_num(steps.steps_nowcast(rain[-1], motion, inputs, MP).rain_mm_h[0])
+    analysis_p999 = float(np.percentile(np.nan_to_num(rain[-1]), 99.9))
+    lead_p999 = float(np.percentile(cube[0], 99.9))
+    whole_p999 = float(np.percentile(cube[1], 99.9))
+    message = (
+        f"p99.9 analysis={analysis_p999:.2f} interpolated lead={lead_p999:.2f} "
+        f"whole step={whole_p999:.2f}: the corrected lead must lie between them in time"
+    )
+    assert lead_p999 <= analysis_p999 * (1.0 + TAIL_ORDER_TOL), message
+    assert lead_p999 >= whole_p999 * (1.0 - TAIL_ORDER_TOL), message
+
+
+def test_the_correction_leaves_a_whole_step_cadence_alone() -> None:
+    """Asked for lead times that are whole input steps, nothing is interpolated and nothing is
+    corrected - the function has to be a no-op there, or it would be a tuning knob."""
+    from varuna_sky.steps import correct_interpolated_mass
+
+    cube = np.ones((2, 3, 4, 4))
+    out, corrected = correct_interpolated_mass(cube, [1.0, 2.0, 3.0], np.full((4, 4), 5.0))
+    assert corrected == 0
+    assert out is cube
+
+
+def test_the_correction_leaves_a_dry_cube_dry() -> None:
+    from varuna_sky.steps import correct_interpolated_mass
+
+    cube = np.zeros((2, 3, 4, 4))
+    out, corrected = correct_interpolated_mass(cube, [0.5, 1.0, 1.5], np.zeros((4, 4)))
+    assert corrected == 0
+    assert not np.any(out), "a dry forecast stays dry; there is no mass to restore"

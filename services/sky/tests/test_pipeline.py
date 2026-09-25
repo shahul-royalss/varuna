@@ -16,6 +16,7 @@ import pandas as pd
 import pytest
 from pyproj import Transformer
 from varuna_schemas.constants import IST
+from varuna_sky.ensemble_pool import shutdown_pool, warm_pool
 from varuna_sky.pipeline import NWP_NOTE, STAGES, run_sky
 from varuna_sky.products import AoiGrid
 from varuna_sky.types import RadarFrames, RadarGrid, SkyInputs, ZRParams
@@ -326,34 +327,40 @@ def test_two_runs_of_one_cycle_agree_byte_for_byte(
 # budgets acceptance criteria, so this measures the real production configuration - 20 members,
 # 36 steps, 120 x 120 - and prints what it got.
 #
-# MEASURED, 8-core laptop, 2026-09-09, at the full configuration:
-#   warm process (this file's other tests have run):  5.65 s - nowcast 5.32 s, motion   60 ms
-#   cold process (`-m slow` alone):                   6.81 s - nowcast 4.73 s, motion 1850 ms
-# qc, zr and merge are 1-4 ms each and products is ~230 ms in both. The nowcast is 70-94 % of
-# the total and repeat runs of it alone range 4.5-5.3 s, so Sky sits ON the 5 s target rather
-# than inside it, and which side of it a cycle lands is machine noise.
+# WHAT CHANGED ON 2026-09-24. The stage used to run its twenty members in one process and
+# measured 6.32 s warm / 8.39 s cold. It now splits them across worker processes
+# (`varuna_sky.ensemble_pool`, which carries the two measurements that led there: the nowcast
+# is 322 ms per member with an ~8 ms fixed cost, and 57 % of it is `scipy.ndimage` C code that
+# holds the GIL, which is why pySTEPS' own thread-based `num_workers` never helped). The cube
+# is unchanged element for element - `test_steps.py` pins that - so this is wall clock only.
 #
-# The 1.8 s swing is pySTEPS' Lucas-Kanade paying its first-call import and compile cost, which
-# is charged once per process and not once per cycle. `make bake` walks every cycle of a bundle
-# in one process (CLAUDE.md 11.11), so the replay pays it on cycle one and no other; it is a
-# startup cost, and reporting it as part of the per-cycle budget would overstate the steady
-# state. The full-suite run above is the honest per-cycle figure.
+# The cost that split cannot remove is the workers' spawn: Windows has no fork, so each worker
+# imports numpy, scipy and pysteps from scratch, and measured inside a loaded pytest process
+# that took one cycle 45.2 s. So the pool is never waited for. The FIRST cycle in a process
+# runs sequentially while the pool warms behind it, and every cycle after it is pooled. That is
+# what the two measurements below are, and why there are two.
 #
-# Under contention the picture is different and worth knowing: with six agents compiling and
-# running tests on this machine, one measurement of this same test reached 19-24 s. Nothing is
-# wrong at that point except that eight cores are oversubscribed - which is exactly why the
-# assertion below is a regression guard rather than the budget.
+# MEASURED, 2026-09-24, Intel i5-1155G7 (4 physical, 8 logical cores), full 20 x 36 x 120 x 120
+# configuration, same process and same inputs, with the python-process count beside each figure
+# because this repository's timings move by a factor of two under contention:
 #
-# That cost is pySTEPS' own and was not left unexamined. Measured alternatives, all verified
-# to keep rule 8 determinism: num_workers 2/4/6/8 are 4.58/6.40/4.83/4.68 s against 4.52 s at
-# one worker - thread overhead beats the gain at this domain size, so one worker stays;
-# fft_method "scipy" 4.64 s and "numpy" 6.29 s, neither better than the configured default;
-# domain="spectral" is 4.18 s but returns a different cube, so an 8 % gain would be bought by
-# changing the science, which is not a trade this stage should make.
+#   sequential (one process, as the stage used to be)   11.21 / 10.95 / 12.26 s  @ 16 procs
+#   pooled, 4 workers, warm                              4.75 /  4.79 /  5.61 s  @ 22-28 procs
+#   pool spawn + worker imports, once per process        16.03 s                  @ 24 procs
 #
-# Two things keep it acceptable. The demo runs from baked cycles (CLAUDE.md 4.3, 17), where
-# this is paid by `make bake` offline and the publish budget is 200 ms; and "Compute live"
-# pays it inside the 15 s whole-cycle budget of section 14, where Sky's share is 5 s of 15.
+# Two of the three pooled runs are inside the five seconds and the third is not, and the pooled
+# runs were taken under HEAVIER load than the sequential ones, because the pool's own four
+# workers are counted in those process numbers. So the stage now sits ON the budget rather than
+# at twice it. It is not a pass, and the STATUS BOARD should say what this test prints.
+#
+# For scale on the contention: the same measurement on a quieter machine (12 procs) put the
+# sequential stage at 6.82 s, and inside a loaded pytest process it has measured 41 s.
+#
+# Earlier work on this stage, kept so it is not repeated: num_workers 2/4/6/8 measured
+# 4.58/6.40/4.83/4.68 s against 4.52 s at one worker; fft_method "scipy" 4.64 s and "numpy"
+# 6.29 s; domain="spectral" 4.18 s but a different cube, so an 8 % gain bought by changing the
+# science. All three were thread- or backend-level knobs on a stage whose cost is per member.
+#
 # The assertion below is a REGRESSION guard, not the budget: it catches a 2x blow-up without
 # turning machine noise into a red suite. The printed number is the one to read.
 SKY_BUDGET_S = 5.0
@@ -371,6 +378,10 @@ def test_the_full_configuration_does_not_regress_past_twice_its_budget() -> None
     the section 14 budget was met when the measured number is over it. Rule 13 makes that
     budget an acceptance criterion, so the miss belongs on the STATUS BOARD (it is there),
     not hidden behind a test name that reports success.
+
+    Two cycles are timed, because a process now has two speeds. The first pays nothing for the
+    worker pool and gains nothing from it; the second is the steady state a bake and a second
+    "Compute live" both run at, and it is the one the assertion is on.
     """
     grid = sky_grid()
     frames, rain = storm_frames(grid)
@@ -382,6 +393,14 @@ def test_the_full_configuration_does_not_regress_past_twice_its_budget() -> None
     )
     aoi = aoi_grid(grid, width=323, height=522)
 
+    shutdown_pool()
+    start = perf_counter()
+    first = run_sky(inputs, aoi)
+    first_elapsed = perf_counter() - start
+
+    # A bake would call warm_pool() once up front; here it stands in for the cycles that pass
+    # while the workers import, so the steady state is measured rather than a race with them.
+    warmed = warm_pool(20, timeout=180.0)
     start = perf_counter()
     result = run_sky(inputs, aoi)
     elapsed = perf_counter() - start
@@ -389,28 +408,40 @@ def test_the_full_configuration_does_not_regress_past_twice_its_budget() -> None
     stages = " ".join(f"{name}={result.stage_ms[name]}ms" for name in STAGES)
     verdict = "within" if elapsed <= SKY_BUDGET_S else "OVER"
     print(
-        f"\nSky at 20 x 36 on {grid.n_px}x{grid.n_px}: {elapsed:.2f} s total "
-        f"({verdict} the {SKY_BUDGET_S:.0f} s budget of CLAUDE.md 14); {stages}"
+        f"\nSky at 20 x 36 on {grid.n_px}x{grid.n_px}: first cycle in the process "
+        f"{first_elapsed:.2f} s (sequential, pool warming), steady state {elapsed:.2f} s "
+        f"({verdict} the {SKY_BUDGET_S:.0f} s budget of CLAUDE.md 14, pool warm={warmed}); "
+        f"{stages}"
     )
 
     assert result.ensemble.rain_mm_h.shape == (20, 36, grid.n_px, grid.n_px)
+    assert np.array_equal(first.ensemble.rain_mm_h, result.ensemble.rain_mm_h), (
+        "rule 8: the sequential first cycle and the pooled second must be the same cube, or "
+        "a bake would depend on how far along its own worker pool was"
+    )
+    # Two guards, and BOTH must hold. The absolute one is the 2x-budget regression guard this
+    # test has always carried, unchanged. The relative one is new with the worker split and is
+    # what the split claims: the pooled cycle must beat a sequential cycle of the same inputs
+    # taken seconds earlier on the same machine under the same load. It is asserted only when
+    # the pool actually warmed, because otherwise the second cycle is sequential too and the
+    # comparison is between two equal things.
+    #
+    # An earlier draft took the *larger* of the two as one ceiling, on the grounds that the
+    # absolute guard goes red under contention (this suite has measured the same cycle at 5.65 s
+    # and at 41 s). That made the test strictly looser than it had been - a pooled cycle as slow
+    # as a loaded sequential one would pass - so it was reverted: contention is a reason to read
+    # the printed number, not to widen the guard.
     assert elapsed < SKY_BUDGET_S * CI_SLACK, (
         f"Sky took {elapsed:.2f} s, past the {SKY_BUDGET_S * CI_SLACK:.0f} s regression "
         f"guard ({SKY_BUDGET_S:.0f} s budget x {CI_SLACK:.0f} slack); stages: {stages}"
     )
+    if warmed:
+        assert elapsed < first_elapsed, (
+            f"the pooled cycle took {elapsed:.2f} s against {first_elapsed:.2f} s for the same "
+            f"cycle run sequentially moments ago, so the worker split is not paying; {stages}"
+        )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Real defect, measured properly: median 21.7 % low across five storm draws "
-        "(range 6.1-27.3 %) against the 15 % CLAUDE.md 11.1 allows. Every member loses it "
-        "individually, so it is the nowcast step, not the averaging. probmatching='mean' "
-        "would pass this test (+13.2 %) and is NOT the fix - it inflates the 99.9th "
-        "percentile by 52 %, which is a phantom cloudburst in a flood nowcaster. ADR-0040. "
-        "strict=True so this turns red the day it starts passing and the number gets read."
-    ),
-)
 def test_the_ensemble_mean_is_near_persistence_at_the_first_lead() -> None:
     """CLAUDE.md 11.1: "total rain of the ensemble mean over the domain is within 15 % of
     persistence at lead 0".
@@ -424,6 +455,21 @@ def test_the_ensemble_mean_is_near_persistence_at_the_first_lead() -> None:
     It runs on :func:`designed_frames`, not the single-Gaussian fixture: over a uniform
     background pySTEPS' cascade correlations are estimated from numerical noise and the
     forecast degenerates, which measures the fixture rather than Sky (ADR-0040).
+
+    **This carried ``xfail(strict=True)`` at median 21.7 % low until 2026-09-24.** What it was
+    measuring turned out to be two defects stacked, and only one of them was Sky's:
+
+    * every lead time that falls *between* two 10-minute radar steps - which is every odd lead
+      of the 36, including this one - was blended by pySTEPS in dBR, a geometric mean in rain
+      (:func:`varuna_sky.steps.correct_interpolated_mass` carries the mechanism, the per-lead
+      saw-tooth it produced, and the correction). Fixing that took the lead-0 figure from a
+      median 21.7 % to **5.4 % across the same five storm draws** (3.0-6.5 %), inside 11.1's
+      15 %;
+    * the whole pySTEPS steps carry their own deficit - **10.5 to 13.5 % at lead 10 minutes**,
+      growing past 30 % by two hours - and nothing here touches it. That is the STEPS cascade,
+      its precipitation mask and its probability matching. So this test passing says the
+      nowcast is anchored at five minutes; it does **not** say the cube conserves mass, and
+      ``test_the_whole_step_deficit_is_the_one_still_open`` keeps that number on the record.
     """
     grid = sky_grid(n_px=120)
     frames, rain = designed_frames(grid)
@@ -442,4 +488,38 @@ def test_the_ensemble_mean_is_near_persistence_at_the_first_lead() -> None:
     assert relative <= 0.15, (
         f"the ensemble mean holds {first_lead:.1f} mm/h against persistence "
         f"{persistence:.1f} mm/h at lead 0, {relative * 100:.1f} % away; 11.1 allows 15 %"
+    )
+
+
+def test_the_whole_step_deficit_is_the_one_still_open() -> None:
+    """The half of the lead-0 bias that was NOT fixed, kept on the record with a number.
+
+    ``correct_interpolated_mass`` restores the mass pySTEPS' dBR temporal blend destroys, which
+    is what the lead-0 test above measures. It does nothing at all to the lead times that are
+    whole pySTEPS steps, and those are 10.5-13.5 % low at ten minutes on the same storms - the
+    STEPS cascade, its precipitation mask and its probability matching, none of which is ours.
+
+    Rule 6 says the number on the screen is one that was measured; this is the test that keeps
+    measuring it, so nobody reads a green lead-0 test as "Sky conserves mass". The bound is
+    generous (25 %) because the point is to print the figure and to catch a *collapse*, not to
+    freeze a number the cascade is entitled to move.
+    """
+    grid = sky_grid(n_px=120)
+    frames, rain = designed_frames(grid)
+    inputs = cycle_inputs(frames, gauges_from(frames, rain), n_members=8, n_steps=2)
+    result = run_sky(inputs, aoi_grid(grid))
+
+    persistence = float(np.nansum(result.merge.rain_mm_h))
+    # Output 1 is lead 1.0 of the input interval - ten minutes, a whole pySTEPS step, with no
+    # temporal interpolation in it at all.
+    whole_step = float(np.nansum(np.nanmean(result.ensemble.rain_mm_h[:, 1], axis=0)))
+    deficit = (persistence - whole_step) / persistence
+    print(
+        f"\nwhole-step (10 min) total: {whole_step:.1f} against persistence "
+        f"{persistence:.1f} ({deficit * 100:.1f} % low; the STEPS cascade's own, not the "
+        "temporal blend's)"
+    )
+    assert deficit < 0.25, (
+        f"the whole-step deficit has grown to {deficit * 100:.1f} %; it measured 10.5-13.5 % "
+        "over five storms on 2026-09-24, and past 25 % something other than the cascade is wrong"
     )
