@@ -395,3 +395,31 @@ def test_a_city_without_segments_is_not_memoised(tmp_path) -> None:
     _segments_table(root)
     assert len(S.segment_points_cached(root)) == 2
     S.clear_segment_points_cache()
+
+
+def test_the_time_bar_band_is_quantiles_of_the_mean_not_the_mean_of_quantiles() -> None:
+    """CLAUDE.md 7.2: the p10-p90 of AOI-mean depth, across members, on the Twin's level."""
+    import numpy as np
+    from varuna_products.depth import aoi_depth_band
+
+    twin = np.array([[10.0, 20.0], [30.0, 40.0]])  # 2 steps x 2 streets: means 15 and 35
+    # Ten members whose street means differ by -4.5 ... +4.5 cm from their own mean at step 0,
+    # and not at all at step 1.
+    offsets = np.arange(10, dtype=np.float64) - 4.5
+    members = np.zeros((10, 2, 2))
+    members[:, 0, :] = offsets[:, None]
+    band = aoi_depth_band(twin, members)
+    assert band is not None
+    assert band["p50"] == [15.0, 35.0]
+    assert band["p10"][0] == pytest.approx(15.0 + np.percentile(offsets, 10), abs=1e-3)
+    assert band["p90"][0] == pytest.approx(15.0 + np.percentile(offsets, 90), abs=1e-3)
+    assert band["p10"][1] == band["p90"][1] == 35.0
+
+
+def test_one_member_draws_no_band() -> None:
+    import numpy as np
+    from varuna_products.depth import aoi_depth_band
+
+    twin = np.ones((3, 4))
+    assert aoi_depth_band(twin, None) is None
+    assert aoi_depth_band(twin, np.ones((1, 3, 4))) is None

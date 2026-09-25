@@ -27,8 +27,16 @@ export interface RunProvenance {
   ensembleN: number;
   massBalanceErr: number | null;
   stageMs: Record<string, number>;
+  /** p10/p50/p90 of mean street depth per step across members: the time bar's band (7.2). */
+  aoiDepthBand: AoiDepthBand | null;
   /** Printed verbatim under the run stamp. Never summarised (CLAUDE.md rule 6). */
   notes: string[];
+}
+
+export interface AoiDepthBand {
+  p10: number[];
+  p50: number[];
+  p90: number[];
 }
 
 export interface RunDepth {
@@ -68,6 +76,7 @@ interface BoundsResponse {
   stage_ms: Record<string, number>;
   notes: string[];
   bounds: { wgs84: [number, number, number, number] };
+  aoi_depth_band?: AoiDepthBand | null;
 }
 
 interface SegmentsResponse {
@@ -109,27 +118,58 @@ export function pivotExceedance(
  * carries it without every caller learning a third argument. Weak, so a run the console has moved
  * past is collected with its depth map rather than pinned here.
  */
-const EXCEEDANCE_BY_DEPTH = new WeakMap<Map<string, number[]>, Map<string, Record<string, number[]>>>();
+const EXCEEDANCE_BY_DEPTH = new WeakMap<
+  Map<string, number[]>,
+  Map<string, Record<string, number[]>>
+>();
 
 async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(apiUrl(path), { signal });
   if (!response.ok) {
     // The API's errors carry the command that fixes them; surfacing that beats "HTTP 404".
-    const body = (await response.json().catch(() => null)) as
-      | { error?: { message?: string } }
-      | null;
+    const body = (await response.json().catch(() => null)) as {
+      error?: { message?: string };
+    } | null;
     throw new Error(body?.error?.message ?? `${path} returned ${response.status}`);
   }
   return (await response.json()) as T;
 }
 
 /**
- * Decode every step's PNG into a GPU-ready bitmap.
+ * How many depth frames are fetched and decoded at once (task P10.4).
  *
- * Sequential rather than all at once: 36 parallel decodes of a 522 x 323 RGBA image will spike
- * memory and, on an integrated GPU, stall the first paint of the map itself. One at a time keeps
- * the load smooth and still finishes well inside the time it takes an operator to read the
- * mode banner.
+ * This was 1 - a strict `for` loop, one `await fetch` after another - and the comment that
+ * justified it was half right and expensive. The half that is right: 36 *simultaneous* decodes of
+ * a 522 x 323 RGBA image spike memory and, on an integrated GPU, stall the first paint of the map
+ * itself. The half that was wrong: it is the decode that has to be bounded, not the request, and
+ * the loop bounded both, so the console paid 36 serialised round trips before it could draw
+ * anything at all.
+ *
+ * Measured on 2026-09-24 against a local API at 12 python processes: the 36 raster fetches cost
+ * **2,907 ms end to end, p50 42.7 ms each** - which was the largest single term in a console
+ * first render of 6,100 ms against section 14's 2,000 ms budget. Six in flight keeps at most six
+ * decodes overlapping, about 4 MB of pixels, and turns those 36 round trips into six.
+ *
+ * Re-measured after the change, same day and same machine: the 36 fetches now run from 536 ms to
+ * 811 ms after navigation start, **275 ms end to end**, and are no longer the largest term in
+ * anything. The console's first render still misses its budget - 3.6 to 4.5 s observable - but
+ * the reason moved: the run stamp is in the DOM at about 1.4 s and the main thread is then
+ * blocked for 3.6 to 5.7 s, evaluating ~3.9 MB of parsed JavaScript and letting deck.gl build
+ * its first ~28,000 paths. Raising this number further would buy nothing; see
+ * `tests/e2e/performance.spec.ts` and the notes filed for the console's static imports.
+ */
+const FRAME_CONCURRENCY = 6;
+
+/**
+ * Decode every step's PNG into a GPU-ready bitmap, six at a time.
+ *
+ * Order is by step, not by arrival: `frames[step]` is that step's bitmap however the responses
+ * interleave, because the scrub indexes it directly. `onProgress` counts completions, so it still
+ * rises monotonically to `nSteps` even though the steps finish out of order - it drives a
+ * progress bar, and which particular frame landed is not something a progress bar can say.
+ *
+ * A frame that fails is `null` and costs the other 35 nothing, which is what it was before: the
+ * map draws nothing for that step and the scrub passes over it, visibly and honestly.
  */
 async function decodeFrames(
   runId: string,
@@ -137,22 +177,32 @@ async function decodeFrames(
   signal?: AbortSignal,
   onProgress?: (done: number, total: number) => void,
 ): Promise<(ImageBitmap | null)[]> {
-  const frames: (ImageBitmap | null)[] = [];
-  for (let step = 0; step < nSteps; step += 1) {
-    if (signal?.aborted) break;
-    try {
-      const response = await fetch(
-        apiUrl(`/v1/nowcast/raster?run_id=${encodeURIComponent(runId)}&step=${step}`),
-        { signal },
-      );
-      frames.push(response.ok ? await createImageBitmap(await response.blob()) : null);
-    } catch {
-      // One unreadable frame must not cost the other 35. The map draws nothing for this step
-      // and the scrub passes over it, which is visible and honest.
-      frames.push(null);
+  const frames: (ImageBitmap | null)[] = new Array<ImageBitmap | null>(nSteps).fill(null);
+  let next = 0;
+  let done = 0;
+
+  const worker = async (): Promise<void> => {
+    for (;;) {
+      const step = next;
+      next += 1;
+      if (step >= nSteps || signal?.aborted) return;
+      try {
+        const response = await fetch(
+          apiUrl(`/v1/nowcast/raster?run_id=${encodeURIComponent(runId)}&step=${step}`),
+          { signal },
+        );
+        frames[step] = response.ok ? await createImageBitmap(await response.blob()) : null;
+      } catch {
+        frames[step] = null;
+      }
+      done += 1;
+      onProgress?.(done, nSteps);
     }
-    onProgress?.(step + 1, nSteps);
-  }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(FRAME_CONCURRENCY, Math.max(nSteps, 1)) }, worker),
+  );
   return frames;
 }
 
@@ -195,6 +245,7 @@ export async function loadRunDepth(
       ensembleN: bounds.ensemble_n,
       massBalanceErr: bounds.mass_balance_err,
       stageMs: bounds.stage_ms ?? {},
+      aoiDepthBand: bounds.aoi_depth_band ?? null,
       notes: bounds.notes ?? [],
     },
     bounds: bounds.bounds.wgs84,
@@ -241,7 +292,12 @@ export interface GeoSegment {
  * carries its measured probabilities wherever the run had them; pass one explicitly to override.
  */
 export function joinSegments(
-  geojson: { features: { properties: Record<string, unknown>; geometry: { type: string; coordinates: number[][] } }[] },
+  geojson: {
+    features: {
+      properties: Record<string, unknown>;
+      geometry: { type: string; coordinates: number[][] };
+    }[];
+  },
   depthCm: Map<string, number[]>,
   pGt: Map<string, Record<string, number[]>> | null = EXCEEDANCE_BY_DEPTH.get(depthCm) ?? null,
 ): GeoSegment[] {
@@ -270,9 +326,12 @@ export function joinSegments(
  * would have supplied - see the note at the top of `CityMap` - and unlike a tile service it comes
  * from the city VARUNA built and works with the network off (CLAUDE.md 17).
  */
-export function allSegments(
-  geojson: { features: { properties: Record<string, unknown>; geometry: { type: string; coordinates: number[][] } }[] },
-): GeoSegment[] {
+export function allSegments(geojson: {
+  features: {
+    properties: Record<string, unknown>;
+    geometry: { type: string; coordinates: number[][] };
+  }[];
+}): GeoSegment[] {
   const out: GeoSegment[] = [];
   for (const feature of geojson.features ?? []) {
     if (feature.geometry?.type !== "LineString") continue;

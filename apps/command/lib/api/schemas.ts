@@ -43,6 +43,11 @@ export const RunMeta = z.looseObject({
   mass_balance_err: z.number().nullish(),
   bundle: z.string().nullish(),
   valid_ts: z.string().nullish(),
+  step_min: z.number().nullish(),
+  /** p10/p50/p90 of mean street depth per step, across members: the time bar's band (7.2). */
+  aoi_depth_band: z
+    .object({ p10: z.array(z.number()), p50: z.array(z.number()), p90: z.array(z.number()) })
+    .nullish(),
 });
 export type RunMeta = z.infer<typeof RunMeta>;
 

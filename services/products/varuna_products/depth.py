@@ -71,6 +71,7 @@ __all__ = [
     "SEGMENT_BUFFER_M",
     "SEGMENT_PERCENTILE",
     "WET_THRESHOLD_CM",
+    "aoi_depth_band",
     "depth_bounds",
     "segment_cell_index",
     "segment_forecast",
@@ -460,6 +461,41 @@ def _per_column(field: NDArray[Any], convert: Callable[[float], object]) -> list
     converted = np.empty(distinct.size, dtype=object)
     converted[:] = [convert(v) for v in distinct.view(np.float64).tolist()]
     return converted[np.asarray(inverse).reshape(values.shape)].T.tolist()
+
+
+def aoi_depth_band(
+    depth_cm: NDArray[np.floating],
+    member_depth_cm: NDArray[np.floating] | None,
+) -> dict[str, list[float]] | None:
+    """The time bar's spread band: p10, p50 and p90 of mean street depth, per step (CLAUDE.md 7.2).
+
+    Section 7.2 draws "the ensemble spread band (p10-p90 of AOI-mean depth)" under the time bar.
+    These are quantiles **of the mean**, not the mean of each street's quantiles: every member's
+    street depths are averaged first and the percentiles taken across members, because the band is
+    meant to say how much the whole city's water could differ, and averaging per-street percentiles
+    would add up spreads that do not happen together.
+
+    The level is the Twin's, as everywhere (ADR-0025): the mean of its street depths, with each
+    member contributing only its deviation from the member mean. ``depth_cm`` is the Twin's
+    ``(n_steps, n_segments)``; ``member_depth_cm`` the emulator's ``(n_members, n_steps,
+    n_segments)``. Fewer than two members is no spread, and returns ``None`` rather than a band of
+    zero width that would read as certainty.
+    """
+    if member_depth_cm is None:
+        return None
+    members = np.asarray(member_depth_cm, dtype=np.float64)
+    if members.ndim != 3 or members.shape[0] < 2:
+        return None
+    level = np.asarray(depth_cm, dtype=np.float64)
+    steps = min(level.shape[0], members.shape[1])
+    means = members[:, :steps, :].mean(axis=2)
+    deviation = means - means.mean(axis=0, keepdims=True)
+    base = level[:steps].mean(axis=1)
+    p10, p50, p90 = np.percentile(deviation, [10.0, 50.0, 90.0], axis=0)
+    return {
+        name: [round(float(v), 3) for v in np.maximum(base + q, 0.0)]
+        for name, q in (("p10", p10), ("p50", p50), ("p90", p90))
+    }
 
 
 def write_wet_segments(

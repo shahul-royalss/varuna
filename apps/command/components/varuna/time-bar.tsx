@@ -50,6 +50,43 @@ function leadToPercent(leadMin: number): number {
   return ((leadMin - LEAD_MIN) / LEAD_SPAN) * 100;
 }
 
+/** The band's own vertical room, in the viewBox units the path is drawn in. */
+const BAND_HEIGHT = 10;
+
+/**
+ * Section 7.2's spread band under the track: p10 to p90 of mean street depth across the run's
+ * members, one point per forecast step, placed on the same lead axis as the scrub so a lead
+ * reads straight down from the handle. Scaled to the run's own widest p90, because the point is
+ * where the uncertainty opens up, not its absolute size - the number is in the label.
+ */
+function bandPaths(
+  band: { p10: number[]; p50: number[]; p90: number[] },
+  stepMin: number,
+): { area: string; median: string; widestCm: number; atLead: number } | null {
+  const n = Math.min(band.p10.length, band.p50.length, band.p90.length);
+  if (n < 2) return null;
+  const top = Math.max(...band.p90.slice(0, n), 1e-6);
+  const x = (i: number) => leadToPercent(Math.min(i * stepMin, LEAD_MAX));
+  const y = (cm: number) => BAND_HEIGHT - (cm / top) * BAND_HEIGHT;
+  const upper = Array.from({ length: n }, (_, i) => `${x(i)},${y(band.p90[i])}`);
+  const lower = Array.from({ length: n }, (_, i) => `${x(n - 1 - i)},${y(band.p10[n - 1 - i])}`);
+  let widest = 0;
+  let atLead = 0;
+  for (let i = 0; i < n; i += 1) {
+    const width = band.p90[i] - band.p10[i];
+    if (width > widest) {
+      widest = width;
+      atLead = i * stepMin;
+    }
+  }
+  return {
+    area: `M${upper.join(" L")} L${lower.join(" L")} Z`,
+    median: `M${Array.from({ length: n }, (_, i) => `${x(i)},${y(band.p50[i])}`).join(" L")}`,
+    widestCm: widest,
+    atLead,
+  };
+}
+
 function speedLabel(speed: number): string {
   return `${speed}×`;
 }
@@ -67,6 +104,9 @@ export function TimeBar() {
   const validLabel = useReplayStore(selectValidTimeLabel);
   const leadLabel = useReplayStore(selectLeadLabel);
   const hasRun = useRunStore((s) => s.currentRun !== null);
+  const band = useRunStore((s) => s.currentRun?.aoi_depth_band ?? null);
+  const stepMin = useRunStore((s) => s.currentRun?.step_min ?? 5);
+  const spread = band ? bandPaths(band, stepMin) : null;
   const controls = useReplayControls();
   const { reduced } = useMotionPref();
 
@@ -214,7 +254,7 @@ export function TimeBar() {
           />
         </div>
 
-        {/* Tick labels and the spread band placeholder */}
+        {/* Tick labels and the ensemble spread band (7.2) */}
         <div className="relative h-6">
           <div aria-hidden="true" className="absolute inset-x-0 top-0">
             {[...LABELLED_TICKS].map((tick) => (
@@ -227,13 +267,32 @@ export function TimeBar() {
               </span>
             ))}
           </div>
-          <div className="absolute inset-x-0 bottom-0 flex items-center gap-2">
-            <span aria-hidden="true" className="bg-line h-px flex-1" />
-            <span className="type-micro text-text-3">
-              Ensemble spread appears with the first run
-            </span>
-            <span aria-hidden="true" className="bg-line h-px flex-1" />
-          </div>
+          {spread ? (
+            <svg
+              role="img"
+              aria-label={`Ensemble spread of mean street depth, p10 to p90: widest ${spread.widestCm.toFixed(1)} cm, at +${spread.atLead} min`}
+              className="absolute inset-x-0 bottom-0 h-3 w-full"
+              viewBox={`0 0 100 ${BAND_HEIGHT}`}
+              preserveAspectRatio="none"
+            >
+              <path d={spread.area} style={{ fill: "var(--tide)", fillOpacity: 0.2 }} />
+              <path
+                d={spread.median}
+                vectorEffect="non-scaling-stroke"
+                style={{ fill: "none", stroke: "var(--tide)", strokeWidth: 1 }}
+              />
+            </svg>
+          ) : (
+            <div className="absolute inset-x-0 bottom-0 flex items-center gap-2">
+              <span aria-hidden="true" className="bg-line h-px flex-1" />
+              <span className="type-micro text-text-3">
+                {hasRun
+                  ? "This run has no ensemble spread to draw"
+                  : "Ensemble spread appears with the first run"}
+              </span>
+              <span aria-hidden="true" className="bg-line h-px flex-1" />
+            </div>
+          )}
         </div>
       </div>
 
