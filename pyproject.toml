@@ -39,6 +39,7 @@ dev = [
   "pre-commit>=3.8",
   "types-PyYAML",
   "pypdf>=5",
+  "pyswmm>=2.1",
 ]
 
 [tool.uv]
