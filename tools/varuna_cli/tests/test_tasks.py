@@ -16,6 +16,7 @@ import typer
 from typer.testing import CliRunner
 from varuna_cli import main as cli_main
 from varuna_cli import tasks
+from varuna_schemas.paths import repo_root
 
 runner = CliRunner()
 
@@ -150,7 +151,7 @@ def test_register_skips_names_taken_by_an_engine() -> None:
     # an empty corpus - is tested below.
     # `bake` left on 2026-09-13 for the same reason: it computes cycles now, four minutes each.
     # Its wiring is tested in test_bake_task.py with the cycle engine replaced.
-    [("city", 1), ("bundle", 2), ("demo-video", 10)],
+    [("city", 1), ("bundle", 2)],
 )
 def test_phase_gate_exits_with_two_and_no_traceback(
     app: typer.Typer, target: str, phase: int
@@ -403,3 +404,20 @@ def test_no_bundle_message_names_the_bundle() -> None:
     message = tasks.NO_BUNDLE_MESSAGE.format(bundle="MUM-2019-07-02")
     assert "make bundle BUNDLE=MUM-2019-07-02" in message
     assert "make bake BUNDLE=MUM-2019-07-02" in message
+
+
+def test_demo_video_refuses_to_write_inside_the_repository(app: typer.Typer) -> None:
+    """P10.7: a 1080p take is ~100 MB of video and belongs on the demo laptops, not in git."""
+    result = runner.invoke(
+        app, ["demo-video", "--out", str(repo_root() / "take.webm")], env={"COLUMNS": "200"}
+    )
+    assert result.exit_code == 2, result.stdout
+    assert "inside the repository" in result.stdout
+
+
+def test_demo_video_defaults_beside_the_repository() -> None:
+    from varuna_cli.tasks import default_video_path
+
+    path = default_video_path()
+    assert not path.is_relative_to(repo_root())
+    assert path.suffix == ".webm"
