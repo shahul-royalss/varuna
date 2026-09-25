@@ -28,6 +28,7 @@ import numpy as np
 import structlog
 from varuna_schemas.paths import bundle_dir, city_dir
 
+from varuna_twin.nests import NestSpec
 from varuna_twin.types import DrainNetwork, TerrainGrid, TideSeries
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -41,6 +42,7 @@ __all__ = [
     "BOUNDARY_INTERIOR",
     "BOUNDARY_TIDAL",
     "RASTERS",
+    "load_nests",
     "load_network",
     "load_terrain",
     "load_tide",
@@ -374,3 +376,133 @@ def _tide_datum(manifest_path: Path) -> TideDatum | None:
         return None
     block = payload.get("tide_datum") if isinstance(payload, dict) else None
     return None if block is None else TideDatum.model_validate(block)
+
+
+def load_nests(city: str = "mumbai") -> tuple[NestSpec, ...]:
+    """Resolve the city config's ``nests`` block against the verified hotspot register.
+
+    CLAUDE.md 3.3 lists Hindmata and King's Circle with coordinates prefixed "approximately" and
+    then instructs that each one be **verified with Nominatim/OSM before use** and stored with
+    its ``source_url``. The city pipeline did that; ``city/<city>/hotspots.geojson`` is the
+    result and it is the only coordinate this function will hand to :func:`varuna_twin.nests.
+    build_nest`. The ``lon``/``lat`` in ``services/city/configs/<city>.yaml`` are the same
+    approximate literals CLAUDE.md prints, and on Mumbai they miss the register by **240 m at
+    Hindmata and 130 m at King's Circle** - a quarter of a 1 km window, on a feature the size of
+    a junction. So the config is read for *which* nests exist and how big they are, and the
+    register is read for *where* they are.
+
+    **The match is by name, because the schema has no id to match on.**
+    ``varuna_schemas.models.city.NestSpec`` carries ``id``, ``name``, ``lon``, ``lat``,
+    ``size_m``, ``res_m`` and ``tier`` and forbids extra keys, so the config cannot yet name a
+    ``hotspot_id`` and this function slugifies the config's ``name`` and requires **exactly one**
+    register entry whose slug starts with it. "Hindmata junction" resolves to
+    ``hindmata-junction-hindmata-cinema-dr-b-ambedkar-`` and "King's Circle" to
+    ``king-s-circle-maheshwari-udyan-junction``; a name that matches none, or more than one, is
+    an error rather than a guess, because guessing here silently moves a nest to the wrong
+    junction and every depth it reports would be honest arithmetic about the wrong street. A
+    ``hotspot_id`` field on that model would make the binding exact and is the better fix; it is
+    recorded in ``.wf/NESTS-requests.md`` rather than made here.
+
+    **The config literal is still checked.** The resolved point must lie within half the
+    window of the config's own coordinate. That is not a coordinate source - it is the guard
+    that catches a register entry which drifted, or a config whose label no longer describes
+    the place it was written for.
+
+    Args:
+        city: city slug with a config under ``services/city/configs/``.
+
+    Returns:
+        One :class:`~varuna_twin.nests.NestSpec` per config entry, in config order.
+
+    Raises:
+        FileNotFoundError: no city config, or no hotspot register beside the built city.
+        ValueError: a nest's name matches no register point or several, or the register point
+            it matched is further from the config literal than half the window.
+    """
+    import json
+    from math import cos, radians
+
+    from varuna_schemas.models.city import CityConfig
+    from varuna_schemas.paths import city_config_path
+
+    config = CityConfig.from_yaml(city_config_path(city))
+    if not config.nests:
+        log.info("twin.no_nests", city=city)
+        return ()
+
+    register_path = city_dir(city) / config.hotspots_path
+    if not register_path.is_file():
+        msg = (
+            f"No hotspot register at {register_path}. Run `make city CITY={city}` first: a nest "
+            "is centred on a verified, sourced register point (CLAUDE.md 3.3), never on the "
+            "approximate literal in the config."
+        )
+        raise FileNotFoundError(msg)
+    features = json.loads(register_path.read_text(encoding="utf-8")).get("features", [])
+    points = [f.get("properties", {}) for f in features]
+
+    resolved: list[NestSpec] = []
+    for entry in config.nests:
+        want = _slug(entry.name)
+        hits = [p for p in points if str(p.get("slug", "")).startswith(want)]
+        if len(hits) != 1:
+            names = sorted(str(p.get("name", "?")) for p in hits)
+            msg = (
+                f"nest {entry.id}: the config calls it {entry.name!r}, which slugifies to "
+                f"{want!r} and matches {len(hits)} register points"
+                + (f" ({', '.join(names)})" if names else "")
+                + f" in {register_path}. A nest is centred on exactly one verified point; "
+                "rename the config entry to the register's own name, or add the point."
+            )
+            raise ValueError(msg)
+        hit = hits[0]
+        lon, lat = float(hit["lon"]), float(hit["lat"])
+        # Planar enough at 1 km and 19 degrees north to be a guard rather than a measurement.
+        dx = (lon - entry.lon) * 111_320.0 * cos(radians(lat))
+        dy = (lat - entry.lat) * 110_540.0
+        drift_m = (dx * dx + dy * dy) ** 0.5
+        if drift_m > entry.size_m / 2.0:
+            msg = (
+                f"nest {entry.id}: the register's {hit.get('name')!r} sits {drift_m:.0f} m from "
+                f"the config's own ({entry.lon}, {entry.lat}), which is more than half the "
+                f"{entry.size_m:.0f} m window. One of the two is describing a different place; "
+                "the register is authoritative, so fix the config or the match."
+            )
+            raise ValueError(msg)
+        resolved.append(
+            NestSpec(
+                id=entry.id,
+                name=entry.name,
+                lon=lon,
+                lat=lat,
+                size_m=float(entry.size_m),
+                res_m=float(entry.res_m),
+                tier=str(entry.tier),
+                hotspot_id=str(hit.get("hotspot_id")) if hit.get("hotspot_id") else None,
+                register_name=str(hit.get("name")) if hit.get("name") else None,
+                source_url=str(hit.get("source_url")) if hit.get("source_url") else None,
+            )
+        )
+        log.info(
+            "twin.nest_resolved",
+            city=city,
+            nest=entry.id,
+            hotspot_id=hit.get("hotspot_id"),
+            register=hit.get("name"),
+            drift_from_config_m=round(drift_m, 1),
+            sourced=bool(hit.get("source_url")),
+            confidence=hit.get("confidence"),
+        )
+    return tuple(resolved)
+
+
+def _slug(name: str) -> str:
+    """The register's own slug rule: lower case, non-alphanumerics to single hyphens.
+
+    Kept identical to what the city pipeline wrote into ``hotspots.geojson`` so that a config
+    name and a register name that describe the same junction produce the same prefix. An
+    apostrophe becomes a hyphen, which is why "King's Circle" is ``king-s-circle``.
+    """
+    import re
+
+    return re.sub(r"-+", "-", re.sub(r"[^a-z0-9]", "-", name.lower())).strip("-")
