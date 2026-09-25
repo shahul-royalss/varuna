@@ -53,18 +53,18 @@ every Mumbai screen relies on today.
 
 
 NO_ATTRIBUTION_LABEL = (
-    "Not computed on this run: Flash-lite is element-wise per segment — ADR-0042."
+    "Not computed on this run: it was baked before attribution moved onto drain1d "
+    "(ADR-0071). Re-bake it to rank the pipes."
 )
-"""Why every hotspot's ``attribution`` is empty, said in the response rather than on the screen.
+"""Why a hotspot's ``attribution`` is empty on a run that carries no reason of its own.
 
-Section 10.3 lists attribution as part of ``hotspots.json`` and 7.2's AC wants five pipes in the
-drawer, but no cycle writes one: ADR-0042 measured that cleaning a pipe that is not under the
-target moves the target by exactly zero, because ``varuna_flash.model.simulate`` is element-wise
-per segment. So the field exists in the contract with an empty list and this reason, which is the
-one arrangement where the drawer cannot imply a ranking nobody computed (rule 6, section 17). The
-full version of the reason, with the fix that would restore it, is
-``varuna_flash.whatif.NO_ATTRIBUTION_REASON``; it is not imported here because the hotspot rail
-must not pull the emulator in to answer a file read."""
+Since ADR-0071 the cycle ranks pipes on ``drain1d`` and writes a label beside every empty list,
+measured at that junction ("51 pipes re-run, the best moves it 0.003 cm"). Runs baked before
+that carry an empty list and nothing else; ADR-0042's reason for them - Flash-lite is
+element-wise per segment - was true of the operator they were baked with, so this says what
+changed and what to do rather than repeating a sentence that is no longer the whole story. It is
+not imported from ``varuna_flash`` because the hotspot rail must not pull the emulator in to
+answer a file read."""
 
 
 def _latest_run_with_depth(city: str | None = None) -> Path | None:
@@ -172,21 +172,84 @@ def raster(
     )
 
 
+def parse_bbox(bbox: str | None) -> tuple[float, float, float, float] | None:
+    """``minlon,minlat,maxlon,maxlat`` in WGS84, or a 400 that says which part is wrong."""
+    if not bbox:
+        return None
+    parts = bbox.replace(" ", "").split(",")
+    try:
+        if len(parts) != 4:
+            raise ValueError
+        minlon, minlat, maxlon, maxlat = (float(p) for p in parts)
+    except ValueError:
+        raise api_error(
+            400,
+            "bad_bbox",
+            f"bbox {bbox!r} is not four numbers: give minlon,minlat,maxlon,maxlat in WGS84.",
+        ) from None
+    if minlon > maxlon or minlat > maxlat:
+        raise api_error(
+            400,
+            "bad_bbox",
+            "bbox corners are the wrong way round: give minlon,minlat,maxlon,maxlat.",
+        )
+    return (minlon, minlat, maxlon, maxlat)
+
+
+def _ids_within(box: tuple[float, float, float, float], city: str) -> set[str]:
+    """The city's segments whose midpoint falls inside ``box``."""
+    from varuna_products.depth import segment_points
+    from varuna_schemas.paths import city_dir
+
+    minlon, minlat, maxlon, maxlat = box
+    return {
+        sid
+        for sid, (lon, lat) in segment_points(city_dir(city)).items()
+        if minlon <= lon <= maxlon and minlat <= lat <= maxlat
+    }
+
+
+def _within_bbox(
+    product: dict[str, Any], box: tuple[float, float, float, float], city: str
+) -> dict[str, Any]:
+    """``segments_wet.json`` cut to the segments inside ``box``; every per-segment map is cut."""
+    inside = _ids_within(box, city)
+    depth = {sid: v for sid, v in (product.get("depth_cm") or {}).items() if sid in inside}
+    p_gt = {
+        threshold: {sid: v for sid, v in series.items() if sid in inside}
+        for threshold, series in (product.get("p_gt") or {}).items()
+    }
+    return {**product, "depth_cm": depth, "p_gt": p_gt, "n_segments_wet": len(depth)}
+
+
 @router.get("/nowcast/segments", summary="Per-segment depth series for the street layer")
 def segments(
     run_id: Annotated[str | None, Query()] = None,
     city: CityQuery = None,
     min_depth_cm: Annotated[float, Query(ge=0)] = 5.0,
+    bbox: Annotated[
+        str | None,
+        Query(
+            description="minlon,minlat,maxlon,maxlat (WGS84): only segments whose midpoint is inside."
+        ),
+    ] = None,
 ) -> dict[str, Any]:
     """Every segment that gets wet in this run, with its depth at each step.
 
     Only segments reaching ``min_depth_cm`` at some point are returned, and the default is the
     5 cm the depth ramp calls dry (CLAUDE.md 6.2). Mumbai has 21,296 segments and a storm cycle
-    wets about 1,900 of them, so this is the difference between a 200 KB response the console can
+    wets several thousand of them, so this is the difference between a response the console can
     hold and a 20 MB one it cannot. The dry remainder is drawn from the city layer, in the dry
     colour, and needs no per-step data at all.
+
+    ``bbox`` is section 12's "segments in bbox": a navigation app asking about the streets on its
+    screen gets those and not the whole AOI. It filters on each segment's midpoint - the same
+    point the alerts and the pump board put a pin on - so a street is either in or out, never
+    split. The console omits it, because it preloads the whole run for a scrub that must make no
+    requests (P6.3).
     """
     path = _resolve(run_id, city)
+    box = parse_bbox(bbox)
 
     # The fast path, and the only one a baked run ever takes: the cycle already wrote exactly
     # this shape at bake time. Reading the 19 MB parquet, filtering it and re-serialising it
@@ -195,7 +258,15 @@ def segments(
     if compact.is_file():
         product = json.loads(compact.read_text(encoding="utf-8"))
         meta = _meta(path)
-        log.info("api.segments", run_id=path.name, wet=product.get("n_segments_wet"), cached=True)
+        if box is not None:
+            product = _within_bbox(product, box, str(meta.get("city") or city or "mumbai"))
+        log.info(
+            "api.segments",
+            run_id=path.name,
+            wet=product.get("n_segments_wet"),
+            cached=True,
+            bbox=bbox,
+        )
         return {
             **product,
             "step_min": meta.get("step_min", 5),
@@ -213,6 +284,9 @@ def segments(
     frame = pd.read_parquet(parquet)
     meta = _meta(path)
     wet_ids = frame.loc[frame["depth_p50_cm"] >= min_depth_cm, "segment_id"].unique()
+    if box is not None:
+        inside = _ids_within(box, str(meta.get("city") or city or "mumbai"))
+        wet_ids = [sid for sid in wet_ids if str(sid) in inside]
     wet = frame[frame["segment_id"].isin(wet_ids)].sort_values(["segment_id", "valid_ts"])
 
     times = [str(t) for t in sorted(frame["valid_ts"].unique())]
@@ -242,15 +316,14 @@ def segments(
 
 
 def _with_attribution(row: dict[str, Any]) -> dict[str, Any]:
-    """One hotspot with the attribution pair section 10.3 promises, empty and labelled.
+    """One hotspot with the attribution pair section 10.3 promises, ranked or labelled.
 
-    Nothing is synthesised: the list is whatever the artifact carries, which is nothing on every
-    run baked so far, and the label then says why (:data:`NO_ATTRIBUTION_LABEL`). A cycle that
-    one day writes real rows writes its own label with them, so this stops relabelling the moment
-    there is something to rank.
+    Nothing is synthesised: the list is whatever the artifact carries. The cycle's own label wins
+    whenever there is one - including beside an empty list, where it is a measured refusal - and
+    :data:`NO_ATTRIBUTION_LABEL` fills in only for runs baked before the cycle wrote any.
     """
     rows = row.get("attribution") or []
-    label = row.get("attribution_label") if rows else NO_ATTRIBUTION_LABEL
+    label = row.get("attribution_label") or (None if rows else NO_ATTRIBUTION_LABEL)
     return {**row, "attribution": rows, "attribution_label": label}
 
 
@@ -271,8 +344,8 @@ def hotspots(
     ``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash
     brings a real ensemble in Phase 7.
 
-    ``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for, and the
-    list is empty on every run baked so far with the label carrying the reason (ADR-0042). The
+    ``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for: the pipes
+    ranked on ``drain1d`` (ADR-0071), or an empty list with the measured reason it is empty. The
     field is present rather than absent so the drawer reads a refusal it can print instead of a
     missing key it has to guess at.
     """
