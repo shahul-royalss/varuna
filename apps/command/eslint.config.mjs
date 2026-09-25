@@ -9,6 +9,13 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    // The production build the performance pass serves beside `next dev` (P10.4).
+    ".next-perf/**",
+    // Diagnostic scripts that prototyped the performance instruments; git-ignored too.
+    ".perf-*.mjs",
+    // loaders.gl's Draco and Basis workers, copied out of node_modules by
+    // `scripts/copy-loader-workers.mjs` (ADR-0069); vendor code, git-ignored, never edited here.
+    "public/workers/**",
     "out/**",
     "build/**",
     "next-env.d.ts",

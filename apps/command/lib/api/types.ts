@@ -442,8 +442,8 @@ export interface paths {
          *     ``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash
          *     brings a real ensemble in Phase 7.
          *
-         *     ``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for, and the
-         *     list is empty on every run baked so far with the label carrying the reason (ADR-0042). The
+         *     ``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for: the pipes
+         *     ranked on ``drain1d`` (ADR-0071), or an empty list with the measured reason it is empty. The
          *     field is present rather than absent so the drawer reads a refusal it can print instead of a
          *     missing key it has to guess at.
          */
@@ -541,8 +541,23 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Segment quantiles, exceedance probabilities and safe-until */
-        get: operations["nowcast_segments_v1_nowcast_segments_get"];
+        /**
+         * Per-segment depth series for the street layer
+         * @description Every segment that gets wet in this run, with its depth at each step.
+         *
+         *     Only segments reaching ``min_depth_cm`` at some point are returned, and the default is the
+         *     5 cm the depth ramp calls dry (CLAUDE.md 6.2). Mumbai has 21,296 segments and a storm cycle
+         *     wets several thousand of them, so this is the difference between a response the console can
+         *     hold and a 20 MB one it cannot. The dry remainder is drawn from the city layer, in the dry
+         *     colour, and needs no per-step data at all.
+         *
+         *     ``bbox`` is section 12's "segments in bbox": a navigation app asking about the streets on its
+         *     screen gets those and not the whole AOI. It filters on each segment's midpoint - the same
+         *     point the alerts and the pump board put a pin on - so a street is either in or out, never
+         *     split. The console omits it, because it preloads the whole run for a scrub that must make no
+         *     requests (P6.3).
+         */
+        get: operations["segments_v1_nowcast_segments_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1315,7 +1330,31 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Re-run the Twin on a what-if and report the disagreement */
+        /**
+         * Re-run the Twin on a what-if scenario and report the disagreement
+         * @description Run the coupled Twin twice on a window around the hotspots and print the disagreement.
+         *
+         *     Body: the same ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}`` ``/v1/whatif``
+         *     takes, plus ``hotspot_ids?`` and ``pad_cells?``, so the console can post the scenario object
+         *     it already has.
+         *
+         *     **What is compared.** The what-if's answer at a hotspot is the Twin's own level plus the
+         *     emulator's delta. The check's answer is the Twin's delta between two crop runs of the same
+         *     scenario. So the number reported per hotspot is ``|emulator delta - Twin delta|``, and the
+         *     headline is section 7.7's sentence over the hotspots inside the window. Comparing *levels*
+         *     would be comparing a 990 m crop against the whole AOI, which the crop sweep in this module
+         *     measured at 87 cm against 123 cm on the same storm - a disagreement about the window, not
+         *     about the emulator.
+         *
+         *     **Two samplings of one junction.** The Twin's delta is read at the hotspot's own 30 m cell;
+         *     the emulator's is the mean over the road segments the hotspot register lists, each of which
+         *     is the 90th percentile of the cells within 15 m of it (CLAUDE.md 11.8). They are two
+         *     different ways to say "the depth at this junction", and the response says so rather than
+         *     letting the difference between them be read as emulator error.
+         *
+         *     A tide offset is refused for the same reason ``/v1/whatif`` refuses it: the emulator has no
+         *     representation of a different sea level, so there would be no emulator answer to check.
+         */
         post: operations["physics_check_v1_whatif_physics_check_post"];
         delete?: never;
         options?: never;
@@ -1833,71 +1872,6 @@ export interface components {
              * @default true
              */
             from_cache_only: boolean;
-        };
-        /**
-         * PhysicsCheckHotspot
-         * @description Emulator versus Twin peak depth at one hotspot.
-         */
-        PhysicsCheckHotspot: {
-            /** Diff Cm */
-            readonly diff_cm: number;
-            /** Emulator Cm */
-            emulator_cm: number;
-            /** Hotspot Id */
-            hotspot_id: string;
-            /** Name */
-            name: string;
-            /** Twin Cm */
-            twin_cm: number;
-        };
-        /**
-         * PhysicsCheckRequest
-         * @description Body of ``POST /v1/whatif/physics-check``: either a previous what-if or a fresh scenario.
-         */
-        PhysicsCheckRequest: {
-            request?: components["schemas"]["WhatIfRequest"] | null;
-            /** Whatif Id */
-            whatif_id?: string | null;
-        };
-        /**
-         * PhysicsCheckResponse
-         * @description Agreement report shown as a small bar; disagreement is displayed, never hidden.
-         */
-        PhysicsCheckResponse: {
-            /** Agrees */
-            readonly agrees: boolean;
-            /** Hotspots */
-            hotspots?: components["schemas"]["PhysicsCheckHotspot"][];
-            /** Mass Balance Err */
-            mass_balance_err: number;
-            /** Max Diff Cm */
-            readonly max_diff_cm: number;
-            /** Max Diff Hotspot */
-            readonly max_diff_hotspot: string | null;
-            /** Run Id */
-            run_id: string;
-            /**
-             * Summary
-             * @description UI copy, e.g. 'Emulator vs physics: max difference 4 cm at Sion Circle'.
-             */
-            readonly summary: string;
-            /**
-             * Tolerance Cm
-             * @default 5
-             */
-            tolerance_cm: number;
-            /**
-             * Twin Ms
-             * @description Twin wall-clock (budget 10 s).
-             */
-            twin_ms: number;
-            /**
-             * Valid Ts
-             * Format: date-time
-             */
-            valid_ts: string;
-            /** Whatif Id */
-            whatif_id: string;
         };
         /** Point */
         Point: {
@@ -2736,6 +2710,13 @@ export interface components {
              */
             mass_balance_err: number;
             /**
+             * Mass Balance Ledger
+             * @description Where the Twin's residual sits, in m3: the surface's own, the drain's own, and the two exchange gaps between them, which sum to the residual on a coupled run. A run baked before the ledger existed carries none.
+             */
+            mass_balance_ledger?: {
+                [key: string]: number;
+            } | null;
+            /**
              * Mode
              * @description baked = pre-computed by make bake; live = computed now.
              * @enum {string}
@@ -3088,45 +3069,6 @@ export interface components {
              * Format: date-time
              */
             ts: string;
-        };
-        /**
-         * WhatIfRequest
-         * @description Body of ``POST /v1/whatif``.
-         */
-        WhatIfRequest: {
-            /**
-             * Clean Top N
-             * @description Alternative to cleaned_edges: clean the top N by beta.
-             */
-            clean_top_n?: number | null;
-            /**
-             * Cleaned Edges
-             * @description Pipes set to beta = 0.05 (cleaned).
-             */
-            cleaned_edges?: string[];
-            /**
-             * Pump Plan
-             * @description Apply the current pump plan as extra outflow.
-             * @default false
-             */
-            pump_plan: boolean;
-            /**
-             * Rain Scale
-             * @description Rain multiplier 0.5-2.0.
-             * @default 1
-             */
-            rain_scale: number;
-            /**
-             * Run Id
-             * @description Base run; None = latest published.
-             */
-            run_id?: string | null;
-            /**
-             * Tide Offset M
-             * @description Tide stage offset in metres, -0.5 to +1.0.
-             * @default 0
-             */
-            tide_offset_m: number;
         };
         /**
          * ZRRelation
@@ -4057,18 +3999,15 @@ export interface operations {
             };
         };
     };
-    nowcast_segments_v1_nowcast_segments_get: {
+    segments_v1_nowcast_segments_get: {
         parameters: {
             query?: {
-                /** @description Run id; default = latest published run */
                 run_id?: string | null;
-                /** @description minlon,minlat,maxlon,maxlat (WGS84) */
+                /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
+                min_depth_cm?: number;
+                /** @description minlon,minlat,maxlon,maxlat (WGS84): only segments whose midpoint is inside. */
                 bbox?: string | null;
-                /** @description Valid time (ISO 8601 +05:30); default = now */
-                t?: string | null;
-                /** @description Vehicle profile for safe-until */
-                profile?: "ambulance" | "fire_tender" | "bus" | "car" | "two_wheeler" | "pedestrian";
-                format?: "geojson" | "parquet";
             };
             header?: never;
             path?: never;
@@ -4082,7 +4021,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["FeatureCollection"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -4092,15 +4033,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
@@ -5481,7 +5413,9 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["PhysicsCheckRequest"];
+                "application/json": {
+                    [key: string]: unknown;
+                };
             };
         };
         responses: {
@@ -5491,7 +5425,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PhysicsCheckResponse"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Validation Error */
@@ -5501,15 +5437,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Engine not built yet (phase named) */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorEnvelope"];
                 };
             };
         };
