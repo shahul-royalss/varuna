@@ -214,6 +214,22 @@
       "title": "Mass Balance Err",
       "type": "number"
     },
+    "mass_balance_ledger": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Where the Twin's residual sits, in m3: the surface's own, the drain's own, and the two exchange gaps between them, which sum to the residual on a coupled run. A run baked before the ledger existed carries none.",
+      "title": "Mass Balance Ledger"
+    },
     "mode": {
       "description": "baked = pre-computed by make bake; live = computed now.",
       "enum": [

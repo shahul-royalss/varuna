@@ -22,8 +22,18 @@ depth field out. So with the Twin alone ``p10 == p50 == p90`` and every exceedan
 is 0 or 1, and this module does not dress that up as a spread - the caller records
 ``ensemble_n = 1`` and the run's notes say so. The spread CLAUDE.md 11.7 asks for arrives as a
 *second* argument: :func:`segment_forecast` takes an optional ``member_depth_cm`` stack from
-Flash-lite, one street depth field per Sky member, and turns it into real quantiles and real
-exceedance fractions.
+Flash-lite, one street depth field per ensemble member, and turns it into real quantiles and
+real exceedance fractions.
+
+Nothing here counts the members. It was twenty when the stack was one emulator run per Sky rain
+member, and it is fifty since task P7.6 put a blockage draw and a storage-coefficient draw on
+each of them (``varuna_flash.ensemble``); this module reads ``member_depth_cm.shape[0]`` and
+reports it. What fifty costs was measured rather than assumed - `ensemble_statistics` on the
+Mumbai grid, best of three with eighteen python processes on an Intel i5-1155G7: 14 ms at one
+member, 822 ms at twenty, 1,747 ms at fifty and 1,599 ms at sixty, on stacks of 61, 153 and
+184 MB, each of which is copied once by :func:`_member_levels`. So the spread is about a second
+of the products stage, against CLAUDE.md 11.8's 2 s for the whole of it, and the memory is the
+larger cost.
 
 The two are combined rather than swapped, and the reason is ADR-0025: the emulator is calibrated
 to the Twin but its held-out RMSE is 5.7 cm and its level is visibly low (it peaked at 106 cm on
@@ -283,8 +293,12 @@ def _member_levels(
     is used, so whatever bias the emulator carries cancels exactly and the member mean of the
     result is the Twin field (ADR-0025, and the module docstring).
 
-    float32 because the stack is the largest array a cycle holds - 20 x 36 x 21,296 is 122 MB in
-    float64 - and these are centimetres of water read to two decimals.
+    float32 because the stack is the largest array a cycle holds - at P7.6's fifty members,
+    50 x 36 x 21,296 is 307 MB in float64 and 153 MB here - and these are centimetres of water
+    read to two decimals. The copy this function makes is a second one of the same size, which
+    is the biggest single allocation in a cycle; a caller that must not pay it twice should
+    build fewer members rather than skip the re-centring, because the re-centring is what keeps
+    the level the Twin's.
 
     Raises:
         ValueError: if the member stack is not 3-D or its segment axis does not match the Twin's.
