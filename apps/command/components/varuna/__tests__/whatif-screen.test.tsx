@@ -38,21 +38,70 @@ describe("WhatIfScreen", () => {
     ).toBeInTheDocument();
   });
 
-  it("offers the emulator and still says why the physics check is not wired", () => {
+  it("offers both the emulator and the physics check", () => {
     renderScreen();
 
     // Flash-lite landed in Phase 7, so this one runs: about 60 ms against a baked run.
     expect(screen.getByRole("button", { name: "Run what-if" })).toBeEnabled();
-
-    // The physics check has not: a Twin run on this city is about three minutes, well outside
-    // the 10 s CLAUDE.md 14 budgets for it, so the control says so rather than hanging.
+    // And so does the check since P7.8: two Twin runs on a 990 m window, 2.4-4.7 s warm.
     const physics = screen.getByRole("button", { name: "Physics check" });
-    expect(physics).toBeDisabled();
-    const physicsHelpId = physics.getAttribute("aria-describedby");
-    expect(physicsHelpId).toBeTruthy();
-    expect(document.getElementById(physicsHelpId as string)).toHaveTextContent(
-      "Runs the Twin on the same scenario",
-    );
+    expect(physics).toBeEnabled();
+    expect(physics).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("prints the endpoint's disagreement, the Twin's change beside the emulator's", async () => {
+    // The shape `POST /v1/whatif/physics-check` returns, trimmed to what the panel reads, with the
+    // 2 July 08:40 figures measured at Bandra Talao on rain +30 %.
+    const body = {
+      run_id: "MUM-20190702T0310Z-sky1.0-twin1.0-flash0.1-baked",
+      summary: "Emulator vs physics: max difference 5.1 cm at Bandra Talao",
+      tolerance_cm: 5,
+      agrees: false,
+      max_diff_cm: 5.07,
+      max_diff_hotspot: "Bandra Talao",
+      hotspots: [
+        {
+          hotspot_id: "MUM-HS-20",
+          name: "Bandra Talao",
+          emulator_delta_cm: 1.2,
+          twin_delta_cm: 6.27,
+          diff_cm: 5.07,
+        },
+      ],
+      hotspots_outside_window: ["Hindmata junction"],
+      window: { size_m: 990, nodes: 631, edges: 620, centre_hotspot: "Bandra Talao" },
+      mass_balance: { baseline: 0, scenario: 0, budget: 0.001 },
+      ms: 4320,
+      budget_ms: 10000,
+      notes: [],
+    };
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v1/whatif/physics-check")) {
+        return new Response(JSON.stringify(body), { status: 200 });
+      }
+      return new Response(JSON.stringify({ features: [], runs: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      renderScreen();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Physics check" }));
+      });
+      expect(
+        fetchMock.mock.calls.some(([url]) => String(url).includes("/v1/whatif/physics-check")),
+      ).toBe(true);
+      // One decimal beside a 5 cm tolerance: "5 cm" next to "Outside tolerance" would read as
+      // a contradiction.
+      expect(await screen.findByText("Outside tolerance")).toBeInTheDocument();
+      expect(screen.getAllByText("5.1 cm").length).toBeGreaterThan(0);
+      expect(screen.getByText("+6.3 cm")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Not in the window, so not checked: Hindmata junction/),
+      ).toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("disables the two levers the request does not carry, and leaves them out of the scenario line", () => {
@@ -63,7 +112,7 @@ describe("WhatIfScreen", () => {
     // an element-wise emulator (ADR-0042); and there is no pump-plan field at all. Both switches
     // say what is missing rather than sitting inert (section 17).
     for (const [name, reason] of [
-      ["Clean top 14 by beta", "Ranking pipes by beta needs attribution"],
+      ["Clean top 14 by beta", "Pipes are ranked per junction, in the hotspot's drawer"],
       ["Pump plan", "The pump plan is not a what-if lever yet (P7.7)"],
     ]) {
       // Base UI renders a disabled switch as a span with aria-disabled rather than a form
@@ -87,11 +136,10 @@ describe("WhatIfScreen", () => {
     renderScreen();
     expect(screen.getByText("No what-if yet")).toBeInTheDocument();
     expect(screen.getByText("Set the controls and run one.")).toBeInTheDocument();
-    // Not "not run" - the button cannot work. `POST /v1/whatif/physics-check` answers 501 and
-    // the Twin it would re-run measures 58-114 s against section 14's 10 s budget, so an
-    // empty state reading "you have not pressed it yet" would blame the operator for a
-    // refusal the system owes them a reason for (section 17, ADR-0042).
-    expect(screen.getByText("Physics check not available")).toBeInTheDocument();
+    // The physics check answers now (P7.8), so its empty state is the ordinary "not run yet"
+    // and the button that runs it is live rather than disabled with a reason.
+    expect(screen.getByText("Physics check not run")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Physics check" })).toBeEnabled();
   });
 
   it("carries a hotspot's segments in from the deep link, with the measured ceiling beside them", () => {

@@ -221,8 +221,8 @@ const HINDMATA_SEGMENT_IDS = ["S100841069-000", "S100841079-000", "S102172139-00
  * state can be reviewed. The source of truth is `app/whatif/whatif-screen.tsx`.
  */
 const STORY_CLEAN_DISABLED_REASON =
-  "Ranking pipes by beta needs attribution, which Flash-lite cannot compute (ADR-0042). Pick a " +
-  "hotspot's segments with “Clean in what-if” instead";
+  "Pipes are ranked per junction, in the hotspot's drawer (ADR-0071). Press “Clean in what-if” " +
+  "there to bring its pipes here";
 const STORY_PUMP_DISABLED_REASON = "The pump plan is not a what-if lever yet (P7.7)";
 
 const SAMPLE_ONBOARD_STEPS: OnboardingStepState[] = IDLE_ONBOARDING_STEPS.map((step, i) => {

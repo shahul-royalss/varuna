@@ -165,24 +165,44 @@ test.describe("the demo script", () => {
     ).toBeVisible();
   });
 
-  // The other two thirds of section 15's 4:30 beat cannot be walked yet. They are recorded here
-  // rather than left out, so the suite reports them as unperformable instead of silently absent.
-  test.fixme("4:30 clean 14 pipes lowers Hindmata (P7.7: ADR-0042, the emulator is element-wise)", async ({
+  // Section 15's 3:30 beat: "why this junction floods", ranked on drain1d (ADR-0071). It asserts
+  // the drawer carries either a ranking or the measured refusal - both name the pipes re-run -
+  // and never the old "cleaning these 14 pipes: 55 -> 20 cm", which no cycle computes.
+  test("3:30 the hotspot drawer says which pipes explain a junction, or why none do", async ({
     page,
   }) => {
-    // Flash-lite's depth is a function of each segment's own rain and its own inlet; cleaning
-    // a pipe upstream of Hindmata has exactly zero effect on Hindmata's depth, and cleaning
-    // every pipe in the city moves the deepest segment 3.466 cm on the 08:40 cycle. The demo's
-    // "55 -> 20 cm" is ten times that ceiling. The fix is drain1d in the emulator loop, or the
-    // P7.12 GNN.
-    await open(page, "/whatif");
+    await open(page, "/console");
+    const rows = page.getByRole("list", { name: "Ranked hotspots" }).getByRole("button");
+    await expect(rows.first()).toBeVisible({ timeout: SETTLE });
+    await rows.first().click();
+    await expect(page.getByText("Why this junction floods").first()).toBeVisible({
+      timeout: SETTLE,
+    });
+    await expect(page.getByText(/upstream hops|drain1d|Not attributed/i).first()).toBeVisible({
+      timeout: SETTLE,
+    });
   });
 
-  test.fixme("4:30 physics check agrees (P7.8: the endpoint answers 501)", async ({ page }) => {
-    // POST /v1/whatif/physics-check is still a contract stub, and the button on the screen says
-    // so: a Mumbai Twin run is about three minutes against section 14's 10 s budget, so there is
-    // nothing to compare the emulator against yet.
+  test("4:30 the physics check prints the emulator against the Twin, agreeing or not", async ({
+    page,
+  }) => {
     await open(page, "/whatif");
+    const rain = page.getByRole("region", { name: "Rain scale" });
+    const slider = rain.getByRole("slider", { name: "Rain scale" });
+    const readout = rain.getByRole("status");
+    await expect(async () => {
+      await slider.fill("1.3");
+      await expect(readout).toHaveText("1.3x", { timeout: 1_000 });
+    }).toPass({ timeout: SETTLE });
+
+    await page.getByRole("button", { name: "Physics check" }).click();
+    // Two coupled Twin runs on a 990 m window: 2.4-4.7 s warm, about 20 s on a process's first
+    // call (ADR-0077). The disagreement is printed either way - section 7.7 forbids hiding it.
+    await expect(page.getByText(/Emulator vs physics: max difference/).first()).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(page.getByText(/Within tolerance|Outside tolerance/).first()).toBeVisible();
+    await expect(page.getByText(/The Twin ran twice on a \d+ m window/).first()).toBeVisible();
   });
 
   // "Find route" enables once /v1/route/facilities answers, and that reads the city's asset layer.

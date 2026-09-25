@@ -43,13 +43,15 @@ export const CLEANING_CEILING_NOTE =
  *
  * `POST /v1/whatif` refuses any non-zero tide offset: Flash-lite is a perturbation around a base
  * state measured at one tide series, so it has nothing to move a tide with. The slider stays
- * because the request carries the field and the refusal is the API's own. The physics check that
- * would answer a tide scenario answers 501 today, so the note says that too rather than pointing
- * at a control that cannot run (CLAUDE.md 17, "never a dead control").
+ * because the request carries the field and the refusal is the API's own. The physics check
+ * refuses it too, because it compares the emulator's answer with the Twin's and there is no
+ * emulator answer to compare; the note says so before either button is pressed (CLAUDE.md 17,
+ * "never a dead control").
  */
 export const TIDE_OFFSET_NOTE =
-  "The emulator cannot move the tide: it was fitted at one tide series. A tide scenario needs " +
-  "the physics check, which is not wired yet (P7.8).";
+  "The emulator cannot move the tide: it was fitted at one tide series, so Run what-if and " +
+  "Physics check both refuse a tide offset. A different sea level is a Twin forecast, not a " +
+  "what-if.";
 
 export const RAIN_SCALE_MIN = 0.5;
 export const RAIN_SCALE_MAX = 2.0;
@@ -234,8 +236,8 @@ export function WhatIfControls({
   // already come (CLAUDE.md 6.8).
   runDisabledReason = "Not connected to the emulator here. The what-if lab wires this button " +
     "to POST /v1/whatif",
-  physicsDisabledReason = "Not connected here. The check needs a Twin re-run of the scenario, " +
-    "which is not built yet (P7.8)",
+  physicsDisabledReason = "Not connected here. The what-if lab wires this button to " +
+    "POST /v1/whatif/physics-check",
   cleanedSource,
   cleanDisabled = false,
   cleanDisabledReason,
@@ -292,7 +294,8 @@ export function WhatIfControls({
         />
         <p className="type-micro text-text-3">
           Scales the storm this run&apos;s Twin ran on: the Sky ensemble mean, averaged over the
-          area, one value per 5 minutes. 1.3x is the demo&apos;s &ldquo;rain plus 30 %&rdquo; moment.
+          area, one value per 5 minutes. 1.3x is the demo&apos;s &ldquo;rain plus 30 %&rdquo;
+          moment.
         </p>
       </section>
 
