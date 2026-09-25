@@ -12,11 +12,11 @@
     <urgency>Expected</urgency>
     <severity>Severe</severity>
     <certainty>Likely</certainty>
-    <onset>2019-07-02T09:25:00+05:30</onset>
+    <onset>2019-07-02T09:20:00+05:30</onset>
     <expires>2019-07-02T11:40:00+05:30</expires>
-    <headline>Sant Shitolebaba Maharaj Marg: depth above 45 cm from 09:25 to 11:40</headline>
+    <headline>Sant Shitolebaba Maharaj Marg: depth above 45 cm from 09:20 to 11:40</headline>
     <description>VARUNA nowcast run MUM-20190702T0310Z-sky1.0-twin1.0-flash0.1-baked.</description>
-    <instruction>Avoid Sant Shitolebaba Maharaj Marg for the window. Peak forecast 96 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
+    <instruction>Avoid Sant Shitolebaba Maharaj Marg for the window. Peak forecast 100 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Sant Shitolebaba Maharaj Marg</areaDesc>
       <circle>19.0957649,72.89574214999999 0.5</circle>

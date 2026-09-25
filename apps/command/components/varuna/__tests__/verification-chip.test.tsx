@@ -16,6 +16,10 @@ const committed = JSON.parse(
   readFileSync(path.resolve(__dirname, "../../../public/verification.json"), "utf-8"),
 ) as Record<string, unknown>;
 
+/** What the chip prints from the committed copy, derived rather than typed, so re-scoring the
+ * shipped runs (P9.7) cannot leave this test asserting last week's number. */
+const COMMITTED_LINE = `CSI ${(committed.scores as { csi: number }).csi.toFixed(2)} at 15 cm on this event`;
+
 /** A served body, shaped like `varuna_verify.event.sweep`, with numbers that differ from the
  * committed copy so a test can tell which one the chip printed. */
 const served = {
@@ -112,7 +116,7 @@ describe("ServedVerificationChip", () => {
       throw new TypeError("Failed to fetch");
     });
     const { container } = render(<ServedVerificationChip />);
-    expect(await screen.findByText(/CSI/)).toHaveTextContent("CSI 0.22 at 15 cm on this event");
+    expect(await screen.findByText(/CSI/)).toHaveTextContent(COMMITTED_LINE);
     const chip = container.querySelector('[data-slot="verification-chip"]');
     expect(chip).toHaveAttribute("data-source", "committed");
     expect(chip?.getAttribute("title")).toMatch(/committed/);
@@ -148,7 +152,7 @@ describe("ServedVerificationChip", () => {
         : new Promise<Response>((resolve) => (answer = resolve)),
     );
     const { container } = render(<ServedVerificationChip interimAfterMs={0} />);
-    expect(await screen.findByText(/CSI/)).toHaveTextContent("CSI 0.22 at 15 cm on this event");
+    expect(await screen.findByText(/CSI/)).toHaveTextContent(COMMITTED_LINE);
     const chip = () => container.querySelector('[data-slot="verification-chip"]');
     expect(chip()).toHaveAttribute("data-source", "committed");
     expect(chip()?.getAttribute("title")).toMatch(/still scoring/);

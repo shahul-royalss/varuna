@@ -30,8 +30,12 @@ both are in place (a PySWMM adapter, and the nest geometry in `configs/mumbai.ya
 
 ## "How fast is it?"
 
-The Twin is far over its 8 s budget for a three-hour city run: 47–114 s in the seven baked demo
-cycles. We missed it, and we can say exactly where the time goes.
+The Twin is far over its 8 s budget for a three-hour city run: **34–60 s** on a quiet machine
+(36.07 s in an independent re-run of 08:40). The shipped runs' own `stage_ms` read up to 192 s,
+because they were baked on 26 September with test suites running beside them - the run stamp
+prints what was measured, not the best case. We missed the budget, and we can say exactly where
+the time goes. **Sky is inside its 5 s**: 2.4–5.6 s per cycle across two bakes that day, with the
+twenty members split over four worker processes (ADR-0075).
 
 The drain solver was NumPy at 106 s and the coupling at 25 s; both are Numba kernels now (29 s and
 4.6 s, physics bit-for-bit the same, ADR-0035). On 15 September the surface solver's per-call
@@ -40,7 +44,15 @@ outputs bitwise identical (ADR-0049). A one-hour coupled run now measures 27.1 s
 (14 python processes): the drain kernel is 13.2 s of it and the surface kernels 9.2 s, so the
 drain step is the wall, and it needs parallelising, which its scatter-adds currently forbid.
 
-A whole cycle, counting each stage once, took **64.8–147.2 s** across the seven baked cycles.
+On 24 September the scatter-adds were coloured so the edge passes run in parallel without a race
+(ADR-0074): 3.49x faster on the drain step, byte-identical at any thread count. It cannot close
+the budget: the drain is now 42 % of the run, so even an infinitely fast drain caps the whole-run
+gain at 1.72x. What remains is the surface solver and the 2,160 coupling calls.
+
+A whole cycle, counting each stage once, took **47–127 s** across the seven cycles baked on 26
+September; the storm cycles carry 24–55 s of pipe attribution inside their products stage
+(`stage_ms.products_attribution`, ADR-0071), which is what separates 08:40's 127 s from 07:10's
+47 s. The 13 September bake read 64.8–147.2 s.
 Figures of 155–359 s that appeared earlier counted the Twin's internal sub-timings on top of its
 own wall clock (ADR-0046).
 
@@ -254,16 +266,31 @@ So what-if **levels on the Twin's own forecast** and uses the emulator only for 
 scenario makes, a tide offset is refused rather than approximated, and the measured skill is
 printed beside every answer. The GNN surrogate is the pilot upgrade.
 
-## "Why won't the physics check run?"
+## "Does the physics check agree?"
 
-Because re-running the Twin on a what-if scenario does not fit the **10 s** CLAUDE.md 14 gives
-that endpoint — at full AOI. A three-hour Mumbai run is 58–114 s in six of the seven baked
-cycles and 47 s in the lightest (re-baked 13 September 2026; the pre-ensemble set measured
-137–174 s and 84 s), so `/v1/whatif/physics-check` refuses with that cost printed
-rather than with "not implemented".
+It runs, and it does not always agree — which is what it is for. Since 24 September
+`POST /v1/whatif/physics-check` crops the city to 33 × 33 cells (990 m) around the run's worst
+junction, turns every pipe that leaves the window into a free outfall, runs the coupled Twin twice
+at the run's posterior blockage - baseline and scenario - and reports the emulator's *change*
+against the Twin's at each junction inside the window (ADR-0077). `/whatif` and the console's
+what-if drawer print it as section 7.7's bar, with each junction's two changes, the window, the
+crop's mass balance and the check's own time against its 10 s.
 
-The question that decides whether the check is worth building at all is whether a **bounded
-crop** fits. It does, with room to spare.
+| Measured | Figure |
+|---|---|
+| Warm call | 2.4–4.7 s; p95 4.09–7.37 s over five calls |
+| First call in a fresh API process | 19.4–22.6 s (city load and Numba compile) |
+| Rain +30 %, 08:40 | **5.07 cm at Bandra Talao against a 5 cm tolerance — outside, and printed** |
+| Rain −20 %, 08:40 | emulator −0.31 cm against Twin −3.63 cm, 3.32 cm apart |
+| Unchanged scenario | 0.00 cm on both sides |
+| Crop mass balance | 0.0 at the posterior blockage; 1.7e-02 at the city's prior |
+
+Changes and not levels, because the same storm peaks at 87 cm on a 990 m window and 123 cm on a
+2,430 m one: a crop's absolute depth is not the city's. A tide offset is refused, because the
+emulator has no answer to a different sea to check. And the API has to be started before the
+judges arrive, or the first press pays twenty seconds.
+
+The design came from the feasibility measurement below, taken on 13 September before it was built.
 
 ### Physics check feasibility
 
@@ -313,23 +340,33 @@ configures INFO, so the endpoint gets the quiet path.)
 
 ## "Show us cleaning a drain, then"
 
-We cannot, and the number says why rather than the beat quietly under-delivering on stage.
+We can now, and the answer is not the one section 7.2 was written around.
 
-Desilting the **entire city** — all 21,296 segments to β = 0.05, the largest cleaning scenario
-that exists — moves the deepest street by **3.466 cm** on the 08:40 cycle (mean 0.1416 cm; 2,032
-segments over 0.5 cm) and by **1.519 cm** on the newest. CLAUDE.md 7.2's "cleaning these 14 pipes:
-55 → 20 cm" is ten times that ceiling.
+Attribution runs on `drain1d` since 24 September (ADR-0071): for each of the ten worst wet
+junctions it cuts the junction's own catchment out of the city graph, freezes the street at the
+Twin's depth, re-runs every pipe within five upstream hops cleaned to β = 0.05, and reads how much
+more water the drain takes off the junction by its peak. It cleans at this cycle's Pulse
+posterior, keeps the sign, and ranks by magnitude. On the cycles baked on 26 September:
 
-And the fourteen could not be the right fourteen: cleaning every pipe *except* one target leaves
-that target exactly where it was — **71.5821 cm against a base of 71.5821 cm** at the deepest
-street, and 0 of Hindmata's 24 sibling candidates scores anything at all. `simulate()` is
-element-wise per segment, so a pipe that is not under the target has precisely zero effect, and
-the base state the depth mostly comes from — tide and upstream routing — does not depend on β.
+| Junction, cycle | Candidates | Named | What cleaning does |
+|---|---|---|---|
+| Hindmata, every storm cycle | 51 | 0 | refused: the best pipe moves it **0.015–0.027 cm**, under the 0.1 cm floor |
+| Sion Subway 1, 08:40 | 55 | 14 | all fourteen together: **9.6 → 11.6 cm, 2 cm deeper** |
+| Sion Circle, 08:40 | 75 | 14 | 9.2 → 9.4 cm |
+| Sion pedestrian subway, 08:40 | 35 | 7 | 8.9 → 9.4 cm |
+| Sion Circle, 08:10 | 75 | 14 | every pipe the right way; together 7.5 → 7.4 cm |
 
-So the drawer refuses with that reason instead of ranking zeros, the 4:30 demo beat is the rain
-scale (62 ms, with the measured RMSE and CSI beside it), and the learning story is told by the
-drain X-ray's before/after, which is Pulse's posterior moving and not a what-if. ADR-0042. The fix
-is `drain1d` inside the attribution loop or the GNN surrogate (P7.12).
+Hindmata refuses because at that depth its **inlets**, not its pipes, limit how fast the street
+drains - which is also what ADR-0048's uphill inverts predict for a junction whose outfall path
+climbs above its own street. And a junction that is already surcharging gets *deeper* when the
+pipes above it are cleaned, because a clear pipe delivers more water to it than the cleaning
+drains away. The old emulator could not produce either answer: it is element-wise per segment, so
+cleaning any pipe not under a street moved it by exactly 0.0000 cm (ADR-0042, which stands for
+Flash-lite).
+
+So "cleaning these 14 pipes: 55 → 20 cm" is not said on stage: no cycle computes it. The drawer
+shows what was measured, including the uncomfortable result. Cost: 24–55 s per storm cycle, paid
+at bake.
 
 ## "What is your ground truth?"
 
@@ -347,14 +384,17 @@ At the 15 cm headline threshold, over the 17 pins in the window:
 
 | | |
 |---|---|
-| CSI | **0.22** |
-| POD | **0.41** |
-| FAR | **0.68** (a lower bound — see below) |
-| Median lead time | **31 minutes**, over 6 pins found before they were logged |
+| CSI | **0.24** |
+| POD | **0.47** |
+| FAR | **0.67** (a lower bound — see below) |
+| Median lead time | **45 minutes**, over 7 pins found before they were logged |
+
+Scored on the seven cycles re-baked on 26 September; the 13 September set read CSI 0.22, POD 0.41,
+FAR 0.68 and 31 minutes. At 30 cm CSI went 0.09 → 0.14.
 
 We sweep 5, 15 and 30 cm rather than picking one, because scoring a civic log against a single
 30 cm line treats it as though it had said "over thirty centimetres", which it did not. **The
-spread across the three is the finding**: every pin is found at 5 cm, only two of seventeen at
+spread across the three is the finding**: every pin is found at 5 cm, only three of seventeen at
 30 cm. The pattern is right and the level is low — a different problem from missing the streets,
 and the one we would fix first.
 
@@ -362,49 +402,42 @@ FAR is a lower bound because nobody logged most of the city that morning; we cou
 only within 250 m of some pin, or we would be scoring the record-keeping.
 
 Depth MAE, the Brier score and the reliability diagram are returned as **unavailable, with their
-reasons**: no pin states a depth, and the baked runs have one member. ADR-0029.
+reasons**: no pin states a depth, and the scorer does not read the runs' 50-member
+probabilities yet. ADR-0029.
 
-## "Why one member?"
+## "Is the spread real?"
 
-Because the 50-member ensemble products are not built (P7.6). Sky produces 20 members and the fan
-chart shows their spread; the Twin runs on the ensemble *mean*, so every street forecast is
-deterministic and every exceedance probability is 0 or 1. The probability layer says that on
-screen rather than drawing a smooth ramp over a spread that does not exist.
+Fifty members since 26 September (P7.6, ADR-0076): the twenty Sky members, each used two or three
+times rather than resampled, crossed with draws of pipe blockage from this cycle's Pulse
+posterior and of the emulator's storage coefficient. Every run prints what its width is made of.
+At 08:40 the band - the mean p90 − p10 of peak depth over 7,646 wet segments - is **16.3 cm: 9.9 cm
+from the weather and 8.9 cm from the parameters**, and switching the blockage draw off moves it
+**−0.14 cm**, inside the ensemble's own sampling noise. So the width on screen is the weather's and
+the emulator's own storage, not what Pulse learned; Pulse sets the level of the drainage term, not
+the spread. Two limits, printed with every run: the members differ only in the *amplitude* of the
+AOI-mean rain, because that is the only per-member rain a cycle keeps, and 50 over 20 weights ten
+Sky members at 0.06 and ten at 0.04, which reads 2.0 % wider than a balanced 60.
+
+Where the spread is drawn: under the time bar, as the p10–p90 of mean street depth across the
+members (`aoi_depth_band` in `run.json`), and in each junction's fan chart, as its own Twin level
+with its registered streets' member spread either side. Both arrived on 26 September; before that
+the bar promised a band "with the first run" and the drawer said the spread had not arrived.
 
 ## "How deep does Hindmata get?"
 
-**10.7 cm at the peak of the storm**, and the answer is that low on purpose rather than by
-omission. The number is the 90th percentile of depth over a 45 m window around the registered
-point, from the **08:10 IST cycle of 2 July 2019** (`MUM-20190702T0240Z`) — the deepest of the
-seven baked cycles at the chronic register.
+**11.6 cm at 08:10 and 10.8 cm at 08:40**, on the cycles re-baked on 26 September - the 90th
+percentile over a 45 m window around the registered point. No junction on the register reaches the
+15 cm band on any cycle: the deepest is Bandra Talao at 13.7 cm.
 
-That cycle was re-baked on **12 September 2026** against the city rebuilt the same day, because
-ADR-0039 found two register points sitting on an OSM building footprint: both were raised 5 m and,
-since the building mask is also the solver's blocked mask, given no flux at all. The Twin could
-never wet them. What the fix is worth, measured:
+The water is on the streets around them. At 08:40 **2,362 of the 6,904 wet segments peak above 15 cm
+and 675 above 30 cm**, the deepest at 146.4 cm, behind nine severe, 35 moderate and 15 watch alerts;
+at 08:10, 1,150 of 4,803 above 15 cm and 219 above 30 cm. On stage we quote those segment depths
+and the blockage the drain map learns, not a junction depth.
 
-| Register point | Before (city of 10 Sep) | After (city of 12 Sep) |
-|---|---|---|
-| Hindmata junction | 10.7 cm | **10.7 cm** |
-| Khar Subway | 4.3 cm | **6.8 cm** |
-| Parel / Bharat Mata Cinema | 1.8 cm | **1.9 cm** |
-
-Khar Subway gains 2.5 cm and holds it, which is the fix showing up. Hindmata never sat on a
-footprint, so it does not move. Parel moves 0.1 cm: the junction figure is a p90 over 25 cells and
-restoring one of them barely shifts it — the point was blocked, and unblocking it was still
-necessary, but it was never the whole reason Parel reads shallow.
-
-So **no junction on the register reaches the 15 cm band**, while **1,004 of the 4,511 wet segments
-peak above 15 cm and 177 above 30 cm**, the deepest segment at 106.5 cm and the deepest street in
-the alert queue (V B Worlikar Marg) at 78.5 cm behind twelve severe alerts. On stage we quote those
-segment depths and the blockage the drain map learns, not a junction depth.
-
-Two things the re-bake does not fix, said out loud. **Only this cycle is re-baked** — the other six
-still come from the city of 10 September, and the board says so. And a single-cycle re-bake starts
-Pulse from the city's prior instead of the posterior the sequential pass carried into 08:10, so
-this cycle's worst pipe now reads **β 0.50** where it read 0.68: the climb from 0.394 to 0.683
-quoted above still has those endpoints, but it is no longer monotone at 08:10. A full `make bake`
-is the fix, at 126 s of CPU per cycle.
+Why the junctions read shallow is now measured rather than guessed: attribution finds that at
+Hindmata the inlets and not the pipes limit the drain (the best single pipe moves it 0.015–0.027
+cm), and the drain graph is inferred with 18,994 of its 49,770 edges running uphill (ADR-0048).
+ADR-0039's building-footprint fix, which unblocked Khar Subway and Parel, is in these runs.
 
 ## "How accurate is the DEM?"
 
@@ -721,49 +754,61 @@ Directions as well as Map Tiles, all measured 2026-09-23. Since it is read as a 
 value and therefore inlined into the JavaScript every visitor downloads, restricting it is a
 prerequisite for deploying, tracked as `TASKS.md` D-26.
 
-## "Does the water balance?" - and the honest answer changed on 2026-09-23
+## "Does the water balance?"
 
-Mass balance is the check that says the coupled solver is neither inventing nor losing water, and
-section 11.3 budgets it at **0.1 % of inflow**. Re-baking the seven demo cycles on 2026-09-23 put
-every one of them over it:
+Yes, to a few ten-thousandths of a percent, and we can show where the rest is. Section 11.3
+budgets the coupled solver at **0.1 % of inflow**. The seven demo cycles re-baked on 26 September:
 
-| cycle (IST) | mass balance | peak depth | wet segments | cycle time |
-|---|---|---|---|---|
-| 06:10 | 0.127 % | 19.7 cm | 21 | 59.1 s |
-| 06:40 | **0.535 %** | 141.8 cm | 2,924 | 53.0 s |
-| 07:10 | 0.145 % | 19.3 cm | 24 | 43.5 s |
-| 07:40 | 0.260 % | 134.7 cm | 2,384 | 50.7 s |
-| 08:10 | 0.306 % | 159.4 cm | 4,762 | 54.1 s |
-| 08:40 | 0.204 % | 189.0 cm | 6,684 | 60.5 s |
-| 09:10 | 0.310 % | 116.0 cm | 1,768 | 59.2 s |
+| cycle (IST) | mass balance | peak depth | wet segments |
+|---|---|---|---|
+| 06:10 | 0.00012 % | 20.0 cm | 17 |
+| 06:40 | 0.00038 % | 141.4 cm | 3,275 |
+| 07:10 | 0.00028 % | 19.9 cm | 21 |
+| 07:40 | 0.00018 % | 127.1 cm | 2,399 |
+| 08:10 | 0.00015 % | 151.1 cm | 4,803 |
+| 08:40 | 0.00050 % | 193.7 cm | 6,904 |
+| 09:10 | 0.00066 % | 111.2 cm | 1,852 |
 
-The previous bake read **0.014-0.091 %** on six of these and 0.215 % at 06:40, so this is a
-**regression** rather than a budget that was never met - and 06:40 is now over by more than five
-times. It is **not diagnosed**. These are the first runs to combine four changes that had never run
-together: ADR-0055's tide-datum conversion, ADR-0039's hotspot fix, ADR-0044's ES-MDA Pulse update
-and ADR-0052's reversed-edge geometry join. The tide conversion is the first suspect, because it
-moved the boundary stage by 2.70 m and the coupled balance divides by this run's own inflow. The
-previous runs are backed up, so the choice between diagnosing, shipping-and-recording, and rolling
-back is still open.
+The same seven figures came out of three separate bakes that day, to every digit (rule 8).
+
+08:40's 5.020345566001818e-06 is bit-identical to an independent re-run by the verification pass.
+Every `run.json` carries the ledger: at 08:40 the surface solver's own residual is 0.0, the drain's
+0.0, the surcharge exchange 0.0, and the whole 15.96 m3 of 3,178,275 m3 sits in the inlet exchange,
+where the surface offers min(wanted, available) per CFL sub-step and the network takes what it was
+offered.
+
+**How it got here.** The re-bake of 23 September measured 0.127, 0.535, 0.144, 0.260, 0.306, 0.204
+and 0.310 % (the bake log still has them). A single-variable bisect on 08:40 reproduced both that
+bake and the 13 September one bit for bit and showed ADR-0055's tide had stopped admitting 5.35
+Mm3 of sea the city should never have received - the error had not grown, its denominator had
+shrunk. The ledger then put the whole residual in two exchange leaks, both fixed (ADR-0072):
+surcharge the surface received that the drain's supply check never emitted, and surcharge onto
+building cells that the surface zeroed before tallying.
+
+**And why the 23 September numbers were briefly "not reproducible".** Those runs were deleted from
+`data/runs` within the hour and replaced with the 13 September copies, so the verification pass
+measured the old runs and concluded the new figures were wrong. The API's start-up seeder did it:
+it treated any fresh bake whose alert files differed from the shipped set as an outdated copy. It
+happened again on 26 September and is fixed (ADR-0082).
 
 ## "Can you show the reversed flow at the tide-locked outfall?"
 
-Since 2026-09-23, yes - and before that date, no, on any run that had ever been baked. The same
-re-bake is the first to store reversed edges **with their geometry**:
+The data is there on every shipped cycle. The 26 September re-bake stores each cycle's reversed
+edges **with their geometry** (ADR-0052):
 
 | cycle (IST) | reversed edges | stored | without geometry | at the tidal outfall | surcharging nodes |
 |---|---|---|---|---|---|
-| 06:10 | 18,375 | 500 | 0 | 0 | 2,725 |
-| 06:40 | 20,168 | 500 | 0 | 1 | 7,046 |
-| 07:10 | 18,513 | 500 | 0 | 1 | 3,010 |
-| 07:40 | 19,935 | 500 | 0 | 1 | 6,395 |
-| 08:10 | 20,383 | 500 | 0 | 1 | 7,736 |
-| 08:40 | 21,392 | 500 | 0 | 1 | 8,834 |
-| 09:10 | 19,850 | 500 | 0 | 1 | 6,417 |
+| 06:10 | 18,382 | 500 | 0 | 0 | 2,762 |
+| 06:40 | 20,206 | 500 | 0 | 1 | 7,159 |
+| 07:10 | 18,677 | 500 | 0 | 1 | 3,018 |
+| 07:40 | 19,846 | 500 | 0 | 1 | 6,319 |
+| 08:10 | 20,492 | 500 | 0 | 1 | 7,666 |
+| 08:40 | 22,082 | 500 | 0 | 1 | 8,932 |
+| 09:10 | 19,927 | 500 | 0 | 1 | 6,392 |
 
-Motion M9, the animated dash along a reversed edge, was built on 2026-09-15 and had drawn nothing
-until now: every run predated the join that carries each edge's line (ADR-0052), and the layer
-panel said so. Six of the seven cycles now put reversed flow at the tidal outfall, which is what
-section 7.2's acceptance criterion and the 1:40 demo beat both ask for.
+Six of seven put reversed flow at the tidal outfall, which is what section 7.2's criterion and the
+1:40 beat ask for; motion M9 animates each stored edge's dash. The surcharge counts moved a little
+from 23 September's because the surcharge that reaches the street is now what the drain actually
+emitted (ADR-0072).
 
-**R3 is still unticked.** The data exists; "visible" means seen on screen, and it has not been.
+**R3 is still unticked**: "visible" means seen on screen, and it has to be looked at on these runs.

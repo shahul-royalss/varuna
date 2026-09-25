@@ -37,7 +37,7 @@ export interface VerificationChipProps {
 const CHIP =
   "inline-flex h-7 items-center gap-1.5 rounded-chip border border-line px-2.5 text-small";
 
-/** "CSI 0.22 at 15 cm on this event" in the top bar; "Not scored yet" when the scorer has none. */
+/** "CSI 0.24 at 15 cm on this event" in the top bar; "Not scored yet" when the scorer has none. */
 export function VerificationChip({
   csi,
   thresholdCm,

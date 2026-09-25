@@ -12,11 +12,11 @@
     <urgency>Expected</urgency>
     <severity>Moderate</severity>
     <certainty>Likely</certainty>
-    <onset>2019-07-02T11:00:00+05:30</onset>
+    <onset>2019-07-02T10:40:00+05:30</onset>
     <expires>2019-07-02T11:10:00+05:30</expires>
-    <headline>Bhakti Vedanta Swami Marg: depth above 30 cm from 11:00 to 11:10</headline>
+    <headline>Bhakti Vedanta Swami Marg: depth above 30 cm from 10:40 to 11:10</headline>
     <description>VARUNA nowcast run MUM-20190702T0240Z-sky1.0-twin1.0-flash0.1-baked.</description>
-    <instruction>Avoid Bhakti Vedanta Swami Marg for the window. Peak forecast 32 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
+    <instruction>Avoid Bhakti Vedanta Swami Marg for the window. Peak forecast 36 cm. Route emergency vehicles around it; see the reachability tab for the affected catchment.</instruction>
     <area>
       <areaDesc>Bhakti Vedanta Swami Marg</areaDesc>
       <circle>19.11597028819804,72.83403609756779 0.5</circle>
