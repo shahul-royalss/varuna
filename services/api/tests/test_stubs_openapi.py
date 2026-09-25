@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from varuna_api.cli import write_openapi
-from varuna_schemas.samples import sample_json
 
 SECTION_12_PATHS = [
     "/healthz",
@@ -58,9 +56,13 @@ SECTION_12_PATHS = [
 # `POST /v1/cycle/compute` left on 2026-09-22: it runs `run_cycle(mode="live")` on a thread and
 # streams `cycle.stage` over the WebSocket. It is gated by `VARUNA_COMPUTE_LIVE`, and where that
 # gate is closed it refuses with its own reason rather than the stub's.
+#
+# `POST /v1/whatif/physics-check` left on 2026-09-24 (task P7.8): it runs the coupled Twin twice
+# on a 33 x 33 cell window around the run's hotspots and reports the emulator's delta against the
+# physics'. The test that used to guard the *refusal's* quoted Twin cost moved to
+# `test_physics_check.py`, where it guards the served endpoint's own measured cost instead.
 STUB_CALLS: list[tuple[str, str, dict[str, object] | None, dict[str, str] | None]] = [
     ("GET", "/v1/nowcast/segments/88213/series", None, None),
-    ("POST", "/v1/whatif/physics-check", sample_json("PhysicsCheckRequest"), None),
 ]
 
 OPS_PATHS = [
@@ -86,49 +88,6 @@ def test_stub_returns_501_envelope(
     assert err["code"] == "not_implemented"
     assert "lands in Phase" in err["message"]
     assert err["run_id"] is None
-
-
-# The physics check is the one stub whose refusal carries a measured number, so it is the one
-# that can go stale. The generic "the engine is not built yet" was wrong about the Twin: the Twin
-# exists and runs every baked cycle - what is missing is a run small enough to answer inside
-# section 14's 10 s budget (tasks P7.8, W05). These are the run artifacts the copy was read from,
-# so a re-bake that moves the cost fails here instead of leaving the endpoint quoting a number
-# nothing measures any more.
-BAKED_RUNS = Path(__file__).resolve().parents[3] / "demo" / "runs"
-
-
-def _twin_seconds() -> list[int]:
-    """``stage_ms.twin_total_ms`` of every baked Mumbai cycle, in whole seconds, ascending."""
-    return sorted(
-        round(json.loads(p.read_text(encoding="utf-8"))["stage_ms"]["twin_total_ms"] / 1000)
-        for p in BAKED_RUNS.glob("MUM-*/run.json")
-    )
-
-
-def test_physics_check_refusal_quotes_the_measured_twin_cost(client: TestClient) -> None:
-    res = client.post("/v1/whatif/physics-check", json=sample_json("PhysicsCheckRequest"))
-    # 501 and not 503: the route is specified and unimplemented, and nothing about it becomes
-    # available on a retry.
-    assert res.status_code == 501, res.text
-    message = res.json()["error"]["message"]
-    assert "Twin re-run" in message
-    assert "10 s budget" in message
-
-    seconds = _twin_seconds()
-    if not seconds:
-        pytest.skip(f"no baked runs under {BAKED_RUNS}")
-    lightest, *rest = seconds
-    assert (len(rest), len(seconds)) == (6, 7), (
-        f"the refusal says six of the seven baked cycles; demo/runs now holds {len(seconds)}"
-    )
-    quoted = re.search(r"(\d+)-(\d+) s", message)
-    assert quoted is not None, message
-    assert (int(quoted.group(1)), int(quoted.group(2))) == (rest[0], rest[-1]), (
-        f"the refusal quotes {quoted.group(0)}; the baked cycles now measure {rest} s"
-    )
-    assert f"({lightest} s in the lightest)" in message, (
-        f"the refusal names a different lightest cycle; it now measures {lightest} s"
-    )
 
 
 def test_the_authority_endpoints_are_published_and_gated(client: TestClient) -> None:

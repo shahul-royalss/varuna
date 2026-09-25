@@ -16,16 +16,13 @@ from pydantic import Field
 from varuna_schemas.constants import VehicleProfile
 from varuna_schemas.models import (
     ErrorEnvelope,
-    FeatureCollection,
-    PhysicsCheckRequest,
-    PhysicsCheckResponse,
     SegmentSeries,
     VarunaModel,
 )
 from varuna_schemas.models.alert import EscalationTarget
 from varuna_schemas.models.common import BBox, Timestamp
 
-from varuna_api.state import api_error, not_implemented
+from varuna_api.state import not_implemented
 
 NOT_BUILT = {501: {"model": ErrorEnvelope, "description": "Engine not built yet (phase named)"}}
 
@@ -125,22 +122,6 @@ class OnboardJob(VarunaModel):
 
 # ---- nowcast (Phase 5) ------------------------------------------------------------------
 @router.get(
-    "/nowcast/segments",
-    tags=["nowcast"],
-    response_model=FeatureCollection,
-    summary="Segment quantiles, exceedance probabilities and safe-until",
-)
-def nowcast_segments(
-    run_id: RunIdQ = None,
-    bbox: BboxQ = None,
-    t: TimeQ = None,
-    profile: ProfileQ = "car",
-    format: Annotated[Literal["geojson", "parquet"], Query()] = "geojson",
-) -> FeatureCollection:
-    raise not_implemented("The segment forecast product", 5, "P5.1")
-
-
-@router.get(
     "/nowcast/raster",
     tags=["nowcast"],
     response_class=Response,
@@ -183,31 +164,11 @@ def nowcast_segment_series(segment_id: str, run_id: RunIdQ = None) -> SegmentSer
 
 
 # ---- what-if (Phase 7) --------------------------------------------------------------------
-# The generic 501 says "the engine is not built yet", which is true of the physics check and
-# misleading about the Twin: the Twin exists and runs every baked cycle. What is missing is a
-# Twin run small enough to answer inside section 14's 10 s budget. The numbers are the
-# `stage_ms.twin_total_ms` of the seven baked MUM-2019-07-02 cycles in demo/runs - 58,282 to
-# 113,999 ms in six of them and 47,026 ms in the lightest - so the refusal names the measured
-# cost rather than implying the physics is absent (CLAUDE.md 6.8, 7.7).
-PHYSICS_CHECK_REFUSAL = (
-    "The physics check lands in Phase 7 (task P7.8). It needs a Twin re-run of the scenario, "
-    "and a full-AOI Mumbai Twin run measures 58-114 s in six of the seven baked cycles "
-    "(47 s in the lightest) against this endpoint's 10 s budget, so the check would have to run "
-    "on a bounded hotspot crop rather than the whole AOI. Such a crop was measured on "
-    "2026-09-13 at about 0.9 s coupled over a 990 m window (33 x 33 cells, 392 edges), "
-    "roughly ten times inside the budget and within 0.4 cm of the full run at the same "
-    "cells, so the cost is not the obstacle - the crop is simply not built yet (P7.8)."
-)
-
-
-@router.post(
-    "/whatif/physics-check",
-    tags=["whatif"],
-    response_model=PhysicsCheckResponse,
-    summary="Re-run the Twin on a what-if and report the disagreement",
-)
-def physics_check(body: PhysicsCheckRequest) -> PhysicsCheckResponse:
-    raise api_error(501, "not_implemented", PHYSICS_CHECK_REFUSAL)
+# The what-if and its physics check are no longer stubs: `varuna_api.routers.whatif` serves both
+# (tasks P7.8, W05). The check answers its own flatter shape rather than `PhysicsCheckResponse`,
+# for the reason ADR-0027 records for /v1/route - the drafted model is keyed on a `whatif_id`
+# that nothing mints, and it has no field for the crop window, the two mass balances or the
+# measured cost, all of which are the point of an honest agreement report.
 
 
 # Replay bundles and the clock are no longer stubs: the clock landed with Phase 2 and lives in
@@ -228,7 +189,6 @@ def physics_check(body: PhysicsCheckRequest) -> PhysicsCheckResponse:
 
 
 __all__ = [
-    "PHYSICS_CHECK_REFUSAL",
     "AlertActionRequest",
     "OnboardJob",
     "OnboardRequest",
