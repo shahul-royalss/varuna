@@ -213,6 +213,14 @@ class RunMeta(VarunaModel):
     mass_balance_err: float = Field(
         ge=0, description="Relative mass-balance error of the Twin run (fraction, target < 0.001)."
     )
+    mass_balance_ledger: dict[str, float] | None = Field(
+        default=None,
+        description=(
+            "Where the Twin's residual sits, in m3: the surface's own, the drain's own, and the "
+            "two exchange gaps between them, which sum to the residual on a coupled run. A run "
+            "baked before the ledger existed carries none."
+        ),
+    )
     bundle: str | None = Field(default=None, description="Replay bundle id, None when live.")
     created_at: Timestamp = Field(description="When the run directory was written (IST).")
     grid: GridSpec

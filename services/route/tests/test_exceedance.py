@@ -2,7 +2,7 @@
 
 Before this, ``P(depth > threshold)`` was a comparison against the median depth, so every
 probability the API printed was exactly 1.0 or 0.0 and ``risk_tolerance`` changed nothing - on
-runs that have carried a 20-member ``p_gt`` block since the 2026-09-13 re-bake. Two claims are
+runs that have carried an ensemble ``p_gt`` block since the 2026-09-13 re-bake (50 members since 2026-09-26). Two claims are
 tested here: the probability is really the ensemble's on a real demo run, and a route really
 changes when the tolerance does.
 """
@@ -33,8 +33,9 @@ def test_the_demo_run_gives_probabilities_between_zero_and_one(
     depth to the threshold, every one of these would be 0.0 or 1.0.
     """
     depths = load_depths(demo_run_id)
-    assert depths.has_exceedance, "the 08:40 demo run carries a 20-member p_gt block"
-    assert depths.ensemble_n == 20
+    assert depths.has_exceedance, "the 08:40 demo run carries a 50-member p_gt block"
+    # 50 since P7.6: twenty Sky members crossed with blockage and storage draws (ADR-0076).
+    assert depths.ensemble_n == 50
 
     strictly_between = [
         (segment_id, threshold, step, value)

@@ -36,6 +36,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+from time import perf_counter
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -260,6 +261,27 @@ def _emit(on_event: BakeEvent | None, *event: Any) -> None:
         on_event(*event)
 
 
+SKY_POOL_WARM_TIMEOUT_S = 180.0
+"""Ceiling on the wait for Sky's workers to import; measured at 16-45 s under load."""
+
+
+def _warm_sky_pool() -> None:
+    """Start Sky's worker pool before the first cycle rather than during it.
+
+    Sky splits its twenty members across worker processes and never waits for them inside a
+    cycle, so the first cycle in a process runs sequentially while the workers import. A bake
+    knows it is about to run every cycle, so it pays the spawn once up front. Not waiting is not
+    an error - the first cycle is then sequential, and the cube is identical either way.
+    """
+    try:
+        from varuna_sky.ensemble_pool import warm_pool
+    except ImportError:  # pragma: no cover - a Sky without the pool runs sequentially anyway
+        return
+    started = perf_counter()
+    ready = warm_pool(20, timeout=SKY_POOL_WARM_TIMEOUT_S)
+    log.info("bake.sky_pool", ready=ready, ms=round((perf_counter() - started) * 1000.0))
+
+
 def bake_cycles(
     plan: BakePlan,
     *,
@@ -284,6 +306,7 @@ def bake_cycles(
         from varuna_cycle.twin_cycle import run_cycle
 
         runner = run_cycle
+        _warm_sky_pool()
     root = runs_root if runs_root is not None else runs_dir()
     version = flash_version or expected_flash_version(plan.bundle)
     ordered = sorted(plan.instants)

@@ -216,6 +216,43 @@ def test_twenty_member_frame_equals_the_row_built_frame(member_steps: int) -> No
     assert not fractional.empty, "the fixture must carry a real spread, or the test is vacuous"
 
 
+def test_a_fifty_member_stack_is_still_the_row_built_frame() -> None:
+    """P7.6's ensemble is fifty members, and nothing in the products may count on twenty.
+
+    The stack stopped being "one emulator run per Sky rain member" when
+    ``varuna_flash.ensemble`` put a blockage draw and a storage-coefficient draw on each member,
+    so the member count is now a parameter of a different service. The row loop this module is
+    held to never knew the count either; this is the test that says so out loud, and it would
+    catch a twenty-shaped assumption reaching in through a percentile axis or a reshape.
+
+    Fifty is also where the memory goes: a Mumbai stack of fifty is 153 MB and
+    ``depth._member_levels`` copies it once. The fixture here is small on purpose - the cost is
+    measured in that module's docstring, not paid in the suite.
+    """
+    rng = np.random.default_rng(SEED)
+    index = _index(rng, 300, 40 * 40)
+    field = _field(rng, (N_STEPS, 40, 40), np.float64)
+    members = _members(rng, S.sample_segments(field, index), 50, N_STEPS)
+
+    shipped, shipped_cm = _row_loop_forecast(
+        field, _times(), index, "TEST-RUN", member_depth_cm=members
+    )
+    wired, wired_cm = D.segment_forecast(
+        field, _times(), index, "TEST-RUN", member_depth_cm=members
+    )
+    pd.testing.assert_frame_equal(wired, shipped, check_exact=True)
+    assert np.array_equal(wired_cm, shipped_cm)
+
+    statistics = S.ensemble_statistics(S.sample_segments(field, index), members)
+    assert statistics.n_members == 50
+    # Fifty members resolve a probability to 0.02, where twenty resolve it to 0.05. If the
+    # exceedance were still being taken over twenty of them, no value would land off the coarser
+    # grid - so this is the assertion that the extra thirty members reached the probability.
+    fine = statistics.prob[30.0]
+    off_the_twentieths = np.abs(fine * 20.0 - np.round(fine * 20.0)) > 1e-9
+    assert off_the_twentieths.any(), "no probability needed fifty members to express"
+
+
 def test_safe_until_strings_are_the_loops_strings() -> None:
     rng = np.random.default_rng(SEED)
     index = _index(rng, 300, 40 * 40)
@@ -250,7 +287,7 @@ def test_fewer_times_than_steps_is_refused() -> None:
 def test_the_baked_0840_product_is_rebuilt_exactly() -> None:
     """The 08:40 run's own quantiles and probabilities, laid out again, give back its parquet.
 
-    This is the shipped 20-member product rather than a fixture: its safe-until strings are
+    This is the shipped 50-member product rather than a fixture: its safe-until strings are
     re-derived from its ``p_gt`` columns (every profile threshold is one of them) and the frame is
     compared after a parquet round trip, because the file is the product of record."""
     path = runs_dir() / BAKED_0840 / "segment_forecast.parquet"
