@@ -19,3 +19,16 @@ docs/screens/
 docs/*.pdf
 *.tif
 *.zarr
+
+# Local caches and build output that the Vercel build regenerates or never reads. `.next-perf`
+# is the performance pass's production build (P10.4) and `test-results` Playwright's artefacts;
+# together with `.venv` they took an upload past Vercel's 15,000-file limit on 2026-09-26.
+.venv/
+.claude/
+.wf/
+apps/command/.next/
+apps/command/.next-perf/
+apps/command/test-results/
+test-results/
+playwright-report/
+demo/
