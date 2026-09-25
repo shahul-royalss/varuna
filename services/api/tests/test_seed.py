@@ -138,3 +138,37 @@ def test_a_run_the_deployment_baked_itself_is_never_pruned(dirs: tuple[Path, Pat
     seed.seed_demo_runs()
 
     assert (own / "run.json").is_file()
+
+
+def test_a_run_baked_here_survives_a_shipped_copy_with_different_alerts(
+    dirs: tuple[Path, Path],
+) -> None:
+    """The defect that erased two re-bakes of the demo cycles (2026-09-24 and 2026-09-26).
+
+    A shipped run's alert documents are named by the alerts its cycle raised. A fresh bake of the
+    same cycle raises different ones, so it "lacked" a file the shipped copy had and was deleted
+    as an old seed. A run carrying the product of record is this machine's work, whatever else.
+    """
+    source, target = dirs
+    _demo_run(source, "RUN-A", {"alerts.json": "[]"})
+    (source / "RUN-A" / "alerts").mkdir()
+    (source / "RUN-A" / "alerts" / "VARUNA-OLD.cap.xml").write_text("<alert/>", encoding="utf-8")
+
+    baked = _demo_run(target, "RUN-A", {"alerts.json": "[1]", seed.LOCAL_PRODUCT: "parquet"})
+    (baked / "alerts").mkdir()
+    (baked / "alerts" / "VARUNA-NEW.cap.xml").write_text("<alert/>", encoding="utf-8")
+
+    assert seed.seed_demo_runs() == 0
+    assert (baked / "alerts" / "VARUNA-NEW.cap.xml").is_file()
+    assert (baked / "alerts.json").read_text(encoding="utf-8") == "[1]"
+    assert not (baked / seed.MARKER).exists()
+
+
+def test_a_local_bake_is_never_taken_back(dirs: tuple[Path, Path]) -> None:
+    """Even one the shipped set no longer names, and even if a marker was left in it."""
+    source, target = dirs
+    _demo_run(source, "RUN-A")
+    local = _demo_run(target, "RUN-OLD", {seed.LOCAL_PRODUCT: "parquet", seed.MARKER: "stale"})
+
+    seed.seed_demo_runs()
+    assert (local / seed.LOCAL_PRODUCT).is_file()

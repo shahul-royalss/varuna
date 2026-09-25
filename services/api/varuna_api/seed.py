@@ -23,6 +23,15 @@ already current. A run whose marker differs, or is missing from the volume entir
 replaced. The fingerprint is content-derived, so adding a file to the demo set is enough to make
 the next boot pick it up; nothing has to be remembered to bump.
 
+**A run baked here is never touched, and that is decided by what it carries.** A bake writes
+``segment_forecast.parquet``, the product of record the shipped set deliberately omits, so a run
+holding one was computed on this machine whatever else it lacks. That test used to be "carries
+every file the shipped copy does", and it failed silently: a shipped run's ``alerts/`` folder is
+named by the alerts *its* cycle raised, a fresh bake of the same cycle raises different ones, and
+the fresh run was judged an old seeded copy, deleted, and replaced with the shipped one. On
+2026-09-24 and again on 2026-09-26 that erased a complete re-bake of all seven demo cycles within
+seconds of a test suite starting the API. ``LOCAL_PRODUCT`` is the rule now.
+
 This is a copy, not a fallback path in the reader: once seeded the runs are ordinary runs on the
 volume, a freshly baked cycle sits beside them, and nothing downstream has to know where they
 came from.
@@ -39,10 +48,14 @@ from varuna_schemas.paths import repo_root, runs_dir
 
 log = structlog.get_logger("varuna.api.seed")
 
-__all__ = ["MARKER", "demo_runs_dir", "run_fingerprint", "seed_demo_runs"]
+__all__ = ["LOCAL_PRODUCT", "MARKER", "demo_runs_dir", "run_fingerprint", "seed_demo_runs"]
 
 MARKER = ".seeded"
 """File written inside a seeded run, holding the fingerprint of the copy it came from."""
+
+LOCAL_PRODUCT = "segment_forecast.parquet"
+"""What only a bake on this machine writes: the shipped set omits it (19 MB a cycle), so a run
+directory holding it is this deployment's own work and is never replaced or removed."""
 
 
 def demo_runs_dir() -> Path:
@@ -104,6 +117,11 @@ def seed_demo_runs() -> int:
         marker = destination / MARKER
 
         if destination.is_dir():
+            if (destination / LOCAL_PRODUCT).is_file() and not marker.is_file():
+                # Baked here. Left alone even when the shipped copy holds a file this one does
+                # not - alert documents are named per cycle and never match across two bakes.
+                skipped_local += 1
+                continue
             if marker.is_file():
                 if marker.read_text(encoding="utf-8").strip() == fingerprint:
                     current += 1
@@ -136,6 +154,8 @@ def seed_demo_runs() -> int:
     removed = 0
     for existing in sorted(target.iterdir()):
         if existing.name in shipped or not (existing / MARKER).is_file():
+            continue
+        if (existing / LOCAL_PRODUCT).is_file():
             continue
         shutil.rmtree(existing)
         removed += 1
