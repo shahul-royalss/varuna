@@ -110,8 +110,21 @@ test.describe("keyboard", () => {
 
   test("the time bar scrubs with the arrow keys", async ({ page }) => {
     await page.goto("/console", { waitUntil: "domcontentloaded", timeout: NAV });
-    const readout = page.getByText(/\d{2}:\d{2} \(\+\d+ min\)/).first();
+    // Scoped to the time bar. The hotspot rail prints each junction's time to peak in the same
+    // "08:20 (+40 min)" form and sits earlier in the DOM, so an unscoped `.first()` read a row that
+    // no scrub moves once the rail had loaded - and, being lazy, could read the time bar before
+    // the press and the rail after it.
+    const readout = page
+      .getByRole("toolbar", { name: "Replay time bar" })
+      .getByText(/\d{2}:\d{2} \(\+\d+ min\)/);
     await expect(readout).toBeVisible({ timeout: SETTLE });
+    // The run has loaded and been decoded once this scrub control exists (P6.3); pressing before
+    // that would compare two readouts the load itself can move.
+    await expect(page.getByRole("slider", { name: "Scrub the forecast", exact: true })).toBeEnabled(
+      {
+        timeout: SETTLE,
+      },
+    );
 
     const before = await readout.textContent();
     await page.keyboard.press("ArrowRight");

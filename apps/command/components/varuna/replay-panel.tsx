@@ -5,25 +5,18 @@ import { Pause, Play, SkipBack, SkipForward, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { CycleLog, type CycleLogRow } from "@/components/varuna/cycle-log";
+import { CycleLog } from "@/components/varuna/cycle-log";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Panel } from "@/components/varuna/panel";
 import { RadarPreview } from "@/components/varuna/radar-preview";
 import { useReplayBundles, useReplayControls } from "@/lib/api";
 import { bundleWindowLabel } from "@/lib/format";
-import {
-  REPLAY_SPEEDS,
-  isReplaySpeed,
-  useReplayStore,
-  type ReplayMode,
-} from "@/lib/stores/replay";
+import { useCycleLog } from "@/lib/hooks/use-cycle-log";
+import { REPLAY_SPEEDS, isReplaySpeed, useReplayStore, type ReplayMode } from "@/lib/stores/replay";
 import { addMinutesIso, formatIstDate, formatIstTime } from "@/lib/stores/time";
 import { useUiStore } from "@/lib/stores/ui";
 
 const SEEK_STEP_MIN = 5;
-
-/** Cycle rows arrive from the run registry in Phase 5; the empty console has none. */
-const NO_CYCLES: CycleLogRow[] = [];
 
 /**
  * Replay control (CLAUDE.md section 7.2): bundle card, clock, transport controls, baked/live mode,
@@ -44,6 +37,10 @@ export function ReplayPanel() {
   const controls = useReplayControls();
   const bundles = useReplayBundles();
   const bundle = bundles.data?.find((row) => row.id === bundleId);
+  // The log was a module-level empty array with the note "cycle rows arrive from the run registry
+  // in Phase 5". Phase 5 arrived and this did not, so the console's replay panel said "No cycles
+  // yet - press Play on the replay" over seventeen runs on disk (P10.2, 2026-09-24).
+  const cycles = useCycleLog({ bundleId });
 
   return (
     <Panel
@@ -62,20 +59,20 @@ export function ReplayPanel() {
       <div className="space-y-4">
         {/* Bundle card */}
         <section
-          className="rounded-[var(--radius-control)] border border-line bg-well p-3"
+          className="border-line bg-well rounded-[var(--radius-control)] border p-3"
           aria-label="Selected bundle"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="num type-small font-medium text-text">{bundleId}</span>
-            <span className="inline-flex h-6 items-center rounded-full border border-line bg-deep px-2.5 type-micro text-text-2">
+            <span className="num type-small text-text font-medium">{bundleId}</span>
+            <span className="border-line bg-deep type-micro text-text-2 inline-flex h-6 items-center rounded-full border px-2.5">
               {bundle?.label ?? "Reconstructed replay"}
             </span>
           </div>
-          <p className="mt-1 type-small text-text-2">
+          <p className="type-small text-text-2 mt-1">
             {bundleWindowLabel(bundle?.t0 ?? t0, bundle?.t1 ?? t1)}
           </p>
           {controls.apiReady ? null : (
-            <p className="mt-2 type-micro text-text-2">
+            <p className="type-micro text-text-2 mt-2">
               {controls.error
                 ? controls.error.message
                 : "The clock is local until the API answers. Start it with make dev."}
@@ -169,13 +166,13 @@ export function ReplayPanel() {
 
         {/* Cycle log */}
         <section aria-label="Cycle log" className="space-y-2">
-          <h3 className="type-small font-medium text-text">Cycle log</h3>
-          <CycleLog rows={NO_CYCLES} />
+          <h3 className="type-small text-text font-medium">Cycle log</h3>
+          <CycleLog rows={cycles} />
         </section>
 
         {/* Storm summary */}
         <section aria-label="Storm summary" className="space-y-2">
-          <h3 className="type-small font-medium text-text">Storm summary</h3>
+          <h3 className="type-small text-text font-medium">Storm summary</h3>
           {bundle ? (
             <>
               {/* The rail is 360 px wide, so the square cube is capped rather than left to fill it. */}

@@ -41,8 +41,18 @@ describe("googleFallbackNotice", () => {
     expect(googleFallbackNotice("timeout")).toContain("did not load in time");
     expect(googleFallbackNotice("error")).toContain("VARUNA's own map");
     expect(googleFallbackNotice("refused")).toBe(
-      "Google refused this key for this address; showing VARUNA's own map.",
+      "Google rejected this key - either the Maps JavaScript API is not enabled for it, or this " +
+        "address is not on its referrer list; showing VARUNA's own map.",
     );
+  });
+
+  it("does not name one cause for a refusal, because gm_authFailure names none", () => {
+    // Google calls `gm_authFailure` with no argument for both `RefererNotAllowedMapError` (the
+    // 2026-09-19 finding) and `InvalidKeyMapError` (measured on this tree 2026-09-24), so a
+    // sentence that picks one sends the reader to the wrong setting.
+    const notice = googleFallbackNotice("refused");
+    expect(notice).toMatch(/Maps JavaScript API/);
+    expect(notice).toMatch(/referrer list/);
   });
 
   it("never says only that something went wrong (CLAUDE.md 6.8)", () => {
