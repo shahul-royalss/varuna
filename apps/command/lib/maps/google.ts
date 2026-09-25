@@ -91,7 +91,19 @@ export function googleFallbackNotice(reason: GoogleFallbackReason): string {
     return "Google Maps did not load in time; showing VARUNA's own map.";
   }
   if (reason === "refused") {
-    return "Google refused this key for this address; showing VARUNA's own map.";
+    // **It does not say which refusal it was, because we are not told.** This branch is driven by
+    // `gm_authFailure`, and Google fires that callback with no argument for every auth failure -
+    // `RefererNotAllowedMapError` and `InvalidKeyMapError` alike. The sentence was written on
+    // 2026-09-19 against a referrer refusal (ADR-0059) and said "for this address", which on
+    // 2026-09-24 was measurably the wrong cause: with a 39-character key in
+    // `apps/command/.env.local`, the console error on `/dashboard` reads `InvalidKeyMapError`,
+    // meaning the Maps JavaScript API is not enabled for that key's project or the key is
+    // restricted away from it - nothing to do with the address. Naming a cause we cannot observe
+    // sends the reader to the wrong page of the Cloud console, so this names both.
+    return (
+      "Google rejected this key - either the Maps JavaScript API is not enabled for it, or this " +
+      "address is not on its referrer list; showing VARUNA's own map."
+    );
   }
   return "Google Maps did not load; showing VARUNA's own map.";
 }

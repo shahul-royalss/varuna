@@ -1,12 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/varuna/app-shell";
 import { BundleCard, type BundleKind, type BundleSummary } from "@/components/varuna/bundle-card";
 import { CycleBudgetBar } from "@/components/varuna/cycle-budget-bar";
-import { CycleLog, type CycleLogRow } from "@/components/varuna/cycle-log";
+import { CycleLog } from "@/components/varuna/cycle-log";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { PageHeader } from "@/components/varuna/page-header";
 import { Panel } from "@/components/varuna/panel";
@@ -20,16 +20,11 @@ import {
   type StormCell,
 } from "@/components/varuna/storm-designer";
 import { useReplayBundles, useReplayControls, type ReplayBundle } from "@/lib/api";
-import { apiUrl } from "@/lib/api/client";
 import { useRadarPreview } from "@/lib/api/replay";
 import { bundleWindowLabel } from "@/lib/format";
+import { useCycleLog } from "@/lib/hooks/use-cycle-log";
 import { useReplayStore } from "@/lib/stores/replay";
 import { useUiStore } from "@/lib/stores/ui";
-
-/** Cycle rows arrive from the run registry once a bundle is baked. */
-/** Stages a baked cycle ran. The run summary carries the total, not the per-stage split, so this
- * names what ran rather than claiming a timing the endpoint did not return. */
-const BAKED_STAGES = "decode, sky, twin, pulse, products";
 
 /** A finite number, or undefined: the radar index is read as loose JSON, so nothing is assumed. */
 function finite(value: unknown): number | undefined {
@@ -144,36 +139,10 @@ export function ReplayScreen() {
   const controls = useReplayControls();
 
   const cards = useMemo(() => (bundles.data ?? []).map(toCard), [bundles.data]);
-  // **The cycle log reads the run registry.** It was hard-wired to an empty array, so the panel
-  // said "No cycles yet - press Play" over a bundle with seven baked cycles sitting on disk. Every
-  // row here is a run that exists, with its own mass-balance error and wall-clock.
-  const [cycles, setCycles] = useState<CycleLogRow[]>([]);
-  useEffect(() => {
-    const controller = new AbortController();
-    // `city=all`, because the log follows the *bundle* rather than the configured city - the
-    // Chennai design storm is selectable here too.
-    fetch(apiUrl("/v1/runs?city=all&limit=200"), { signal: controller.signal })
-      .then((r) => (r.ok ? r.json() : { runs: [] }))
-      .then((body: { runs?: Record<string, unknown>[] }) =>
-        setCycles(
-          (body.runs ?? [])
-            .filter((run) => !bundleId || run.bundle === bundleId)
-            .map((run) => ({
-              time: String(run.cycle_ts ?? ""),
-              stages: BAKED_STAGES,
-              ms: Number(run.total_ms ?? 0),
-              massBalance:
-                run.mass_balance_err === null || run.mass_balance_err === undefined
-                  ? null
-                  : Number(run.mass_balance_err),
-            }))
-            // Oldest first: the log reads as the morning, top to bottom.
-            .sort((a, b) => a.time.localeCompare(b.time)),
-        ),
-      )
-      .catch(() => setCycles([]));
-    return () => controller.abort();
-  }, [bundleId]);
+  // **The cycle log reads the run registry** (P6.11), and the same hook now feeds the console's
+  // replay panel, which was still passing an empty array (P10.2). Every row is a run that exists,
+  // with its own mass-balance error and wall-clock.
+  const cycles = useCycleLog({ bundleId });
 
   const selected = cards.find((card) => card.id === bundleId);
   // The designer needs the manifest row itself, not the card: the radar preview decides whether to
