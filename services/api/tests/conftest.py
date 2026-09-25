@@ -15,6 +15,15 @@ from varuna_schemas.samples import sample
 from varuna_schemas.settings import Settings
 
 
+@pytest.fixture(autouse=True)
+def _no_seeding_into_the_real_volume(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Starting the app seeds `demo/runs` into `VARUNA_DATA_DIR`, which is the developer's own
+    `data/runs` unless a test has already moved it - and fixtures run in signature order, so a
+    `client` requested before a `tmp_path` data dir starts the app first. Tests do not seed; the
+    seeder has its own tests (`test_seed.py`), which call it directly."""
+    monkeypatch.setenv("VARUNA_SEED_DEMO_RUNS", "0")
+
+
 @pytest.fixture
 def settings() -> Settings:
     return Settings(

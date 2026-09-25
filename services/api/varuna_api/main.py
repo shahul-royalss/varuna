@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -178,7 +179,10 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         state.bus.bind()
-        seeded = seed_demo_runs()
+        # A deployment seeds its volume from `demo/runs` on boot. A test suite must not: it
+        # would seed whatever `VARUNA_DATA_DIR` points at, which is the developer's own
+        # `data/runs` unless the test moved it first (`services/api/tests/conftest.py`).
+        seeded = seed_demo_runs() if os.environ.get("VARUNA_SEED_DEMO_RUNS", "1") != "0" else 0
         structlog.get_logger("varuna.api").info(
             "api.started",
             version=state.version,
@@ -214,8 +218,11 @@ def create_app(
         expose_headers=["X-Run-Id", "X-Response-Ms", "X-Layer", "ETag"],
     )
     # The static city layers are megabytes of GeoJSON (50k inferred drain edges); they
-    # compress about five to one, and the console loads them once per city.
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # compress about five to one, and the console loads them once per city. Level 6, not
+    # Starlette's default 9: on the 3.51 MB segments body level 9 took 103.6 ms for 0.36 MB and
+    # level 6 took 46.3 ms for 0.38 MB (median of five, P10.4) - 57 ms of a 200 ms budget
+    # bought back for 5 % more bytes on a link that is local on stage.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
 
     request_log = structlog.get_logger("varuna.api.request")
 
