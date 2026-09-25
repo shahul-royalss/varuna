@@ -1144,158 +1144,6 @@
         "title": "OnboardRequest",
         "type": "object"
       },
-      "PhysicsCheckHotspot": {
-        "additionalProperties": false,
-        "description": "Emulator versus Twin peak depth at one hotspot.",
-        "properties": {
-          "diff_cm": {
-            "readOnly": true,
-            "title": "Diff Cm",
-            "type": "number"
-          },
-          "emulator_cm": {
-            "minimum": 0.0,
-            "title": "Emulator Cm",
-            "type": "number"
-          },
-          "hotspot_id": {
-            "minLength": 1,
-            "title": "Hotspot Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "twin_cm": {
-            "minimum": 0.0,
-            "title": "Twin Cm",
-            "type": "number"
-          }
-        },
-        "required": [
-          "hotspot_id",
-          "name",
-          "emulator_cm",
-          "twin_cm",
-          "diff_cm"
-        ],
-        "title": "PhysicsCheckHotspot",
-        "type": "object"
-      },
-      "PhysicsCheckRequest": {
-        "additionalProperties": false,
-        "description": "Body of ``POST /v1/whatif/physics-check``: either a previous what-if or a fresh scenario.",
-        "properties": {
-          "request": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/WhatIfRequest"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "whatif_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Whatif Id"
-          }
-        },
-        "title": "PhysicsCheckRequest",
-        "type": "object"
-      },
-      "PhysicsCheckResponse": {
-        "additionalProperties": false,
-        "description": "Agreement report shown as a small bar; disagreement is displayed, never hidden.",
-        "properties": {
-          "agrees": {
-            "readOnly": true,
-            "title": "Agrees",
-            "type": "boolean"
-          },
-          "hotspots": {
-            "items": {
-              "$ref": "#/components/schemas/PhysicsCheckHotspot"
-            },
-            "title": "Hotspots",
-            "type": "array"
-          },
-          "mass_balance_err": {
-            "minimum": 0.0,
-            "title": "Mass Balance Err",
-            "type": "number"
-          },
-          "max_diff_cm": {
-            "readOnly": true,
-            "title": "Max Diff Cm",
-            "type": "number"
-          },
-          "max_diff_hotspot": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "readOnly": true,
-            "title": "Max Diff Hotspot"
-          },
-          "run_id": {
-            "title": "Run Id",
-            "type": "string"
-          },
-          "summary": {
-            "description": "UI copy, e.g. 'Emulator vs physics: max difference 4 cm at Sion Circle'.",
-            "readOnly": true,
-            "title": "Summary",
-            "type": "string"
-          },
-          "tolerance_cm": {
-            "default": 5.0,
-            "exclusiveMinimum": 0.0,
-            "title": "Tolerance Cm",
-            "type": "number"
-          },
-          "twin_ms": {
-            "description": "Twin wall-clock (budget 10 s).",
-            "minimum": 0.0,
-            "title": "Twin Ms",
-            "type": "integer"
-          },
-          "valid_ts": {
-            "format": "date-time",
-            "title": "Valid Ts",
-            "type": "string"
-          },
-          "whatif_id": {
-            "title": "Whatif Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "run_id",
-          "whatif_id",
-          "valid_ts",
-          "twin_ms",
-          "mass_balance_err",
-          "max_diff_cm",
-          "max_diff_hotspot",
-          "agrees",
-          "summary"
-        ],
-        "title": "PhysicsCheckResponse",
-        "type": "object"
-      },
       "Point": {
         "additionalProperties": false,
         "properties": {
@@ -2839,6 +2687,21 @@
             "title": "Mass Balance Err",
             "type": "number"
           },
+          "mass_balance_ledger": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "number"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the Twin's residual sits, in m3: the surface's own, the drain's own, and the two exchange gaps between them, which sum to the residual on a coupled run. A run baked before the ledger existed carries none.",
+            "title": "Mass Balance Ledger"
+          },
           "mode": {
             "description": "baked = pre-computed by make bake; live = computed now.",
             "enum": [
@@ -3519,70 +3382,6 @@
           "ts"
         ],
         "title": "WeatherStep",
-        "type": "object"
-      },
-      "WhatIfRequest": {
-        "additionalProperties": false,
-        "description": "Body of ``POST /v1/whatif``.",
-        "properties": {
-          "clean_top_n": {
-            "anyOf": [
-              {
-                "minimum": 1.0,
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Alternative to cleaned_edges: clean the top N by beta.",
-            "title": "Clean Top N"
-          },
-          "cleaned_edges": {
-            "description": "Pipes set to beta = 0.05 (cleaned).",
-            "items": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "title": "Cleaned Edges",
-            "type": "array"
-          },
-          "pump_plan": {
-            "default": false,
-            "description": "Apply the current pump plan as extra outflow.",
-            "title": "Pump Plan",
-            "type": "boolean"
-          },
-          "rain_scale": {
-            "default": 1.0,
-            "description": "Rain multiplier 0.5-2.0.",
-            "maximum": 2.0,
-            "minimum": 0.5,
-            "title": "Rain Scale",
-            "type": "number"
-          },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Base run; None = latest published.",
-            "title": "Run Id"
-          },
-          "tide_offset_m": {
-            "default": 0.0,
-            "description": "Tide stage offset in metres, -0.5 to +1.0.",
-            "maximum": 1.0,
-            "minimum": -0.5,
-            "title": "Tide Offset M",
-            "type": "number"
-          }
-        },
-        "title": "WhatIfRequest",
         "type": "object"
       },
       "ZRRelation": {
@@ -4821,7 +4620,7 @@
     },
     "/v1/nowcast/hotspots": {
       "get": {
-        "description": "The run's ranked chronic spots, deepest first (CLAUDE.md 11.8, P5.4).\n\nRead straight off the run directory: ``hotspots.json`` was computed once when the cycle ran,\nand re-deriving it per request would let the rail and the map disagree about the same run.\n\nEvery entry carries the register's ``source_url``, so the claim \"this junction floods\" stays\ntraceable to the report it was verified against (rule 7). ``ranking`` says out loud which\nscore ordered the list, because on a deterministic run it is **not** the spec's\n``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash\nbrings a real ensemble in Phase 7.\n\n``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for, and the\nlist is empty on every run baked so far with the label carrying the reason (ADR-0042). The\nfield is present rather than absent so the drawer reads a refusal it can print instead of a\nmissing key it has to guess at.",
+        "description": "The run's ranked chronic spots, deepest first (CLAUDE.md 11.8, P5.4).\n\nRead straight off the run directory: ``hotspots.json`` was computed once when the cycle ran,\nand re-deriving it per request would let the rail and the map disagree about the same run.\n\nEvery entry carries the register's ``source_url``, so the claim \"this junction floods\" stays\ntraceable to the report it was verified against (rule 7). ``ranking`` says out loud which\nscore ordered the list, because on a deterministic run it is **not** the spec's\n``P x exposure_weight`` - that product is reported per hotspot and is 0 or 1 until Flash\nbrings a real ensemble in Phase 7.\n\n``attribution`` and ``attribution_label`` are in the contract section 10.3 asks for: the pipes\nranked on ``drain1d`` (ADR-0071), or an empty list with the measured reason it is empty. The\nfield is present rather than absent so the drawer reads a refusal it can print instead of a\nmissing key it has to guess at.",
         "operationId": "hotspots_v1_nowcast_hotspots_get",
         "parameters": [
           {
@@ -5343,10 +5142,10 @@
     },
     "/v1/nowcast/segments": {
       "get": {
-        "operationId": "nowcast_segments_v1_nowcast_segments_get",
+        "description": "Every segment that gets wet in this run, with its depth at each step.\n\nOnly segments reaching ``min_depth_cm`` at some point are returned, and the default is the\n5 cm the depth ramp calls dry (CLAUDE.md 6.2). Mumbai has 21,296 segments and a storm cycle\nwets several thousand of them, so this is the difference between a response the console can\nhold and a 20 MB one it cannot. The dry remainder is drawn from the city layer, in the dry\ncolour, and needs no per-step data at all.\n\n``bbox`` is section 12's \"segments in bbox\": a navigation app asking about the streets on its\nscreen gets those and not the whole AOI. It filters on each segment's midpoint - the same\npoint the alerts and the pump board put a pin on - so a street is either in or out, never\nsplit. The console omits it, because it preloads the whole run for a scrub that must make no\nrequests (P6.3).",
+        "operationId": "segments_v1_nowcast_segments_get",
         "parameters": [
           {
-            "description": "Run id; default = latest published run",
             "in": "query",
             "name": "run_id",
             "required": false,
@@ -5359,12 +5158,40 @@
                   "type": "null"
                 }
               ],
-              "description": "Run id; default = latest published run",
               "title": "Run Id"
             }
           },
           {
-            "description": "minlon,minlat,maxlon,maxlat (WGS84)",
+            "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted.",
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_depth_cm",
+            "required": false,
+            "schema": {
+              "default": 5.0,
+              "minimum": 0,
+              "title": "Min Depth Cm",
+              "type": "number"
+            }
+          },
+          {
+            "description": "minlon,minlat,maxlon,maxlat (WGS84): only segments whose midpoint is inside.",
             "in": "query",
             "name": "bbox",
             "required": false,
@@ -5377,60 +5204,8 @@
                   "type": "null"
                 }
               ],
-              "description": "minlon,minlat,maxlon,maxlat (WGS84)",
+              "description": "minlon,minlat,maxlon,maxlat (WGS84): only segments whose midpoint is inside.",
               "title": "Bbox"
-            }
-          },
-          {
-            "description": "Valid time (ISO 8601 +05:30); default = now",
-            "in": "query",
-            "name": "t",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Valid time (ISO 8601 +05:30); default = now",
-              "title": "T"
-            }
-          },
-          {
-            "description": "Vehicle profile for safe-until",
-            "in": "query",
-            "name": "profile",
-            "required": false,
-            "schema": {
-              "default": "car",
-              "description": "Vehicle profile for safe-until",
-              "enum": [
-                "ambulance",
-                "fire_tender",
-                "bus",
-                "car",
-                "two_wheeler",
-                "pedestrian"
-              ],
-              "title": "Profile",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "format",
-            "required": false,
-            "schema": {
-              "default": "geojson",
-              "enum": [
-                "geojson",
-                "parquet"
-              ],
-              "title": "Format",
-              "type": "string"
             }
           }
         ],
@@ -5439,7 +5214,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/FeatureCollection"
+                  "additionalProperties": true,
+                  "title": "Response Segments V1 Nowcast Segments Get",
+                  "type": "object"
                 }
               }
             },
@@ -5454,19 +5231,9 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Engine not built yet (phase named)"
           }
         },
-        "summary": "Segment quantiles, exceedance probabilities and safe-until",
+        "summary": "Per-segment depth series for the street layer",
         "tags": [
           "nowcast"
         ]
@@ -7655,12 +7422,15 @@
     },
     "/v1/whatif/physics-check": {
       "post": {
+        "description": "Run the coupled Twin twice on a window around the hotspots and print the disagreement.\n\nBody: the same ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}`` ``/v1/whatif``\ntakes, plus ``hotspot_ids?`` and ``pad_cells?``, so the console can post the scenario object\nit already has.\n\n**What is compared.** The what-if's answer at a hotspot is the Twin's own level plus the\nemulator's delta. The check's answer is the Twin's delta between two crop runs of the same\nscenario. So the number reported per hotspot is ``|emulator delta - Twin delta|``, and the\nheadline is section 7.7's sentence over the hotspots inside the window. Comparing *levels*\nwould be comparing a 990 m crop against the whole AOI, which the crop sweep in this module\nmeasured at 87 cm against 123 cm on the same storm - a disagreement about the window, not\nabout the emulator.\n\n**Two samplings of one junction.** The Twin's delta is read at the hotspot's own 30 m cell;\nthe emulator's is the mean over the road segments the hotspot register lists, each of which\nis the 90th percentile of the cells within 15 m of it (CLAUDE.md 11.8). They are two\ndifferent ways to say \"the depth at this junction\", and the response says so rather than\nletting the difference between them be read as emulator error.\n\nA tide offset is refused for the same reason ``/v1/whatif`` refuses it: the emulator has no\nrepresentation of a different sea level, so there would be no emulator answer to check.",
         "operationId": "physics_check_v1_whatif_physics_check_post",
         "requestBody": {
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/PhysicsCheckRequest"
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
               }
             }
           },
@@ -7671,7 +7441,9 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/PhysicsCheckResponse"
+                  "additionalProperties": true,
+                  "title": "Response Physics Check V1 Whatif Physics Check Post",
+                  "type": "object"
                 }
               }
             },
@@ -7686,19 +7458,9 @@
               }
             },
             "description": "Validation Error"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorEnvelope"
-                }
-              }
-            },
-            "description": "Engine not built yet (phase named)"
           }
         },
-        "summary": "Re-run the Twin on a what-if and report the disagreement",
+        "summary": "Re-run the Twin on a what-if scenario and report the disagreement",
         "tags": [
           "whatif"
         ]

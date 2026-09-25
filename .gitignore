@@ -1,6 +1,10 @@
 # Node
 node_modules/
 .next/
+# The production build the performance pass measures beside a running `next dev` (P10.4),
+# and the diagnostic scripts that prototyped its instruments.
+.next-perf/
+apps/command/.perf-*.mjs
 out/
 dist/
 .turbo/

@@ -21,7 +21,7 @@
  *
  * **3D is the one exception, and it is opt-in.** With `threeD` asked for and Google's Map Tiles
  * API answering, the ground becomes Google's photorealistic mesh and every VARUNA layer is draped
- * on it (`layers/photoreal.ts`), so the water sits on a photographed Mumbai. That ground is
+ * on it (`layers/photoreal.ts`, loaded only when 3D is asked for), so the water sits on a photographed Mumbai. That ground is
  * online-only by construction, which is exactly why it is a toggle and never the default: with
  * the venue's network off, or with Google declining the key, 3D simply does not turn on and the
  * flat map above stays exactly as it was. It replaced a Terrarium heightmap built from the city's
@@ -78,9 +78,10 @@ import { drains3dLayers, viewKey } from "./layers/drains-3d";
 import {
   PHOTOREAL_PITCH,
   hiddenLayers,
+  localWorkersVerified,
   onSurface,
-  photorealLayers,
-} from "./layers/photoreal";
+  verifyLocalWorkers,
+} from "./layers/surface";
 import { mapTooltip } from "./layers/tooltip";
 import { truthPinLayers } from "./layers/truth-pins";
 import { useMapOverlay } from "./layers/overlay-context";
@@ -104,6 +105,9 @@ import type {
 import type { MapLabel } from "./labels";
 import { MAP_ATTRIBUTION, satelliteLayers } from "./satellite";
 import type { CityMapMode } from "./types";
+
+/** The loader-heavy half of 3D, fetched on demand (`layers/surface.ts` is the light half). */
+type PhotorealModule = typeof import("./layers/photoreal");
 import { MapAttribution } from "@/components/varuna/map-attribution";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { createCreditStore, useMapCredits, usePhotorealTileset } from "@/lib/maps/photoreal";
@@ -268,11 +272,32 @@ export function CityMap({
 
   // Google's photorealistic ground, probed the first time 3D is asked for. `usePhotorealTileset`
   // returns `off` until then, so a screen nobody has switched to 3D never touches Google.
-  const photoreal = usePhotorealTileset(Boolean(overlay.threeD) && interactive);
+  const wantsThreeD = Boolean(overlay.threeD) && interactive;
+  const photoreal = usePhotorealTileset(wantsThreeD);
+  // The tileset builder, and the 3D Tiles parser and Draco decoder it imports, load only when 3D
+  // is asked for (P10.4): 530 KB of JavaScript every screen used to parse at boot for a mode
+  // that is off by default. Fetched alongside the Google probe, so it is normally in by the time
+  // the probe says `ready`; until both are, the flat map is what draws.
+  const [photorealModule, setPhotorealModule] = useState<PhotorealModule | null>(null);
+  useEffect(() => {
+    if (!wantsThreeD || photorealModule) return;
+    let live = true;
+    void import("./layers/photoreal").then((module) => {
+      if (live) setPhotorealModule(module);
+    });
+    return () => {
+      live = false;
+    };
+  }, [wantsThreeD, photorealModule]);
+  // Where tiles will be decoded is decided before any tileset exists, as it was when the builder
+  // was imported eagerly: the probe is one same-origin HEAD per worker, cached for the page.
+  useEffect(() => {
+    if (interactive && !localWorkersVerified()) void verifyLocalWorkers();
+  }, [interactive]);
   // 3D is drawn only once the ground exists; until then the flat map stays exactly as it was.
   // Anything but `ready` - no key, the Map Tiles API disabled, a refused referrer, no network -
   // leaves the flat map alone, and the screen prints the state's own sentence beside the toggle.
-  const threeD = photoreal.kind === "ready";
+  const threeD = photoreal.kind === "ready" && photorealModule !== null;
   // Read once, like the probe: Next inlines the key at build time and it cannot change in-page.
   const [googleKey] = useState(() => googleMapsKey());
   // The credits of the tiles currently on screen. A store rather than state: the tileset hands
@@ -327,6 +352,60 @@ export function CityMap({
     pitch3d: PHOTOREAL_PITCH,
   });
 
+  // ---- Keyboard -------------------------------------------------------------------------
+
+  /**
+   * deck.gl's events root, made honest about the tab order (CLAUDE.md 6.10, found by P10.2 on
+   * 2026-09-24).
+   *
+   * deck creates `div.deck-events-root` with `tabIndex="0"` and an inline `outline: none`, on
+   * every map, whatever `controller` is set to. Two things follow, and both were measured on this
+   * tree rather than reasoned about:
+   *
+   * 1. On the landing page the hero map is read-only decoration (`mode="hero"`, motion M1), and
+   *    that div was the **first tab stop on the whole page** - unnamed, invisible, and offering a
+   *    keyboard user nothing. A stop like that is worse than no stop: the page looks unresponsive
+   *    to the first Tab. With `controller={false}` there is no keyboard behaviour to preserve, so
+   *    it leaves the tab order.
+   * 2. Where the map *is* interactive the stop belongs, but deck's inline `outline: none` beats
+   *    the `:focus-visible` rule in `globals.css`, so it was reachable and invisible. Clearing the
+   *    inline value lets the 2 px `--tide` ring 6.10 asks for paint like everything else.
+   *
+   * It is done from the DOM because deck.gl exposes neither prop. The lookup is scoped to this
+   * map's own container, so a screen with two maps does not reach into the other's.
+   */
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const wanted = interactive ? 0 : -1;
+    /** Writes only when the value is wrong, so the observer below cannot loop on its own edit. */
+    const apply = () => {
+      const root = container.querySelector<HTMLElement>(".deck-events-root");
+      if (!root) return;
+      if (root.tabIndex !== wanted) root.tabIndex = wanted;
+      if (interactive && root.style.outline === "none") {
+        // Cleared rather than removed: an empty inline value still beats deck's own when deck
+        // re-applies it, and it lets the stylesheet's `:focus-visible` outline through.
+        root.style.outline = "";
+      }
+    };
+
+    apply();
+    // deck writes `tabIndex` and `outline` onto the events root whenever its event manager
+    // attaches, which is after this effect on the first render and again whenever the renderer is
+    // re-initialised - a lost WebGL context, which this map recovers from. Measured on 2026-09-24:
+    // a one-shot effect was silently overwritten and `/`'s first tab stop stayed the unnamed div.
+    const observer = new MutationObserver(apply);
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["tabindex", "style"],
+    });
+    return () => observer.disconnect();
+  }, [containerRef, interactive]);
+
   // ---- Layers ---------------------------------------------------------------------------
   // Memoised in groups by what changes them, so moving the time bar rebuilds only the run's
   // layers and never 39,259 building polygons, the drain graph or the routes.
@@ -353,14 +432,16 @@ export function CityMap({
   const surfaceOpacity = overlay.xray ? XRAY_SURFACE_OPACITY : 1;
   const groundLayers = useMemo(
     () =>
-      photorealLayers({
-        key: googleKey,
-        state: photoreal,
-        opacity: surfaceOpacity,
-        fadeMs: reducedMotion ? 0 : DUR_MS.crossFade,
-        onCredits: creditStore.setCredits,
-      }),
-    [googleKey, photoreal, surfaceOpacity, reducedMotion, creditStore],
+      photorealModule
+        ? photorealModule.photorealLayers({
+            key: googleKey,
+            state: photoreal,
+            opacity: surfaceOpacity,
+            fadeMs: reducedMotion ? 0 : DUR_MS.crossFade,
+            onCredits: creditStore.setCredits,
+          })
+        : [],
+    [photorealModule, googleKey, photoreal, surfaceOpacity, reducedMotion, creditStore],
   );
 
   // Each layer's M19 opacity, read out here so the memos below depend on a number rather than on
@@ -637,7 +718,7 @@ export function CityMap({
           mounts `MapSlot` behind this map and that draws the same line; `attribution={false}`
           there keeps it from appearing twice. */}
       {attribution ? (
-        <p className="pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 py-2 type-micro text-text-3">
+        <p className="type-micro text-text-3 pointer-events-none absolute inset-x-0 bottom-0 z-10 px-4 py-2">
           {MAP_ATTRIBUTION}
         </p>
       ) : null}
