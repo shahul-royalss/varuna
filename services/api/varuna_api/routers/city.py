@@ -245,6 +245,9 @@ def _city_row(city: str) -> dict[str, Any]:
         built = layer_path(city, "segments").is_file()
     except ValueError:
         built = False
+    # Not `resolve_city`: a config with no run-id code is still a row the switcher lists, not a
+    # 404. `latest_run_for` gives such a city no run rather than every city's newest (task D-09),
+    # so the row reads "nothing baked" instead of borrowing Chennai's or Mumbai's water.
     latest = latest_run_for(city, lambda p: (p / "depth" / "bounds.json").is_file())
     return {
         "id": city,

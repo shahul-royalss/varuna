@@ -23,18 +23,32 @@ from typing import Annotated, Any, Literal
 import structlog
 from fastapi import APIRouter, Query, Response
 from varuna_schemas.paths import run_dir
+from varuna_schemas.settings import get_settings
 
-from varuna_api.runs_util import latest_run_for
+from varuna_api.runs_util import (
+    bake_hint,
+    city_of_run,
+    latest_run_for,
+    no_run_hint,
+    resolve_city,
+)
 from varuna_api.state import api_error
 
 log = structlog.get_logger("varuna.api.depth")
 
 router = APIRouter(prefix="/v1", tags=["nowcast"])
 
-BAKE_HINT = (
-    "No baked run carries depth products yet. Run `make bake BUNDLE=MUM-2019-07-02`, "
-    "or press Compute live on the replay panel."
-)
+
+def _bake_hint_for(run_id: str, city: str | None = None) -> str:
+    """The command that bakes ``run_id``'s own city again, for a run missing a product.
+
+    This used to be one constant naming ``MUM-2019-07-02`` whatever run or city was asked about,
+    so a Chennai run with no hotspot ranking told its reader to bake Mumbai. The run id says
+    which city it is; ``city`` and then the configured city stand in only for an id that does not
+    parse.
+    """
+    return bake_hint(city_of_run(run_id) or city or get_settings().varuna_city)
+
 
 CityQuery = Annotated[
     str | None,
@@ -48,7 +62,9 @@ Runs from every city share ``data/runs/`` and their ids sort chronologically, so
 after ``MUM-`` for the same instant: without this, a Chennai console asking for "the newest run"
 and a Mumbai console asking for "the newest run" got the same answer, and one of them was wrong
 (:func:`varuna_api.runs_util.latest_run_for`). Omitted, the settings' city stands, which is what
-every Mumbai screen relies on today.
+every Mumbai screen relies on today. A city the run-id scheme has no code for is refused with 404
+``unknown_city`` (:func:`varuna_api.runs_util.resolve_city`), because there is no prefix to filter
+its runs by and the only thing left to serve it would be another city's.
 """
 
 
@@ -86,21 +102,25 @@ def _resolve(run_id: str | None, city: str | None = None) -> Path:
 
     ``city`` only decides which run is newest; a ``run_id`` names its own city and is served as
     asked, because a run directory already knows which city it belongs to and a second opinion
-    from the query string could only disagree with it.
+    from the query string could only disagree with it. A ``city`` VARUNA has no code for is still
+    refused beside a ``run_id``: it is a request for a city that does not exist, and answering it
+    would say otherwise.
     """
     if run_id:
+        asked = resolve_city(city) if city else None
         path = run_dir(run_id)
         if not (path / "depth" / "bounds.json").is_file():
             raise api_error(
                 404,
                 "run_not_found",
-                f"Run {run_id} has no depth products. {BAKE_HINT}",
+                f"Run {run_id} has no depth products. {_bake_hint_for(run_id, asked)}",
                 run_id=run_id,
             )
         return path
-    latest = _latest_run_with_depth(city)
+    name = resolve_city(city)
+    latest = _latest_run_with_depth(name)
     if latest is None:
-        raise api_error(404, "no_baked_runs", BAKE_HINT)
+        raise api_error(404, "no_baked_runs", no_run_hint(name, "depth products"))
     return latest
 
 
@@ -262,7 +282,9 @@ def segments(
         product = json.loads(compact.read_text(encoding="utf-8"))
         meta = _meta(path)
         if box is not None:
-            product = _within_bbox(product, box, str(meta.get("city") or city or "mumbai"))
+            product = _within_bbox(
+                product, box, str(meta.get("city") or city_of_run(path.name) or resolve_city(city))
+            )
         log.info(
             "api.segments",
             run_id=path.name,
@@ -280,7 +302,12 @@ def segments(
 
     parquet = path / "segment_forecast.parquet"
     if not parquet.is_file():
-        raise api_error(404, "no_segment_forecast", BAKE_HINT, run_id=path.name)
+        raise api_error(
+            404,
+            "no_segment_forecast",
+            f"Run {path.name} has no segment forecast. {_bake_hint_for(path.name)}",
+            run_id=path.name,
+        )
 
     import pandas as pd
 
@@ -288,7 +315,9 @@ def segments(
     meta = _meta(path)
     wet_ids = frame.loc[frame["depth_p50_cm"] >= min_depth_cm, "segment_id"].unique()
     if box is not None:
-        inside = _ids_within(box, str(meta.get("city") or city or "mumbai"))
+        inside = _ids_within(
+            box, str(meta.get("city") or city_of_run(path.name) or resolve_city(city))
+        )
         wet_ids = [sid for sid in wet_ids if str(sid) in inside]
     wet = frame[frame["segment_id"].isin(wet_ids)].sort_values(["segment_id", "valid_ts"])
 
@@ -358,7 +387,7 @@ def hotspots(
         raise api_error(
             404,
             "no_hotspots",
-            f"Run {path.name} predates hotspot ranking. {BAKE_HINT}",
+            f"Run {path.name} predates hotspot ranking. {_bake_hint_for(path.name)}",
             run_id=path.name,
         )
 
@@ -394,7 +423,7 @@ def surcharge(
         raise api_error(
             404,
             "no_surcharge_product",
-            f"Run {path.name} predates the surcharge product. {BAKE_HINT}",
+            f"Run {path.name} predates the surcharge product. {_bake_hint_for(path.name)}",
             run_id=path.name,
         )
     product = json.loads(record.read_text(encoding="utf-8"))
@@ -434,7 +463,10 @@ def alerts(
     record = path / "alerts.json"
     if not record.is_file():
         raise api_error(
-            404, "no_alerts", f"Run {path.name} has no alert product. {BAKE_HINT}", run_id=path.name
+            404,
+            "no_alerts",
+            f"Run {path.name} has no alert product. {_bake_hint_for(path.name)}",
+            run_id=path.name,
         )
 
     body = json.loads(record.read_text(encoding="utf-8"))
@@ -513,7 +545,10 @@ def pumps(run_id: Annotated[str | None, Query()] = None, city: CityQuery = None)
     record = path / "pump_plan.json"
     if not record.is_file():
         raise api_error(
-            404, "no_pump_plan", f"Run {path.name} has no pump plan. {BAKE_HINT}", run_id=path.name
+            404,
+            "no_pump_plan",
+            f"Run {path.name} has no pump plan. {_bake_hint_for(path.name)}",
+            run_id=path.name,
         )
     plan = json.loads(record.read_text(encoding="utf-8"))
     meta = _meta(path)
@@ -541,7 +576,7 @@ def drains_health(
         raise api_error(
             404,
             "no_drain_health",
-            f"Run {path.name} has no drain-health product. {BAKE_HINT}",
+            f"Run {path.name} has no drain-health product. {_bake_hint_for(path.name)}",
             run_id=path.name,
         )
 
@@ -572,7 +607,7 @@ def drains_health_csv(
         raise api_error(
             404,
             "no_desilting_csv",
-            f"Run {path.name} has no desilting list. {BAKE_HINT}",
+            f"Run {path.name} has no desilting list. {_bake_hint_for(path.name)}",
             run_id=path.name,
         )
     return Response(
@@ -598,7 +633,7 @@ def observations(
         raise api_error(
             404,
             "no_observations",
-            f"Run {path.name} assimilated nothing. {BAKE_HINT}",
+            f"Run {path.name} assimilated nothing. {_bake_hint_for(path.name)}",
             run_id=path.name,
         )
     body = json.loads(record.read_text(encoding="utf-8"))

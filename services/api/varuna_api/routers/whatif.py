@@ -30,7 +30,7 @@ from varuna_pulse.join import SegmentBetaError, segment_beta
 from varuna_schemas.constants import PHYSICS_CHECK_TOLERANCE_CM as PHYSICS_TOLERANCE_CM
 from varuna_schemas.paths import repo_root, run_dir
 
-from varuna_api.runs_util import latest_run_for
+from varuna_api.runs_util import latest_run_for, no_run_hint, resolve_city
 from varuna_api.state import api_error
 
 # **Imported at module scope, unlike `varuna_flash` below, because it costs 0.8 s.** That is the
@@ -131,11 +131,14 @@ def _latest_run(city: str | None = None) -> Path:
     """The newest run for a city that carries a segment forecast.
 
     City-filtered: see `varuna_api.runs_util`, where a second city's runs shadowing the first is
-    written up.
+    written up. The city goes through `resolve_city` like every other route's, so one VARUNA has
+    no run code for is refused rather than handed another city's run, and the no-run message
+    names the command that bakes that city's own bundle.
     """
-    found = latest_run_for(city, lambda p: (p / "segments_wet.json").is_file())
+    name = resolve_city(city)
+    found = latest_run_for(name, lambda p: (p / "segments_wet.json").is_file())
     if found is None:
-        raise api_error(404, "no_runs", "No baked run carries a segment forecast yet.")
+        raise api_error(404, "no_runs", no_run_hint(name, "a segment forecast"))
     return found
 
 
