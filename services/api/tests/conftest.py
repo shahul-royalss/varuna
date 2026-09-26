@@ -24,6 +24,16 @@ def _no_seeding_into_the_real_volume(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("VARUNA_SEED_DEMO_RUNS", "0")
 
 
+@pytest.fixture(autouse=True)
+def _no_real_dot_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The desk's write gate builds a fresh `Settings()` on every write, which reads the
+    repository's real `.env`; the `settings` fixture's `_env_file=None` isolates only the app's
+    own state. Without this, a passphrase set in the demo laptop's `.env` - where `.env.example`
+    tells it to go - would turn the gate's 503 tests into 403s. A test that wants a `.env` points
+    `env_file` at its own temporary file after this runs (`test_ops_passphrase_settings.py`)."""
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+
+
 @pytest.fixture
 def settings() -> Settings:
     return Settings(

@@ -12,7 +12,8 @@ trustworthy. ``services/api/tests/test_ops.py`` takes the sha256 of every file i
 before and after a closure, a pump status change and a dispatch, and proves not one byte moved.
 
 **The gate.** ``VARUNA_OPS_PASSPHRASE`` unset means writes are refused, and the refusal names the
-variable - on the deployed API it stays unset, so the desk is read-only there and
+variable. It is read from the environment or from ``.env`` through Settings, and an exported
+value wins. On the deployed API it stays unset, so the desk is read-only there and
 ``GET /v1/ops/log`` says so in ``writes_enabled``. When it is set, a write must carry it in
 ``X-Varuna-Ops``; the browser prompts for it locally and never stores it. Thirty writes a minute
 per process, which is far above a human at a desk and far below anything that could fill a disk.
@@ -39,7 +40,7 @@ from pydantic import Field
 from varuna_schemas.constants import IST, STEP_MIN
 from varuna_schemas.models import VarunaModel
 from varuna_schemas.paths import city_dir, run_dir
-from varuna_schemas.settings import get_settings
+from varuna_schemas.settings import Settings, get_settings
 
 from varuna_api.routers.stubs import AlertActionRequest, PumpDispatchRequest, PumpOptimiseRequest
 from varuna_api.runs_util import (
@@ -82,9 +83,29 @@ def reset_rate_limit() -> None:
     _writes.clear()
 
 
+def _configured_passphrase() -> str:
+    """The passphrase a write is checked against, or ``""`` when none is configured.
+
+    Merged the way :func:`varuna_products.notify.configured_sender` merges its keys: an exported
+    ``VARUNA_OPS_PASSPHRASE`` wins, and otherwise the value :class:`Settings` reads, which is
+    where one written into ``.env`` lands. Settings reads that file and never exports it, so a
+    gate that looked only at ``os.environ`` ignored a passphrase put exactly where CLAUDE.md 4.4
+    says configuration goes. Settings is read fresh here rather than through the cached
+    :func:`get_settings`, because that copy holds the environment of its first read: a
+    passphrase removed since, from ``.env`` or from the environment, would still open the gate.
+    A fresh read measured 5.1-6.0 ms with a ``.env`` present and 0.8-1.1 ms without one
+    (2026-09-26, i5-1155G7), and writes are capped at thirty a minute. The value is never logged
+    and never returned.
+    """
+    exported = os.environ.get(PASSPHRASE_ENV, "")
+    if exported:
+        return exported.strip()
+    return (Settings().varuna_ops_passphrase or "").strip()
+
+
 def writes_enabled() -> bool:
-    """Whether this process holds a passphrase at all."""
-    return bool(os.environ.get(PASSPHRASE_ENV, "").strip())
+    """Whether this process holds a passphrase at all, from its environment or its ``.env``."""
+    return bool(_configured_passphrase())
 
 
 def _refuse_disabled() -> None:
@@ -121,7 +142,7 @@ def require_ops(
     consumed the budget would let anyone lock the real desk out of its own API; only writes that
     got past the passphrase are counted.
     """
-    expected = os.environ.get(PASSPHRASE_ENV, "").strip()
+    expected = _configured_passphrase()
     if not expected:
         _refuse_disabled()
     if not x_varuna_ops:
