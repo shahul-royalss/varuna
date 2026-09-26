@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, CircleDashed, Loader, TriangleAlert } from "lucide-react";
+import { Check, CircleDashed, History, Loader, TriangleAlert } from "lucide-react";
 
 import { Progress } from "@/components/ui/progress";
 import { formatSeconds } from "@/lib/format";
@@ -26,12 +26,19 @@ export const ONBOARDING_STEP_LABELS: Record<OnboardingStepId, string> = {
   forecast: "First forecast",
 };
 
-export type OnboardingStepStatus = "waiting" | "running" | "done" | "failed";
+/**
+ * `cached` is a step this session did not run: the city was already on disk when the screen
+ * opened, as it is on the packed demo laptop. It is not `done` - nothing was built in front of the
+ * operator, so there is no elapsed time to report - and it is not `waiting`, which is what a built
+ * Chennai used to read as on all six rows while the map beside them drew its forecast.
+ */
+export type OnboardingStepStatus = "waiting" | "running" | "done" | "cached" | "failed";
 
 export const STEP_STATUS_LABELS: Record<OnboardingStepStatus, string> = {
   waiting: "Waiting",
   running: "Running",
   done: "Done",
+  cached: "Already built",
   failed: "Failed",
 };
 
@@ -63,8 +70,18 @@ const STATUS_ICONS = {
   waiting: CircleDashed,
   running: Loader,
   done: Check,
+  cached: History,
   failed: TriangleAlert,
-} as const;
+} as const satisfies Record<OnboardingStepStatus, unknown>;
+
+/** The icon badge's border and colour per status, one class string each rather than overrides. */
+const STATUS_TONES: Record<OnboardingStepStatus, string> = {
+  waiting: "border-line text-text-3",
+  running: "border-line text-text-3",
+  done: "border-tide text-tide",
+  cached: "border-line-strong text-text-2",
+  failed: "border-status-degraded text-status-degraded",
+};
 
 /**
  * The wizard's step list: label, status, a progress bar and elapsed time per step. Driven by
@@ -81,7 +98,7 @@ export function OnboardingSteps({ steps, className }: OnboardingStepsProps) {
           <li
             key={step.id}
             className={cn(
-              "rounded-control border border-line p-3",
+              "rounded-control border-line border p-3",
               step.status === "running" ? "bg-well" : "bg-deep",
             )}
             aria-current={step.status === "running" ? "step" : undefined}
@@ -90,30 +107,29 @@ export function OnboardingSteps({ steps, className }: OnboardingStepsProps) {
               <span
                 aria-hidden="true"
                 className={cn(
-                  "flex size-6 shrink-0 items-center justify-center rounded-chip border",
-                  step.status === "done" ? "border-tide text-tide" : "border-line text-text-3",
-                  step.status === "failed" && "border-status-degraded text-status-degraded",
+                  "rounded-chip flex size-6 shrink-0 items-center justify-center border",
+                  STATUS_TONES[step.status],
                 )}
               >
                 <Icon size={14} strokeWidth={1.75} />
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline justify-between gap-3">
-                  <p className="type-small font-medium text-text">
+                  <p className="type-small text-text font-medium">
                     <span className="num text-text-3">{index + 1}.</span> {label}
                   </p>
+                  {/* A cached step carries no time: this session did not run it, and
+                      "Already built · 0 s" would read as a step that took no time at all. */}
                   <p className="num type-micro text-text-2">
-                    {STEP_STATUS_LABELS[step.status]} · {formatSeconds(step.elapsedS)}
+                    {step.status === "cached"
+                      ? STEP_STATUS_LABELS.cached
+                      : `${STEP_STATUS_LABELS[step.status]} · ${formatSeconds(step.elapsedS)}`}
                   </p>
                 </div>
                 {step.detail ? <p className="type-micro text-text-3">{step.detail}</p> : null}
               </div>
             </div>
-            <Progress
-              value={progress}
-              aria-label={`${label} progress`}
-              className="mt-3"
-            />
+            <Progress value={progress} aria-label={`${label} progress`} className="mt-3" />
           </li>
         );
       })}
