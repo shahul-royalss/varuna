@@ -42,7 +42,13 @@ from varuna_schemas.paths import city_dir, run_dir
 from varuna_schemas.settings import get_settings
 
 from varuna_api.routers.stubs import AlertActionRequest, PumpDispatchRequest, PumpOptimiseRequest
-from varuna_api.runs_util import latest_run_for
+from varuna_api.runs_util import (
+    bake_hint,
+    city_of_run,
+    latest_run_for,
+    no_run_hint,
+    resolve_city,
+)
 from varuna_api.state import api_error
 
 log = structlog.get_logger("varuna.api.ops")
@@ -217,25 +223,28 @@ def _append(city: str, entry: dict[str, Any]) -> dict[str, Any]:
 
 
 def _run_path(run_id: str | None, city: str, needs: str) -> Path:
-    """The run to act on: the one named, or the newest of this city carrying ``needs``."""
+    """The run to act on: the one named, or the newest of this city carrying ``needs``.
+
+    The city goes through :func:`~varuna_api.runs_util.resolve_city`, the helper every
+    run-reading route shares, before anything is read (task D-09). A city with no run-id code is
+    refused as 404 ``unknown_city`` instead of being handed another city's newest run, beside a
+    ``run_id`` as well, the way the depth routes refuse it. A missing run or product names the
+    command that bakes that city's own bundle rather than Mumbai's.
+    """
+    name = resolve_city(city)
     if run_id:
         path = run_dir(run_id)
         if not (path / needs).is_file():
             raise api_error(
                 404,
                 "run_not_found",
-                f"Run {run_id} has no {needs}. Run `make bake BUNDLE=MUM-2019-07-02`.",
+                f"Run {run_id} has no {needs}. {bake_hint(city_of_run(run_id) or name)}",
                 run_id=run_id,
             )
         return path
-    latest = latest_run_for(city, lambda p: (p / needs).is_file())
+    latest = latest_run_for(name, lambda p: (p / needs).is_file())
     if latest is None:
-        raise api_error(
-            404,
-            "no_run",
-            f"No baked run for {city} carries {needs}. Run `make bake BUNDLE=MUM-2019-07-02`, "
-            "or press Compute live on the replay panel.",
-        )
+        raise api_error(404, "no_run", no_run_hint(name, needs))
     return latest
 
 
@@ -352,7 +361,8 @@ def _alert_queue(path: Path) -> list[dict[str, Any]]:
         raise api_error(
             404,
             "no_alerts",
-            f"Run {path.name} has no alert product. Run `make bake BUNDLE=MUM-2019-07-02`.",
+            f"Run {path.name} has no alert product. "
+            f"{bake_hint(city_of_run(path.name) or resolve_city(None))}",
             run_id=path.name,
         )
     body = json.loads(record.read_text(encoding="utf-8"))
