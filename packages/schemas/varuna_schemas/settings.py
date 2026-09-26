@@ -61,6 +61,15 @@ class Settings(BaseSettings):
             "500 MB volume and took the API down; on the demo laptop it stays on."
         ),
     )
+    varuna_ops_passphrase: str | None = Field(
+        default=None,
+        repr=False,
+        description=(
+            "Shared passphrase for the authority desk's writes, sent in the X-Varuna-Ops "
+            "header. Unset means every write is refused and says why, which is what the "
+            "deployed API does. A gate, not authentication; never logged, never echoed."
+        ),
+    )
     api_port: int = Field(
         default=8000,
         ge=1,
@@ -100,6 +109,7 @@ class Settings(BaseSettings):
         return _split_csv(value)
 
     @field_validator(
+        "varuna_ops_passphrase",
         "mappls_key",
         "tomtom_key",
         "opentopo_key",
@@ -137,6 +147,11 @@ class Settings(BaseSettings):
     @property
     def ws_url(self) -> str:
         return f"ws://localhost:{self.api_port}/v1/live"
+
+    @property
+    def ops_writes_enabled(self) -> bool:
+        """True when a desk passphrase is configured, so the authority desk can write."""
+        return bool(self.varuna_ops_passphrase)
 
     @property
     def has_sms_sender(self) -> bool:
