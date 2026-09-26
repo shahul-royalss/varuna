@@ -41,7 +41,7 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
   `GET /v1/ops/log`. Gate writes behind `VARUNA_OPS_PASSPHRASE` (unset = refuse, with the reason)
   and a 30-per-minute limit. The optimiser honours pump `status`. *Accepts:* each endpoint has a
   test for success, refusal without the passphrase, and the rate limit; `/v1/alerts` reflects an
-  acknowledgement after a reload. (2026-09-19, 19bfc19 - every endpoint with tests for success, refusal without the passphrase and the rate limit; the sha256 of every file in a baked run is unchanged after a closure, a pump status change and a dispatch. **`GET /v1/alerts` does not yet reflect an acknowledgement** - that handler is in a router this chunk did not own - so the ops log is the record until it is wired. ADR-0062.)
+  acknowledgement after a reload. (2026-09-19, 19bfc19 - every endpoint with tests for success, refusal without the passphrase and the rate limit; the sha256 of every file in a baked run is unchanged after a closure, a pump status change and a dispatch. **`GET /v1/alerts` does not yet reflect an acknowledgement** - that handler is in a router this chunk did not own - so the ops log is the record until it is wired. ADR-0062. **2026-09-26, 8963ff4:** the passphrase is read from `.env` through Settings as well as from the environment, an exported value winning; before, one written into `.env` left the desk read-only. ADR-0084.)
 - [x] **D-08 Route spreading and reasons.** `spread`, `trip_id`, `explain` on `POST /v1/route`;
   `corridors[]` and structured `reasons[]` in the response, per TECH_SPEC §3.2–3.3. *Accepts:*
   same `trip_id` always lands on the same corridor; 1,000 ids land within 2 % of `share`; every
@@ -49,7 +49,7 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
 - [x] **D-09 City threading.** `city` through `depth.py`'s twelve `_resolve` calls and every depth
   route; the console, the run store and the city switcher read `?city=`. *Accepts:* with Chennai
   built, `/console?city=chennai` serves Chennai depth and the switcher lists Chennai without a
-  hard-coded row.
+  hard-coded row. (2026-09-26, ef7fdd9 - **an unknown city was served another city's run**: a name with no run-id code gave an empty prefix, which filtered nothing, so `?city=atlantis` got Chennai's newest run. It is 404 `unknown_city` now on every depth, what-if and ops route, blaming the request or `VARUNA_CITY` as appropriate, and the no-run hints name that city's own bundle rather than `MUM-2019-07-02`. The route feeds and the report feedback count keep the old fallback. ADR-0083.)
 
 ## Wave 1 — the citizen dashboard
  (2026-09-19, 19bfc19 - `city` through the depth routes, `GET /v1/cities`, and the switcher reading `?city=` instead of a hard-coded disabled row. Typing `/console?city=chennai` by hand still pins a Mumbai run; the INTEGRATE chunk owns that.)
@@ -101,7 +101,7 @@ pnpm test && uv run pytest`, `pnpm lint:design`) · committed.
   map fades in each layer as its step completes (M19); the first forecast's depth is drawn; a
   scoped layers panel is present; the copy stops promising a switcher behaviour that does not
   exist. *Accepts:* a local run from cache ends on a Chennai console showing Chennai depth; the
-  e2e test asserts the finish card's href.
+  e2e test asserts the finish card's href. (2026-09-26, fe36aa7 - **a Chennai built before the session read "Waiting · 0 s" on all six steps** beside a map drawing it, with the finish card dim. The five build steps now read "Already built" with no elapsed time when the API reports the city built, and the First forecast row and the finish card follow only once a Chennai run has actually been read, because `built` means only that `segments.parquet` exists: the deployed API is built with no Chennai run, and says so.)
 
 ## Wave 4 — documentation, deployment, rehearsal
  (2026-09-19, 19bfc19 - the finish card lands on a Chennai console, each layer fades in as its step completes (M19), the first forecast's depth is drawn and a scoped layers panel is present. The e2e assertion on the card's href is not written; it is covered by a unit test of `consoleHref`.)
