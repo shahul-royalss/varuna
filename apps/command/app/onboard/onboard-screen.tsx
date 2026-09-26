@@ -94,9 +94,25 @@ const LAYER_AFTER: Record<Exclude<WizardLayerId, "depth">, number> = {
  * the rows after are waiting. Per-step elapsed time is not reported separately, so the running
  * step carries the job's elapsed time and the rest carry none - rather than a number this screen
  * would have to invent (CLAUDE.md 6).
+ *
+ * A city already built with no job in this session - the packed demo laptop - reads "Already
+ * built" rather than "Waiting · 0 s" beside a map drawing that city (task D-21). But `built` is
+ * only the API finding `city/<city>/segments.parquet`: it proves the first five steps wrote their
+ * layers and says nothing about a first forecast. So the forecast row reads "Already built" only
+ * when `hasRun` - a run for this city was actually read - and "Waiting" otherwise. The deployed
+ * API sat in exactly that state (built, and 404 `no_baked_runs` for Chennai), and calling its
+ * forecast built would have claimed a product the screen could not show (CLAUDE.md rules 6, 7).
  */
-function toSteps(job: OnboardJob | null): OnboardingStepState[] {
-  if (!job || job.status === "none") return IDLE_ONBOARDING_STEPS;
+export function toSteps(job: OnboardJob | null, hasRun = false): OnboardingStepState[] {
+  if (!job) return IDLE_ONBOARDING_STEPS;
+  if (job.status === "none") {
+    if (!job.built) return IDLE_ONBOARDING_STEPS;
+    return ONBOARDING_STEP_IDS.map((id) =>
+      id === "forecast" && !hasRun
+        ? { id, progress: 0, elapsedS: 0, status: "waiting" as const }
+        : { id, progress: 100, elapsedS: 0, status: "cached" as const },
+    );
+  }
   const current = ONBOARDING_STEP_IDS.indexOf(STEP_OF[job.step] ?? "area");
   const failed = job.status === "failed";
   const finished = job.status === "finished";
@@ -200,6 +216,10 @@ export function OnboardScreen() {
   const [buildings, setBuildings] = useState<[number, number][][] | null>(null);
   const [drains, setDrains] = useState<DrainPath[] | null>(null);
   const [depth, setDepth] = useState<RunDepth | null>(null);
+  // The API answered the run lookup and served no run for this city. Kept apart from `depth ===
+  // null`, which is also true while the lookup is still in flight: the screen says "no forecast"
+  // only once it has asked and been told so.
+  const [noRun, setNoRun] = useState(false);
   const [show, setShow] = useState<Record<WizardLayerId, boolean>>({
     streets: true,
     buildings: true,
@@ -297,10 +317,18 @@ export function OnboardScreen() {
     }
     // This build's own first run, or - reopening a city built in an earlier session, where the
     // job is gone from the API's memory - whichever run is newest for it, which is what the
-    // console would draw. Either way it is a run this city actually has.
+    // console would draw. Either way it is a run this city actually has. A built city can have
+    // none: `built` only means its layers are on disk, and the API answers 404 `no_baked_runs`.
     if (firstRunId || built) {
       once("depth", async () => {
-        setDepth(await loadRunDepth(firstRunId ?? undefined, controller.signal, undefined, CITY));
+        try {
+          setDepth(await loadRunDepth(firstRunId ?? undefined, controller.signal, undefined, CITY));
+          setNoRun(false);
+        } catch (failure) {
+          // An abort is this effect being replaced, not an answer about the city.
+          if (!controller.signal.aborted) setNoRun(true);
+          throw failure;
+        }
       });
     }
     return () => controller.abort();
@@ -333,6 +361,7 @@ export function OnboardScreen() {
       setBuildings(null);
       setDrains(null);
       setDepth(null);
+      setNoRun(false);
       setJob(await startOnboard(CITY, DESIGN_STORM));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -343,6 +372,27 @@ export function OnboardScreen() {
 
   const running = job?.status === "running" || job?.status === "queued" || starting;
   const finished = job?.status === "finished";
+  // Chennai's layers are built and no job has run in this API process: the packed demo laptop,
+  // and the deployed API (D-21). Whether it also has a forecast is `hasRun`, not this.
+  const cached = job?.status === "none" && built;
+  // A run for Chennai was actually read. Nothing else proves the first forecast exists.
+  const hasRun = depth !== null;
+  // The run the card names and opens. This build's own first run when it made one; otherwise the
+  // newest run the API serves for Chennai, which is the run the map beside the card has loaded -
+  // so the card never names a run other than the one on screen.
+  const openRunId = firstRunId ?? depth?.provenance.runId ?? null;
+  // The finish card lights for a build that finished here, and for one built before this session
+  // only once a run for it has been read: a built city with no run would open a console with no
+  // Chennai water in it. A running or failed rebuild keeps it dim: the city on disk is mid-rewrite
+  // or suspect.
+  const canOpenConsole = finished || (cached && openRunId !== null);
+  const stepsDescription = !cached
+    ? "Every step reports its own progress and elapsed time."
+    : hasRun
+      ? "Chennai is already built. These six steps ran before this session."
+      : noRun
+        ? "Chennai's layers are already built, and the API serves no forecast for it yet. Start onboarding Chennai to run its first one."
+        : "Chennai's layers are already built.";
   const hasLayers = (segments?.length ?? 0) > 0 || (drains?.length ?? 0) > 0;
 
   const layerState: Record<WizardLayerId, WizardLayerState> = {
@@ -395,11 +445,8 @@ export function OnboardScreen() {
           ) : null}
 
           <PanelErrorBoundary title="Onboarding steps">
-            <Panel
-              title="Steps"
-              description="Every step reports its own progress and elapsed time."
-            >
-              <OnboardingSteps steps={toSteps(job)} />
+            <Panel title="Steps" description={stepsDescription}>
+              <OnboardingSteps steps={toSteps(job, hasRun)} />
             </Panel>
           </PanelErrorBoundary>
 
@@ -410,7 +457,11 @@ export function OnboardScreen() {
             >
               <LogStream
                 lines={toLines(job)}
-                emptyDescription="Logs stream here when the wizard runs."
+                emptyDescription={
+                  cached
+                    ? "Nothing has run in this session. Start onboarding Chennai to rebuild it and stream the pipeline's own lines."
+                    : "Logs stream here when the wizard runs."
+                }
               />
             </Panel>
           </PanelErrorBoundary>
@@ -421,7 +472,7 @@ export function OnboardScreen() {
           >
             <div
               className={
-                finished
+                canOpenConsole
                   ? "rounded-control border-line bg-well space-y-3 border p-4"
                   : "rounded-control border-line bg-well space-y-3 border p-4 opacity-60"
               }
@@ -435,8 +486,15 @@ export function OnboardScreen() {
                   First run <span className="num">{firstRunId}</span>, built in{" "}
                   <span className="num">{Math.round(job?.elapsedS ?? 0)}</span> s.
                 </p>
+              ) : canOpenConsole && openRunId ? (
+                // No build time here: this session did not build the run it is naming, and a
+                // "built in 0 s" would be a number the screen made up (CLAUDE.md rule 6).
+                <p className="type-micro text-text-3">
+                  Newest Chennai run <span className="num">{openRunId}</span>
+                  {cached ? ", built before this session." : "."}
+                </p>
               ) : null}
-              {finished ? (
+              {canOpenConsole ? (
                 // A plain anchor, not `next/link`, and deliberately: `/console` reads `?run=` in
                 // a `useState` initialiser, which under the App Router runs on the *server* during
                 // a client-side navigation - so a `Link` here lands on the console with no run
@@ -449,7 +507,7 @@ export function OnboardScreen() {
                 // button's own classes, and it stays a real anchor, which is what middle-click and
                 // "open in new tab" need.
                 <a
-                  href={consoleHref(CITY, firstRunId)}
+                  href={consoleHref(CITY, openRunId)}
                   className="rounded-control border-line type-small text-text hover:bg-well focus-visible:ring-tide/50 inline-flex h-8 items-center gap-2 border bg-transparent px-3 focus-visible:ring-3"
                 >
                   Open Chennai console
