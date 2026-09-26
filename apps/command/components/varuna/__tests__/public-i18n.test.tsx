@@ -31,6 +31,13 @@ afterEach(() => {
   document.documentElement.lang = "en";
 });
 
+/**
+ * Hindi and Marathi are lazy imports (`lib/i18n/messages.ts`), so the first text in either waits on
+ * a module load. Testing-library's one-second default lost that race in the full suite on
+ * 2026-09-26 while this file alone passed three runs out of three.
+ */
+const DICTIONARY = { timeout: 5_000 };
+
 describe("components shared with /dashboard, with no language provider", () => {
   it("render in English", () => {
     render(
@@ -67,7 +74,7 @@ describe("PublicI18nProvider", () => {
       fireEvent.click(hindi);
     });
 
-    expect(await screen.findByRole("button", { name: "दोपहिया" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "दोपहिया" }, DICTIONARY)).toBeInTheDocument();
     expect(window.localStorage.getItem(LOCALE_STORAGE_KEY)).toBe("hi");
     expect(document.documentElement.lang).toBe("hi");
     const root = container.querySelector("[data-script]");
@@ -93,7 +100,7 @@ describe("PublicI18nProvider", () => {
         <PublicLegend profile="bus" />
       </PublicI18nProvider>,
     );
-    expect(await screen.findByText("पार करण्यायोग्य")).toBeInTheDocument();
+    expect(await screen.findByText("पार करण्यायोग्य", {}, DICTIONARY)).toBeInTheDocument();
     expect(screen.getByText("बस साठी")).toBeInTheDocument();
   });
 
@@ -148,7 +155,7 @@ describe("report confirmation", () => {
       vi.fn(stubFetch({ "/v1/reports": { status: 202, body: { queued: true } } })),
     );
     render(withQuery(<PublicI18nProvider>{<ReportWizard />}</PublicI18nProvider>));
-    await screen.findByRole("button", { name: "फोटोकडे पुढे चला" });
+    await screen.findByRole("button", { name: "फोटोकडे पुढे चला" }, DICTIONARY);
 
     fireEvent.click(screen.getByRole("button", { name: "फोटोकडे पुढे चला" }));
     fireEvent.click(screen.getByRole("button", { name: "फोटो वगळा" }));
@@ -172,7 +179,7 @@ describe("report confirmation", () => {
       ),
     );
     render(withQuery(<PublicI18nProvider>{<ReportWizard />}</PublicI18nProvider>));
-    fireEvent.click(await screen.findByRole("button", { name: "फ़ोटो पर आगे बढ़ें" }));
+    fireEvent.click(await screen.findByRole("button", { name: "फ़ोटो पर आगे बढ़ें" }, DICTIONARY));
     fireEvent.click(screen.getByRole("button", { name: "फ़ोटो छोड़ें" }));
     fireEvent.click(screen.getByRole("radio", { name: /घुटना/ }));
     fireEvent.click(screen.getByRole("button", { name: "रिपोर्ट भेजें" }));
