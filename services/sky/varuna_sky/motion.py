@@ -14,6 +14,20 @@ Degenerate input never raises. Fewer than two frames, an all-missing history or 
 carries no flow to recover, so the field comes back zero with ``method="zero"`` and the run
 can say as much rather than implying a tracked storm.
 
+**Pixels the radar cannot see are missing, not dry.** A decoded frame is ``nan`` both beyond
+the radar's range and wherever there is no echo, and :func:`rain_history` floors both to dry,
+which is right for the nowcast's rain field and wrong for tracking. Beyond the range the floor
+draws a disc edge that sits still in every frame, a 20 dBR step wherever the stratiform shield
+reaches it, and pySTEPS' Shi-Tomasi detector finds its best corners there. Every one of them
+tracks to zero, and the dense field interpolated from them drags the storm's own vectors toward
+a standstill. Measured on the 2 July 2019 reconstruction (``bundles/MUM-2019-07-02``, cycles
+06:40 to 09:10, mean flow over wet pixels as a fraction of the storm designer's 8 m/s): 0.17 to
+0.36 with the disc floored to dry, 0.71 to 1.15 with it passed as missing, against 0.72 to 1.27
+for the same tracker on the truth field itself. The designer's frames with the disc removed
+track at 0.75 to 1.37, so it is the disc and not the speckle or the 5 dBZ classes. So
+:func:`optical_flow` takes the QC coverage mask and hands pySTEPS the pixels outside it as
+``nan``, which pySTEPS masks, buffers and never detects a feature in.
+
 The dBR transform and the analysis stack live here rather than in a nowcaster because optical
 flow is the first stage that needs them and neither nowcaster - pySTEPS or the fallback - may
 import the other.
@@ -150,6 +164,7 @@ def optical_flow_from_rain(
     rain_mm_h: NDArray[np.floating],
     interval: timedelta,
     res_m: float,
+    missing: NDArray[np.bool_] | None = None,
 ) -> MotionField:
     """Lucas-Kanade over a ``(n_frames, n_px, n_px)`` stack of rain fields in mm/h.
 
@@ -157,18 +172,33 @@ def optical_flow_from_rain(
     :data:`DBR_ZEROVALUE`. Its dense field is ``(2, n_px, n_px)`` in pixels per input
     interval with ``V[0]`` along columns and ``V[1]`` along rows, which is exactly the
     :class:`~varuna_sky.types.MotionField` convention, so nothing is transposed or negated.
+
+    ``missing``, when given, is ``(n_px, n_px)`` and ``True`` where no frame can be believed -
+    outside the radar's coverage. Those pixels go to pySTEPS as ``nan`` in every frame rather
+    than as dry, so no feature is detected on the static edge between the two (module
+    docstring). The returned field still covers the whole domain: pySTEPS interpolates it from
+    the vectors it tracked inside.
     """
     stack = np.asarray(rain_mm_h, dtype=np.float64)
     if stack.ndim != 3:
         msg = f"rain stack must be (n_frames, n_px, n_px), got {stack.shape}"
         raise ValueError(msg)
     shape = (int(stack.shape[1]), int(stack.shape[2]))
+    unseen = None
+    if missing is not None:
+        unseen = np.asarray(missing, dtype=bool)
+        if unseen.shape != shape:
+            msg = f"missing mask must be {shape}, got {unseen.shape}"
+            raise ValueError(msg)
     if stack.shape[0] < MIN_FLOW_FRAMES:
         return _zero_field(shape, interval, res_m, "fewer than two frames")
-    if not np.any(np.isfinite(stack) & (stack >= RAIN_FLOOR_MM_H)):
+    seen = np.ones(shape, dtype=bool) if unseen is None else ~unseen
+    if not np.any(np.isfinite(stack) & (stack >= RAIN_FLOOR_MM_H) & seen[None, :, :]):
         return _zero_field(shape, interval, res_m, "no wet pixels in the history")
 
     dbr = to_dbr(stack)
+    if unseen is not None:
+        dbr[:, unseen] = np.nan
     try:
         from pysteps.motion import get_method
 
@@ -204,11 +234,18 @@ def optical_flow(
     frames: RadarFrames,
     zr: ZRParams,
     latest_rain_mm_h: NDArray[np.floating] | None = None,
+    coverage: NDArray[np.bool_] | None = None,
 ) -> MotionField:
     """Track the storm across the last three frames (CLAUDE.md 11.1 step 4).
 
     ``latest_rain_mm_h``, when given, is the gauge-merged analysis and replaces the newest
     radar-only frame, so the flow is measured on the same field the nowcast starts from.
+
+    ``coverage`` is QC's mask (:func:`varuna_sky.qc.coverage_mask`, ``True`` where the radar
+    sees). The pipeline always passes it; pixels outside it are tracked as missing, never as
+    dry (module docstring). Without it every pixel is treated as seen, which is only right for
+    a field with no range edge inside the domain.
     """
     stack = rain_history(frames, zr, latest_rain_mm_h, n_frames=min(3, frames.n_frames))
-    return optical_flow_from_rain(stack, frames.interval, frames.grid.res_m)
+    missing = None if coverage is None else ~np.asarray(coverage, dtype=bool)
+    return optical_flow_from_rain(stack, frames.interval, frames.grid.res_m, missing)

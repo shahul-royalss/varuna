@@ -13,6 +13,7 @@ from varuna_city.segments import (
     build_segments,
     classify_highway,
     edges_to_frame,
+    osm_items,
     sample_dem_along,
     segments_near,
 )
@@ -228,3 +229,83 @@ def test_a_way_with_several_osm_names_is_stored_as_one_street_plus_its_aliases(t
     assert list(segments.loc["S3-000", "name_aliases"]) == []
     # The list column survives GeoParquet, which is the only reason it is worth writing.
     assert [list(v) for v in back["name_aliases"]] == [["Tilak Road"], ["Gandhi Market Road"], []]
+
+
+def _merged_ways_graph() -> nx.MultiDiGraph:
+    """A graph shaped like a live OSMnx fetch: merged ways carry their tags as collections.
+
+    Way 200 has two plain edges and is also the smallest way id of a merged edge (3 -> 4), so a
+    merged edge that loses its way id also compacts the ordinals of way 200's plain edges - the
+    shape behind the 839 Mumbai ids that kept their form but named another street.
+    """
+    graph = nx.MultiDiGraph(crs=CRS)
+    for node in range(1, 8):
+        graph.add_node(node, x=ORIGIN_X + 150.0 * node, y=ORIGIN_Y - 40.0 * (node % 3))
+    two_way = {"highway": "residential", "lanes": "2", "oneway": False}
+    graph.add_edge(1, 2, 0, osmid=200, **two_way)
+    graph.add_edge(2, 1, 0, osmid=200, **two_way)
+    graph.add_edge(2, 3, 0, osmid=200, **two_way)
+    graph.add_edge(3, 2, 0, osmid=200, **two_way)
+    merged = {"highway": ["residential", "service"], "lanes": ["2", "4"], "oneway": False}
+    graph.add_edge(3, 4, 0, osmid=[300, 200], **merged)
+    graph.add_edge(4, 3, 0, osmid=[200, 300], **merged)
+    graph.add_edge(4, 5, 0, osmid={500, 400}, highway=["primary", "primary_link"], oneway=True)
+    graph.add_edge(5, 6, 0, osmid=600, highway="tertiary", lanes=["3", "2"], oneway=True)
+    graph.add_edge(6, 7, 0, osmid=[700, 701], highway="secondary", oneway=True)
+    return graph
+
+
+def test_segment_ids_survive_the_geopackage_round_trip(tmp_path) -> None:
+    """A rebuild from ``osm.gpkg`` gives every street the id the live build gave it.
+
+    The GeoPackage has no list type, so a merged way's ``osmid`` comes back as the text
+    ``"[300, 200]"``. Reading that as "not an int" gave the way id 0: 1,247 Mumbai segments read
+    ``S0-*`` after the first rebuild from cache, 839 more shifted ordinal, and every baked run,
+    the segment index and the emulator kept the live build's ids. The same text shape broke
+    ``highway`` (a merged residential street became ``service``) and ``lanes``.
+    """
+    from varuna_city.osm import OsmLayers, write_osm_gpkg
+
+    live_edges = edges_to_frame(_merged_ways_graph())
+    write_osm_gpkg(OsmLayers(city="test", crs=CRS, roads=live_edges), tmp_path)
+    cached_edges = gpd.read_file(tmp_path / "osm.gpkg", layer="roads")
+    # The fixture only proves something if the cache really holds text where the fetch held lists.
+    assert isinstance(live_edges.loc[4, "osmid"], list)
+    assert isinstance(cached_edges.loc[4, "osmid"], str)
+
+    live = build_segments(live_edges, crs=CRS)
+    cached = build_segments(cached_edges, crs=CRS)
+
+    assert list(cached["segment_id"]) == list(live["segment_id"])
+    assert not any(sid.startswith("S0-") for sid in cached["segment_id"])
+    assert list(live["segment_id"]) == [
+        "S200-000",
+        "S200-001",
+        "S200-002",
+        "S400-000",
+        "S600-000",
+        "S700-000",
+    ]
+    for column in ("osm_way_id", "u", "v", "key", "class", "lanes", "oneway"):
+        assert cached[column].equals(live[column]), column  # NaN-aware: lanes is often missing
+    merged = cached.set_index("segment_id")
+    assert merged.loc["S200-002", "class"] == "residential"
+    assert merged.loc["S200-002", "lanes"] == 4
+    assert merged.loc["S400-000", "class"] == "primary"
+    assert merged.loc["S600-000", "lanes"] == 3
+
+
+def test_osm_items_reads_every_shape_a_collection_arrives_in() -> None:
+    """Live list, GeoPackage text, the feature layers' comma text, and a plain scalar."""
+    assert osm_items([300, 200]) == [300, 200]
+    assert sorted(osm_items({500, 400})) == [400, 500]
+    assert osm_items("[300, 200]") == [300, 200]
+    assert osm_items("['residential', 'service']") == ["residential", "service"]
+    assert sorted(osm_items("{400, 500}")) == [400, 500]
+    assert osm_items("300,200") == ["300", "200"]
+    assert osm_items("300") == ["300"]
+    assert osm_items(None) == [None]
+    # A bracket that is not a list literal is a value, not a list.
+    assert osm_items("[Closed] Link Road") == ["[Closed] Link Road"]
+    assert classify_highway("['residential', 'service']") == "residential"
+    assert _as_int("['2', '4']") == 4

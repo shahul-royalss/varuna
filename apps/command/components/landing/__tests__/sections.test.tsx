@@ -76,6 +76,28 @@ describe("Footer", () => {
     expect(REPOSITORY_URL).toBe("https://github.com/shahul-royalss/varuna");
   });
 
+  it("names every operator screen by its Sanskrit name as the console's nav does", () => {
+    // ADR-0085: the footer reads the same rail entries, so it can never name a screen the bar
+    // does not; the gloss rides with the name so a first-time reader knows where it goes.
+    render(<Footer />);
+    const cases: [string, string][] = [
+      ["Drishti, command console", "/console"],
+      ["Nadi, drain health", "/drains"],
+      ["Marga, route planner", "/route"],
+      ["Sanket, alert centre", "/alerts"],
+      ["Jalayantra, pump dispatch", "/pumps"],
+      ["Kalpana, what-if lab", "/whatif"],
+      ["Smriti, replay", "/replay"],
+      ["Pramana, verification", "/verify"],
+      ["Pravesh, city onboarding", "/onboard"],
+    ];
+    for (const [name, href] of cases) {
+      const link = screen.getByRole("link", { name });
+      expect(link).toHaveAttribute("href", href);
+      expect(within(link).getByText(name.split(",")[0]!)).toHaveAttribute("translate", "no");
+    }
+  });
+
   it("lists the blueprint's six roles", () => {
     render(<Footer />);
     expect(TEAM_ROLES).toHaveLength(6);

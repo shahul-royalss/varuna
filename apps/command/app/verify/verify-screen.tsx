@@ -21,15 +21,33 @@ import { VerificationGrid, type ScoreTile } from "@/components/varuna/verificati
 import { VerificationThresholdChart } from "@/components/varuna/verification-threshold-chart";
 import { formatIst } from "@/lib/format";
 import { loadVerification, type ThresholdRow, type Verification } from "@/lib/api/verification";
+import { navItem } from "@/lib/nav";
+
+import { RainSkillPanel } from "./rain-skill-panel";
 
 /** Events that can be scored. Each one is a replay bundle with sourced ground-truth pins. */
 const EVENTS = [{ id: "MUM-2019-07-02", label: "MUM-2019-07-02" }] as const;
 
-/** Two decimals for a 0-to-1 score; a dash where the score has no denominator. */
+/**
+ * Names for the pin scorer's `unavailable` keys. They are about street depth at the pins; the
+ * rain's Brier score and reliability are scored and drawn under Rain skill by lead time, so the
+ * label says which probability is missing. An unknown key falls back to its own words.
+ */
+const UNAVAILABLE_LABEL: Record<string, string> = {
+  depth_mae_cm: "Depth error at the pins",
+  brier_score: "Brier score of street depth",
+  reliability_diagram: "Reliability of street depth",
+};
+
+export function unavailableLabel(key: string): string {
+  return UNAVAILABLE_LABEL[key] ?? key.replace(/_/g, " ");
+}
+
 const asScore = (value: number) => value.toFixed(2);
 const asCount = (value: number) => value.toLocaleString("en-IN");
 const asMinutes = (value: number) => `${value.toFixed(0)} min`;
 
+/** Two decimals for a 0-to-1 score; null where the score has no denominator. */
 function score(value: number | null): string | null {
   return value === null ? null : value.toFixed(2);
 }
@@ -160,7 +178,8 @@ export function VerifyScreen() {
       <div className="h-full min-h-0 overflow-y-auto">
         <div className="mx-auto flex max-w-[1400px] flex-col gap-6 p-6">
           <PageHeader
-            title="Verification"
+            title={navItem("verify").label}
+            screen={navItem("verify")}
             description="Where VARUNA is right, where it is wrong, and how we score ourselves."
             honesty="Reconstructed replay"
             actions={
@@ -235,20 +254,9 @@ export function VerifyScreen() {
             </Panel>
           </PanelErrorBoundary>
 
-          {/* Section 7.10's SkillByLeadChart. The scores exist - `services/verify/rain_skill.py`
-              computes rain CSI by lead against the bundle's truth field - but no endpoint serves
-              them, and a chart drawn from numbers typed into this page would break rule 6. So the
-              panel says what is missing rather than being left out. */}
+          {/* Section 7.10's SkillByLeadChart, served by /v1/verification/rain-skill. */}
           <PanelErrorBoundary title="Rain skill by lead time">
-            <Panel
-              title="Rain skill by lead time"
-              description="Rain CSI at 20 and 40 mm/h against the reconstructed truth field, by lead."
-            >
-              <EmptyState
-                title="Not served yet"
-                description="services/verify computes these scores in rain_skill.py, but /v1/verification does not carry them yet, so there is nothing here to draw."
-              />
-            </Panel>
+            <RainSkillPanel event={eventId} />
           </PanelErrorBoundary>
 
           <div className="grid gap-4 xl:grid-cols-2">
@@ -350,7 +358,7 @@ export function VerifyScreen() {
                 <dl className="flex flex-col gap-3">
                   {Object.entries(v?.unavailable ?? {}).map(([key, reason]) => (
                     <div key={key}>
-                      <dt className="type-small text-text font-medium">{key.replace(/_/g, " ")}</dt>
+                      <dt className="type-small text-text font-medium">{unavailableLabel(key)}</dt>
                       <dd className="type-micro text-text-2">{reason}</dd>
                     </div>
                   ))}

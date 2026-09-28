@@ -57,6 +57,22 @@ export interface PassphraseGateProps {
 /** The name the log carries when the officer does not give one; matches the API's default. */
 export const DEFAULT_OFFICER = "ward officer";
 
+/** A note that states why writes are off, in any wording the API has used for it. */
+const READ_ONLY_NOTE = /read-only|writes are disabled|is not set|is unset/i;
+
+/**
+ * The note in `GET /v1/ops/log`'s `notes` that says why this API takes no writes, or null.
+ *
+ * **Chosen by what it says, not by where it sits.** The list also carries the overlay's note and a
+ * note about officer names that ends "Send the desk passphrase in X-Varuna-Ops" - the opposite of
+ * the reason when the API holds no passphrase to check. The desk once printed the last note, which
+ * is that one, where the read-only reason belonged. When no note states the reason the gate prints
+ * its own sentence naming the variable.
+ */
+export function writesDisabledReason(notes: readonly string[] | null | undefined): string | null {
+  return notes?.find((note) => READ_ONLY_NOTE.test(note)) ?? null;
+}
+
 export function PassphraseGate({ status, reason, onOpen, className }: PassphraseGateProps) {
   const [passphrase, setPassphrase] = useState("");
   const [officer, setOfficer] = useState(DEFAULT_OFFICER);

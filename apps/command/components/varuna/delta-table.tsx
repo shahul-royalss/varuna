@@ -13,13 +13,19 @@ import { EmptyState } from "@/components/varuna/empty-state";
 import { formatMinutes } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-/** One hotspot's before and after under a what-if scenario (CLAUDE.md section 7.7). */
+/** One hotspot's (or street's) before and after under a what-if scenario (CLAUDE.md 7.7). */
 export interface DeltaRow {
   id: string;
-  /** Hotspot name, e.g. "Hindmata junction". */
+  /** Hotspot or street name, e.g. "Hindmata junction". */
   hotspot: string;
   /** p50 peak depth in cm before the scenario. */
   beforeCm: number;
+  /**
+   * The run stores no depth for this street because it stayed below this many centimetres, so
+   * `beforeCm` is the 0 the change was read from, not a measurement. The cell says "Below 5 cm"
+   * instead of drawing a chip at 0 (rule 6).
+   */
+  beforeBelowCm?: number;
   /** p50 peak depth in cm after the scenario. */
   afterCm: number;
   /** Minutes the hotspot is impassable for cars (above 30 cm) before the scenario.
@@ -31,10 +37,29 @@ export interface DeltaRow {
   minutesImpassableBefore?: number;
   /** The same after the scenario. */
   minutesImpassableAfter?: number;
+  /**
+   * Minutes above 45 cm, where buses stop (CLAUDE.md 6.2), before the scenario. Drawn only when
+   * the table is given `minutes45Label` and a row carries it; both engines return it.
+   */
+  minutesAbove45Before?: number;
+  /** The same after the scenario. */
+  minutesAbove45After?: number;
 }
 
 export interface DeltaTableProps {
   rows: DeltaRow[];
+  /** First column's heading: "Hotspot" in the per-hotspot table, "Street" in the largest changes. */
+  nameLabel?: string;
+  /** The minutes column's heading, naming its threshold: "Minutes above 30 cm". */
+  minutesLabel?: string;
+  /**
+   * The second minutes column's heading, "Minutes above 45 cm". Absent, the column is not drawn,
+   * which is how a narrow panel keeps to one minutes column.
+   */
+  minutes45Label?: string;
+  /** Empty state; the default invites a first run. */
+  emptyTitle?: string;
+  emptyDescription?: string;
   className?: string;
 }
 
@@ -49,22 +74,29 @@ export function formatDeltaCm(beforeCm: number, afterCm: number): string {
  * Before and after per hotspot for a what-if result. Depth shows as chips on the fixed ramp so the
  * table agrees with the diff layer; the change column is signed and coloured only as a hint.
  */
-export function DeltaTable({ rows, className }: DeltaTableProps) {
+export function DeltaTable({
+  rows,
+  nameLabel = "Hotspot",
+  minutesLabel = "Minutes impassable",
+  minutes45Label,
+  emptyTitle = "No what-if yet",
+  emptyDescription = "Set the controls and run one.",
+  className,
+}: DeltaTableProps) {
   // The column appears only when something actually measured a duration. Rendering it against
   // rows that carry none printed "0 min -> 0 min" on every line, which reads as a computed
   // result rather than an absent one (rule 6).
   const showMinutes = rows.some(
     (row) => row.minutesImpassableBefore !== undefined || row.minutesImpassableAfter !== undefined,
   );
+  const showMinutes45 =
+    minutes45Label !== undefined &&
+    rows.some(
+      (row) => row.minutesAbove45Before !== undefined || row.minutesAbove45After !== undefined,
+    );
 
   if (rows.length === 0) {
-    return (
-      <EmptyState
-        title="No what-if yet"
-        description="Set the controls and run one."
-        className={className}
-      />
-    );
+    return <EmptyState title={emptyTitle} description={emptyDescription} className={className} />;
   }
 
   return (
@@ -72,13 +104,12 @@ export function DeltaTable({ rows, className }: DeltaTableProps) {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Hotspot</TableHead>
+            <TableHead>{nameLabel}</TableHead>
             <TableHead>Before</TableHead>
             <TableHead>After</TableHead>
             <TableHead className="text-right">Change</TableHead>
-            {showMinutes ? (
-              <TableHead className="text-right">Minutes impassable</TableHead>
-            ) : null}
+            {showMinutes ? <TableHead className="text-right">{minutesLabel}</TableHead> : null}
+            {showMinutes45 ? <TableHead className="text-right">{minutes45Label}</TableHead> : null}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -87,9 +118,15 @@ export function DeltaTable({ rows, className }: DeltaTableProps) {
             const worse = row.afterCm > row.beforeCm;
             return (
               <TableRow key={row.id} className="h-10">
-                <TableCell className="font-medium text-text">{row.hotspot}</TableCell>
+                <TableCell className="text-text font-medium">{row.hotspot}</TableCell>
                 <TableCell>
-                  <DepthChip cm={row.beforeCm} size="sm" />
+                  {row.beforeBelowCm !== undefined ? (
+                    <span className="type-micro text-text-3">
+                      Below <span className="num">{row.beforeBelowCm}</span> cm
+                    </span>
+                  ) : (
+                    <DepthChip cm={row.beforeCm} size="sm" />
+                  )}
                 </TableCell>
                 <TableCell>
                   <DepthChip cm={row.afterCm} size="sm" />
@@ -105,11 +142,17 @@ export function DeltaTable({ rows, className }: DeltaTableProps) {
                   {formatDeltaCm(row.beforeCm, row.afterCm)}
                 </TableCell>
                 {showMinutes ? (
-                  <TableCell className="num text-right text-text-2">
+                  <TableCell className="num text-text-2 text-right">
                     {formatMinutes(row.minutesImpassableBefore ?? 0)} &rarr;{" "}
                     <span className="text-text">
                       {formatMinutes(row.minutesImpassableAfter ?? 0)}
                     </span>
+                  </TableCell>
+                ) : null}
+                {showMinutes45 ? (
+                  <TableCell className="num text-text-2 text-right">
+                    {formatMinutes(row.minutesAbove45Before ?? 0)} &rarr;{" "}
+                    <span className="text-text">{formatMinutes(row.minutesAbove45After ?? 0)}</span>
                   </TableCell>
                 ) : null}
               </TableRow>

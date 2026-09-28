@@ -88,7 +88,12 @@ describe("ReportWizard", () => {
     expect(screen.getByText(QUEUED.message)).toBeInTheDocument();
     // The defect this test exists for: `feedback_streets ?? 0` headlined an improved forecast for
     // a count of zero streets, a claim of effect over a number nobody measured (CLAUDE.md rule 6).
-    expect(container.textContent).not.toMatch(/0 street/);
+    // `\b` so "10 streets" is not a zero; the regex is proven to catch the defect first, so it
+    // can never pass by matching nothing (it once held a literal backspace and always passed).
+    const zeroStreets = /\b0 streets?\b/;
+    expect("improved the forecast for 0 streets").toMatch(zeroStreets);
+    expect("improved the forecast for 10 streets").not.toMatch(zeroStreets);
+    expect(container.textContent).not.toMatch(zeroStreets);
     expect(container.textContent).not.toContain("improved the forecast");
   });
 

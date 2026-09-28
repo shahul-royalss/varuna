@@ -3,6 +3,7 @@
 import { motion, useAnimate } from "motion/react";
 import { useEffect, useRef, type ReactNode } from "react";
 
+import { WordmarkMark } from "@/components/varuna/wordmark";
 import { formatIst } from "@/lib/format";
 import { DUR, EASE_UI, presetFor, tween, useMotionPref, type MotionPreset } from "@/lib/motion";
 import { useReplayStore } from "@/lib/stores/replay";
@@ -99,16 +100,25 @@ export function PhoneMock({
     >
       <div className="border-line bg-ink flex h-[560px] flex-col overflow-hidden rounded-[32px] border">
         <div className="type-micro text-text-2 flex h-8 shrink-0 items-center justify-between px-5">
-          <span className="text-text font-medium">VARUNA</span>
+          {/* The emblem is decoration beside the name, which is still said as text. */}
+          <span
+            data-slot="phone-status-brand"
+            className="text-text inline-flex items-center gap-1.5 font-medium"
+          >
+            <WordmarkMark size={16} alt="" />
+            VARUNA
+          </span>
           <span className="num">{clock}</span>
         </div>
 
         <div className="border-line bg-deep flex shrink-0 items-center gap-3 border-y px-4 py-2">
+          {/* The chat's avatar is the team's emblem, never a letter standing in for a logo. */}
           <span
             aria-hidden="true"
-            className="bg-tide-soft type-small text-tide flex size-8 items-center justify-center rounded-full font-semibold"
+            data-slot="phone-chat-avatar"
+            className="bg-tide-soft flex size-8 shrink-0 items-center justify-center rounded-full"
           >
-            V
+            <WordmarkMark size={20} alt="" />
           </span>
           <div className="min-w-0">
             <p className="type-small text-text truncate font-medium">VARUNA alerts</p>

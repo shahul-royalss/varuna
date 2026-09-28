@@ -57,7 +57,7 @@ export async function loadGroundTruth(
         p.ts_uncertainty_min === null || p.ts_uncertainty_min === undefined
           ? null
           : Number(p.ts_uncertainty_min),
-      name: String(p.name ?? "Unnamed place"),
+      name: String(p.name ?? "Reported place"),
       lon: Number(p.lon),
       lat: Number(p.lat),
       depthCm: p.depth_cm === null || p.depth_cm === undefined ? null : Number(p.depth_cm),

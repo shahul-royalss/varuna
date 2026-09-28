@@ -32,11 +32,11 @@ from varuna_replay.build import (
     load_city,
     load_reconstruction_inputs,
 )
-from varuna_replay.bundle import BundleLayout, load_manifest
+from varuna_replay.bundle import TIDE_LOOKAHEAD_MIN, BundleLayout, load_manifest
 from varuna_replay.domain import StormDomain
 from varuna_replay.storm import PEAK_RANGE_MM_H
 from varuna_replay.validate import validate_bundle
-from varuna_schemas.constants import IST
+from varuna_schemas.constants import IST, LEAD_MAX_MIN
 from varuna_schemas.models.bundle import GroundTruthPin
 from varuna_schemas.models.city import CityConfig, RadarDomain
 from varuna_schemas.paths import city_dir
@@ -381,6 +381,78 @@ def test_two_builds_with_the_same_seed_are_byte_identical(
         "manifest.json",
     ):
         assert digest(first, member) == digest(second, member), member
+
+
+def test_the_tide_runs_on_to_the_last_cycles_horizon(
+    tmp_path: Path, inputs: ReconstructionInputs
+) -> None:
+    """The tide is the Twin's sea boundary, so it runs three hours past ``t1`` - to 12:40, the
+    horizon of a cycle at 09:40 - with the window's rows unchanged and the label intact."""
+    import pandas as pd
+
+    result = build_reconstruction_bundle(inputs, bundles_root=tmp_path)
+    manifest = result.manifest
+    tide = pd.read_csv(BundleLayout(root=result.root).tide)
+    stamps = [datetime.fromisoformat(ts) for ts in tide["ts"]]
+    assert stamps[0] == manifest.t0
+    assert stamps[-1] == manifest.t1 + timedelta(minutes=TIDE_LOOKAHEAD_MIN)
+    assert stamps[-1] == datetime(2019, 7, 2, 12, 40, tzinfo=IST)
+    assert len(stamps) == 29
+    assert set(tide["source"]) == {"illustrative"}
+    assert manifest.tide_source == "illustrative"
+    assert manifest.cadences["tide"] == 15
+
+    window = streams.tide_rows(
+        manifest.t0,
+        float(manifest.duration_min),
+        high_water_m=evidence.TIDE_HIGH_WATER_M,
+        high_water_at=evidence.TIDE_HIGH_WATER_IST,
+        period_min=evidence.TIDE_PERIOD_MIN,
+    )
+    assert tide["stage_m"].tolist()[: len(window)] == [row["stage_m"] for row in window]
+    assert float(tide["stage_m"].max()) == pytest.approx(evidence.TIDE_HIGH_WATER_M, abs=0.005)
+
+    basis = manifest.calibration_basis or ""
+    assert "runs on to 12:40" in basis
+    assert any("runs on to 12:40" in note for note in manifest.synthetic_notes)
+
+
+def test_the_twin_reads_the_rising_tide_to_the_end_of_a_late_cycle(
+    tmp_path: Path, inputs: ReconstructionInputs, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 08:40 cycle forecasts to 11:40. With the series stopping at 09:40 the Twin held the
+    sea at the 09:40 stage for those last two hours; now it reads the harmonic to the crest."""
+    twin_city = pytest.importorskip("varuna_twin.city")
+    result = build_reconstruction_bundle(inputs, bundles_root=tmp_path)
+    monkeypatch.setenv("VARUNA_BUNDLES_DIR", str(tmp_path))
+    tide = twin_city.load_tide(BUNDLE_ID)
+    assert tide is not None and tide.source == "illustrative"
+
+    offset = evidence.MSL_ABOVE_CHART_DATUM_M
+    cycle = datetime(2019, 7, 2, 8, 40, tzinfo=IST)
+    horizon = cycle + timedelta(minutes=LEAD_MAX_MIN)
+    written = _written_tide(result.root)
+    inside = {ts: stage for ts, stage in written.items() if cycle <= ts <= horizon}
+    assert max(inside) == horizon, "every instant of the cycle has a row of its own"
+    for ts, stage in inside.items():
+        assert tide.at(ts) == pytest.approx(stage - offset, abs=1e-9), ts
+
+    at_window_end = tide.at(result.manifest.t1)
+    peak = max(tide.at(ts) for ts in inside)
+    assert at_window_end == pytest.approx(written[result.manifest.t1] - offset, abs=1e-9)
+    assert peak == pytest.approx(evidence.TIDE_HIGH_WATER_M - offset, abs=0.005)
+    assert peak - at_window_end > 0.9, "the last two hours are no longer held at 09:40's stage"
+
+
+def _written_tide(root: Path) -> dict[datetime, float]:
+    """``tide.csv`` as instant -> stage, in chart datum as written."""
+    import pandas as pd
+
+    frame = pd.read_csv(BundleLayout(root=root).tide)
+    return {
+        datetime.fromisoformat(ts): float(stage)
+        for ts, stage in zip(frame["ts"], frame["stage_m"], strict=True)
+    }
 
 
 def test_a_different_seed_moves_the_storm_but_not_the_pins(

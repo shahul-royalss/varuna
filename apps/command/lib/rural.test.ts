@@ -264,6 +264,17 @@ describe("worstAvoided", () => {
   it("is nothing when the cycle put no water in the way", () => {
     expect(worstAvoided(plan())).toBeNull();
   });
+
+  it("says a lane OSM does not name as where it is, never as 'an unnamed road'", () => {
+    const lane = worstAvoided(
+      plan({ avoided: [avoided("off Dr Ambedkar Road", 47, "2019-07-02T08:25:00+05:30")] }),
+    );
+    expect(lane?.street).toBe("a road off Dr Ambedkar Road");
+    const older = worstAvoided(
+      plan({ avoided: [avoided("Unnamed road", 47, "2019-07-02T08:25:00+05:30")] }),
+    );
+    expect(older?.street).toBe("a road");
+  });
 });
 
 describe("the two roads", () => {

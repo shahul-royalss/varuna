@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import numpy as np
 import structlog
@@ -33,7 +33,7 @@ from varuna_schemas.paths import data_dir
 
 from varuna_pulse.citycache import cached, digest
 from varuna_pulse.enkf import assimilate, capacity_operator, hop_distances
-from varuna_pulse.health import drain_health
+from varuna_pulse.health import build_place_index, drain_health, pipe_places, segment_places
 from varuna_pulse.reports import read_reports
 from varuna_pulse.traffic import CONFOUNDER_RADIUS_M, detect_anomalies
 
@@ -45,11 +45,19 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
     import pandas as pd
     from numpy.typing import NDArray
 
+    from varuna_pulse.health import PlaceIndex
     from varuna_pulse.traffic import TrafficObservation
 
 log = structlog.get_logger("varuna.pulse.cycle")
 
-__all__ = ["RELAX_DAYS", "PulseResult", "run_pulse", "write_observations"]
+__all__ = [
+    "RELAX_DAYS",
+    "REPORT_SNAP_M",
+    "PulseResult",
+    "run_pulse",
+    "segment_place_names",
+    "write_observations",
+]
 
 RELAX_DAYS = 30.0
 """Time constant of the posterior's relaxation back toward the prior (CLAUDE.md 11.6).
@@ -64,6 +72,15 @@ The EnKF's cost is cubic in the batch through the innovation covariance, and a h
 Mumbai produces thousands of traffic anomalies. Four hundred of the most anomalous is a batch
 that runs in well under the 3 s stage budget and carries essentially all the information - the
 thousandth-slowest street tells you nothing the first four hundred did not."""
+
+REPORT_SNAP_M = 500.0
+"""How far a report may sit from the nearest drain node and still be assimilated at it.
+
+A report is placed on the inlet nearest its coordinates. With no limit, a report filed from
+Thane or from a phone whose location came back as 0, 0 was placed on whichever node happened to be
+nearest and moved that pipe's blockage - evidence about a street the inferred graph does not have,
+spent on one it does. 500 m is the same order as the confounder test's neighbourhood and many
+inlet spacings (40 m) wide, so any report on a street the graph follows is kept."""
 
 DISAGREEMENT_LIMIT = 25
 """Rows kept in the model-observation disagreement list (CLAUDE.md 11.6).
@@ -177,6 +194,20 @@ def run_pulse(
         lambda: _street_names(city_root, network, nodes, node_index),
     )
 
+    # Where things are, in words: the named streets and the hotspot register, built once per
+    # city build. A traffic anomaly arrives as a segment id and was printed as one.
+    places = _place_index(city_root)
+    # Every segment's place, once per city build: a cycle only looks its anomalies up.
+    traffic_places = _traffic_place_index(city_root)
+    # Every pipe's display name and locality, once per city build, for the product and for a
+    # report that arrives with a coordinate and no place of its own.
+    display_name, locality = cached(
+        "pipe_places",
+        [*_place_sources(city_root), city_root / "drain_edges.parquet"],
+        digest(network.edge_ids, tuple(street_of_edge)),
+        lambda: pipe_places(city_root, network.edge_ids, street_of_edge, index=places),
+    )
+
     observed_edges: list[int] = []
     y: list[float] = []
     y_sd: list[float] = []
@@ -190,10 +221,18 @@ def run_pulse(
         observed_edges.append(edge)
         y.append(observation.depth_cm)
         y_sd.append(observation.depth_sd_cm)
+        segment_place, segment_locality = traffic_places.get(
+            str(observation.segment_id), (None, None)
+        )
         records.append(
             {
                 "kind": "traffic",
                 "segment_id": observation.segment_id,
+                # The segment's own street, else "off <nearest named street>" within 200 m, else
+                # the pipe's own name; and the nearest chronic spot within 300 m. Null when none
+                # of them exists, and the screen then says "Unnamed road" (varuna_pulse.health).
+                "place": segment_place or display_name[edge],
+                "locality": segment_locality or locality[edge],
                 "edge_id": network.edge_ids[edge],
                 "ts": observation.ts.isoformat(),
                 "depth_cm": observation.depth_cm,
@@ -207,9 +246,13 @@ def run_pulse(
 
     # Reports carry a coordinate rather than a segment, so they are placed on the nearest inlet.
     node_lon, node_lat = _node_positions(network, transform, crs)
+    too_far = 0
+    at_outfall = 0
     for report in reports:
-        edge = _nearest_edge(node_lon, node_lat, outgoing, report.lon, report.lat)
+        edge, missed = _snap_report(node_lon, node_lat, outgoing, report.lon, report.lat)
         if edge is None:
+            too_far += missed == "too_far"
+            at_outfall += missed == "outfall"
             continue
         observed_edges.append(edge)
         y.append(report.depth_cm)
@@ -223,10 +266,28 @@ def run_pulse(
                 "depth_cm": report.depth_cm,
                 "depth_sd_cm": report.depth_sd_cm,
                 "chip": report.chip,
-                "place": report.place,
+                # A report filed from the public map carries the place its reporter named; one
+                # posted with only a coordinate is named by the pipe it was placed on.
+                "place": report.place or display_name[edge],
+                "locality": None if report.place else locality[edge],
                 "n_merged": report.n_merged,
                 "synthetic": report.synthetic,
             }
+        )
+
+    if too_far:
+        plural = too_far != 1
+        notes.append(
+            f"{too_far} citizen report{'s' if plural else ''} more than "
+            f"{REPORT_SNAP_M:.0f} m from any drain node {'were' if plural else 'was'} "
+            "not assimilated: the inferred graph has no pipe there to learn about."
+        )
+    if at_outfall:
+        plural = at_outfall != 1
+        notes.append(
+            f"{at_outfall} citizen report{'s' if plural else ''} nearest a drain outfall "
+            f"{'were' if plural else 'was'} not assimilated: an outfall has no pipe of its own "
+            "to learn about."
         )
 
     if len(observed_edges) > MAX_OBSERVATIONS:
@@ -320,7 +381,7 @@ def run_pulse(
         # meets a small pipe, and a reader has to be able to tell that from a forecast.
         worst = disagreements[0]
         notes.append(
-            f"Largest model-observation disagreement: {abs(worst['residual_cm']):.0f} cm at "
+            f"Largest model-observation disagreement: {abs(worst['residual_cm']):.0f} cm, "
             f"{worst['place']} - {worst['observed_depth_cm']:.0f} cm observed against "
             f"{worst['modelled_depth_cm']:.0f} cm from the {posterior.operator} operator "
             f"before the update."
@@ -341,7 +402,11 @@ def run_pulse(
         ),
         diameter_m=np.asarray(network.diameter, dtype=np.float64),
         street=street_of_edge,
+        display_name=display_name,
+        locality=locality,
         observation_counts=counts,
+        q_full_m3s=np.asarray(network.q_full, dtype=np.float64),
+        observations=records,
         last_update=cycle_ts.isoformat(),
         run_id=run_id,
     )
@@ -551,18 +616,121 @@ def _node_positions(
     return np.where(missing, 1e6, lon), np.where(missing, 1e6, lat)
 
 
+def _place_index(city_root: Path) -> PlaceIndex:
+    """The named-street and hotspot trees, built once per city build."""
+    return cached(
+        "place_index", _place_sources(city_root), "", lambda: build_place_index(city_root)
+    )
+
+
+def _traffic_place_index(city_root: Path) -> dict[str, tuple[str | None, str | None]]:
+    """Every road segment's place and locality, once per city build: a cycle looks many up."""
+    return cached(
+        "segment_places",
+        _place_sources(city_root),
+        "",
+        lambda: segment_places(
+            city_root, _all_segment_ids(city_root), index=_place_index(city_root)
+        ),
+    )
+
+
+def segment_place_names(
+    city_root: Path, segment_ids: Sequence[str]
+) -> dict[str, tuple[str | None, str | None]]:
+    """A few road segments' place and locality, by the rules a cycle names its anomalies with.
+
+    For the API naming the traffic anomalies of a run baked before the cycle named them -
+    "off Eastern Freeway" rather than "S102177717-000". It shares the cycle's place index (one
+    per city build, 2.2 s to build on Mumbai) and looks up only the segments asked for (about
+    50 ms for a cycle's worth), where naming all 21,296 segments takes about 9 s.
+    """
+    return segment_places(city_root, segment_ids, index=_place_index(city_root))
+
+
+def _all_segment_ids(city_root: Path) -> list[str]:
+    """Every road segment id of the city, in file order."""
+    import pandas as pd
+
+    path = city_root / "segments.parquet"
+    if not path.is_file():
+        return []
+    return [str(sid) for sid in pd.read_parquet(path, columns=["segment_id"])["segment_id"]]
+
+
+def _place_sources(city_root: Path) -> list[Path]:
+    """The files the place index is built from, for the city cache's fingerprint."""
+    return [
+        city_root / "segments.parquet",
+        city_root / "export" / "hotspots.parquet",
+        city_root / "hotspots.geojson",
+    ]
+
+
+def _node_distance_sq_m(
+    node_lon: NDArray[np.floating], node_lat: NDArray[np.floating], lon: float, lat: float
+) -> NDArray[np.floating]:
+    """Squared distance in metres from every node to a lon/lat, on a local equirectangular plane.
+
+    Degrees used to be compared directly, which weighs a degree of longitude as a degree of
+    latitude (5 % wrong at Mumbai's 19 N) and gave a cutoff no unit to be held in.
+    """
+    kx = 111_320.0 * float(np.cos(np.radians(lat)))
+    ky = 110_574.0
+    return ((node_lon - lon) * kx) ** 2 + ((node_lat - lat) * ky) ** 2
+
+
+def _nearest_node_m(
+    node_lon: NDArray[np.floating], node_lat: NDArray[np.floating], lon: float, lat: float
+) -> float:
+    """Distance in metres to the drain node nearest a lon/lat."""
+    if node_lon.size == 0:
+        return float("inf")
+    return float(np.sqrt(np.min(_node_distance_sq_m(node_lon, node_lat, lon, lat))))
+
+
 def _nearest_edge(
     node_lon: NDArray[np.floating] | None,
     node_lat: NDArray[np.floating] | None,
     outgoing: dict[int, int],
     lon: float,
     lat: float,
+    max_m: float = REPORT_SNAP_M,
 ) -> int | None:
-    """The outgoing pipe of the drain node nearest a lon/lat."""
-    if node_lon is None or node_lat is None:
+    """The outgoing pipe of the drain node nearest a lon/lat, or None past ``max_m`` metres."""
+    if node_lon is None or node_lat is None or node_lon.size == 0:
         return None
-    distance = (node_lon - lon) ** 2 + (node_lat - lat) ** 2
-    return outgoing.get(int(np.argmin(distance)))
+    distance = _node_distance_sq_m(node_lon, node_lat, lon, lat)
+    nearest = int(np.argmin(distance))
+    if float(distance[nearest]) > max_m * max_m:
+        return None
+    return outgoing.get(nearest)
+
+
+def _snap_report(
+    node_lon: NDArray[np.floating] | None,
+    node_lat: NDArray[np.floating] | None,
+    outgoing: dict[int, int],
+    lon: float,
+    lat: float,
+) -> tuple[int | None, Literal["too_far", "outfall", "no_graph"] | None]:
+    """The pipe a report is assimilated at, or why it is not.
+
+    ``too_far`` is more than :data:`REPORT_SNAP_M` from every drain node. ``outfall`` is near the
+    graph, but the nearest node is an outfall: it has no pipe of its own for the report to move,
+    and which inflowing pipe to blame instead is a modelling choice a cycle does not make
+    silently. ``no_graph`` is a city without node positions, where no report can be placed at
+    all. The first two are counted into the cycle's notes, so a report near the city is never
+    dropped without a word.
+    """
+    if node_lon is None or node_lat is None or node_lon.size == 0:
+        return None, "no_graph"
+    edge = _nearest_edge(node_lon, node_lat, outgoing, lon, lat)
+    if edge is not None:
+        return edge, None
+    if _nearest_node_m(node_lon, node_lat, lon, lat) > REPORT_SNAP_M:
+        return None, "too_far"
+    return None, "outfall"
 
 
 def _edge_geometry(city_root: Path, edge_ids: tuple[str, ...]) -> list[list[list[float]]]:

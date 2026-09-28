@@ -66,15 +66,25 @@ log = structlog.get_logger("varuna.products.depth")
 
 __all__ = [
     "EXCEEDANCE_CM",
+    "INTERTIDAL_MASK_FILE",
     "PROFILE_THRESHOLD_CM",
     "PROFILE_TOLERANCE",
+    "SEA_MASK_FILE",
     "SEGMENT_BUFFER_M",
+    "SEGMENT_CELLS_FILE",
     "SEGMENT_PERCENTILE",
     "WET_THRESHOLD_CM",
+    "StaleSegmentIndex",
     "aoi_depth_band",
+    "build_segment_cell_index",
+    "city_intertidal_mask",
+    "city_sea_mask",
     "depth_bounds",
+    "intertidal_mask_digest",
+    "sea_mask_digest",
     "segment_cell_index",
     "segment_forecast",
+    "segment_ids_digest",
     "segment_name_aliases",
     "segment_names",
     "write_depth_rasters",
@@ -170,8 +180,14 @@ def write_depth_rasters(
     *,
     stat: str = "p50",
     workers: int | None = None,
+    sea_mask: NDArray[np.bool_] | None = None,
 ) -> list[Path]:
     """One PNG per step through the shared ramp, each with its world file.
+
+    ``sea_mask`` cells (the city's sea, ``terrain.sea``) are drawn transparent at every step.
+    The Twin holds the sea at the tide's level, so its depth there is metres of seawater, and
+    drawn through the depth ramp it would paint 19 km2 of Mumbai's bay in the colour that means
+    "rescue vehicles only".
 
     The PNG is RGBA with the dry band fully transparent, so the basemap shows through where
     there is no water rather than the city being covered by a grey sheet. The world file (.pgw)
@@ -199,8 +215,13 @@ def write_depth_rasters(
     # shift and would put every street 15 m north-west of where it is.
     world = f"{res}\n0.0\n0.0\n{-res}\n{left + res / 2.0}\n{top - res / 2.0}\n"
 
+    sea = None if sea_mask is None else np.asarray(sea_mask, dtype=bool)
+    if sea is not None and sea.shape != tuple(depth_m.shape[1:]):
+        raise ValueError(f"sea_mask is {sea.shape}; the depth steps are {depth_m.shape[1:]}")
+
     def encode(step: int) -> bytes:
-        rgba = depth_array_to_rgba(depth_m[step], alpha=255, dry_alpha=0)
+        field = depth_m[step] if sea is None else np.where(sea, 0.0, depth_m[step])
+        rgba = depth_array_to_rgba(field, alpha=255, dry_alpha=0)
         buffer = BytesIO()
         Image.fromarray(rgba, mode="RGBA").save(buffer, format="PNG", optimize=True)
         return buffer.getvalue()
@@ -227,12 +248,159 @@ def write_depth_rasters(
 
 
 # ============================================================================ segments
+SEGMENT_CELLS_FILE = "segment_cells.npz"
+"""The cached segment index beside the city: ``city/<city>/segment_cells.npz``."""
+
+SEA_MASK_FILE = "sea_mask.tif"
+"""The city's sea beside it (``varuna_city.sea``): 0 land, 1 open sea, 2 tidal creek."""
+
+NO_SEA_DIGEST = "none"
+"""What :func:`sea_mask_digest` answers for a city with no sea raster, and what an index written
+before sea exclusion existed is taken to have been built with."""
+
+INTERTIDAL_MASK_FILE = "intertidal_mask.tif"
+"""The wet land behind the coast wall (``varuna_city.pipeline``): 1 intertidal, 0 not, 255 no-data.
+
+Mangrove, wetland and open water the tide may cover, 8-connected to the sea at or below the coast
+wall level. The Twin keeps it as land, so the tide walks onto it at high water - 25 cells at the
+08:40 cycle's +0.097 m, 124 at +1.236 m, 346 at the +2.218 m crest on Mumbai - and a street whose
+buffer touched it read that seawater as its depth: 18 segments at 5 cm or more at the crest, 3 at
+30 cm or more, Kalina Kurla Road at 33 cm. Streets are not built on mangroves."""
+
+NO_INTERTIDAL_DIGEST = "none"
+"""What :func:`intertidal_mask_digest` answers for no intertidal land - no raster, or one with no
+cell set - and what an index written before intertidal exclusion existed is taken to have had."""
+
+
+def city_sea_mask(city_root: Path, shape: tuple[int, int] | None = None):
+    """``city_root/sea_mask.tif`` as a boolean mask, or ``None`` when the city has none.
+
+    ``shape``, when given, is checked: a mask on another grid would exclude the wrong cells.
+    """
+    path = Path(city_root) / SEA_MASK_FILE
+    if not path.is_file():
+        return None
+    import rasterio
+
+    with rasterio.open(path) as src:
+        band = src.read(1)
+    if shape is not None and tuple(band.shape) != tuple(shape):
+        raise ValueError(f"{path} is {band.shape}; the depth grid is {tuple(shape)}")
+    # 255 is the writer's no-data, never sea.
+    return (band != 0) & (band != 255)
+
+
+def sea_mask_digest(sea) -> str:
+    """sha256 of a sea mask's cells, or :data:`NO_SEA_DIGEST` for no mask."""
+    if sea is None:
+        return NO_SEA_DIGEST
+    import hashlib
+
+    data = np.ascontiguousarray(np.asarray(sea, dtype=bool), dtype="u1")
+    return hashlib.sha256(data.tobytes()).hexdigest()
+
+
+def city_intertidal_mask(city_root: Path, shape: tuple[int, int] | None = None):
+    """``city_root/intertidal_mask.tif`` as a boolean mask, or ``None`` when the city has none.
+
+    ``shape``, when given, is checked as :func:`city_sea_mask` checks it. Only the code 1 is
+    intertidal; 0 and the writer's 255 no-data are not.
+    """
+    path = Path(city_root) / INTERTIDAL_MASK_FILE
+    if not path.is_file():
+        return None
+    import rasterio
+
+    with rasterio.open(path) as src:
+        band = src.read(1)
+    if shape is not None and tuple(band.shape) != tuple(shape):
+        raise ValueError(f"{path} is {band.shape}; the depth grid is {tuple(shape)}")
+    return band == 1
+
+
+def intertidal_mask_digest(intertidal) -> str:
+    """sha256 of an intertidal mask's cells, or :data:`NO_INTERTIDAL_DIGEST` when none is set.
+
+    An all-zero mask answers the same as no mask, unlike :func:`sea_mask_digest`: every city build
+    writes the raster, all zero where there is no wall behind a zone, and an index built without
+    it excludes exactly the same cells - so it stays valid rather than being refused.
+    """
+    if intertidal is None:
+        return NO_INTERTIDAL_DIGEST
+    data = np.ascontiguousarray(np.asarray(intertidal, dtype=bool), dtype="u1")
+    if not data.any():
+        return NO_INTERTIDAL_DIGEST
+    import hashlib
+
+    return hashlib.sha256(data.tobytes()).hexdigest()
+
+
+def segment_ids_digest(segment_ids) -> str:
+    """sha256 of a segment id sequence, in order - the key :func:`segment_cell_index` caches on.
+
+    Order is part of the key on purpose: the index is positional (segment ``k``'s cells), and so
+    is everything aligned to it, from the Flash-lite emulator to every run's segment axis.
+    """
+    import hashlib
+
+    # Each id followed by a newline, hashed in one call: 21,296 ids is one short buffer.
+    text = "".join(f"{segment_id}\n" for segment_id in segment_ids)
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+class StaleSegmentIndex(RuntimeError):
+    """An existing ``segment_cells.npz`` disagrees with the street table, the sea or the intertidal
+    land beside it.
+
+    Raised rather than repaired, because a reader cannot tell which side is stale. On 2026-09-27
+    it was the table: ``segments.parquet`` carried the 12 Sep ids (1,247 ``S0-*``) while the index,
+    the fitted Flash-lite emulator and every baked run shared the 10 Sep ids, and an index
+    rebuilt from the table on read made ``_flash_plan`` refuse Flash on every Mumbai cycle.
+    """
+
+
 def segment_cell_index(city_root: Path, transform, shape: tuple[int, int], crs: str):
     """Map each road segment to the flat cell indices within :data:`SEGMENT_BUFFER_M` of it.
 
     Pure geometry, so it is computed once and cached at ``city/<city>/segment_cells.npz``. On
-    Mumbai that is 21,296 segments over a 522 x 323 grid and takes a few seconds; doing it per
-    run - 49 cycles in a bake - would dominate the bake.
+    Mumbai that is 21,296 segments over a 522 x 323 grid and took 28-36 s to build on 2026-09-26
+    (an i5-1155G7 with other work running); doing it per run - 49 cycles in a bake - would
+    dominate the bake. Checking a cache against the table costs 48-60 ms warm.
+
+    **The cache is keyed on the street table it was built from.** It stores
+    :func:`segment_ids_digest` of ``segments.parquet``'s ids, and is checked against the table on
+    every read. It used to be loaded whenever it existed, which is how Mumbai's index and every
+    baked run kept one set of segment ids while ``segments.parquet`` was rebuilt on 12 Sep with
+    another (1,247 renamed ``S0-*``, 839 more naming a different street): the products joined
+    names, points and exposure on the wrong street and nothing said so. An index written before
+    the digest existed is checked against its own stored ids, which is the same comparison; a
+    matching one is used as it is and never rewritten. With no ``segments.parquet`` to compare
+    against (a packaged index on its own), the cache is trusted, as before.
+
+    **A read never rewrites an existing index.** A missing one is built and written; a stale one
+    raises :class:`StaleSegmentIndex`, naming the digests that differ and the fix. The city
+    build, which writes the table, the sea and the intertidal raster, removes the index whenever
+    it rewrites any of them (``varuna_city.pipeline``), so the first read after ``make city``
+    builds it afresh. Rewriting
+    on read was tried first and did harm: a test that reached ``city/mumbai`` rebuilt the index
+    from the stale 12 Sep table at 18:53 on 2026-09-27, and Flash, fitted on the index's ids,
+    refused every Mumbai cycle from then on.
+
+    **Sea cells are not street cells** (``sea_mask.tif``, when the city has one). 94 of Mumbai's
+    segments - Carter Road, B J Road, Danda Seaface, the piers, the SCLR and BKC bridges - have
+    a sea cell inside their 15 m buffer, and with the sea held at the tide's level they read up
+    to 139 cm of seawater as street depth. So the index leaves sea cells out, and a segment whose
+    buffer is all sea (a pier, a bridge span) keeps no cells and reads dry. The mask's digest is
+    part of the cache key beside the street table's, so a new coastline rebuilds the index; an
+    index written before either digest existed is taken to have had no sea.
+
+    **Nor are intertidal cells** (``intertidal_mask.tif``, the mangroves, wetland and water the
+    coast wall stands behind). The Twin keeps them as land so the tide can walk onto them, and at
+    the +2.218 m crest it does, over 346 of Mumbai's cells; a street whose buffer touched one read
+    that as its depth. They are left out exactly as the sea is, a street whose whole buffer is
+    intertidal reads 0 cm, and the raster's :func:`intertidal_mask_digest` is a third part of
+    the cache key, so an index built before the raster existed is refused rather than silently
+    reading mangroves. An all-zero raster digests as none, so a city with no wall keeps its index.
 
     Returns ``(segment_ids, offsets, cells)`` in CSR form: segment ``k``'s cells are
     ``cells[offsets[k]:offsets[k+1]]``. Flat form rather than a list of arrays because the
@@ -240,18 +408,132 @@ def segment_cell_index(city_root: Path, transform, shape: tuple[int, int], crs: 
     """
     import geopandas as gpd
 
-    cache = city_root / "segment_cells.npz"
-    if cache.is_file():
-        data = np.load(cache, allow_pickle=True)
-        return (tuple(data["segment_ids"].tolist()), data["offsets"], data["cells"])
+    cache = city_root / SEGMENT_CELLS_FILE
+    table = city_root / "segments.parquet"
+    sea = city_sea_mask(city_root, shape)
+    sea_digest = sea_mask_digest(sea)
+    intertidal = city_intertidal_mask(city_root, shape)
+    intertidal_digest = intertidal_mask_digest(intertidal)
+    expected = None
+    if table.is_file():
+        import pandas as pd
 
+        expected = segment_ids_digest(pd.read_parquet(table, columns=["segment_id"])["segment_id"])
+    if cache.is_file():
+        # Read in full and closed before anything can replace the file: Windows refuses to
+        # rename over a file another handle still has open.
+        with np.load(cache, allow_pickle=True) as data:
+            segment_ids = tuple(data["segment_ids"].tolist())
+            offsets, cells = data["offsets"], data["cells"]
+            stored = (
+                str(data["segments_sha256"])
+                if "segments_sha256" in data.files
+                else segment_ids_digest(segment_ids)
+            )
+            stored_sea = str(data["sea_sha256"]) if "sea_sha256" in data.files else NO_SEA_DIGEST
+            stored_intertidal = (
+                str(data["intertidal_sha256"])
+                if "intertidal_sha256" in data.files
+                else NO_INTERTIDAL_DIGEST
+            )
+        streets_ok = expected is None or stored == expected
+        # A packaged index with no street table to check is trusted, as before - unless the sea
+        # or the intertidal land it was built under is not the one beside it.
+        if streets_ok and stored_sea == sea_digest and stored_intertidal == intertidal_digest:
+            return (segment_ids, offsets, cells)
+        log.error(
+            "products.segment_index_stale",
+            cache=str(cache),
+            cached_segments=len(segment_ids),
+            cached_sha256=stored[:12],
+            table_sha256=None if expected is None else expected[:12],
+            cached_sea_sha256=stored_sea[:12],
+            sea_sha256=sea_digest[:12],
+            cached_intertidal_sha256=stored_intertidal[:12],
+            intertidal_sha256=intertidal_digest[:12],
+            action="refused; the index is not rewritten on read",
+        )
+        what = []
+        if not streets_ok:
+            what.append(
+                f"it was built from street ids {stored[:12]} and segments.parquet now carries "
+                f"{None if expected is None else expected[:12]}"
+            )
+        if stored_sea != sea_digest:
+            what.append(
+                f"it was built under sea {stored_sea[:12]} and {SEA_MASK_FILE} is now "
+                f"{sea_digest[:12]}"
+            )
+        if stored_intertidal != intertidal_digest:
+            what.append(
+                f"it was built under intertidal land {stored_intertidal[:12]} and "
+                f"{INTERTIDAL_MASK_FILE} is now {intertidal_digest[:12]}"
+            )
+        raise StaleSegmentIndex(
+            f"{cache} does not match the city beside it: {'; and '.join(what)}. Either side can "
+            f"be the stale one, so nothing is rewritten on read. Rebuild the city "
+            f"(make city CITY={Path(city_root).name}), which removes the index so the next read "
+            f"builds it from the new table; or, if the index is the one to keep, restore the "
+            f"street table it was built from."
+        )
+
+    segments = gpd.read_parquet(table).to_crs(crs)
+    segment_ids, offsets, cells = build_segment_cell_index(
+        segments, transform, shape, sea=sea, intertidal=intertidal
+    )
+    digest = segment_ids_digest(segment_ids)
+    # Written beside the target and renamed over it, so a reader in another process sees the old
+    # index or the new one and never half of one.
+    partial = cache.with_name(f"{cache.stem}.{os.getpid()}.partial.npz")
+    with partial.open("wb") as handle:
+        np.savez_compressed(
+            handle,
+            segment_ids=np.array(segment_ids, dtype=object),
+            offsets=offsets,
+            cells=cells,
+            segments_sha256=np.array(digest),
+            sea_sha256=np.array(sea_digest),
+            intertidal_sha256=np.array(intertidal_digest),
+        )
+    os.replace(partial, cache)
+    log.info(
+        "products.segment_index_built",
+        segments=len(segment_ids),
+        cells=int(cells.size),
+        mean_cells=round(float(cells.size / max(len(segment_ids), 1)), 1),
+        segments_sha256=digest[:12],
+        sea_sha256=sea_digest[:12],
+        intertidal_sha256=intertidal_digest[:12],
+        cache=str(cache),
+    )
+    return (segment_ids, offsets, cells)
+
+
+def build_segment_cell_index(
+    segments, transform, shape: tuple[int, int], *, sea=None, intertidal=None
+):
+    """The segment index itself, from a street table already in the grid's CRS; writes nothing.
+
+    Split from :func:`segment_cell_index` so a rebuilt street table can be checked against the
+    cached index in memory, without touching ``city/``. ``sea`` and ``intertidal`` cells are
+    left out of every segment (:func:`segment_cell_index`); a segment left with no cells reads
+    0 cm. With neither, or with both empty, the index is the one this function always built.
+    """
     from rasterio.features import rasterize
     from rasterio.transform import Affine
 
-    segments = gpd.read_parquet(city_root / "segments.parquet").to_crs(crs)
     n_rows, n_cols = shape
     affine = Affine(*transform)
 
+    off_street = None
+    for name, mask in (("sea", sea), ("intertidal", intertidal)):
+        if mask is None:
+            continue
+        mask = np.asarray(mask, dtype=bool)
+        if mask.shape != (n_rows, n_cols):
+            raise ValueError(f"{name} is {mask.shape}; the grid is {(n_rows, n_cols)}")
+        off_street = mask if off_street is None else off_street | mask
+    land = None if off_street is None else ~off_street.ravel()
     offsets = np.zeros(len(segments) + 1, dtype=np.int64)
     chunks: list[NDArray[np.int64]] = []
     for i, geom in enumerate(segments.geometry):
@@ -266,21 +548,13 @@ def segment_cell_index(city_root: Path, transform, shape: tuple[int, int], crs: 
             dtype="uint8",
         )
         flat = np.flatnonzero(mask.ravel()).astype(np.int64)
+        if land is not None:
+            flat = flat[land[flat]]
         chunks.append(flat)
         offsets[i + 1] = offsets[i] + flat.size
 
     cells = np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.int64)
     segment_ids = tuple(segments["segment_id"].astype(str))
-    np.savez_compressed(
-        cache, segment_ids=np.array(segment_ids, dtype=object), offsets=offsets, cells=cells
-    )
-    log.info(
-        "products.segment_index_built",
-        segments=len(segment_ids),
-        cells=int(cells.size),
-        mean_cells=round(float(cells.size / max(len(segment_ids), 1)), 1),
-        cache=str(cache),
-    )
     return (segment_ids, offsets, cells)
 
 

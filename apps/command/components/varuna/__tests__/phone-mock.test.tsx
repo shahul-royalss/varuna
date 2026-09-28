@@ -95,3 +95,23 @@ describe("PhoneMock motion M16", () => {
     ).toBeInTheDocument();
   });
 });
+
+describe("PhoneMock brand", () => {
+  it("draws the team's emblem in the status bar and the chat avatar, and says the name once", () => {
+    const { container } = render(<PhoneMock messages={MESSAGES} />);
+    const status = container.querySelector('[data-slot="phone-status-brand"]') as HTMLElement;
+    const statusMark = status.querySelector('img[data-slot="brand-mark"]');
+    expect(statusMark).toHaveAttribute("src", expect.stringMatching(/varuna-mark-64\.png$/));
+    expect(statusMark).toHaveAttribute("width", "16");
+    // Decorative: the name beside it is text, so a screen reader does not hear it twice.
+    expect(statusMark).toHaveAttribute("alt", "");
+    expect(status).toHaveTextContent("VARUNA");
+
+    const avatar = container.querySelector('[data-slot="phone-chat-avatar"]') as HTMLElement;
+    expect(avatar).toHaveAttribute("aria-hidden", "true");
+    expect(avatar.querySelector('img[data-slot="brand-mark"]')).not.toBeNull();
+    // No letter standing in for a logo (CLAUDE.md 6.9).
+    expect(avatar.textContent).toBe("");
+    expect(screen.queryAllByRole("img", { name: "VARUNA" })).toHaveLength(0);
+  });
+});

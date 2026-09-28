@@ -23,6 +23,7 @@ city still produces a report that names what is missing.
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -556,6 +557,84 @@ def _lines_only(gdf: Any) -> Any:
     return gdf[gdf.geom_type.isin(["LineString", "MultiLineString"])]
 
 
+# ---- step 6a: the sea, which conditioning reads ----------------------------------------
+
+
+def _sea_config_paths(ctx: Ctx) -> Sequence[Path]:
+    from varuna_city.sea import sea_config_path
+
+    return [sea_config_path(ctx.config.id)]
+
+
+def _sea_summary(stats: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "cells": stats.get("cells"),
+        "km2": stats.get("km2"),
+        "open_sea_cells": (stats.get("open_sea") or {}).get("cells"),
+        "tidal_creek_cells": (stats.get("tidal_creek") or {}).get("cells"),
+        "components": len(stats.get("components") or []),
+        "blocked_cells_removed": stats.get("blocked_cells_removed"),
+    }
+
+
+def _step_sea(ctx: Ctx) -> dict[str, Any]:
+    """The open sea and the tidal creeks the Twin imposes the tide on (:mod:`varuna_city.sea`).
+
+    Runs on the raw DEM, after land cover and OSM and before conditioning, which needs the mask
+    to keep bridges from flooring land to sea level and to raise the shore ring.
+    """
+    from varuna_city.condition import resolve_building_mask
+    from varuna_city.sea import SEA_JSON_FILE, SEA_MASK_FILE, build_sea_mask, load_sea_config
+
+    sea_config = load_sea_config(ctx.config)
+    masks = resolve_building_mask(
+        ctx.get("osm.buildings"),
+        ctx.grid.transform,
+        ctx.grid.shape,
+        crs=ctx.grid.crs,
+        sinks=_sink_points(ctx),
+        register=_register_points(ctx),
+    )
+    result = build_sea_mask(
+        ctx.get("dem"),
+        ctx.get("landcover"),
+        transform=ctx.grid.transform,
+        crs=ctx.grid.crs,
+        waterways=ctx.get("osm.waterways"),
+        blocked=masks.buildings,
+        sea_config=sea_config,
+        res_m=ctx.grid.res,
+    )
+    _write_mask(result.codes, ctx.grid, ctx.path(SEA_MASK_FILE))
+    _json_dump(result.stats, ctx.path(SEA_JSON_FILE))
+    _drop_segment_index(ctx, reason="sea_mask.tif rewritten")
+    ctx.put("sea_codes", result.codes)
+    ctx.put("sea_config", sea_config)
+    ctx.put("sea_stats", result.stats)
+    return _sea_summary(result.stats)
+
+
+def _load_sea(ctx: Ctx) -> dict[str, Any]:
+    import rasterio
+
+    from varuna_city.sea import SEA_JSON_FILE, SEA_MASK_FILE, load_sea_config
+
+    with rasterio.open(ctx.path(SEA_MASK_FILE)) as src:
+        codes = src.read(1).astype("uint8")
+    ctx.put("sea_codes", codes)
+    ctx.put("sea_config", load_sea_config(ctx.config))
+    path = ctx.path(SEA_JSON_FILE)
+    stats = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    ctx.put("sea_stats", stats)
+    return _sea_summary(stats) if stats else {"cells": int(np.count_nonzero(codes))}
+
+
+def _sea_bool(ctx: Ctx) -> Any:
+    """The sea as a boolean mask (open sea and creek alike), or ``None`` before the sea step."""
+    codes = ctx.get("sea_codes")
+    return None if codes is None else np.asarray(codes) != 0
+
+
 def _step_condition(ctx: Ctx) -> dict[str, Any]:
     from varuna_city.condition import condition_dem
     from varuna_city.rasters import write_grid_raster
@@ -579,24 +658,81 @@ def _step_condition(ctx: Ctx) -> dict[str, Any]:
         building_burn_m=float(ctx.config.building_burn_m),
         road_carve_m=float(ctx.config.road_carve_m),
         min_pit_area_m2=float(ctx.config.depression_min_area_m2),
+        sea=_sea_bool(ctx),
+        landcover=ctx.get("landcover"),
+        coast_wall_m=getattr(ctx.get("sea_config"), "coast_wall_m", None),
     )
     write_grid_raster(result.dem, ctx.grid, ctx.path("dem_conditioned.tif"))
     _write_mask(result.buildings_mask, ctx.grid, ctx.path("buildings_mask.tif"))
     _write_mask(result.roads_mask, ctx.grid, ctx.path("roads_mask.tif"))
+    intertidal = _intertidal_or_none(result.intertidal_mask, ctx.grid.shape)
+    _write_mask_atomic(intertidal, ctx.grid, ctx.path(INTERTIDAL_MASK_FILE))
+    _drop_segment_index(ctx, reason=f"{INTERTIDAL_MASK_FILE} rewritten")
     ctx.put("conditioned", result.dem)
     ctx.put("buildings_mask", result.buildings_mask)
     ctx.put("roads_mask", result.roads_mask)
+    ctx.put("intertidal_mask", intertidal)
     changes = {
         k: (float(v) if isinstance(v, np.floating) else v) for k, v in result.changes.items()
     }
+    changes["intertidal_mask_file"] = INTERTIDAL_MASK_FILE
+    changes["intertidal_mask_cells"] = int(np.count_nonzero(intertidal))
     _json_dump(changes, ctx.path("condition.json"))
     return changes
+
+
+INTERTIDAL_MASK_FILE = "intertidal_mask.tif"
+"""The wet land the coast wall stands behind, 1 where the tide may cover it and 0 elsewhere.
+
+Same grid, transform and encoding as ``sea_mask.tif`` (uint8, 255 no-data, never written). It is
+:func:`varuna_city.condition.intertidal_zone` less the sea, exactly the array the wall was raised
+behind. The Twin keeps these cells as land - the tide walks onto them twice a day - and the
+products leave them out of every street and hotspot sample, as they leave out the sea
+(``varuna_products.depth``). Every city writes one: a city with no sea, no coast wall or no land
+cover writes it all zero, so the condition step's outputs are the same list everywhere and a
+build from before the raster existed is stale by :meth:`Step.fresh`. The products read an
+all-zero raster exactly as no raster, so such a city's segment index is the one it always was.
+Named here rather than imported, so the city build does not depend on the products package."""
+
+
+def _intertidal_or_none(mask: Any, shape: tuple[int, int]) -> Any:
+    """The intertidal mask as a boolean grid; all zero when conditioning built none."""
+    if mask is None:
+        return np.zeros(shape, dtype=bool)
+    out = np.asarray(mask, dtype=bool)
+    if out.shape != tuple(shape):
+        msg = f"intertidal mask is {out.shape}; the city grid is {tuple(shape)}"
+        raise ValueError(msg)
+    return out
+
+
+def _write_mask_atomic(mask: Any, grid: CityGrid, path: Path) -> Path:
+    """:func:`_write_mask` beside the target, then renamed over it.
+
+    A reader in another process (the products, a running API) sees the old raster or the new one
+    and never a half-written one. The partial name keeps the ``.tif`` suffix so GDAL picks the
+    GeoTIFF driver, and carries the pid so two builds cannot write the same partial file.
+    """
+    partial = path.with_name(f"{path.stem}.{os.getpid()}.partial{path.suffix}")
+    try:
+        _write_mask(mask, grid, partial)
+        os.replace(partial, path)
+    finally:
+        if partial.exists():
+            partial.unlink()
+    return path
 
 
 def _load_condition(ctx: Ctx) -> dict[str, Any]:
     ctx.put("conditioned", _read_raster(ctx.path("dem_conditioned.tif")))
     ctx.put("buildings_mask", _read_mask(ctx.path("buildings_mask.tif")))
     ctx.put("roads_mask", _read_mask(ctx.path("roads_mask.tif")))
+    intertidal = ctx.path(INTERTIDAL_MASK_FILE)
+    if intertidal.is_file():
+        import rasterio
+
+        with rasterio.open(intertidal) as src:
+            ctx.put("intertidal_mask", src.read(1) == 1)
     path = ctx.path("condition.json")
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
@@ -739,8 +875,29 @@ def _step_segments(ctx: Ctx) -> dict[str, Any]:
         crs=ctx.grid.crs,
     )
     segments.to_parquet(ctx.path("segments.parquet"), index=False)
+    _drop_segment_index(ctx, reason="segments.parquet rewritten")
     ctx.put("segments", segments)
     return _segment_stats(segments)
+
+
+SEGMENT_INDEX_FILE = "segment_cells.npz"
+"""The products' cached street-to-cell index beside the city (``varuna_products.depth``)."""
+
+
+def _drop_segment_index(ctx: Ctx, *, reason: str) -> None:
+    """Remove the cached segment index after rewriting a file it was built from.
+
+    ``varuna_products.depth.segment_cell_index`` builds ``segment_cells.npz`` from
+    ``segments.parquet``, ``sea_mask.tif`` and ``intertidal_mask.tif``, and refuses a stale one on
+    read rather than rewriting it, because a reader cannot tell which side is stale. The build is
+    the one place that knows: it has just written the new table, sea or intertidal zone, so it
+    removes the index and the first read afterwards builds it from them. Named here rather than
+    imported, so the city build does not depend on the products package.
+    """
+    index = ctx.path(SEGMENT_INDEX_FILE)
+    if index.is_file():
+        index.unlink()
+        log.info("city.segment_index_dropped", path=str(index), reason=reason)
 
 
 def _load_segments(ctx: Ctx) -> dict[str, Any]:
@@ -782,12 +939,17 @@ def _step_drains(ctx: Ctx) -> dict[str, Any]:
         ctx.get("imperviousness"),
         config=ctx.config,
         seed=ctx.seed,
+        sea_mask=_sea_bool(ctx),
+        sea_config=ctx.get("sea_config"),
     )
+    tidal = nodes.attrs.get("tidal")
     nodes.to_parquet(ctx.path("drain_nodes.parquet"), index=False)
     edges.to_parquet(ctx.path("drain_edges.parquet"), index=False)
     ctx.put("drain_nodes", nodes)
     ctx.put("drain_edges", edges)
     stats = _drain_stats(nodes, edges, check_connectivity(nodes, edges))
+    if tidal is not None:
+        stats["tidal"] = tidal
     _json_dump(stats, ctx.path("drains.json"))
     return stats
 
@@ -801,7 +963,13 @@ def _load_drains(ctx: Ctx) -> dict[str, Any]:
     edges = gpd.read_parquet(ctx.path("drain_edges.parquet"))
     ctx.put("drain_nodes", nodes)
     ctx.put("drain_edges", edges)
-    return _drain_stats(nodes, edges, check_connectivity(nodes, edges))
+    stats = _drain_stats(nodes, edges, check_connectivity(nodes, edges))
+    cached = ctx.path("drains.json")
+    if cached.is_file():
+        tidal = json.loads(cached.read_text(encoding="utf-8")).get("tidal")
+        if tidal is not None:
+            stats["tidal"] = tidal
+    return stats
 
 
 def size_label(row: Any) -> str:
@@ -1071,17 +1239,28 @@ STEPS: tuple[Step, ...] = (
         external_inputs=_infra_paths,
     ),
     Step(
+        "sea",
+        "Sea and tidal creeks from the DEM, land cover and OSM",
+        _step_sea,
+        outputs=("sea_mask.tif", "sea.json"),
+        inputs=("dem.tif", "landcover.tif", "osm.gpkg", "hotspots.geojson"),
+        load=_load_sea,
+        external_inputs=_sea_config_paths,
+    ),
+    Step(
         "condition",
-        "Hydro-condition the DEM (burn, carve, breach)",
+        "Hydro-condition the DEM (burn, carve, breach, coastline)",
         _step_condition,
         outputs=(
             "dem_conditioned.tif",
             "buildings_mask.tif",
             "roads_mask.tif",
+            INTERTIDAL_MASK_FILE,
             "condition.json",
         ),
-        inputs=("dem.tif", "osm.gpkg", "hotspots.geojson"),
+        inputs=("dem.tif", "osm.gpkg", "hotspots.geojson", "sea_mask.tif", "landcover.tif"),
         load=_load_condition,
+        external_inputs=_sea_config_paths,
     ),
     Step(
         "roughness",
@@ -1118,8 +1297,10 @@ STEPS: tuple[Step, ...] = (
             "depressions.parquet",
             "hotspots.geojson",
             "imperviousness.tif",
+            "sea_mask.tif",
         ),
         load=_load_drains,
+        external_inputs=_sea_config_paths,
     ),
     Step(
         "units",

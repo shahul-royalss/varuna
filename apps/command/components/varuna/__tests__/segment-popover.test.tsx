@@ -109,4 +109,22 @@ describe("SegmentPopover", () => {
     expect(screen.getByText("Safe until")).toBeInTheDocument();
     expect(screen.getByText(/Peak 1 cm/)).toBeInTheDocument();
   });
+  it("titles a street OSM does not name by its display name, and says it is not the street's own", () => {
+    const lane: SegmentPick = {
+      ...PICK,
+      segment: { ...PICK.segment, name: undefined, displayName: "off Dr Ambedkar Road" },
+    };
+    render(<SegmentPopover pick={lane} step={0} validTs={VALID_TS} onClose={() => {}} />);
+
+    expect(screen.getByRole("heading", { name: "off Dr Ambedkar Road" })).toBeInTheDocument();
+    expect(screen.getByText("OpenStreetMap does not name this street.")).toBeInTheDocument();
+    expect(screen.queryByText(/unnamed/i)).not.toBeInTheDocument();
+  });
+
+  it("adds no note under a street's own OSM name", () => {
+    render(<SegmentPopover pick={PICK} step={0} validTs={VALID_TS} onClose={() => {}} />);
+
+    expect(screen.getByRole("heading", { name: "Dr Babasaheb Ambedkar Road" })).toBeInTheDocument();
+    expect(screen.queryByText("OpenStreetMap does not name this street.")).not.toBeInTheDocument();
+  });
 });

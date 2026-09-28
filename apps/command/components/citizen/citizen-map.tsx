@@ -38,9 +38,10 @@
  * that says which map this is.
  */
 
+import { GoogleMapsOverlay } from "@deck.gl/google-maps";
 import { ScatterplotLayer } from "@deck.gl/layers";
 import { APIProvider, Map as GoogleMap, useMap } from "@vis.gl/react-google-maps";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Box } from "lucide-react";
 
@@ -50,9 +51,14 @@ import { cityBounds } from "@/components/map/basemap";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Skeleton } from "@/components/varuna/skeleton";
 import { loadFacilityLabels, type FacilityLabel } from "@/lib/api/city-layers";
+import {
+  REPORT_LAYER_PREFIX,
+  reportPinLayers,
+  useReportDrops,
+} from "@/components/map/layers/reports";
 import { routeLayers, useRouteProgress } from "@/components/map/layers/routes";
 import { wetStreetsLayers } from "@/components/map/layers/streets";
-import type { RouteLine } from "@/components/map/layers/types";
+import type { MapFocus, RouteLine } from "@/components/map/layers/types";
 import { TRUTH_FILL, TRUTH_RING } from "@/components/map/layers/palette";
 import type { PublicProfile } from "@/components/varuna/vehicle-selector";
 import { useCitizenRun, type CitizenRun, type CitizenRunState } from "@/lib/maps/citizen-run";
@@ -66,8 +72,9 @@ import {
 } from "@/lib/maps/google";
 import { darkMapStyle } from "@/lib/maps/google-style";
 import { usePhotorealTileset, type PhotorealState } from "@/lib/maps/photoreal";
-import { useGoogleDeckOverlay } from "@/lib/maps/overlay";
-import { usePrefersReducedMotion } from "@/lib/hooks";
+import { useGoogleDeckOverlay, type OverlayFactory } from "@/lib/maps/overlay";
+import { useMediaQuery, usePrefersReducedMotion } from "@/lib/hooks";
+import type { ReportPin } from "@/lib/api/reports";
 import type { RouteCorridor, RoutePlan } from "@/lib/api/route";
 import { cn } from "@/lib/utils";
 
@@ -104,16 +111,154 @@ export interface CitizenMapProps {
   onPickPoint?: (point: MapPoint) => void;
   /** The run the map drew, so the header can stamp it. */
   onRunLoaded?: (run: CitizenRun) => void;
+  /**
+   * The forecast step the streets are coloured at, 0 to 35 in five-minute steps from the run's
+   * cycle. 0, now, unless the screen offers a slider: the "passable until" times carry the forecast
+   * otherwise.
+   */
+  step?: number;
+  /**
+   * Citizen reports, drawn as `--obs-report` pins with their status in the outline and a ring when
+   * a photo is attached, on every path (`layers/reports.ts`, motion M32). Empty by default.
+   */
+  reports?: readonly ReportPin[];
+  /** The report whose card is open. */
+  selectedReportId?: string | null;
+  /** A report pin was tapped. Absent leaves the pins unpickable. */
+  onPickReport?: (id: string) => void;
+  /**
+   * A point to bring into view, such as a report chosen from a list. Applied once per `key`, so
+   * the reader's own pan afterwards is not taken back. The desk's `MapFocus`, on every path.
+   */
+  focus?: MapFocus | null;
   className?: string;
 }
 
-/** The step a citizen sees: now. The "passable until" times carry the forecast instead. */
+/** The step a citizen sees unless the screen says otherwise: now. */
 const NOW_STEP = 0;
+
+/**
+ * The slice of `google.maps.Map` a focus uses. Structural, as `FittableMap` is: the ambient
+ * `google` namespace is not in this app's type program, and a test can drive it.
+ */
+export interface FocusableMap {
+  panTo?(latLng: { lat: number; lng: number }): void;
+  setCenter?(latLng: { lat: number; lng: number }): void;
+  getZoom?(): number | undefined;
+  setZoom?(zoom: number): void;
+}
+
+/**
+ * Bring a focus into view on Google's map, once per `key` (motion M10's camera move in Google's
+ * vocabulary). It zooms in to the focus's zoom and never out from a closer view the reader chose,
+ * as the console's flight does; `panTo` is Google's own glide, and under reduced motion the camera
+ * cuts with `setCenter`, which is M10's fallback.
+ */
+export function useGoogleFocus(
+  map: FocusableMap | null,
+  focus: MapFocus | null,
+  reducedMotion: boolean,
+): void {
+  const applied = useRef<string | null>(null);
+  useEffect(() => {
+    if (!map || !focus || applied.current === focus.key) return;
+    applied.current = focus.key;
+    const at = { lat: focus.lat, lng: focus.lon };
+    const zoom = map.getZoom?.();
+    if (focus.zoom !== undefined && (zoom === undefined || zoom < focus.zoom)) {
+      map.setZoom?.(focus.zoom);
+    }
+    if (reducedMotion) map.setCenter?.(at);
+    else map.panTo?.(at);
+  }, [map, focus, reducedMotion]);
+}
+
+/**
+ * What a map tap asks deck before it becomes a destination: is a report pin under this pixel?
+ *
+ * **Not a timestamp.** Google hands one tap to deck's overlay and to the map's own `onClick` as two
+ * listeners, and this used to decide "same tap" by how close together the two fired. Driven in a
+ * browser on 2026-09-27 that guard failed on every pin - the card opened *and* the tap became the
+ * trip's destination - because the order and spacing of those listeners is Google's, not ours. So
+ * the map's click asks deck directly, at the tap's own pixel, with the same picking radius deck
+ * dispatches its own click with: the answer is the one deck is about to act on, whichever listener
+ * runs first.
+ */
+export interface ReportPicker {
+  pickObject?: (options: { x: number; y: number; radius?: number; layerIds?: string[] }) => unknown;
+}
+
+/** The part of a Google map click this file reads. `domEvent` and `map` are vis.gl's. */
+export interface MapTap {
+  detail?: { latLng?: { lat: number; lng: number } | null };
+  domEvent?: unknown;
+  map?: { getDiv?: () => Element | null } | null;
+}
+
+/** Where on the map the tap landed, in the container pixels deck picks in; null if unknown. */
+export function tapPixel(
+  domEvent: unknown,
+  container: Element | null | undefined,
+): { x: number; y: number } | null {
+  if (!container || !domEvent || typeof domEvent !== "object") return null;
+  const source = domEvent as {
+    clientX?: unknown;
+    clientY?: unknown;
+    changedTouches?: ArrayLike<{ clientX: number; clientY: number }>;
+  };
+  const touch = source.changedTouches?.[0];
+  const clientX = typeof source.clientX === "number" ? source.clientX : touch?.clientX;
+  const clientY = typeof source.clientY === "number" ? source.clientY : touch?.clientY;
+  if (typeof clientX !== "number" || typeof clientY !== "number") return null;
+  const rect = container.getBoundingClientRect();
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+
+/**
+ * True when a report pin is under the tap, by deck's own picking. False when deck cannot say - no
+ * overlay yet, no pixel, a picking error - which is also when deck itself opens no card, so a tap
+ * is never both a report and a destination.
+ */
+export function tapHitsReport(
+  picker: ReportPicker | null | undefined,
+  tap: MapTap,
+  fallbackContainer: Element | null | undefined,
+): boolean {
+  if (!picker?.pickObject) return false;
+  const pixel = tapPixel(tap.domEvent, tap.map?.getDiv?.() ?? fallbackContainer);
+  if (!pixel) return false;
+  try {
+    // `layerIds` matches by prefix in deck, so this is every report layer and nothing else. Radius
+    // 0 is the overlay's own `pickingRadius`, the one its click is dispatched with.
+    return Boolean(picker.pickObject({ ...pixel, radius: 0, layerIds: [REPORT_LAYER_PREFIX] }));
+  } catch {
+    return false;
+  }
+}
+
+/** The width from which the dashboard puts its rail beside the map, as `dashboard-screen.tsx` does. */
+const WIDE_QUERY = "(min-width: 1024px)";
+
+/**
+ * Where Google's zoom buttons go on a phone: `ControlPosition.RIGHT_CENTER`, read from the loaded
+ * API because the ambient `google` namespace is not in this app's type program. Undefined until the
+ * API has loaded, which leaves Google's own default.
+ *
+ * On a phone the bottom of the map is the time strip and the sheet, and Google's default,
+ * bottom-right, put the zoom buttons partly under both. Halfway up the right edge they are clear of
+ * the strip, the sheet, the report card along the top and the 3D switch in the corner.
+ */
+export function phoneZoomPosition(): number | undefined {
+  const maps = (globalThis as { google?: { maps?: { ControlPosition?: Record<string, number> } } })
+    .google?.maps;
+  return maps?.ControlPosition?.RIGHT_CENTER;
+}
 
 /** Stable empties, so `CityMap`'s memos are not rebuilt by a fresh `[]` on every render. */
 const NO_FRAMES: readonly (ImageBitmap | null)[] = [];
 const NO_SURCHARGE: readonly [] = [];
 const NO_HOTSPOTS: readonly [] = [];
+const NO_REPORTS: readonly ReportPin[] = [];
 
 /**
  * Which lines to draw, and in what character.
@@ -156,21 +301,41 @@ export function routeLines(
   return lines;
 }
 
-/** Everything deck draws on the citizen map, in section 6.7's order: water, routes, the pin. */
-function useCitizenLayers(
-  run: CitizenRun | null,
-  profile: PublicProfile,
-  routes: readonly RouteLine[],
-  picked: MapPoint | null,
-): unknown[] {
+interface CitizenLayerInputs {
+  run: CitizenRun | null;
+  profile: PublicProfile;
+  step: number;
+  routes: readonly RouteLine[];
+  picked: MapPoint | null;
+  reports: readonly ReportPin[];
+  selectedReportId: string | null;
+  onPickReport?: (id: string) => void;
+}
+
+/**
+ * Everything deck draws on the Google path, in section 6.7's order: water, routes, the citizens'
+ * reports, then the reader's own pin. The fallback and 3D paths hand the same inputs to `CityMap`,
+ * which builds the same layers from the same modules.
+ */
+export function useCitizenLayers({
+  run,
+  profile,
+  step,
+  routes,
+  picked,
+  reports,
+  selectedReportId,
+  onPickReport,
+}: CitizenLayerInputs): unknown[] {
   const reducedMotion = usePrefersReducedMotion();
   const progress = useRouteProgress(routes, reducedMotion);
+  const shownReports = useReportDrops(reports, reducedMotion);
 
   return useMemo(
     () => [
       ...wetStreetsLayers({
         segments: run?.segments ?? [],
-        step: NOW_STEP,
+        step,
         show: true,
         diffMode: false,
         wipeLon: 0,
@@ -179,6 +344,12 @@ function useCitizenLayers(
         pickable: false,
       }),
       ...routeLayers({ routes, progress }),
+      ...reportPinLayers({
+        reports: shownReports,
+        selectedReportId,
+        onPick: onPickReport,
+        reducedMotion,
+      }),
       ...(picked
         ? [
             new ScatterplotLayer<MapPoint>({
@@ -197,7 +368,18 @@ function useCitizenLayers(
           ]
         : []),
     ],
-    [run, profile, routes, progress, picked],
+    [
+      run,
+      profile,
+      step,
+      routes,
+      progress,
+      picked,
+      shownReports,
+      selectedReportId,
+      onPickReport,
+      reducedMotion,
+    ],
   );
 }
 
@@ -205,13 +387,19 @@ function useCitizenLayers(
 function GoogleLayers({
   layers,
   bounds,
+  factory,
+  focus,
 }: {
   layers: unknown[];
   bounds: ReturnType<typeof cityBounds>;
+  factory: OverlayFactory;
+  focus: MapFocus | null;
 }) {
-  const map = useMap() as unknown as (FittableMap & object) | null;
-  useGoogleDeckOverlay(map, layers);
+  const map = useMap() as unknown as (FittableMap & FocusableMap & object) | null;
+  const reducedMotion = usePrefersReducedMotion();
+  useGoogleDeckOverlay(map, layers, factory);
   useGoogleFit(map, bounds);
+  useGoogleFocus(map, focus, reducedMotion);
   return null;
 }
 
@@ -303,6 +491,11 @@ export function CitizenMap({
   selectedCorridorId = null,
   onPickPoint,
   onRunLoaded,
+  step = NOW_STEP,
+  reports = NO_REPORTS,
+  selectedReportId = null,
+  onPickReport,
+  focus = null,
   className,
 }: CitizenMapProps) {
   // Read once: the key is inlined at build time and cannot change while the page is open.
@@ -353,7 +546,27 @@ export function CitizenMap({
     () => routeLines(route, corridors, selectedCorridorId),
     [route, corridors, selectedCorridorId],
   );
-  const layers = useCitizenLayers(run, profile, routes, picked);
+  const layers = useCitizenLayers({
+    run,
+    profile,
+    step,
+    routes,
+    picked,
+    reports,
+    selectedReportId,
+    onPickReport,
+  });
+
+  // The Google path's deck overlay, kept so a map tap can ask it what is under the finger
+  // (`tapHitsReport`). One factory for the component's life: `useGoogleDeckOverlay` rebuilds the
+  // overlay when its factory changes, and it must not.
+  const overlayRef = useRef<ReportPicker | null>(null);
+  const overlayFactory = useCallback<OverlayFactory>((options) => {
+    const overlay = new GoogleMapsOverlay(options);
+    overlayRef.current = overlay;
+    return overlay as unknown as ReturnType<OverlayFactory>;
+  }, []);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Named places, so the map says "KEM Hospital" rather than showing an unlabelled junction. A
   // few hundred points, unlike the building and drain layers, which this screen never loads.
@@ -372,20 +585,30 @@ export function CitizenMap({
   );
 
   const bounds = useMemo(() => cityBounds(city), [city]);
+  const wide = useMediaQuery(WIDE_QUERY);
+  // Recomputed once Google has loaded (`loaded` re-renders this), which is when the enum exists.
+  const zoomPosition = !wide && loaded ? phoneZoomPosition() : undefined;
+  const zoomControlOptions = useMemo(
+    () => (zoomPosition === undefined ? undefined : { position: zoomPosition }),
+    [zoomPosition],
+  );
   /** The one thing the 3D path asks `CityMap` for, memoised so it is one identity per city. */
   const threeDOverlay = useMemo<MapOverlay>(() => ({ city, threeD: true }), [city]);
   // Resolved inside the component, not at module scope, so a theme override reaches the tiles.
   const styles = useMemo(() => darkMapStyle(), []);
 
   const pick = useCallback(
-    (event: { detail?: { latLng?: { lat: number; lng: number } | null } }) => {
+    (event: MapTap) => {
       const at = event.detail?.latLng;
       if (!at) return;
+      // A tap on a report pin opens its card (deck's own click does that) and is not also a new
+      // destination. Pins are pickable only when the screen can open a card.
+      if (onPickReport && tapHitsReport(overlayRef.current, event, containerRef.current)) return;
       const point = { lon: at.lng, lat: at.lat };
       setPicked(point);
       onPickPoint?.(point);
     },
-    [onPickPoint],
+    [onPickPoint, onPickReport],
   );
 
   // The photographed city. Deck stands alone here, as it does on the console: Google's tiles are
@@ -406,7 +629,11 @@ export function CitizenMap({
             routes={routes}
             labels={labels}
             passableBelowCm={STOPS_AT_CM[profile]}
-            step={NOW_STEP}
+            step={step}
+            reports={reports}
+            selectedReportId={selectedReportId}
+            onPickReport={onPickReport}
+            focus={focus}
             bounds={bounds}
             showRaster={false}
             showBuildings={false}
@@ -442,7 +669,11 @@ export function CitizenMap({
           routes={routes}
           labels={labels}
           passableBelowCm={STOPS_AT_CM[profile]}
-          step={NOW_STEP}
+          step={step}
+          reports={reports}
+          selectedReportId={selectedReportId}
+          onPickReport={onPickReport}
+          focus={focus}
           bounds={bounds}
           showRaster={false}
           showBuildings={false}
@@ -459,7 +690,11 @@ export function CitizenMap({
   }
 
   return (
-    <div className={cn("bg-ink absolute inset-0", className)} data-slot="citizen-map">
+    <div
+      ref={containerRef}
+      className={cn("bg-ink absolute inset-0", className)}
+      data-slot="citizen-map"
+    >
       <APIProvider apiKey={apiKey} onLoad={onLoad} onError={onError}>
         <GoogleMap
           className="size-full"
@@ -471,11 +706,12 @@ export function CitizenMap({
           gestureHandling="greedy"
           disableDefaultUI
           zoomControl
+          zoomControlOptions={zoomControlOptions}
           clickableIcons={false}
           onClick={onPickPoint ? pick : undefined}
           onTilesLoaded={onTiles}
         >
-          <GoogleLayers layers={layers} bounds={bounds} />
+          <GoogleLayers layers={layers} bounds={bounds} factory={overlayFactory} focus={focus} />
         </GoogleMap>
       </APIProvider>
       {/* Google's own failure surface is white, centred and says "Oops! Something went wrong" -

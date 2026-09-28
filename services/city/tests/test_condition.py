@@ -286,3 +286,232 @@ def test_a_protected_one_cell_pit_survives_at_thirty_metres() -> None:
     assert after[10, 10] > 0, "a registered subway must stay a sink whatever its area"
     assert result.changes["pits_protected"] == 1
     assert result.changes["pits_spurious"] == 0
+
+
+# --------------------------------------------------------------------------------------
+# the coastline (wave B): bridge ends on the sea, flattened land, the coast wall
+# --------------------------------------------------------------------------------------
+
+
+def _coast_fixture(size: int = 20) -> tuple[np.ndarray, np.ndarray, np.ndarray, Affine]:
+    """Sea in cols 0-3 at -1 m (class 80); built-up land (class 50) at 3 m to the east."""
+    dem = np.full((size, size), 3.0)
+    classes = np.full((size, size), 50, dtype=np.int16)
+    sea = np.zeros((size, size), dtype=bool)
+    sea[:, :4] = True
+    dem[sea] = -1.0
+    classes[sea] = 80
+    return dem, classes, sea, grid_transform(size)
+
+
+def test_a_bridge_end_on_the_sea_does_not_floor_the_land_to_sea_level() -> None:
+    """The Sewri defect: a viaduct way leaving the shore took the sea's 0 m as its low end."""
+    dem, _, sea, transform = _coast_fixture()
+    dem[:, 10] = 4.0  # an embankment the bridge crosses
+    bridge = LineString([cell_center(transform, 10, 1), cell_center(transform, 10, 15)])
+
+    unmasked, _ = breach_culverts(dem, transform, [bridge])
+    masked, stats = breach_culverts(dem, transform, [bridge], sea=sea)
+
+    # without the mask the landward length of the way is floored to the sea's -1 m
+    assert unmasked[10, 8] == pytest.approx(-1.0)
+    # with it the sea end is ignored and the way is lowered only to its land end (3 m)
+    assert masked[10, 8] == pytest.approx(3.0)
+    assert masked[10, 10] == pytest.approx(3.0)
+    assert stats["culvert_ends_on_sea_ignored"] == 1
+    assert stats["culvert_ways_with_no_land_end"] == 0
+
+
+def test_a_way_with_both_ends_on_the_sea_is_left_alone() -> None:
+    dem, _, sea, transform = _coast_fixture()
+    way = LineString([cell_center(transform, 2, 1), cell_center(transform, 12, 2)])
+    out, stats = breach_culverts(dem, transform, [way], sea=sea)
+    assert np.array_equal(out, dem)
+    assert stats["culvert_ways_breached"] == 0
+    assert stats["culvert_ways_with_no_land_end"] == 1
+
+
+def test_flattened_land_beside_the_sea_takes_the_median_of_its_neighbours() -> None:
+    from varuna_city.condition import repair_flattened_land
+
+    dem, classes, sea, transform = _coast_fixture()
+    dem[8:11, 4:6] = 0.0  # built-up land held at sea level, touching the sea
+    dem[15, 15] = 0.0  # low land, but not connected to the sea: a real pit, left alone
+    out, stats = repair_flattened_land(dem, sea, classes, transform, radius_m=30.0)
+    assert stats["flattened_cells"] == 6
+    assert stats["flattened_repaired"] == 6
+    assert np.all(out[8:11, 4:6] == pytest.approx(3.0))
+    assert out[15, 15] == 0.0
+    assert np.array_equal(out[sea], dem[sea])
+
+
+def test_flattened_wet_classes_and_protected_cells_are_not_raised() -> None:
+    from varuna_city.condition import repair_flattened_land
+
+    dem, classes, sea, transform = _coast_fixture()
+    dem[5:7, 4] = 0.0
+    classes[5, 4] = 95  # mangroves may sit at sea level
+    protect = np.zeros_like(sea)
+    protect[6, 4] = True  # an underpass on the register
+    out, stats = repair_flattened_land(dem, sea, classes, transform, protect=protect)
+    assert stats["flattened_cells"] == 0
+    assert out[5, 4] == 0.0 and out[6, 4] == 0.0
+
+
+def test_flattened_cells_ignore_buildings_as_donors() -> None:
+    from varuna_city.condition import repair_flattened_land
+
+    dem, classes, sea, transform = _coast_fixture()
+    dem[10, 4] = 0.0
+    buildings = np.zeros_like(sea)
+    buildings[9:12, 5] = True
+    dem[buildings] = 8.0  # burned footprints: wall, not ground
+    out, _ = repair_flattened_land(dem, sea, classes, transform, buildings=buildings, radius_m=45.0)
+    assert out[10, 4] == pytest.approx(3.0)
+
+
+def test_coast_wall_raises_only_the_shore_ring_and_only_upwards() -> None:
+    from varuna_city.condition import raise_coast_wall
+
+    dem, _, sea, _ = _coast_fixture()
+    dem[:, 4] = 1.0
+    dem[3, 4] = 5.0  # a seawall already higher than the wall level stays
+    blocked = np.zeros_like(sea)
+    blocked[7, 4] = True
+    out, stats = raise_coast_wall(dem, sea, wall_m=2.72, blocked=blocked)
+    ring = np.zeros_like(sea)
+    ring[:, 4] = True
+    ring[7, 4] = False
+    assert np.all(out[ring & (dem < 2.72)] == pytest.approx(2.72))
+    assert out[3, 4] == 5.0
+    assert out[7, 4] == 1.0  # a building cell is not part of the wall
+    assert np.array_equal(out[:, 5:], dem[:, 5:])
+    assert np.array_equal(out[sea], dem[sea])
+    assert stats["shore_ring_cells"] == dem.shape[0] - 1
+    assert stats["coast_wall_cells_raised"] == dem.shape[0] - 2
+
+
+def test_condition_dem_with_a_sea_raises_the_wall_after_the_pit_breach() -> None:
+    """The wall comes last, so no breach carves back through it; without a sea nothing changes."""
+    dem, classes, sea, transform = _coast_fixture()
+    dem[:, 4] = 0.5  # a low shore the sea would walk over
+    dem[12:14, 7:9] = 2.0  # a small pit inland, spurious at 10 m
+
+    plain = condition_dem(dem, transform, CRS, use_whitebox=False, use_pyflwdir=False)
+    coast = condition_dem(
+        dem,
+        transform,
+        CRS,
+        use_whitebox=False,
+        use_pyflwdir=False,
+        sea=sea,
+        landcover=classes,
+        coast_wall_m=2.72,
+    )
+    assert np.all(coast.dem[:, 4] >= 2.72)
+    assert coast.changes["coast_wall_cells_raised"] == dem.shape[0]
+    assert "coast_wall_m" not in plain.changes
+    assert "flattened_cells" not in plain.changes
+    # everything away from the shore is conditioned exactly as without the sea
+    assert np.array_equal(coast.dem[:, 6:], plain.dem[:, 6:])
+
+
+def _mangrove_bay(size: int = 20) -> tuple[np.ndarray, np.ndarray, np.ndarray, Affine]:
+    """``_coast_fixture`` with a bay in rows 5-14: mangroves (class 95) at 0.5 m in cols 4-5,
+    built-up land at 1.0 m in cols 6-8, and the 3 m land closing it off everywhere else."""
+    dem, classes, sea, transform = _coast_fixture(size)
+    dem[5:15, 4:6] = 0.5
+    classes[5:15, 4:6] = 95
+    dem[5:15, 6:9] = 1.0
+    return dem, classes, sea, transform
+
+
+def test_the_wall_stands_behind_the_mangroves_not_on_them() -> None:
+    from varuna_city.condition import raise_coast_wall
+
+    dem, classes, sea, _ = _mangrove_bay()
+    out, stats = raise_coast_wall(dem, sea, wall_m=2.72, landcover=classes)
+    assert np.array_equal(out[:, 4:6], dem[:, 4:6]), "no wet cell is raised"
+    assert np.all(out[5:15, 6] == pytest.approx(2.72)), "the dry land behind them is"
+    assert np.array_equal(out[:, 7:], dem[:, 7:])
+    assert np.array_equal(out[sea], dem[sea])
+    assert stats["coast_wall_rule"] == "landward edge of the intertidal zone"
+    assert stats["intertidal_cells"] == 20
+    assert stats["coast_wall_cells_raised"] == 10
+    # The rule the wall first shipped with stands on the mangroves' seaward edge instead.
+    ring, ring_stats = raise_coast_wall(dem, sea, wall_m=2.72)
+    assert np.all(ring[5:15, 4] == pytest.approx(2.72))
+    assert np.array_equal(ring[:, 5:], dem[:, 5:])
+    assert ring_stats["coast_wall_rule"] == "shore ring"
+    assert "intertidal_cells" not in ring_stats
+
+
+def test_wet_land_above_the_wall_or_cut_off_from_the_sea_is_ordinary_land() -> None:
+    from varuna_city.condition import intertidal_zone
+
+    dem, classes, sea, _ = _coast_fixture()
+    dem[2, 4] = 3.5  # mangrove canopy standing above the wall level
+    classes[2, 4] = 95
+    dem[10:12, 12:14] = 0.2  # an inland marsh behind dry land
+    classes[10:12, 12:14] = 90
+    blocked = np.zeros_like(sea)
+    dem[16, 4], classes[16, 4], blocked[16, 4] = 0.5, 95, True  # a building in the mangroves
+    zone = intertidal_zone(dem, sea, classes, wall_m=2.72, blocked=blocked)
+    assert np.array_equal(zone, sea)
+
+
+def test_wall_basins_counts_the_land_the_wall_closed_off() -> None:
+    """The first rule enclosed the mangroves and the land behind them (40 cells); behind the
+    mangroves the wall encloses only the dry land lower than itself (20 cells)."""
+    from varuna_city.condition import raise_coast_wall, wall_basins
+
+    dem, classes, sea, _ = _mangrove_bay()
+    area = RES * RES
+    ring, _ = raise_coast_wall(dem, sea, wall_m=2.72)
+    behind, _ = raise_coast_wall(dem, sea, wall_m=2.72, landcover=classes)
+
+    none = wall_basins(dem, dem, sea, cell_area_m2=area)
+    assert none["coast_wall_basin_cells"] == 0
+    assert none["coast_wall_basin_m3"] == 0.0
+
+    on = wall_basins(dem, ring, sea, cell_area_m2=area)
+    assert on["coast_wall_basin_cells"] == 40
+    assert on["coast_wall_basins"] == 1
+    assert on["coast_wall_basin_max_m"] == pytest.approx(2.22)
+    assert on["coast_wall_basin_m3"] == pytest.approx((10 * 2.22 + 30 * 1.72) * area)
+
+    off = wall_basins(dem, behind, sea, cell_area_m2=area)
+    assert off["coast_wall_basin_cells"] == 20
+    assert off["coast_wall_basin_max_m"] == pytest.approx(1.72)
+    assert off["coast_wall_basin_m3"] == pytest.approx(20 * 1.72 * area)
+    assert off["coast_wall_basin_cells_over_30cm"] == 20
+
+
+def test_a_building_is_never_a_basin_and_never_an_outlet() -> None:
+    from varuna_city.condition import raise_coast_wall, wall_basins
+
+    dem, classes, sea, _ = _mangrove_bay()
+    blocked = np.zeros_like(sea)
+    blocked[9, 7] = True
+    behind, _ = raise_coast_wall(dem, sea, wall_m=2.72, landcover=classes, blocked=blocked)
+    stats = wall_basins(dem, behind, sea, blocked=blocked, cell_area_m2=RES * RES)
+    assert stats["coast_wall_basin_cells"] == 19
+
+
+def test_condition_dem_walls_behind_the_mangroves_and_counts_its_basins() -> None:
+    dem, classes, sea, transform = _mangrove_bay()
+    coast = condition_dem(
+        dem,
+        transform,
+        CRS,
+        use_whitebox=False,
+        use_pyflwdir=False,
+        sea=sea,
+        landcover=classes,
+        coast_wall_m=2.72,
+    )
+    assert np.array_equal(coast.dem[5:15, 4:6], dem[5:15, 4:6])
+    assert coast.changes["coast_wall_rule"] == "landward edge of the intertidal zone"
+    assert coast.changes["intertidal_cells"] == 20
+    assert coast.changes["coast_wall_basin_cells"] == 20
+    assert coast.changes["coast_wall_basins"] == 1

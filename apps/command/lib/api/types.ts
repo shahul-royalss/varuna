@@ -366,8 +366,21 @@ export interface paths {
          *
          *     Mumbai's inferred graph has 49,770 edges and the drain X-ray draws the ones that matter, so
          *     the response is capped and ordered worst-first. `n_edges` is the true total; the cap is what
-         *     was sent. Each feature carries `confidence: "inferred"`, which is why the map draws them
-         *     dashed - the geometry is a synthesis from roads and terrain, not a municipal record.
+         *     was sent. By default (`order=blockage`) the cap keeps the worst pipes by posterior blockage,
+         *     so `limit=25` is the 25 worst pipes of the written product. `order=learned` fills the cap
+         *     with every pipe Pulse moved this cycle (`moved`, up or down) before any pipe that merely sits
+         *     at a high land-use prior - the rule the product is written with - and still sends them worst
+         *     first; a limit below the number moved keeps the worst of the moved.
+         *
+         *     Each feature carries `confidence: "inferred"`, which is why the map draws them dashed - the
+         *     geometry is a synthesis from roads and terrain, not a municipal record - and `display_name`
+         *     ("off Eastern Freeway") and `locality` ("near Wadala") where the bake could place it.
+         *
+         *     `summary` is what this cycle learned: pipes moved up and down, the largest rise, capacity
+         *     lost at the land-use prior and after learning (weighted by full-flow capacity over the whole
+         *     network), and the observations by kind, synthetic and real. A run baked before the product
+         *     carried it gets one rebuilt from its written pipes, with `source: "written_features"` and a
+         *     `note` saying what that leaves out.
          */
         get: operations["drains_health_v1_drains_health_get"];
         put?: never;
@@ -653,6 +666,9 @@ export interface paths {
          *
          *     A request for a city that is already building returns that job rather than starting a second
          *     one - on stage, a double-click on "Start" must not raise a dialog.
+         *
+         *     A request for the configured replay city (``VARUNA_CITY``, Mumbai) answers 409
+         *     ``city_is_replay_city`` and starts nothing.
          */
         post: operations["onboard_v1_onboard_post"];
         delete?: never;
@@ -671,6 +687,12 @@ export interface paths {
         /**
          * The most recent job for a city
          * @description What the wizard asks on load, so a reopened tab rejoins a build already running.
+         *
+         *     With no job in this process the answer is ``status: "none"`` plus ``previous``: the city's
+         *     last good build as `city/<city>/onboard_last.json` recorded it (its log lines, each with the
+         *     instant it was captured, its per-step milliseconds and its first run), or null when no build
+         *     was ever recorded. ``last_attempt`` is set when a later build did not finish, so the wizard
+         *     can say that it failed without losing the forecast the good one made.
          */
         get: operations["onboard_latest_v1_onboard_city__city__get"];
         put?: never;
@@ -690,7 +712,11 @@ export interface paths {
         };
         /**
          * Job status, with the pipeline's own log tail
-         * @description Poll one job. ``latest`` in place of an id returns the most recent job for a city.
+         * @description Poll one job.
+         *
+         *     A job this process no longer holds - the API restarted since it ran - is answered from the
+         *     city's persisted record when that record names the same job (``from_record: true``), so a
+         *     reopened wizard still shows the build's own log and timings rather than a 404.
          */
         get: operations["onboard_job_v1_onboard__job_id__get"];
         put?: never;
@@ -763,6 +789,10 @@ export interface paths {
         /**
          * The append-only authority log
          * @description Every authority edit for a city, newest first - the audit trail the desk is judged on.
+         *
+         *     Ungated, with one exception: a report status's officer name is printed only when the request
+         *     carries the desk passphrase. Without it the entry keeps its role and says the name was
+         *     withheld; a wrong passphrase is not refused, it just gets the public answer.
          */
         get: operations["ops_log_v1_ops_log_get"];
         put?: never;
@@ -796,6 +826,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/ops/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Citizen reports as the desk sees them (exact coordinates; gated)
+         * @description Every report, dismissed and out-of-area ones included, with exact coordinates and names.
+         *
+         *     Behind the passphrase because a reporter's exact position is often their home. Not counted
+         *     against the write window.
+         */
+        get: operations["ops_reports_v1_ops_reports_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/ops/reports/{report_id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Set a citizen report's status (recorded in the ops log)
+         * @description Tell a reporter what the desk did: seen, crew sent, resolved, or dismissed.
+         *
+         *     An append, like every desk act: the report stays exactly as it was sent, and ``GET
+         *     /v1/reports`` folds the latest status onto it when it is read. A dismissed report leaves
+         *     every public list and its photo stops being served; it stays here, and a later status brings
+         *     it back.
+         */
+        post: operations["post_report_status_v1_ops_reports__report_id__status_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/outlook": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Today's next 3 h of street depth from live Open-Meteo rain, through the emulator
+         * @description A labelled live outlook: Open-Meteo NWP rain, AOI-uniform, through Flash-lite at 50 members.
+         *
+         *     Depth is reported **above** the emulator's stored base state, never with it: that base state
+         *     is a training window's tide and upstream runoff and would draw a flood on a dry day. Cached
+         *     with the weather copy it came from (15 minutes); a stale copy is served with its age and its
+         *     own window, never shifted onto the present.
+         */
+        get: operations["outlook_v1_outlook_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/pumps": {
         parameters: {
             query?: never;
@@ -812,6 +915,30 @@ export interface paths {
          *     board shows (CLAUDE.md rule 6, 11.10).
          */
         get: operations["pumps_v1_pumps_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pumps/cycles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Which cycles carry a pump plan, and how many pumps each sends
+         * @description Every run of the city with a ``pump_plan.json``, oldest first, with its counts.
+         *
+         *     For the cycle that sends no pump: Jalayantra names the cycles that do and offers the one whose
+         *     plan avoids the most minutes above 45 cm (``busiest_run_id``). Read-only and ungated; nothing
+         *     is recomputed.
+         */
+        get: operations["pumps_cycles_v1_pumps_cycles_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -837,6 +964,33 @@ export interface paths {
          *     prototype moves because of it. The inventory is synthetic, and the response says so.
          */
         post: operations["pumps_dispatch_v1_pumps_dispatch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/pumps/map": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The run's pump plan on the city: depots, roads, and depth with and without each pump
+         * @description Each assignment of the run's own ``pump_plan.json``, drawn (Jalayantra, CLAUDE.md 7.6).
+         *
+         *     Per leg: the depot and the place with coordinates, the plan's ETA, the depth series at the
+         *     place with and without the pump (recomputed with the optimiser's own functions, with
+         *     ``agrees`` saying whether the recount reproduces the plan's minutes), its window above 45 cm,
+         *     and - with ``routes`` - the road a truck would take at the cycle time and what the pump buys
+         *     if it arrives when that road says. Read-only and ungated; the first answer for a run is slow
+         *     (the city's segment table and twelve routes) and is remembered, ``cached`` says which.
+         */
+        get: operations["pumps_map_v1_pumps_map_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1137,16 +1291,65 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Reports received since the service started
-         * @description The inbox, newest first. What the drain X-ray's timeline reads before a cycle has run.
+         * Citizen reports with their status (public: rounded coordinates)
+         * @description Reports newest first, each with its latest status and the history that led to it.
+         *
+         *     What the drain X-ray's timeline, the citizen dashboard and the desk's public inbox read. Every
+         *     coordinate is rounded; the exact ones are in ``GET /v1/ops/reports``, behind the passphrase.
          */
         get: operations["list_reports_v1_reports_get"];
         put?: never;
         /**
-         * Citizen or field observation (depth chips ankle/knee/waist)
+         * Citizen or field observation (depth chips ankle/knee/waist, optional photo)
          * @description Accept one report and queue it for the next cycle's assimilation.
          */
         post: operations["create_report_v1_reports_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reports/{report_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One report and its status history (public)
+         * @description What the reporter polls after pressing Send: the report, its status and who set it, by role.
+         *
+         *     A dismissed report answers with its status and none of its content. One from outside the
+         *     forecast areas answers in full, so the reporter can see it was kept and why it is not mapped.
+         */
+        get: operations["get_report_v1_reports__report_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/reports/{report_id}/photo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A report's photo, re-encoded without metadata (JPEG)
+         * @description The stored photo, 330 px (``thumb``) or 1280 px (``full``) on its longest side.
+         *
+         *     Only ids this API minted reach the file system. A dismissed report's photo is not served.
+         *     Seed reports' photos are Wikimedia Commons links and are never served from here.
+         */
+        get: operations["report_photo_v1_reports__report_id__photo_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1220,6 +1423,10 @@ export interface paths {
          *     in the same directory, and since ids sort chronologically `CHN-` came out above `MUM-` - so the
          *     console's run stamp, which reads `latest_run_id` from here, began naming a Chennai run over a
          *     map of Mumbai. `city=all` is the way to ask for the whole registry.
+         *
+         *     An onboarded city (Chennai) reports its onboarding build's first forecast as `latest_run_id`
+         *     when that run is on disk, the same run the wizard and its finish card open on
+         *     (`runs_util.onboarded_run_for`). Name order alone had let a superseded run win.
          */
         get: operations["list_runs_v1_runs_get"];
         put?: never;
@@ -1267,6 +1474,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/verification/rain-skill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rain skill by lead time against the bundle's reconstructed truth field
+         * @description Rain CSI, POD and FAR at 10, 20 and 40 mm/h by lead, pooled over the event's baked cycles.
+         *
+         *     Scored for the ensemble mean, the ensemble median and persistence (the analysis each nowcast
+         *     started from, held), with the Brier score and reliability of the members' exceedance
+         *     probability, the sample size behind every lead and the useful skill horizon it computes. An
+         *     event whose bundle has no truth field or no baked rain answers ``available: false`` with the
+         *     reason; an unknown event is a 404.
+         */
+        get: operations["verification_rain_skill_v1_verification_rain_skill_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/weather": {
         parameters: {
             query?: never;
@@ -1302,17 +1535,24 @@ export interface paths {
         put?: never;
         /**
          * What-if via the emulator, levelled on the run's own physics
-         * @description Scale the rain, clean pipes or run pumps, and report what changes.
+         * @description Scale the rain, clean pipes or run the pump plan, and report every street that changes.
          *
-         *     Body: ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}``.
+         *     Body: ``{run_id?, rain_scale?, cleaned_segments?, clean_top?, pump_plan?, tide_offset_m?}``.
          *
-         *     A tide offset is refused: the emulator is a perturbation around a base state measured at one
-         *     tide series, so it has no representation of a different sea level, and returning a number
-         *     anyway would be inventing one.
+         *     * ``cleaned_segments`` are road-segment ids. Ids this city has no segment for are reported in
+         *       ``cleaned_unmatched`` and never counted as cleaned; a request where *none* of them match is
+         *       refused with 422 ``unknown_segments`` rather than answered for a scenario nobody asked for.
+         *     * ``clean_top`` (``true`` or a number) desilts the worst pipes in the run's learned blockage,
+         *       city-wide - section 7.7's "Clean top 14".
+         *     * ``pump_plan: true`` runs the cycle's own ``pump_plan.json`` from each pump's arrival, and
+         *       the answer is labelled a lower bound.
+         *     * ``tide_offset_m`` is **neither refused nor applied**: the emulator has no sea level, so the
+         *       answer is the other levers with the tide left out, and ``tide`` says so and names
+         *       ``POST /v1/whatif/twin``, which answers the tide on the full-city Twin.
          *
-         *     ``cleaned_segments`` are road-segment ids. Ids this city has no segment for are reported in
-         *     ``cleaned_unmatched`` and never counted as cleaned; a request where *none* of them match is
-         *     refused with 422 ``unknown_segments`` rather than answered for a scenario nobody asked for.
+         *     Every street whose peak moves by :data:`CHANGE_CM` or more is in ``segments``, including
+         *     streets the run had dry, and every count is counted from that list. A scenario with no lever
+         *     set answers "Nothing changed" without running the emulator.
          */
         post: operations["whatif_v1_whatif_post"];
         delete?: never;
@@ -1334,9 +1574,11 @@ export interface paths {
          * Re-run the Twin on a what-if scenario and report the disagreement
          * @description Run the coupled Twin twice on a window around the hotspots and print the disagreement.
          *
-         *     Body: the same ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}`` ``/v1/whatif``
-         *     takes, plus ``hotspot_ids?`` and ``pad_cells?``, so the console can post the scenario object
-         *     it already has.
+         *     Body: the same ``{run_id?, rain_scale?, cleaned_segments?, clean_top?, pump_plan?,
+         *     tide_offset_m?}`` ``/v1/whatif`` takes, plus ``hotspot_ids?`` and ``pad_cells?``, so the
+         *     console can post the scenario object it already has. ``clean_top`` desilts the same pipes in
+         *     both models; ``pump_plan`` is run by neither, because the Twin has no pump sink, and is named
+         *     in ``levers_not_checked`` rather than dropped.
          *
          *     **What is compared.** The what-if's answer at a hotspot is the Twin's own level plus the
          *     emulator's delta. The check's answer is the Twin's delta between two crop runs of the same
@@ -1352,10 +1594,82 @@ export interface paths {
          *     different ways to say "the depth at this junction", and the response says so rather than
          *     letting the difference between them be read as emulator error.
          *
-         *     A tide offset is refused for the same reason ``/v1/whatif`` refuses it: the emulator has no
-         *     representation of a different sea level, so there would be no emulator answer to check.
+         *     **A tide offset is answered, not refused, and not checked.** The emulator has no sea level,
+         *     so there is no emulator answer to compare; the scenario runs on the full-city Twin
+         *     (``POST /v1/whatif/twin``), and that answer *is* the physics. The response says so with
+         *     ``runs_on_twin: true``, ``agrees: null`` and the job body to start, rather than a 422 that
+         *     sent the user back to the what-if that had sent them here.
          */
         post: operations["physics_check_v1_whatif_physics_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/whatif/twin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run one scenario on the full-city Twin (the tide lever), as a job
+         * @description Start a full-city coupled Twin at the cycle's inputs with the scenario applied.
+         *
+         *     Body: ``{run_id?, rain_scale?, tide_offset_m?, cleaned_segments?}``; a ``pump_plan`` or
+         *     ``clean_top`` from the what-if is not run here and is named in ``scenario.levers_left_out``.
+         *     Answers **202** with the
+         *     job (``job_id``, ``expected_ms`` from the run's own stage timings); poll
+         *     ``GET /v1/whatif/twin/{job_id}`` or listen for ``whatif.progress`` on ``WS /v1/live``. A
+         *     scenario already computed for this exact run answers **200** with ``state: done`` and the
+         *     result, saying which cache it came from.
+         */
+        post: operations["whatif_twin_v1_whatif_twin_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/whatif/twin/{job_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A full-city Twin what-if job: progress and result
+         * @description State (``running``, ``done``, ``failed``, ``cancelled``), step ``k`` of ``n``, and the
+         *     result once done.
+         */
+        get: operations["whatif_twin_job_v1_whatif_twin__job_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/whatif/twin/{job_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a running full-city Twin what-if
+         * @description Stop the job at its next output step. Nothing it computed is stored.
+         */
+        post: operations["whatif_twin_cancel_v1_whatif_twin__job_id__cancel_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1440,6 +1754,54 @@ export interface components {
              * @description e.g. 'AOI 3-hour accumulation target 15:00-21:00 IST'.
              */
             used_for?: string | null;
+        };
+        /**
+         * CityFingerprint
+         * @description Which city files a run read: the first 12 hex of a sha256 of each, ``None`` when absent.
+         *
+         *     The run id carries engine versions and nothing about the city, so a run baked before a city
+         *     rebuild and one baked after share an id. This is how a reader tells them apart without
+         *     reading the products. Each digest is of the file's content, not its bytes on disk: the
+         *     segment ids in order; the decoded rasters with their shape and transform; the drain tables'
+         *     ids and the columns that say how a node meets the sea; and ``condition.json``'s coast-wall
+         *     fields. A rebuild that reproduces the city reproduces every digest.
+         */
+        CityFingerprint: {
+            /**
+             * Coast Wall
+             * @description condition.json: the coast wall's level, rule, ring, raise and basins.
+             */
+            coast_wall?: string | null;
+            /**
+             * Dem Conditioned
+             * @description dem_conditioned.tif: the ground the Twin runs on, wall included.
+             */
+            dem_conditioned?: string | null;
+            /**
+             * Drain Edges
+             * @description drain_edges.parquet: edge ids and the nodes each joins.
+             */
+            drain_edges?: string | null;
+            /**
+             * Drain Nodes
+             * @description drain_nodes.parquet: node ids, cells and outfall, tidal and flap flags.
+             */
+            drain_nodes?: string | null;
+            /**
+             * Intertidal Mask
+             * @description intertidal_mask.tif, when the city build writes one.
+             */
+            intertidal_mask?: string | null;
+            /**
+             * Sea Mask
+             * @description sea_mask.tif: open sea and tidal creek codes.
+             */
+            sea_mask?: string | null;
+            /**
+             * Segments
+             * @description segments.parquet: segment ids in order.
+             */
+            segments?: string | null;
         };
         /**
          * ClosureRequest
@@ -1872,6 +2234,304 @@ export interface components {
              * @default true
              */
             from_cache_only: boolean;
+        };
+        /**
+         * Outlook
+         * @description Today's next three hours of street depth from live rain, labelled as what it is.
+         */
+        Outlook: {
+            baseline_removed: components["schemas"]["OutlookBaseline"];
+            blockage: components["schemas"]["OutlookBlockage"];
+            /**
+             * Cached
+             * @description True when this answer was computed for an earlier request.
+             */
+            cached: boolean;
+            /** City */
+            city: string;
+            /** Compute Ms */
+            compute_ms: number;
+            /**
+             * Expired
+             * @description True once `valid_to` has passed (a stale weather copy).
+             */
+            expired: boolean;
+            /**
+             * Issued At
+             * Format: date-time
+             */
+            issued_at: string;
+            /** Members */
+            members: number;
+            /**
+             * Method
+             * @default reduced-order emulator (Flash-lite) on Open-Meteo NWP rain, AOI-uniform; not a radar nowcast
+             */
+            method: string;
+            /**
+             * Mode
+             * @default outlook
+             * @constant
+             */
+            mode: "outlook";
+            /** N Segments Over 1Cm */
+            n_segments_over_1cm: number;
+            /** N Steps */
+            n_steps: number;
+            /**
+             * No Rain Response
+             * @description Streets the emulator has no rain response for (never wet in training); they read 0 cm here whatever the rain.
+             */
+            no_rain_response: number;
+            /** Notes */
+            notes: string[];
+            /**
+             * Rain Mm H
+             * @description AOI-uniform rain rate per step, mm/h.
+             */
+            rain_mm_h: number[];
+            /** Rain Total Mm */
+            rain_total_mm: number;
+            /**
+             * Run Id
+             * @description Always null: an outlook is not a run and is not registered.
+             */
+            run_id?: string | null;
+            /** Segments */
+            segments: components["schemas"]["OutlookSegment"][];
+            skill: components["schemas"]["OutlookSkill"];
+            source: components["schemas"]["OutlookSource"];
+            /**
+             * Steps Min
+             * @default 5
+             */
+            steps_min: number;
+            summary: components["schemas"]["OutlookSummary"];
+            /** Truncated */
+            truncated: boolean;
+            /**
+             * Unmatched Streets
+             * @description The emulator's streets whose id the city's current street table does not carry: forecast, but with no name and no geometry in today's street layer.
+             */
+            unmatched_streets: number;
+            /**
+             * Valid From
+             * Format: date-time
+             */
+            valid_from: string;
+            /**
+             * Valid To
+             * Format: date-time
+             */
+            valid_to: string;
+            /**
+             * Valid Ts
+             * @description End of each 5-minute step.
+             */
+            valid_ts: string[];
+        };
+        /**
+         * OutlookBaseline
+         * @description The base state taken out: what the emulator would have drawn with no rain at all.
+         */
+        OutlookBaseline: {
+            /** Max Cm */
+            max_cm: number;
+            /** N Ge 15 */
+            n_ge_15: number;
+            /** N Ge 30 */
+            n_ge_30: number;
+            /** N Ge 5 */
+            n_ge_5: number;
+        };
+        /**
+         * OutlookBlockage
+         * @description Which blockage the members were drawn around, street by street.
+         */
+        OutlookBlockage: {
+            /**
+             * Flat
+             * @description Streets with no pipe at all, run at a flat 0.20.
+             */
+            flat: number;
+            /** From Posterior */
+            from_posterior: number;
+            /** From Prior */
+            from_prior: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "pulse_posterior" | "city_prior";
+            /**
+             * Run Id
+             * @description The run whose Pulse posterior was read, if any.
+             */
+            run_id: string | null;
+        };
+        /**
+         * OutlookSegment
+         * @description One street's three hours, per step, above the emulator's base state.
+         */
+        OutlookSegment: {
+            /**
+             * Display Name
+             * @description The name to print: OSM's, else 'off <street>', else '<class> near <place>', else '<class> in <city>'. Never 'Unnamed road'.
+             * @default
+             */
+            display_name: string;
+            /**
+             * Name
+             * @description OSM street name, or null when OSM names none.
+             */
+            name: string | null;
+            /** P50 Cm */
+            p50_cm: number[];
+            /** P90 Cm */
+            p90_cm: number[];
+            /** P Gt 15 */
+            p_gt_15: number[];
+            /** P Gt 30 */
+            p_gt_30: number[];
+            /** P Gt 45 */
+            p_gt_45: number[];
+            /** Peak P50 Cm */
+            peak_p50_cm: number;
+            /** Peak P90 Cm */
+            peak_p90_cm: number;
+            /**
+             * Peak Ts
+             * Format: date-time
+             * @description Valid time of the p50 peak.
+             */
+            peak_ts: string;
+            /** Segment Id */
+            segment_id: string;
+        };
+        /**
+         * OutlookSkill
+         * @description The emulator's measured skill against the Twin, from the fit that ran.
+         */
+        OutlookSkill: {
+            /** Csi 30Cm */
+            csi_30cm: number;
+            /** Fitted Segments */
+            fitted_segments: number;
+            /** N Segments */
+            n_segments: number;
+            /** N Training Runs */
+            n_training_runs: number;
+            /** Rmse Cm */
+            rmse_cm: number;
+        };
+        /**
+         * OutlookSource
+         * @description Where the rain came from, and how old the copy is at this request.
+         */
+        OutlookSource: {
+            /**
+             * Age S
+             * @description Seconds since `fetched_at`, computed per request.
+             */
+            age_s: number;
+            /**
+             * Attribution
+             * @default Weather data by Open-Meteo.com (CC BY 4.0)
+             */
+            attribution: string;
+            /**
+             * Fetched At
+             * Format: date-time
+             */
+            fetched_at: string;
+            /**
+             * Grid Cell Km
+             * @description Distance from the AOI centre to the centre of the Open-Meteo grid cell that answered, km. The rain is that cell's, applied to every street.
+             */
+            grid_cell_km: number;
+            grid_point: components["schemas"]["GeoPoint"];
+            /**
+             * Licence
+             * @default CC BY 4.0
+             */
+            licence: string;
+            /**
+             * Licence Url
+             * @default https://creativecommons.org/licenses/by/4.0/
+             */
+            licence_url: string;
+            /**
+             * Name
+             * @default Open-Meteo
+             */
+            name: string;
+            /**
+             * Series
+             * @description Which Open-Meteo series the rain was built from. Always `hourly` for India, where the 15-minute series is interpolated from the hourly models and adds no timing; each hourly value is held for the hour before its timestamp.
+             * @default hourly
+             * @enum {string}
+             */
+            series: "hourly" | "minutely_15";
+            /** Series Note */
+            series_note: string;
+            /**
+             * Stale
+             * @description True once the weather copy is past its 15-minute window.
+             */
+            stale: boolean;
+            /**
+             * Url
+             * @default https://open-meteo.com/
+             */
+            url: string;
+        };
+        /**
+         * OutlookStreet
+         * @description A street named in the summary.
+         */
+        OutlookStreet: {
+            /**
+             * Display Name
+             * @description The name to print; never 'Unnamed road'.
+             * @default
+             */
+            display_name: string;
+            /** Name */
+            name: string | null;
+            /** Peak P50 Cm */
+            peak_p50_cm: number;
+            /** Peak P90 Cm */
+            peak_p90_cm: number;
+            /**
+             * Peak Ts
+             * Format: date-time
+             */
+            peak_ts: string;
+            /** Segment Id */
+            segment_id: string;
+        };
+        /**
+         * OutlookSummary
+         * @description The answer in counts and one sentence. Counts are by each street's peak p50.
+         */
+        OutlookSummary: {
+            /**
+             * Max Cm
+             * @description Deepest p50 on any street at any step, cm.
+             */
+            max_cm: number;
+            /** Max P90 Cm */
+            max_p90_cm: number;
+            /** N Ge 15 */
+            n_ge_15: number;
+            /** N Ge 30 */
+            n_ge_30: number;
+            /** N Ge 5 */
+            n_ge_5: number;
+            /** Sentence */
+            sentence: string;
+            /** Worst */
+            worst: components["schemas"]["OutlookStreet"][];
         };
         /** Point */
         Point: {
@@ -2650,6 +3310,74 @@ export interface components {
             speed: number;
         };
         /**
+         * ReportRequest
+         * @description Body of ``POST /v1/reports``.
+         *
+         *     Unknown fields are ignored rather than refused: a report queued offline by an older build of
+         *     the report flow is still a report when the connection comes back.
+         */
+        ReportRequest: {
+            /**
+             * Depth Hint
+             * @description ankle (about 10 cm), knee (about 45 cm) or waist (about 90 cm).
+             * @enum {string}
+             */
+            depth_hint: "ankle" | "knee" | "waist";
+            /** Lat */
+            lat: number;
+            /** Lon */
+            lon: number;
+            /**
+             * Photo Data Url
+             * @description data:image/jpeg|png|webp;base64,... - re-encoded without metadata if kept.
+             */
+            photo_data_url?: string | null;
+            /**
+             * Source
+             * @default public-map
+             */
+            source: string;
+            /**
+             * Text
+             * @description The reporter's own words.
+             */
+            text?: string | null;
+            /**
+             * Ts
+             * @description When the water was seen, ISO 8601 with an offset. Omitted means now.
+             */
+            ts?: string | null;
+        };
+        /**
+         * ReportStatusRequest
+         * @description Body of ``POST /v1/ops/reports/{report_id}/status``.
+         */
+        ReportStatusRequest: {
+            /**
+             * Note
+             * @description Shown to the reporter beside the status, so write it for them.
+             */
+            note?: string | null;
+            /**
+             * Role
+             * @description What the reporter sees in place of the name.
+             * @default ward officer
+             * @enum {string}
+             */
+            role: "ward officer" | "control room" | "field crew";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "received" | "seen" | "crew_sent" | "resolved" | "dismissed";
+            /**
+             * User
+             * @description Kept on the desk only.
+             * @default ward officer
+             */
+            user: string;
+        };
+        /**
          * RunList
          * @description ``GET /v1/runs``.
          */
@@ -2667,6 +3395,13 @@ export interface components {
          */
         RunMeta: {
             /**
+             * Aoi Depth Band
+             * @description p10, p50 and p90 of mean street depth in cm at each forecast step, taken across the ensemble's members: the band the time bar draws (CLAUDE.md 7.2). None when the run has fewer than two members, so a deterministic run never draws a band of no width.
+             */
+            aoi_depth_band?: {
+                [key: string]: number[];
+            } | null;
+            /**
              * Bundle
              * @description Replay bundle id, None when live.
              */
@@ -2676,6 +3411,8 @@ export interface components {
              * @description City slug, e.g. mumbai.
              */
             city: string;
+            /** @description Digests of the city files the run read, so a run baked on another build of the city can be told apart under the same id. None on a run baked before. */
+            city_fingerprint?: components["schemas"]["CityFingerprint"] | null;
             /**
              * Created At
              * Format: date-time
@@ -2773,6 +3510,11 @@ export interface components {
              * @description Sum of stage timings in ms.
              */
             readonly total_ms: number;
+            /**
+             * Twin Revision
+             * @description The Twin revision that computed the run, finer than the version in the run id - for example 1.0+coast-2026-09-28, the Twin with the city's own coastline. None on a run baked before run.json carried it.
+             */
+            twin_revision?: string | null;
             versions: components["schemas"]["EngineVersions"];
         };
         /**
@@ -2995,6 +3737,11 @@ export interface components {
              */
             licence_url: string;
             /**
+             * Minutely 15
+             * @description Open-Meteo's 15-minute precipitation for the next four hours. Outside Europe and North America it is interpolated from hourly models; empty in copies fetched before it was asked for.
+             */
+            minutely_15?: components["schemas"]["WeatherStep"][];
+            /**
              * Notes
              * @description Why this copy is what it is; printed by the UI.
              */
@@ -3057,16 +3804,20 @@ export interface components {
         };
         /**
          * WeatherStep
-         * @description One hourly step of the short forecast.
+         * @description One step of the short forecast: hourly, or 15-minutely in `Weather.minutely_15`.
          */
         WeatherStep: {
-            /** Precipitation Mm */
+            /**
+             * Precipitation Mm
+             * @description Precipitation summed over the interval before `ts` (the preceding hour for `hourly`, the preceding 15 minutes for `minutely_15`), millimetres.
+             */
             precipitation_mm?: number | null;
             /** Precipitation Probability Pct */
             precipitation_probability_pct?: number | null;
             /**
              * Ts
              * Format: date-time
+             * @description End of the interval the precipitation was summed over.
              */
             ts: string;
         };
@@ -3687,6 +4438,7 @@ export interface operations {
                 city?: string | null;
                 min_beta?: number;
                 limit?: number;
+                order?: "blockage" | "learned";
             };
             header?: never;
             path?: never;
@@ -4367,7 +5119,10 @@ export interface operations {
                 /** @description Filter to one entry kind. */
                 kind?: string | null;
             };
-            header?: never;
+            header?: {
+                /** @description Optional. With the desk passphrase, report statuses keep the name. */
+                "x-varuna-ops"?: string | null;
+            };
             path?: never;
             cookie?: never;
         };
@@ -4435,11 +5190,165 @@ export interface operations {
             };
         };
     };
+    ops_reports_v1_ops_reports_get: {
+        parameters: {
+            query?: {
+                /** @description mumbai or chennai. */
+                city?: string | null;
+                /** @description min_lon,min_lat,max_lon,max_lat */
+                bbox?: string | null;
+                status?: ("received" | "seen" | "crew_sent" | "resolved" | "dismissed") | null;
+                /** @description Received at or after, ISO 8601. */
+                since?: string | null;
+                origin?: ("citizen" | "seed") | null;
+                limit?: number;
+            };
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_report_status_v1_ops_reports__report_id__status_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description The desk passphrase. */
+                "x-varuna-ops"?: string | null;
+            };
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReportStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    outlook_v1_outlook_get: {
+        parameters: {
+            query?: {
+                /** @description City slug; Mumbai is the only one fitted. */
+                city?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Outlook"];
+                };
+            };
+            /** @description No emulator is fitted to this city's streets (Chennai) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No weather copy, no fitted emulator, the city is not built, or the emulator was fitted to an older build of it */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     pumps_v1_pumps_get: {
         parameters: {
             query?: {
                 run_id?: string | null;
                 /** @description City id, e.g. mumbai. Picks whose newest run answers when run_id is omitted. */
+                city?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pumps_cycles_v1_pumps_cycles_get: {
+        parameters: {
+            query?: {
                 city?: string | null;
             };
             header?: never;
@@ -4488,6 +5397,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pumps_map_v1_pumps_map_get: {
+        parameters: {
+            query?: {
+                run_id?: string | null;
+                city?: string | null;
+                routes?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5089,6 +6033,15 @@ export interface operations {
     list_reports_v1_reports_get: {
         parameters: {
             query?: {
+                /** @description mumbai or chennai. */
+                city?: string | null;
+                /** @description min_lon,min_lat,max_lon,max_lat */
+                bbox?: string | null;
+                /** @description Only reports whose latest status is this. */
+                status?: ("received" | "seen" | "crew_sent" | "resolved") | null;
+                /** @description Received at or after, ISO 8601. */
+                since?: string | null;
+                origin?: ("citizen" | "seed") | null;
                 limit?: number;
             };
             header?: never;
@@ -5128,9 +6081,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": {
-                    [key: string]: unknown;
-                };
+                "application/json": components["schemas"]["ReportRequest"];
             };
         };
         responses: {
@@ -5143,6 +6094,72 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_report_v1_reports__report_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_photo_v1_reports__report_id__photo_get: {
+        parameters: {
+            query?: {
+                size?: "thumb" | "full";
+            };
+            header?: never;
+            path: {
+                report_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/jpeg": unknown;
                 };
             };
             /** @description Validation Error */
@@ -5335,6 +6352,40 @@ export interface operations {
             };
         };
     };
+    verification_rain_skill_v1_verification_rain_skill_get: {
+        parameters: {
+            query?: {
+                /** @description Bundle id, e.g. MUM-2019-07-02 */
+                event?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     weather_v1_weather_get: {
         parameters: {
             query?: {
@@ -5418,6 +6469,107 @@ export interface operations {
                 };
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatif_twin_v1_whatif_twin_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    [key: string]: unknown;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatif_twin_job_v1_whatif_twin__job_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    whatif_twin_cancel_v1_whatif_twin__job_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

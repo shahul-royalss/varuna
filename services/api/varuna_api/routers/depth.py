@@ -17,12 +17,13 @@ to prevent.
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 import structlog
 from fastapi import APIRouter, Query, Response
-from varuna_schemas.paths import run_dir
+from varuna_schemas.paths import city_dir, run_dir
 from varuna_schemas.settings import get_settings
 
 from varuna_api.runs_util import (
@@ -457,6 +458,8 @@ def alerts(
     the city resolved the same way, so the two cannot disagree. With no ops log it returns the
     product untouched, which is every run on a fresh clone.
     """
+    from varuna_products.alerts import served_queue
+
     from varuna_api.routers.ops import apply_alert_state
 
     path = _resolve(run_id, city)
@@ -470,6 +473,9 @@ def alerts(
         )
 
     body = json.loads(record.read_text(encoding="utf-8"))
+    # The uncapped counts and the annotated pending list: the product lists at most 60 alerts,
+    # and a screen that counts the list would present the cap as the cycle.
+    served = served_queue(body)
     queue = apply_alert_state(body.get("alerts", []), city)
     if level:
         queue = [a for a in queue if a.get("level") == level]
@@ -493,8 +499,14 @@ def alerts(
         # The cross-cycle state beside the queue: what raises next cycle if it holds, and what
         # this cycle cleared. The per-situation record itself stays in the file - it is the next
         # cycle's input, not the screen's.
-        "pending": body.get("pending", []),
+        "pending": served["pending"],
         "n_pending": body.get("n_pending", len(body.get("pending", []))),
+        "n_raised": served["n_raised"],
+        "n_raised_by_level": served["n_raised_by_level"],
+        "n_pending_new": served["n_pending_new"],
+        "n_pending_step_up": served["n_pending_step_up"],
+        "first_onset": served["first_onset"],
+        "counts_source": served["counts_source"],
         "cleared": body.get("cleared", []),
         "n_cleared": body.get("n_cleared", len(body.get("cleared", []))),
         "hysteresis": (
@@ -562,13 +574,27 @@ def drains_health(
     city: CityQuery = None,
     min_beta: Annotated[float, Query(ge=0.0, le=1.0)] = 0.0,
     limit: Annotated[int, Query(ge=1, le=50_000)] = 4_000,
+    order: Annotated[Literal["blockage", "learned"], Query()] = "blockage",
 ) -> dict[str, Any]:
     """Every pipe with its posterior blockage, its spread and what moved it (CLAUDE.md 11.6).
 
     Mumbai's inferred graph has 49,770 edges and the drain X-ray draws the ones that matter, so
     the response is capped and ordered worst-first. `n_edges` is the true total; the cap is what
-    was sent. Each feature carries `confidence: "inferred"`, which is why the map draws them
-    dashed - the geometry is a synthesis from roads and terrain, not a municipal record.
+    was sent. By default (`order=blockage`) the cap keeps the worst pipes by posterior blockage,
+    so `limit=25` is the 25 worst pipes of the written product. `order=learned` fills the cap
+    with every pipe Pulse moved this cycle (`moved`, up or down) before any pipe that merely sits
+    at a high land-use prior - the rule the product is written with - and still sends them worst
+    first; a limit below the number moved keeps the worst of the moved.
+
+    Each feature carries `confidence: "inferred"`, which is why the map draws them dashed - the
+    geometry is a synthesis from roads and terrain, not a municipal record - and `display_name`
+    ("off Eastern Freeway") and `locality` ("near Wadala") where the bake could place it.
+
+    `summary` is what this cycle learned: pipes moved up and down, the largest rise, capacity
+    lost at the land-use prior and after learning (weighted by full-flow capacity over the whole
+    network), and the observations by kind, synthetic and real. A run baked before the product
+    carried it gets one rebuilt from its written pipes, with `source: "written_features"` and a
+    `note` saying what that leaves out.
     """
     path = _resolve(run_id, city)
     record = path / "drain_health.geojson"
@@ -580,14 +606,180 @@ def drains_health(
             run_id=path.name,
         )
 
-    health = json.loads(record.read_text(encoding="utf-8"))
+    from varuna_pulse.health import written_features
+
+    health = _read_json_cached(record)
     features = health.get("features", [])
     if min_beta > 0.0:
         features = [f for f in features if float(f["properties"].get("beta_mean", 0)) >= min_beta]
-    features = sorted(features, key=lambda f: -float(f["properties"].get("beta_mean", 0.0)))[:limit]
+    if order == "learned":
+        # Every pipe Pulse moved first, then the worst blockage, then sent worst-first: the rule
+        # the product was written with, so a limit below the written count still sends the pipes
+        # an observation cleared rather than cutting them for a 0.35 land-use prior.
+        features = written_features(features, cap=limit)[:limit]
+    else:
+        # The worst pipes, full stop: what "the 25 worst pipes" means to the command palette.
+        # The sort is stable, so ties keep the file's own order and two requests agree (rule 8).
+        features = sorted(
+            features, key=lambda f: -float(f["properties"].get("beta_mean", 0.0) or 0.0)
+        )[:limit]
 
+    summary = health.get("summary") or _summary_from_features(path, health)
+    features = _name_unnamed_pipes(path, features)
     log.info("api.drain_health", run_id=path.name, sent=len(features), of=health.get("n_edges"))
-    return {**health, "features": features, "n_sent": len(features)}
+    return {**health, "summary": summary, "features": features, "n_sent": len(features)}
+
+
+def _name_unnamed_pipes(path: Path, features: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Give every pipe a ``display_name``, so the drain X-ray never titles one "Unnamed pipe".
+
+    The bake names a pipe by its own street, else "off <street>" within 200 m, and a run baked
+    before it did carries neither on 4,963-4,980 of the 6,000 pipes it wrote. A pipe missing both
+    takes the display name of the road above it (``varuna_api.street_names.pipe_names``): OSM's
+    name, "off Dr Ambedkar Road" for a lane OSM does not name, else "<class> near <place>".
+    ``street`` stays what the bake wrote, so it still says whether OSM names the pipe's road.
+    The cached features are never mutated: a filled pipe is a new dict.
+    """
+
+    def unnamed(props: dict[str, Any]) -> bool:
+        return not props.get("display_name") and not props.get("street")
+
+    if not any(unnamed(f.get("properties") or {}) for f in features):
+        return features
+    city = city_of_run(path.name)
+    if not city:
+        return features
+    from varuna_api.street_names import pipe_names
+
+    try:
+        names = pipe_names(city)
+    except Exception as error:  # a name is a courtesy; the product is served without it
+        log.warning("api.drain_health.pipe_names_failed", run_id=path.name, error=str(error))
+        return features
+    if not names:
+        return features
+    out: list[dict[str, Any]] = []
+    for feature in features:
+        props = feature.get("properties") or {}
+        found = names.get(str(props.get("edge_id"))) if unnamed(props) else None
+        out.append(
+            feature
+            if found is None
+            else {**feature, "properties": {**props, "display_name": found}}
+        )
+    return out
+
+
+def _file_key(path: Path) -> tuple[str, int, int]:
+    stat = path.stat()
+    return (str(path), stat.st_mtime_ns, stat.st_size)
+
+
+def _read_json_cached(path: Path) -> dict[str, Any]:
+    """A run file parsed once per version on disk, not once per request.
+
+    ``drain_health.geojson`` is 2.3 MB and the drain X-ray asks for it on every visit; keyed on
+    the file's size and modification time, so a re-bake is read afresh. Callers must not mutate
+    what comes back - :func:`drains_health` builds a new dict and new lists from it.
+    """
+    return _parse_json(*_file_key(path))
+
+
+@lru_cache(maxsize=8)
+def _parse_json(path: str, _mtime_ns: int, _size: int) -> dict[str, Any]:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=4)
+def _city_pipes(
+    path: str, _mtime_ns: int, _size: int
+) -> tuple[tuple[str, ...], dict[str, int], Any, Any]:
+    """Every inferred pipe's id, prior blockage and full-flow capacity, from the city build."""
+    import numpy as np
+    import pandas as pd
+
+    frame = pd.read_parquet(path, columns=["edge_id", "beta_mean", "q_full_m3s"])
+    ids = tuple(str(e) for e in frame["edge_id"])
+    return (
+        ids,
+        {eid: i for i, eid in enumerate(ids)},
+        frame["beta_mean"].to_numpy(dtype=np.float64),
+        frame["q_full_m3s"].to_numpy(dtype=np.float64),
+    )
+
+
+def _summary_from_features(path: Path, health: dict[str, Any]) -> dict[str, Any]:
+    """The product's ``summary`` rebuilt from what an older run wrote, and labelled as such.
+
+    Runs baked before the product carried a summary still get the drain X-ray's headline numbers
+    - pipes moved up and down, the largest rise, capacity lost at the prior and after learning,
+    observations by kind - computed by the same function the bake uses
+    (:func:`varuna_pulse.health.drain_summary`). The network outside the written pipes is taken
+    at its prior from ``city/<city>/drain_edges.parquet``, which is what those pipes were in the
+    old product's own terms, and the full-flow capacity comes from there too.
+
+    **It is not the exact figure**, and the ``note`` says why: those runs wrote the worst 6,000
+    pipes by blockage and dropped the ones an observation cleared (52 of 201 at 08:40 on 2 July
+    2019), so the split and the capacity learned cover the written pipes only.
+    ``n_moved_unwritten`` is how many moved pipes are missing from it.
+    """
+    import numpy as np
+    from varuna_pulse.health import drain_summary
+
+    props = [f.get("properties", {}) for f in health.get("features", [])]
+    observations: list[dict[str, Any]] = []
+    obs_path = path / "observations.json"
+    if obs_path.is_file():
+        observations = list(_read_json_cached(obs_path).get("observations", []))
+
+    city = city_of_run(path.name)
+    table_path = city_dir(city) / "drain_edges.parquet" if city else None
+    if table_path is not None and table_path.is_file():
+        ids, index, prior_all, q_full = _city_pipes(*_file_key(table_path))
+        prior = prior_all.copy()
+        post = prior_all.copy()
+        names: list[str | None] = [None] * len(ids)
+        for p in props:
+            i = index.get(str(p.get("edge_id")))
+            if i is None:
+                continue
+            post[i] = float(p.get("beta_mean", prior[i]) or 0.0)
+            prior[i] = float(p.get("beta_prior", prior[i]) or 0.0)
+            names[i] = p.get("display_name") or p.get("street")
+        summary = drain_summary(
+            post, prior, ids, q_full_m3s=q_full, display_name=names, observations=observations
+        )
+    else:
+        # No city build to read the rest of the network from: the written pipes alone, and no
+        # capacity figures rather than ones over a sixth of the network.
+        summary = drain_summary(
+            np.array([float(p.get("beta_mean", 0.0) or 0.0) for p in props]),
+            np.array([float(p.get("beta_prior", 0.0) or 0.0) for p in props]),
+            [str(p.get("edge_id")) for p in props],
+            display_name=[p.get("display_name") or p.get("street") for p in props],
+            observations=observations,
+        )
+        # The counts above are over the written pipes, but ``n_pipes`` is the network's size
+        # ("12 of 49,770 pipes moved"), and the product carries that even when the city is absent.
+        summary["n_pipes"] = int(health.get("n_edges") or len(props))
+
+    n_updated = health.get("n_updated")
+    unwritten = max(int(n_updated) - summary["n_moved"], 0) if isinstance(n_updated, int) else None
+    summary["source"] = "written_features"
+    summary["n_moved_unwritten"] = unwritten
+    # One line on the drain X-ray at 1366 px: the screen leads with it, so it says the gap and the
+    # fix and nothing else.
+    summary["note"] = (
+        f"Rebuilt from the {len(props):,} pipes this run wrote"
+        + (
+            f"; {unwritten:,} of the {n_updated:,} pipes Pulse moved were not written, so the "
+            "up and down split and the capacity learned cover the written pipes only"
+            if unwritten
+            else ", because it was baked before the product carried its own summary"
+        )
+        + ". Re-bake the run for the exact figures."
+    )
+    return summary
 
 
 @router.get(
@@ -637,6 +829,53 @@ def observations(
             run_id=path.name,
         )
     body = json.loads(record.read_text(encoding="utf-8"))
+    body["observations"] = _name_unnamed_traffic(path, body.get("observations", []))
     meta = _meta(path)
     log.info("api.observations", run_id=path.name, n=len(body.get("observations", [])))
     return {**body, "cycle_ts": meta.get("cycle_ts")}
+
+
+def _name_unnamed_traffic(path: Path, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Name the traffic anomalies a run baked before the cycle named them.
+
+    Those runs wrote a traffic anomaly with only its segment id, and the drain X-ray titled 10 of
+    the 21 cards on the 08:40 cycle "Unnamed road". The city build knows each segment's street,
+    and :func:`varuna_pulse.cycle.segment_place_names` applies the same rules a cycle applies now
+    ("off Eastern Freeway", "near Wadala"). Only a missing ``place`` or ``locality`` is filled;
+    what the bake wrote always stands, and without a city build nothing changes.
+    """
+
+    def unnamed(r: dict[str, Any]) -> bool:
+        return (
+            r.get("kind") == "traffic"
+            and bool(r.get("segment_id"))
+            and str(r.get("place") or "").strip().lower() in {"", "unnamed road", "none"}
+        )
+
+    city = city_of_run(path.name)
+    root = city_dir(city) if city else None
+    if not any(unnamed(r) for r in records) or root is None:
+        return records
+    if not (root / "segments.parquet").is_file():
+        return records
+    try:
+        from varuna_pulse.cycle import segment_place_names
+
+        index = segment_place_names(root, [str(r["segment_id"]) for r in records if unnamed(r)])
+    except Exception:  # a name is a courtesy, never a reason to fail the list
+        log.warning("api.observations.naming_failed", run_id=path.name, exc_info=True)
+        return records
+    from varuna_api import street_names
+
+    names = street_names.street_names(city) if city else None
+    named: list[dict[str, Any]] = []
+    for r in records:
+        if unnamed(r):
+            place, locality = index.get(str(r["segment_id"]), (None, None))
+            # Past the pulse rule's 200 m, the street layer's display name ("Service road near
+            # Wadala Depot") rather than nothing, which the screen printed as "Unnamed road".
+            if not place and names is not None:
+                place = names.for_segment(r["segment_id"])
+            r = {**r, "place": place, "locality": r.get("locality") or locality}
+        named.append(r)
+    return named

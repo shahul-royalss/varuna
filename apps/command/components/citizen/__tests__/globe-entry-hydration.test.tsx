@@ -59,9 +59,7 @@ async function hydrate(element: React.ReactElement): Promise<HTMLElement> {
 describe("GlobeEntry through hydration", () => {
   it("renders nothing on the server, because the server has no session", () => {
     expect(
-      renderToString(
-        <GlobeEntry sessionKey={KEY} slot={SLOT} onDone={() => undefined} />,
-      ),
+      renderToString(<GlobeEntry sessionKey={KEY} slot={SLOT} onDone={() => undefined} />),
     ).toBe("");
   });
 

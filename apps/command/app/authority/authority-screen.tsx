@@ -42,19 +42,28 @@
  * handover lands on an empty frame rather than on a city, and the desk is a scrolling column, so
  * the fade reveals the whole desk with its ward map at the top of the viewport rather than a map
  * that fills the frame the way the dashboard's does.
+ *
+ * **Citizen reports sit beside the map, and are one object in both.** The inbox and the ward
+ * map's pins read one list (`desk-reports.tsx`), loaded here and polled every 30 s and after every
+ * write, so a complaint a citizen sends appears on the desk without a reload. Opening a row flies
+ * the map to its pin; tapping a pin opens its row. The inbox stands beside the map rather than at
+ * the foot of the desk because a fly-to nobody can see is not a link: on a wide screen both are in
+ * view, and on a narrow one opening a row brings the map back into view first.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Map as MapIcon } from "lucide-react";
 import Link from "next/link";
 
 import { AlertPanel } from "@/components/authority/alert-panel";
 import { CitizenInbox } from "@/components/authority/citizen-inbox";
+import { DeskReportsProvider, useDeskReportsLoader } from "@/components/authority/desk-reports";
 import { ClosurePanel } from "@/components/authority/closure-panel";
 import { OpsLog } from "@/components/authority/ops-log";
 import {
   DEFAULT_OFFICER,
   PassphraseGate,
+  writesDisabledReason,
   type GateStatus,
 } from "@/components/authority/passphrase-gate";
 import { PumpPanel } from "@/components/authority/pump-panel";
@@ -105,7 +114,7 @@ function aoiLine([west, south, east, north]: readonly [number, number, number, n
  */
 function WardMapPlaceholder() {
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden bg-ink">
+    <div className="bg-ink relative flex h-full w-full items-center justify-center overflow-hidden">
       <div
         aria-hidden="true"
         className="pointer-events-none absolute inset-0 opacity-35"
@@ -125,9 +134,7 @@ function WardMapPlaceholder() {
           </Link>
         }
       />
-      <p className="num text-text-3 type-micro absolute right-3 bottom-2">
-        {aoiLine(ENTRY_AOI)}
-      </p>
+      <p className="num text-text-3 type-micro absolute right-3 bottom-2">{aoiLine(ENTRY_AOI)}</p>
     </div>
   );
 }
@@ -173,7 +180,9 @@ export function AuthorityScreen({ wardMap }: AuthorityScreenProps = {}) {
         setTotal(log.nEntries);
         if (!log.writesEnabled) {
           setStatus("disabled");
-          setGateReason(log.notes.at(-1) ?? null);
+          // The API's own field; an older API only says it among the notes, so fall back to the
+          // note that states the reason (not the last one, which is about officer names).
+          setGateReason(log.writesDisabledReason ?? writesDisabledReason(log.notes));
           setOfficer(null);
           clearPassphrase();
           return;
@@ -213,116 +222,144 @@ export function AuthorityScreen({ wardMap }: AuthorityScreenProps = {}) {
 
   const open = status === "locked" && officer !== null;
 
+  // One list for the inbox and the ward map's pins: the desk's exact one once the desk is open,
+  // the public one before that. Reloaded after every write through `refreshKey`.
+  const deskReports = useDeskReportsLoader({
+    city: DESK_CITY,
+    deskOpen: open,
+    refreshKey,
+    onGateRefused: gateRefused,
+  });
+
+  // Opening a row flies the map; on a narrow screen, where the inbox sits under the map, bring the
+  // map back into view so the flight is seen. `nearest` moves nothing when it is already visible.
+  const mapRegion = useRef<HTMLElement>(null);
+  const { focus: reportFocus } = deskReports;
+  useEffect(() => {
+    const region = mapRegion.current;
+    if (!reportFocus || !region || typeof region.scrollIntoView !== "function") return;
+    region.scrollIntoView({ block: "nearest" });
+  }, [reportFocus]);
+
   return (
     <AppShell>
-      <div className="h-full min-h-0 overflow-y-auto">
-        <div className="flex flex-col gap-6 p-6">
-          {/* Mounted before the gate is decided and framed on the AOI, so the entry's cross-fade
-              lands on a frame that was already there (UI_SPEC 2's handover rule). */}
-          <section
-            data-slot="ward-map"
-            data-handover={handedOver ? "done" : "playing"}
-            aria-label={WARD_MAP_LABEL}
-            className="rounded-panel border-line relative h-[clamp(220px,32vh,380px)] shrink-0 overflow-hidden border"
-          >
-            {wardMap ?? <WardMapPlaceholder />}
-          </section>
+      <DeskReportsProvider value={deskReports}>
+        <div className="h-full min-h-0 overflow-y-auto">
+          <div className="flex flex-col gap-6 p-6">
+            <div className="grid shrink-0 gap-4 lg:grid-cols-[3fr_2fr]">
+              {/* Mounted before the gate is decided and framed on the AOI, so the entry's cross-fade
+                lands on a frame that was already there (UI_SPEC 2's handover rule). */}
+              <section
+                ref={mapRegion}
+                data-slot="ward-map"
+                data-handover={handedOver ? "done" : "playing"}
+                aria-label={WARD_MAP_LABEL}
+                className="rounded-panel border-line relative h-[clamp(320px,62vh,640px)] overflow-hidden border"
+              >
+                {wardMap ?? <WardMapPlaceholder />}
+              </section>
 
-          <PageHeader
-            title="Ward officer's desk"
-            description="Tell VARUNA what it cannot know. A closure, a broken pump and an acknowledgement are read back by the router, the optimiser and the alert queue; a note is read by people."
-            honesty="Prototype access"
-            actions={
-              open ? (
-                <Button type="button" variant="ghost" className="h-11 px-4" onClick={signOut}>
-                  Sign out
-                </Button>
-              ) : null
-            }
-          />
+              {/* The same height as the map beside it. 62 % of the viewport, not 50: at 1366 x 768
+                  half the screen left the list 118 px for a 141 px card, so the officer saw no
+                  whole report beside the map (CLAUDE.md 6.5 makes 1366 x 768 a size that works). */}
+              <CitizenInbox
+                className="lg:h-[clamp(320px,62vh,640px)]"
+                reports={deskReports}
+                access={{ open, gate: status, reason: gateReason, officer }}
+                onWrote={wrote}
+                onGateRefused={gateRefused}
+              />
+            </div>
 
-          {open ? (
-            <>
-              <p className="type-small text-text-2 max-w-[72ch]">
-                Acting as {officer}. Every edit is one appended line that the router applies when a
-                route is read; no baked product is rewritten.
-              </p>
-
-              <CyclePicker currentRunId={runId} onPick={setRunId} />
-
-              <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
-                <section className="flex flex-col gap-4" aria-labelledby="changes-heading">
-                  <div>
-                    <h2 id="changes-heading" className="type-h3 text-text">
-                      Changes the forecast
-                    </h2>
-                    <p className="type-small text-text-2 max-w-[72ch]">
-                      An engine reads each of these back: the router, the road-conditions feed, the
-                      pump optimiser and the desk&rsquo;s alert queue.
-                    </p>
-                  </div>
-                  <ClosurePanel
-                    runId={runId}
-                    city={DESK_CITY}
-                    officer={officer}
-                    onWrote={wrote}
-                    onGateRefused={gateRefused}
-                  />
-                  <PumpPanel
-                    runId={runId}
-                    city={DESK_CITY}
-                    officer={officer}
-                    onWrote={wrote}
-                    onGateRefused={gateRefused}
-                  />
-                  <AlertPanel
-                    runId={runId}
-                    city={DESK_CITY}
-                    officer={officer}
-                    onWrote={wrote}
-                    onGateRefused={gateRefused}
-                  />
-                </section>
-
-                <section className="flex flex-col gap-4" aria-labelledby="recorded-heading">
-                  <div>
-                    <h2 id="recorded-heading" className="type-h3 text-text">
-                      Recorded only
-                    </h2>
-                    <p className="type-small text-text-2 max-w-[72ch]">
-                      Nothing in this column reaches a forecast, a route or an alert. It is written
-                      down so a person can read it.
-                    </p>
-                  </div>
-                  <SituationNote officer={officer} />
-                </section>
-              </div>
-            </>
-          ) : (
-            <PassphraseGate
-              status={status}
-              reason={gateReason}
-              onOpen={(name) => {
-                setOfficer(name);
-                setStatus("locked");
-              }}
+            <PageHeader
+              title="Ward officer's desk"
+              description="Tell VARUNA what it cannot know. A closure, a broken pump and an acknowledgement are read back by the router, the optimiser and the alert queue; a note is read by people."
+              honesty="Prototype access"
+              actions={
+                open ? (
+                  <Button type="button" variant="ghost" className="h-11 px-4" onClick={signOut}>
+                    Sign out
+                  </Button>
+                ) : null
+              }
             />
-          )}
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <CitizenInbox refreshKey={refreshKey} />
+            {open ? (
+              <>
+                <p className="type-small text-text-2 max-w-[72ch]">
+                  Acting as {officer}. Every edit is one appended line that the router applies when
+                  a route is read; no baked product is rewritten.
+                </p>
+
+                <CyclePicker currentRunId={runId} onPick={setRunId} />
+
+                <div className="grid gap-6 lg:grid-cols-[3fr_2fr]">
+                  <section className="flex flex-col gap-4" aria-labelledby="changes-heading">
+                    <div>
+                      <h2 id="changes-heading" className="type-h3 text-text">
+                        Changes the forecast
+                      </h2>
+                      <p className="type-small text-text-2 max-w-[72ch]">
+                        An engine reads each of these back: the router, the road-conditions feed,
+                        the pump optimiser and the desk&rsquo;s alert queue.
+                      </p>
+                    </div>
+                    <ClosurePanel
+                      runId={runId}
+                      city={DESK_CITY}
+                      officer={officer}
+                      onWrote={wrote}
+                      onGateRefused={gateRefused}
+                    />
+                    <PumpPanel
+                      runId={runId}
+                      city={DESK_CITY}
+                      officer={officer}
+                      onWrote={wrote}
+                      onGateRefused={gateRefused}
+                    />
+                    <AlertPanel
+                      runId={runId}
+                      city={DESK_CITY}
+                      officer={officer}
+                      onWrote={wrote}
+                      onGateRefused={gateRefused}
+                    />
+                  </section>
+
+                  <section className="flex flex-col gap-4" aria-labelledby="recorded-heading">
+                    <div>
+                      <h2 id="recorded-heading" className="type-h3 text-text">
+                        Recorded only
+                      </h2>
+                      <p className="type-small text-text-2 max-w-[72ch]">
+                        Nothing in this column reaches a forecast, a route or an alert. It is
+                        written down so a person can read it.
+                      </p>
+                    </div>
+                    <SituationNote officer={officer} />
+                  </section>
+                </div>
+              </>
+            ) : (
+              <PassphraseGate
+                status={status}
+                reason={gateReason}
+                onOpen={(name) => {
+                  setOfficer(name);
+                  setStatus("locked");
+                }}
+              />
+            )}
+
             <OpsLog entries={entries} total={total} error={logError} />
           </div>
         </div>
-      </div>
+      </DeskReportsProvider>
 
       {/* Last in the tree and `fixed` in its own right: a sibling of the desk, not a wrapper
           around it, so nothing on the desk waits for it (M27). */}
-      <GlobeEntry
-        sessionKey={DESK_INTRO_SESSION_KEY}
-        slot="authority-intro"
-        onDone={entryDone}
-      />
+      <GlobeEntry sessionKey={DESK_INTRO_SESSION_KEY} slot="authority-intro" onDone={entryDone} />
     </AppShell>
   );
 }

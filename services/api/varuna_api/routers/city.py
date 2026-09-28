@@ -16,6 +16,7 @@ collection, which would look like a city with no streets.
 from __future__ import annotations
 
 import json
+import threading
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
@@ -25,6 +26,7 @@ from varuna_schemas.models import ErrorEnvelope, FeatureCollection
 from varuna_schemas.paths import city_config_path, city_dir
 from varuna_schemas.settings import get_settings
 
+from varuna_api import street_names
 from varuna_api.runs_util import latest_run_for
 from varuna_api.state import api_error
 
@@ -182,16 +184,22 @@ def city_layer(
 
     stat = path.stat()
     etag = f'W/"{name}-{int(stat.st_mtime)}-{stat.st_size}"'
+    if name == "segments":
+        # The display names are part of the bytes, so they are part of the tag.
+        etag = f'W/"{name}-{int(stat.st_mtime)}-{stat.st_size}-{street_names.signature(city)}"'
     window = _parse_bbox(bbox)
     if request.headers.get("if-none-match") == etag and window is None:
         return Response(status_code=304, headers={"ETag": etag, "Cache-Control": CACHE_CONTROL})
 
     headers = {"ETag": etag, "Cache-Control": CACHE_CONTROL, "X-Layer": name}
     if window is None:
-        log.info("city.layer_served", city=city, layer=name, bytes=stat.st_size)
-        return Response(content=path.read_bytes(), media_type=GEOJSON_MEDIA_TYPE, headers=headers)
+        body = named_segments_bytes(city, path) if name == "segments" else path.read_bytes()
+        log.info("city.layer_served", city=city, layer=name, bytes=len(body))
+        return Response(content=body, media_type=GEOJSON_MEDIA_TYPE, headers=headers)
 
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if name == "segments":
+        with_display_names(city, payload)
     filtered = filter_collection(payload, window)
     log.info(
         "city.layer_served",
@@ -206,6 +214,63 @@ def city_layer(
         media_type=GEOJSON_MEDIA_TYPE,
         headers=headers,
     )
+
+
+_NAMED_LOCK = threading.Lock()
+_NAMED: dict[str, tuple[tuple[Any, ...], bytes]] = {}
+
+
+def with_display_names(city: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Give every segment feature a ``display_name``, in place; ``name`` stays OSM's.
+
+    52.6 % of Mumbai's segments carry no OSM name, and every screen that listed them printed
+    "Unnamed road". ``display_name`` is the segment's own name, else "off <street>", else
+    "<class> near <place>", else "<class> in <city>" (:mod:`varuna_api.street_names`). A city
+    built without ``segments.parquet`` still gets a class-and-city name from the feature itself.
+
+    A label that is not OSM's own name also carries its parts: ``display_kind`` ("off", "near"
+    or "in") and ``display_anchor``, the proper noun inside it (the street, the place, the city).
+    A screen in Hindi or Marathi builds its own sentence from them and the feature's ``class``, so
+    "off" and "Service road" are translated and only the name stays in Latin. An OSM-named
+    feature carries neither: its ``display_name`` is its name, and 10,096 more keys would only
+    add bytes to the layer.
+    """
+    names = street_names.street_names(city)
+    label = names.city_label if names is not None else street_names.city_label(city)
+    for feature in payload.get("features", []):
+        props = feature.get("properties")
+        if not isinstance(props, dict):
+            continue
+        sid = props.get("segment_id")
+        found = names.get(sid) if names is not None else None
+        parts = names.label(sid) if found is not None and names is not None else None
+        if found is None:
+            # Not in segments.parquet: its own name, else its class in words, in the city.
+            raw = props.get("name")
+            own = None if street_names.is_unnamed(raw) else street_names.clean_name(raw)
+            found = own or f"{street_names.class_words(props.get('class'))} in {label}"
+            parts = ("osm", None) if own else ("in", label)
+        props["display_name"] = found
+        if parts is not None and parts[0] != "osm" and parts[1]:
+            props["display_kind"], props["display_anchor"] = parts
+    return payload
+
+
+def named_segments_bytes(city: str, path: Path) -> bytes:
+    """The segments layer with display names, serialised once per process per file version."""
+    import orjson
+
+    stat = path.stat()
+    key = (str(path), stat.st_mtime_ns, stat.st_size, street_names.signature(city))
+    with _NAMED_LOCK:
+        cached = _NAMED.get(city)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+    payload = orjson.loads(path.read_bytes())
+    body = orjson.dumps(with_display_names(city, payload))
+    with _NAMED_LOCK:
+        _NAMED[city] = (key, body)
+    return body
 
 
 def _config_ids() -> list[str]:
@@ -283,5 +348,7 @@ __all__ = [
     "feature_in_bbox",
     "filter_collection",
     "layer_path",
+    "named_segments_bytes",
     "router",
+    "with_display_names",
 ]

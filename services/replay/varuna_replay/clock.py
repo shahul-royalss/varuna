@@ -308,6 +308,15 @@ def _tide_datum(tide_csv: Path) -> TideDatum | None:
     return None if block is None else TideDatum.model_validate(block)
 
 
+def _window_end(tide_csv: Path) -> datetime | None:
+    """The manifest's ``t1`` beside ``tide.csv``, or ``None`` when it cannot be read."""
+    try:
+        payload = json.loads((tide_csv.parent / MANIFEST_NAME).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return _parse_ts(payload.get("t1")) if isinstance(payload, dict) else None
+
+
 def _tide_events(path: Path, bundle_id: str) -> list[ScheduledEvent]:
     """One ``tide.stage`` event per instant; ``source`` carries the tide table or
     ``illustrative`` so the boundary never claims more than it can (CLAUDE.md 3.2).
@@ -317,16 +326,22 @@ def _tide_events(path: Path, bundle_id: str) -> list[ScheduledEvent]:
     event also carries the datum it is in and, when the manifest declares an offset, the stage
     in that frame - a screen that shows the tide cannot then disagree with the physics without
     saying so. ``stage_datum`` is ``None`` when the manifest declares no datum.
+
+    Only the stages up to the manifest's ``t1`` are scheduled. The series runs three hours past
+    it (``bundle.TIDE_LOOKAHEAD_MIN``) as the Twin's forecast boundary, but the clock stops at
+    ``t1``, so those rows would never be published and would only inflate the replay panel's
+    count. A manifest that cannot be read here schedules every row.
     """
     import pandas as pd
 
     datum = _tide_datum(path)
     offset = datum.offset_to_dem_m if datum is not None else None
+    window_end = _window_end(path)
     frame = pd.read_csv(path)
     events: list[ScheduledEvent] = []
     for row in frame.to_dict("records"):
         ts = _parse_ts(row.get("ts"))
-        if ts is None:
+        if ts is None or (window_end is not None and ts > window_end):
             continue
         stage = _plain(row.get("stage_m"))
         in_dem_frame = (

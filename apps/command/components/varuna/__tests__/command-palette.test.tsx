@@ -1,7 +1,8 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { defaultFilter } from "cmdk";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CommandPalette, PILOT_PLANS } from "@/components/varuna/command-palette";
+import { CommandPalette, PILOT_PLANS, paletteScore } from "@/components/varuna/command-palette";
 import { paletteHref } from "@/lib/api/palette";
 import { NAV_ITEMS, PALETTE_ACTIONS } from "@/lib/nav";
 import { type RunMeta, useRunStore } from "@/lib/stores/run";
@@ -188,7 +189,7 @@ describe("CommandPalette", () => {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
     // Screens need no data, so they are there from the first frame.
-    expect(itemFor("Console")).toBeInTheDocument();
+    expect(itemFor("Drishti")).toBeInTheDocument();
   });
 
   it("lists hotspots, facilities, pipes, screens and runs from the API", async () => {
@@ -236,7 +237,7 @@ describe("CommandPalette", () => {
     await openWithApi();
 
     type("Khodadad");
-    await waitFor(() => expect(screen.queryByText("Console")).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText("Drishti")).not.toBeInTheDocument());
     expect(itemFor("Dadar TT / Khodadad Circle")).toBeInTheDocument();
     expect(itemFor("Khodadad Circle")).toBeInTheDocument();
     expect(
@@ -260,7 +261,7 @@ describe("CommandPalette", () => {
         `/console?run=${RUN_0840}&tab=reachability&facility=hospital-001`,
       ],
       ["Khodadad Circle", `/drains?run=${RUN_0840}&pipe=MUM-E018095`],
-      ["Drains", "/drains"],
+      ["Nadi", "/drains"],
       ["2 Jul 2019 09:10 IST", `/console?run=${RUN_0910}`],
       [`Dispatch pumps at ${HINDMATA}`, `/pumps?run=${RUN_0840}&hotspot=MUM-HS-01`],
       ["Clean pipes in what-if", `/whatif?run=${RUN_0840}`],
@@ -312,8 +313,53 @@ describe("CommandPalette", () => {
     // The failure stays visible while searching, and screens still work.
     type("pumps");
     expect(screen.getByText(/^Hotspots did not load/)).toBeInTheDocument();
-    fireEvent.click(itemFor("Pumps"));
+    fireEvent.click(itemFor("Jalayantra"));
     expect(push).toHaveBeenLastCalledWith("/pumps");
+  });
+
+  it("names a Sanskrit screen with its gloss and finds it by the English words", async () => {
+    // ADR-0085: every screen carries a Sanskrit name. An operator who types what the screen does
+    // still finds it, because the id, the gloss and each word of it are keywords.
+    vi.stubGlobal("fetch", vi.fn(stubFetch({})));
+    renderWithProviders(<CommandPalette />);
+    await screen.findByText(/^Facilities did not load/);
+
+    expect(NAV_ITEMS.every((i) => i.gloss)).toBe(true);
+    for (const item of NAV_ITEMS) {
+      const row = itemFor(item.label);
+      expect(within(row).getByText(item.label)).toHaveAttribute("translate", "no");
+      expect(within(row).getByText(item.gloss!)).toBeInTheDocument();
+    }
+
+    const searches: [string, string][] = [
+      ["pumps", "Jalayantra"],
+      ["drain", "Nadi"],
+      ["what-if", "Kalpana"],
+      ["verify", "Pramana"],
+      ["route", "Marga"],
+      ["replay", "Smriti"],
+      // The three renamed last are still found by the words an operator already knows.
+      ["console", "Drishti"],
+      ["alerts", "Sanket"],
+      ["onboard", "Pravesh"],
+    ];
+    for (const [query, label] of searches) {
+      type(query);
+      await waitFor(() => expect(itemFor(label)).toBeInTheDocument());
+    }
+  });
+
+  it("keeps the city in the address bar when it opens a screen, and nothing else", async () => {
+    window.history.replaceState(null, "", "/console?city=chennai&run=CHN-SOUTH-20260910T0120Z");
+    try {
+      vi.stubGlobal("fetch", vi.fn(stubFetch({})));
+      renderWithProviders(<CommandPalette />);
+      await screen.findByText(/^Facilities did not load/);
+      fireEvent.click(itemFor("Nadi"));
+      expect(push).toHaveBeenLastCalledWith("/drains?city=chennai");
+    } finally {
+      window.history.replaceState(null, "", "/");
+    }
   });
 
   it("disables run-only actions with their reason until any run is known", async () => {
@@ -388,5 +434,176 @@ describe("CommandPalette", () => {
 
     key("Enter");
     expect(push).toHaveBeenLastCalledWith(second.getAttribute("data-href"));
+  });
+});
+
+/*
+ * Real names from the 09:10 IST ranking (`MUM-20190702T0340Z-...`) and the Mumbai asset layer,
+ * picked because cmdk's own scattered-letter score matches each of them to a word an operator types
+ * for a screen: "console" matched 39 of the 368 facilities, "alerts" 176 and two hotspots,
+ * "drishti" 130, "sanket" 21 and four hotspots, "pumps" 6. With the lists in their API order the
+ * screens sat under all of them, and Enter opened a hospital.
+ */
+const PLACES_API = {
+  "/v1/runs": RUNS,
+  "/v1/nowcast/hotspots": {
+    run_id: RUN_0910,
+    ranking: "peak depth",
+    hotspots: [
+      { rank: 1, hotspot_id: "MUM-HS-26", name: "Mahim", peak_depth_cm: 5.1 },
+      { rank: 12, hotspot_id: "MUM-HS-04", name: "Gandhi Market (Matunga)", peak_depth_cm: 1.4 },
+      {
+        rank: 21,
+        hotspot_id: "MUM-HS-19",
+        name: "Kalanagar / Kherwadi (Bandra East)",
+        peak_depth_cm: 1,
+      },
+      { rank: 26, hotspot_id: "MUM-HS-02", name: "Parel / Bharat Mata Cinema", peak_depth_cm: 0.7 },
+    ],
+  },
+  "/v1/route/facilities": {
+    city: "mumbai",
+    count: 6,
+    facilities: [
+      {
+        asset_id: "fire_station-006",
+        name: "Andheri Fire Station",
+        kind: "fire_station",
+        lon: 72.840863,
+        lat: 19.112162,
+      },
+      {
+        asset_id: "fire_station-002",
+        name: "Kurla Agnishaman Kendra",
+        kind: "fire_station",
+        lon: 72.885935,
+        lat: 19.08443,
+      },
+      {
+        asset_id: "osm-251",
+        name: "Alphine Life Solutions General Hospital",
+        kind: "hospital",
+        lon: 72.871065,
+        lat: 19.072612,
+      },
+      {
+        asset_id: "osm-263",
+        name: "Apex Multi Speciality Hospital",
+        kind: "hospital",
+        lon: 72.891648,
+        lat: 19.099487,
+      },
+      {
+        asset_id: "osm-354",
+        name: "K B H B Charitable Ophthalmic and E.N.T Hospital",
+        kind: "hospital",
+        lon: 72.840409,
+        lat: 19.002348,
+      },
+    ],
+  },
+  "/v1/drains/health": DRAINS,
+};
+
+describe("CommandPalette ranking", () => {
+  beforeEach(() => {
+    push.mockClear();
+    useRunStore.getState().clear();
+    useUiStore.setState({ commandPaletteOpen: true });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("uses fixtures that cmdk's own score mistakes for a screen, and rejects them", () => {
+    // If a fixture stops matching under cmdk's score, the tests below prove nothing about it.
+    const cases: [string, string, string[]][] = [
+      ["console", "facility Alphine Life Solutions General Hospital osm-251", ["reachability"]],
+      [
+        "console",
+        "facility K B H B Charitable Ophthalmic and E.N.T Hospital osm-354",
+        ["reachability"],
+      ],
+      ["alerts", "hotspot Kalanagar / Kherwadi (Bandra East) MUM-HS-19", []],
+      ["alerts", "facility Andheri Fire Station fire_station-006", ["reachability"]],
+      ["drishti", "facility Andheri Fire Station fire_station-006", ["reachability"]],
+      ["sanket", "facility Kurla Agnishaman Kendra fire_station-002", ["reachability"]],
+      ["sanket", "hotspot Gandhi Market (Matunga) MUM-HS-04", []],
+      ["pumps", "facility Apex Multi Speciality Hospital osm-263", ["reachability"]],
+    ];
+    for (const [query, value, keywords] of cases) {
+      expect(defaultFilter(value, query, keywords), `${query} in ${value}`).toBeGreaterThan(0);
+      expect(paletteScore(value, query, keywords), `${query} in ${value}`).toBe(0);
+    }
+  });
+
+  it("matches named places on whole words, and screens also on scattered letters", () => {
+    const kem = "facility King Edward Memorial (KEM) Hospital, Parel hospital-001";
+    expect(paletteScore(kem, "kem", ["reachability"])).toBeGreaterThan(30);
+    expect(paletteScore(kem, "hosp parel", ["reachability"])).toBeGreaterThan(30);
+    expect(paletteScore(`run ${RUN_0840} 2 Jul 2019 08:40 IST`, "0310")).toBeGreaterThan(20);
+    // A screen matched on its words outranks a place matched on its words.
+    const pumps = NAV_ITEMS.find((item) => item.id === "pumps")!;
+    const screenPumps = paletteScore("screen Jalayantra", "pumps", [
+      "pumps",
+      pumps.gloss!,
+      "pump",
+      "dispatch",
+    ]);
+    expect(screenPumps).toBeGreaterThan(
+      paletteScore("action dispatch pumps at Mahim MUM-HS-26", "pumps"),
+    );
+    expect(paletteScore("screen Jalayantra", "jlyntr", ["pumps"])).toBeGreaterThan(10);
+    expect(paletteScore("screen Jalayantra", "", ["pumps"])).toBe(1);
+  });
+
+  it.each([
+    ["console", "Drishti", "/console"],
+    ["alerts", "Sanket", "/alerts"],
+    ["drishti", "Drishti", "/console"],
+    ["sanket", "Sanket", "/alerts"],
+    ["pumps", "Jalayantra", "/pumps"],
+    ["onboard", "Pravesh", "/onboard"],
+    ["jlyntr", "Jalayantra", "/pumps"],
+  ])("selects the screen for %s and Enter opens it", async (query, label, href) => {
+    vi.stubGlobal("fetch", vi.fn(stubFetch(PLACES_API)));
+    renderWithProviders(<CommandPalette />);
+    await screen.findByText("K B H B Charitable Ophthalmic and E.N.T Hospital");
+    await screen.findByText("Kalanagar / Kherwadi (Bandra East)");
+
+    type(query);
+    await waitFor(() => expect(itemFor(label)).toHaveAttribute("aria-selected", "true"));
+    // The screen is the first row drawn, not merely the selected one.
+    const rows = [...document.querySelectorAll<HTMLElement>("[cmdk-item]")];
+    expect(rows[0]).toBe(itemFor(label));
+    expect(screen.queryByText("K B H B Charitable Ophthalmic and E.N.T Hospital")).toBeNull();
+
+    key("Enter");
+    expect(push).toHaveBeenLastCalledWith(href);
+  });
+
+  it("still selects a place when the operator types its name", async () => {
+    vi.stubGlobal("fetch", vi.fn(stubFetch(PLACES_API)));
+    renderWithProviders(<CommandPalette />);
+    await screen.findByText("Kalanagar / Kherwadi (Bandra East)");
+
+    type("kalanagar");
+    await waitFor(() =>
+      expect(itemFor("Kalanagar / Kherwadi (Bandra East)")).toHaveAttribute(
+        "aria-selected",
+        "true",
+      ),
+    );
+    key("Enter");
+    expect(push).toHaveBeenLastCalledWith(paletteHref.hotspot("MUM-HS-19", RUN_0910));
+
+    act(() => useUiStore.setState({ commandPaletteOpen: true }));
+    type("andheri fire");
+    await waitFor(() =>
+      expect(itemFor("Andheri Fire Station")).toHaveAttribute("aria-selected", "true"),
+    );
+    key("Enter");
+    expect(push).toHaveBeenLastCalledWith(paletteHref.facility("fire_station-006", RUN_0910));
   });
 });

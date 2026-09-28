@@ -20,7 +20,10 @@ For each 5-minute forecast step:
       the inlet capture and surcharge fluxes (CLAUDE.md 11.5, Appendix A);
    b. ``swe2d.SurfaceStepper.advance`` sub-steps the 2D solver under the CFL rule for
       ``sync_s``, with the rain, capture and surcharge frozen as source terms - the same
-      arithmetic as ``swe2d.run_surface``, with its per-call setup done once per run;
+      arithmetic as ``swe2d.run_surface``, with its per-call setup done once per run. When the
+      CFL rule splits the sync, the whole capture is taken in its first sub-step
+      (``coupling.advance_surface_with_capture``), so the street gives up exactly what the
+      drains accepted;
    c. ``drain1d.simulate`` sub-steps the 1D solver at ``inner_dt_s`` for ``sync_s``,
       with the same capture and surcharge frozen.
 
@@ -39,7 +42,11 @@ boundary rather than the checkpoint's copy of it.
 
 **Mass balance** (CLAUDE.md 11.3). The combined surface + drain volume is audited at the
 end of the run: ``|(V_end - V_start) - (V_in - V_out)| / V_in < 0.1%``, where ``V_in`` is what
-entered during this run only. ``V_start`` is zero on a cold start. Below
+entered during this run only. ``V_start`` is zero on a cold start. The audited system is the
+city - land cells and pipes; the sea cells are its boundary. They start at the ``t0`` stage, so
+the sea's own volume is storage rather than inflow, and what they pass to the city is one term,
+``sea_to_land = tide_in - tide_out - (change in sea storage)``, counted in ``V_in`` when positive
+and ``V_out`` when negative, beside the rain and any backflow through a tidal outfall. Below
 :data:`MASS_BALANCE_MIN_VOLUME_M3` of inflow the ratio means nothing, and the residual itself
 is held to :data:`MASS_BALANCE_MIN_RESIDUAL_M3` instead.
 The surface's own audit runs every 100 CFL sub-steps across the run inside the
@@ -62,9 +69,10 @@ writes per-row; the 1D solver uses ``np.bincount`` in edge order.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from datetime import timedelta
 from time import perf_counter
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import numpy as np
 import structlog
@@ -72,6 +80,7 @@ import structlog
 from varuna_twin import drain1d, swe2d
 from varuna_twin.coupling import (
     ExchangeBuffers,
+    advance_surface_with_capture,
     compute_exchange,
     scatter_node_volumes_to_cells,
 )
@@ -111,7 +120,12 @@ inflow it audits, so the two checks meet at the threshold instead of leaving a g
 hot-started run with no new rain - large storage, nothing entering - could lose water unseen."""
 
 
-def run_twin(inputs: TwinInputs) -> TwinResult:
+def run_twin(
+    inputs: TwinInputs,
+    *,
+    on_step: Callable[[int, int], None] | None = None,
+    sea_ledger: dict[str, float] | None = None,
+) -> TwinResult:
     """Run the coupled 2D+1D simulation from a rain cube to depth maps.
 
     This is the single function Phase 5's cycle orchestrator calls. Everything it needs
@@ -120,6 +134,32 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     Args:
         inputs: terrain, drain network, rain cube (n_steps, rows, cols) in mm/h,
                 time origin, step cadence, tide series, sync and inner-step settings.
+        on_step: called as ``on_step(k, n)`` after output step ``k`` of ``n`` has been
+                snapshotted (``k`` counts from 1). A progress hook and nothing else: it is
+                handed two integers, never the solver's state, so it cannot change a number,
+                and a test pins the run bitwise equal with and without it. An exception it
+                raises propagates out of the run, which is how a caller cancels one.
+        sea_ledger: a dict the run fills, once it has finished, with the boundary volumes its
+                closing log line carries - ``rain_in_m3``, ``tide_in_m3``, ``tide_out_m3``,
+                the signed ``outfall_m3`` (negative is the sea pushing back up a pipe), and
+                ``sea_to_land_m3`` with the two sea storages it is formed from. ``tide_in_m3``
+                and ``tide_out_m3`` are the clamp's own tallies on the sea cells, *after* the
+                sea was filled to its ``t0`` stage, so they are the tide's rise and fall and not
+                the sea filling itself. On a terrain with its own sea raster (``terrain.sea``)
+                the sea and the city exchange water by two paths and no other, and each has its
+                own key: ``sea_to_land_m3`` is the face exchange alone - the water that crossed
+                the faces between sea cells and land cells, net, positive inland - and
+                ``outfall_m3`` is the pipe exchange, net, positive out to sea. ``sea_to_land_m3``
+                carries no rain, because rain on a sea cell is zeroed before it is booked, and no
+                drain exchange, because a node on a sea cell neither captures nor surcharges.
+                On a terrain without the raster the sea is the tidal outfalls' cells, and the
+                term also carries the rain that fell on them, which the clamp returns to the sea,
+                and whatever the interior nodes on those cells exchanged - exactly as before.
+                :class:`~varuna_twin.types.MassBalance` counts it in ``volume_in_m3`` when
+                positive and ``volume_out_m3`` when negative. An
+                out-parameter rather than a new result field so the result type, and every run
+                written from it, stays exactly as it was; it is written after the last step and
+                read by nothing inside the run.
 
     Returns:
         A :class:`~varuna_twin.types.TwinResult` with depth snapshots, drain heads,
@@ -148,7 +188,7 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     )
 
     # The identity a checkpoint of this run carries, and the one a resumed state must match.
-    fingerprint = TwinFingerprint.of(terrain, network, inputs.provenance)
+    fingerprint = TwinFingerprint.of(terrain, network, _sea_provenance(terrain, inputs.provenance))
 
     # ---- Prepare the solvers ------------------------------------------------
     kernel_terrain = swe2d.prepare_terrain(terrain)
@@ -195,22 +235,47 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
             head=_owned(initial.drain_head),
             flow=_owned(initial.drain_flow),
         )
-    # Pinned on a resume too: the outfall heads belong to the boundary series this run was given,
-    # not to the one the checkpoint was written under. The drain kernel pins them again at every
-    # inner step, and the coupling takes nothing at a fixed-head node, so on an unchanged series
-    # this changes no number - the resume-identity test covers a rising tide.
-    drain1d.pin_boundaries(drain_solver, drain_state.head, _tide_at(inputs, inputs.t0))
-
     # Sea boundary mask for the 2D solver
     sea_mask = _build_sea_mask(terrain, network)
+    # The city's own sea raster, when the terrain carries one: the cells that exchange nothing
+    # with the drains and take no rain into the city's ledger. `None` on a terrain without it,
+    # which keeps such a run - every nest, every test grid, every city built before the sea step -
+    # bit for bit what it was, tidal outfall cells and all.
+    city_sea = _city_sea(terrain)
 
     # `_tide_at` needs to know whether the domain has a sea at all, so it can hold it at mean sea
     # level when the bundle has no tide series rather than leaving the solver without a level.
     has_sea = sea_mask is not None and bool(sea_mask.any())
 
+    # Pinned on a resume too: the outfall heads belong to the boundary series this run was given,
+    # not to the one the checkpoint was written under. The drain kernel pins them again at every
+    # inner step, and the coupling takes nothing at a fixed-head node, so on an unchanged series
+    # this changes no number - the resume-identity test covers a rising tide. It is given the same
+    # stage the loop gives the drain: with a sea and no series that is mean sea level, not "none",
+    # which would stand a tidal outfall below 0 m at its invert until the first inner step.
+    drain1d.pin_boundaries(
+        drain_solver, drain_state.head, _tide_at(inputs, inputs.t0, has_sea=has_sea)
+    )
+
+    # The sea starts at its own level, not empty. Its cells are clamped to the stage at the start
+    # of every sub-step anyway, so filling them here is exactly the clamp the first sub-step would
+    # make - no depth anywhere changes - but it books the sea's own volume as water already in the
+    # domain rather than as tide that crossed the boundary during the run. Without it a real
+    # coastline fills 19 km2 of sea in the first sync and reports that as 23 Mm3 of inflow against
+    # 3.18 Mm3 of rain, which dilutes every error the audit exists to catch about eight times.
+    # The index is the stepper's own (buildings excluded), so the two agree on which cells are sea.
+    sea_index = swe2d._sea_index(sea_mask, kernel_terrain) if has_sea else None
+    if sea_index is not None:
+        _fill_sea(surface.h, kernel_terrain, sea_index, _tide_at(inputs, inputs.t0, has_sea=True))
+    sea_stored_start = _sea_volume_m3(surface.h, sea_index, kernel_terrain.cell_area_m2)
+
     # Built once: the sea-cell index, the kernel workspace and the run-long mass ledger. Doing
     # that inside every one of the 2,160 surface calls cost more than the kernels (P4.6).
     surface_stepper = swe2d.SurfaceStepper(surface, kernel_terrain, sea_mask=sea_mask)
+    # The capture front-loaded into each sync's first CFL sub-step (see
+    # `coupling.advance_surface_with_capture`), and the zero raster the rest of the sync runs on.
+    capture_buffer = np.zeros(kernel_terrain.z.shape, dtype=np.float64)
+    no_capture = np.zeros(kernel_terrain.z.shape, dtype=np.float64)
 
     # Sinks (pumps/tanks)  -  not wired until Phase 7, but the interface is ready
     sinks, sink_state = drain1d.no_sinks()
@@ -224,11 +289,11 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
             )
         sink_state.filled_m3 = filled
 
-    # Water already in the city when the run starts: zero on a cold start. Taken after the
-    # boundary pin, though `stored_volume_m3` leaves fixed-head nodes out either way.
+    # Water already in the domain when the run starts: zero on a cold start but for the sea.
+    # Taken after the boundary pin and the sea fill, though `stored_volume_m3` leaves fixed-head
+    # nodes out either way. The city's own share, without the sea, is formed at the close.
     surface_stored_start = surface.volume_m3(kernel_terrain.cell_area_m2)
     drain_stored_start = drain1d.stored_volume_m3(drain_solver, drain_state.head)
-    stored_start = surface_stored_start + drain_stored_start
 
     # ---- Output buffers -----------------------------------------------------
     depth_out = np.zeros((n_steps, terrain.n_rows, terrain.n_cols), dtype=np.float64)
@@ -280,6 +345,15 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         t0 = perf_counter()
         rain_rate = rain_cube[step_idx]  # mm/h
         r_eff_ms = effective_rain(rain_rate, terrain, hydro_state, step_s)
+        if city_sea is not None:
+            # Rain on the sea is the sea's. The clamp takes it straight back off every sea cell,
+            # so booked as rain it only crossed the ledger twice - in as `rain_in`, out as
+            # `tide_out` - and made `sea_to_land` mostly the sea's own rain: -498,972 m3 on a
+            # 12-step Chennai run at 50 mm/h, 428,580 m3 of which had fallen on its 9,524 sea
+            # cells. A land depth can move only where a sea cell's own water limits what it gives
+            # a neighbour (`swe2d._update_depth` pass A); the Dirichlet sea is meant to be
+            # unlimited there anyway.
+            r_eff_ms = np.where(city_sea, 0.0, r_eff_ms)
         t_hydro += int((perf_counter() - t0) * 1000)
 
         # The rain raster is validated here, once per 5-minute step, not once per sync.
@@ -320,6 +394,13 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
                 # one the 2D solver holds at zero depth and skips before it tallies, so anything
                 # sent there vanishes from the audit (task P4.5).
                 blocked=kernel_terrain.blocked,
+                # Nor does a node on the city's sea: the clamp refills its cell every sub-step,
+                # so its inlet was an ungated pipe from the sea at ground minus 1.5 m, past the
+                # coast wall, the tidal-outfall invert and any flap gate, booked as `sea_to_land`
+                # where the audit cannot see it. 148 of Mumbai's interior nodes sit on sea cells
+                # (106 on the Mithi buffer, 42 on open sea), all 148 under water at the +2.218 m
+                # crest. `None` without a sea raster, so such a run exchanges as it always did.
+                sea=city_sea,
             )
             t_coupling += int((perf_counter() - t0) * 1000)
 
@@ -370,18 +451,23 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
             np.add(step_surcharge, applied_surcharge_m3, out=step_surcharge)
             step_surcharge_count += 1
 
-            # 2c. Advance the 2D surface with the volume the drains actually emitted.
+            # 2c. Advance the 2D surface with the volume the drains actually emitted, and hand over
+            # the whole capture the drains were promised. The drains have already accepted it in
+            # full, so a surface that gives up less - because its neighbours drained the cell in
+            # an earlier CFL sub-step - invents the difference (`inlet_gap_m3`).
             t0 = perf_counter()
-            surface_run = surface_stepper.advance(
+            moved = advance_surface_with_capture(
+                surface_stepper,
                 actual_sync_s,
                 q_inlet_ms=exchange.q_inlet_cell,
                 q_surcharge_ms=surcharge_cell,
                 tide_stage_m=tide_stage,
-                max_dt_s=actual_sync_s,
+                capture_buffer=capture_buffer,
+                no_capture=no_capture,
             )
             t_surface += int((perf_counter() - t0) * 1000)
-            total_tide_in_m3 += surface_run.volume_tide_in_m3
-            total_tide_out_m3 += surface_run.volume_tide_out_m3
+            total_tide_in_m3 += moved[4]
+            total_tide_out_m3 += moved[5]
 
         # 3. Snapshot
         depth_out[step_idx] = surface.h.copy()
@@ -390,6 +476,10 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
             # Volume over the step, back to the mean rate the snapshot reports in m3/s.
             q_surcharge_out[step_idx] = step_surcharge / (step_surcharge_count * actual_sync_s)
         edge_flow_out[step_idx] = drain_state.flow.copy()
+
+        # 4. Progress, after the snapshot so a step reported done is a step whose depth exists.
+        if on_step is not None:
+            on_step(step_idx + 1, n_steps)
 
     # The surface's closing audit: the window since its last 100-sub-step check, and the run.
     t0 = perf_counter()
@@ -409,12 +499,37 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
     # ---- Combined mass balance -----------------------------------------------
     surface_stored = surface.volume_m3(kernel_terrain.cell_area_m2)
     drain_stored = drain1d.stored_volume_m3(drain_solver, drain_state.head)
-    total_stored = surface_stored + drain_stored
-    # The sea appears on both sides of the ledger: it floods low coastal cells on the surface,
-    # and at a tide-locked outfall it pushes water back up the trunk - which is a negative
-    # `boundary_m3` and therefore an inflow.
-    total_in = total_rain_in_m3 + total_tide_in_m3 + max(-total_outfall_m3, 0.0)
-    total_out = total_tide_out_m3 + max(total_outfall_m3, 0.0)
+
+    # ---- The sea's side of the ledger ------------------------------------------------------
+    # The audited system is the city - land cells and pipes - and the sea is its boundary. The
+    # clamp tallies say what the stage put into and took out of the sea cells; what the sea cells
+    # passed on to the city is that, less what they kept:
+    #
+    #     sea_to_land = tide_in - tide_out - (sea storage at the end - at the start)
+    #
+    # Positive is sea that crossed onto land; negative is the city draining to the sea. With the
+    # terrain's own sea raster it is the face exchange alone - sea cells to land cells across the
+    # shoreline - because nothing else changes a sea cell's water but the clamp: its rain was
+    # zeroed before it was booked, and its nodes neither capture nor surcharge. The pipe exchange
+    # is `outfall_m3`. On a terrain without the raster the sea is the tidal outfalls' cells and
+    # the term also carries the rain that fell on them, which the clamp returns to the sea, and
+    # what interior nodes on those cells exchanged. The residual below is algebraically the one
+    # the whole-domain ledger gave; what changes is the denominator, which no longer counts the
+    # sea filling and rising as water the city received.
+    # With no sea cell ever below the stage both sea terms are exactly zero and every number is
+    # bit for bit the one the whole-domain ledger gave. That held on the Mumbai graph built before
+    # the sea step, whose three tidal outfalls sit at 1.42-12.50 m, only while MUM-2019-07-02's
+    # tide stopped at 09:40 (+1.236 m); running on to 12:40 it crests at +2.218 m, so from about
+    # 09:52 the lowest of them is a sea cell below the stage on every cycle from 07:10 to 09:10.
+    sea_stored_end = _sea_volume_m3(surface.h, sea_index, kernel_terrain.cell_area_m2)
+    sea_to_land = total_tide_in_m3 - total_tide_out_m3 - (sea_stored_end - sea_stored_start)
+    land_stored = surface_stored - sea_stored_end
+    total_stored = land_stored + drain_stored
+    stored_start = (surface_stored_start - sea_stored_start) + drain_stored_start
+    # At a tide-locked outfall the sea pushes water back up the trunk - a negative `boundary_m3`,
+    # and therefore an inflow like the sea that crosses a shoreline.
+    total_in = total_rain_in_m3 + max(sea_to_land, 0.0) + max(-total_outfall_m3, 0.0)
+    total_out = max(-sea_to_land, 0.0) + max(total_outfall_m3, 0.0)
 
     # The change in storage against what crossed the boundary, over the run's own inflow. The
     # water a hot start carries in is subtracted from the stored side, never added to the
@@ -462,6 +577,9 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         rain_in_m3=round(total_rain_in_m3, 1),
         tide_in_m3=round(total_tide_in_m3, 1),
         tide_out_m3=round(total_tide_out_m3, 1),
+        sea_to_land_m3=round(sea_to_land, 1),
+        sea_stored_start_m3=round(sea_stored_start, 1),
+        sea_stored_end_m3=round(sea_stored_end, 1),
         outfall_m3=round(total_outfall_m3, 1),
         drain_inlet_m3=round(total_drain_inlet_m3, 1),
         drain_surcharge_m3=round(total_drain_surcharge_m3, 1),
@@ -531,6 +649,19 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         fingerprint=fingerprint,
     )
 
+    if sea_ledger is not None:
+        sea_ledger.update(
+            {
+                "rain_in_m3": float(total_rain_in_m3),
+                "tide_in_m3": float(total_tide_in_m3),
+                "tide_out_m3": float(total_tide_out_m3),
+                "outfall_m3": float(total_outfall_m3),
+                "sea_to_land_m3": float(sea_to_land),
+                "sea_stored_start_m3": float(sea_stored_start),
+                "sea_stored_end_m3": float(sea_stored_end),
+            }
+        )
+
     log.info(
         "twin.run.done",
         n_steps=n_steps,
@@ -539,7 +670,9 @@ def run_twin(inputs: TwinInputs) -> TwinResult:
         surface_stored_m3=round(surface_stored, 1),
         drain_stored_m3=round(drain_stored, 1),
         outfall_m3=round(total_outfall_m3, 1),
-        peak_depth_m=round(float(np.max(depth_out)), 3),
+        # The land's peak, not the sea's: the sea is held at the tide, so on Mumbai's coastline
+        # the whole-grid maximum is the deepest sea cell at the crest (2.58 m), never a street.
+        peak_depth_m=round(_land_peak_m(depth_out, city_sea), 3),
         **stage_ms,
     )
 
@@ -636,27 +769,114 @@ def _tide_at(inputs: TwinInputs, when, *, has_sea: bool = False) -> float | None
     return inputs.tide.at(when)
 
 
+def _fill_sea(
+    h: NDArray[np.floating],
+    kernel_terrain: swe2d.KernelTerrain,
+    sea_index: tuple[NDArray[np.intp], NDArray[np.intp]],
+    stage_m: float | None,
+) -> None:
+    """Stand the sea cells at the ``t0`` stage, in place, before any storage is measured.
+
+    ``swe2d._apply_tide`` itself - the clamp every sub-step opens with - so the first sub-step's
+    own clamp finds nothing left to do and the depths the run produces are the ones it always
+    produced; the tallies it returns are dropped on purpose, because the sea's volume at ``t0`` is
+    storage the domain starts with, not tide that crossed its edge during the run.
+    """
+    if stage_m is None:
+        return
+    depth = cast("NDArray[np.float64]", h)  # the solver's own float64 buffer
+    swe2d._apply_tide(depth, kernel_terrain.z, sea_index, stage_m, kernel_terrain.cell_area_m2)
+
+
+def _sea_volume_m3(
+    h: NDArray[np.floating],
+    sea_index: tuple[NDArray[np.intp], NDArray[np.intp]] | None,
+    cell_area_m2: float,
+) -> float:
+    """Water standing on the sea cells, in m3; exactly ``0.0`` when there are none or all are dry.
+
+    Exactly zero matters: the closing ledger subtracts this from the whole surface, and a dry sea
+    has to leave that sum's bits alone for a run without a coastline to audit as it always did.
+    """
+    if sea_index is None:
+        return 0.0
+    rows, cols = sea_index
+    return float(np.sum(h[rows, cols])) * cell_area_m2
+
+
+SEA_PROVENANCE_KEY = "sea_mask_sha256"
+"""The fingerprint provenance key a terrain's own sea raster is recorded under."""
+
+
+def _sea_provenance(terrain, provenance: Mapping[str, str] | None) -> Mapping[str, str] | None:
+    """``provenance`` plus the digest of ``terrain.sea`` when the terrain carries one.
+
+    The sea is where the tide is imposed, so a checkpoint written under one coastline must not
+    resume under another: it would hold sea water on cells that are now land. Recorded as
+    provenance because :class:`TwinFingerprint` has no field for it yet; a terrain without a sea
+    raster adds nothing, so its fingerprint is the one every earlier run carried.
+    """
+    sea = getattr(terrain, "sea", None)
+    if sea is None:
+        return provenance
+    import hashlib
+
+    data = np.ascontiguousarray(np.asarray(sea, dtype=np.bool_), dtype="u1")
+    return {**(provenance or {}), SEA_PROVENANCE_KEY: hashlib.sha256(data.tobytes()).hexdigest()}
+
+
+def _city_sea(terrain) -> NDArray[np.bool_] | None:
+    """``terrain.sea`` as a boolean mask on the grid, or ``None`` when the terrain has no raster."""
+    sea = getattr(terrain, "sea", None)
+    if sea is None:
+        return None
+    sea = np.asarray(sea, dtype=np.bool_)
+    if sea.shape != tuple(terrain.shape):
+        raise ValueError(f"terrain.sea has shape {sea.shape}, expected {tuple(terrain.shape)}")
+    return sea
+
+
+def _land_peak_m(depth: NDArray[np.floating], sea: NDArray[np.bool_] | None) -> float:
+    """Deepest water off the city's sea raster over the whole run, in metres; 0 on an empty grid.
+
+    Without a raster every cell counts, as before.
+    """
+    if sea is None:
+        return float(np.max(depth)) if depth.size else 0.0
+    land = depth[:, ~sea]
+    return float(np.max(land)) if land.size else 0.0
+
+
 def _build_sea_mask(
     terrain,
     network: DrainNetwork,
 ) -> NDArray[np.bool_] | None:
-    """Build the sea boundary mask for the 2D solver from tidal outfall positions.
+    """Build the sea boundary mask for the 2D solver.
 
-    Tidal outfalls sit on the edge of the domain; their 2D cells become sea boundary
-    cells where the water level is imposed by the tide. If the network has no tidal
-    outfalls, there is no sea boundary.
+    With the terrain's own sea raster (``terrain.sea``, the open sea and tidal creeks the city
+    build classifies from land cover and the DEM) the mask is that raster and nothing else. A
+    tidal outfall is not added: its drain head is pinned to the stage already, which is the whole
+    of its coupling to the tide, and the city build makes every outfall within two cells of the
+    sea tidal - so its cell can be land. Added, that land became a Dirichlet sea cell: on the
+    Mumbai build 4 of the 21 tidal outfalls sit on the walled shore ring and would be held dry
+    for good, a drain hole through the wall, and MUM-N049187 and MUM-N049198 stand at 1.5 m
+    behind it, where the extended tide would impose the sea from about +1.5 m up to its +2.218 m
+    crest and flood the land around them.
+
+    Without the raster the mask is the tidal outfalls' cells, which is all there was before a
+    coastline existed - so such a run is exactly what it was. With neither, there is no sea.
     """
-    boundary = np.asarray(network.boundary)
-    tidal = boundary == drain1d.BOUNDARY_TIDAL
-    if not np.any(tidal):
-        return None
-
-    row = np.asarray(network.cell_row, dtype=np.intp)
-    col = np.asarray(network.cell_col, dtype=np.intp)
+    sea = _city_sea(terrain)
+    if sea is not None:
+        return sea.copy() if sea.any() else None
 
     mask = np.zeros(terrain.shape, dtype=np.bool_)
-    for i in range(network.n_nodes):
-        if tidal[i] and row[i] >= 0 and col[i] >= 0:
+    boundary = np.asarray(network.boundary)
+    tidal = boundary == drain1d.BOUNDARY_TIDAL
+    row = np.asarray(network.cell_row, dtype=np.intp)
+    col = np.asarray(network.cell_col, dtype=np.intp)
+    for i in np.flatnonzero(tidal):
+        if row[i] >= 0 and col[i] >= 0:
             mask[int(row[i]), int(col[i])] = True
 
     if not np.any(mask):

@@ -47,7 +47,8 @@
         "replay.clock",
         "onboard.progress",
         "pumps.dispatched",
-        "reports.ack"
+        "reports.ack",
+        "whatif.progress"
       ],
       "title": "Topic",
       "type": "string"

@@ -62,10 +62,10 @@ bake: ## Pre-compute every 5-minute cycle of a bundle into data/runs/
 train: ## Fit Flash-lite from the Twin runs in data/train/ (P1: train the GNN)
 	$(VARUNA) train --city $(CITY) $(ARGS)
 
-dev: ## API on :8000 and Next.js on :3000, replay paused
+dev: ## API on :8000 and Next.js on :3000, replay paused, Compute live on (VARUNA_COMPUTE_LIVE=0 turns it off)
 	$(VARUNA) dev $(ARGS)
 
-demo: ## Full demo: API + UI + replay of the default bundle at 30x from baked runs
+demo: ## Full demo: API + UI + replay of the default bundle at 30x from baked runs, Compute live on
 	$(VARUNA) demo --bundle $(BUNDLE) $(ARGS)
 
 test: ## pnpm lint, typecheck, test, lint:design, then pytest with coverage

@@ -33,6 +33,7 @@ __all__ = [
     "known_cities",
     "latest_run_for",
     "no_run_hint",
+    "onboarded_run_for",
     "resolve_city",
     "run_prefix",
 ]
@@ -163,11 +164,52 @@ def no_run_hint(city: str, carries: str) -> str:
     return f"No baked run for {city} carries {carries} yet. {bake_hint(city)}"
 
 
+def onboarded_run_for(
+    city: str | None,
+    requires: Callable[[Path], bool] | None = None,
+) -> Path | None:
+    """The run an onboarded city opens on: its last good onboarding build's first forecast.
+
+    Only for a city other than the configured one. The configured city is the replay's city, and
+    its newest bake is its default, as it always was - Mumbai is never onboarded through the
+    wizard, and if it were, the design storm's run would not be the right thing to open the
+    2 July replay on.
+
+    For an onboarded city, name order is the wrong authority. Run ids sort by cycle time, and
+    Chennai's superseded 2026-09-10 "peak frame" run (609 mm of rain from a 150 mm design storm)
+    sorted after the wizard's own run, so the wizard's map, its finish card and the Chennai
+    console all opened on it. The onboarding record (`varuna_api.onboard`) names the run the
+    build made, and that is the one to open, as long as it is still on disk, belongs to this
+    city and carries what the caller ``requires``. Otherwise None, and the caller falls back to
+    the newest run.
+    """
+    slug = _slug(city or get_settings().varuna_city or "")
+    configured = _slug(get_settings().varuna_city or "")
+    if slug is None or slug == configured:
+        return None
+    from varuna_api.onboard import onboard_run_id
+
+    run_id = onboard_run_id(slug)
+    prefix = run_prefix(slug)
+    if run_id is None or not prefix or not run_id.startswith(prefix):
+        return None
+    path = runs_dir() / run_id
+    if not path.is_dir():
+        return None
+    if requires is not None and not requires(path):
+        return None
+    return path
+
+
 def latest_run_for(
     city: str | None = None,
     requires: Callable[[Path], bool] | None = None,
 ) -> Path | None:
-    """The newest run directory for a city, optionally one satisfying ``requires``.
+    """The default run directory for a city, optionally one satisfying ``requires``.
+
+    For an onboarded city other than the configured one, the first forecast of its last good
+    onboarding build (:func:`onboarded_run_for`); otherwise, and whenever that run is gone or
+    lacks what ``requires`` asks for, the newest run by id.
 
     Returns None rather than raising: "no run yet" is an ordinary state on a cold console, and the
     callers each have their own message for it (CLAUDE.md 6.8). A city with no run-id code has no
@@ -179,6 +221,9 @@ def latest_run_for(
     prefix = run_prefix(city)
     if not prefix:
         return None
+    onboarded = onboarded_run_for(city, requires)
+    if onboarded is not None:
+        return onboarded
     for path in sorted(root.iterdir(), reverse=True):
         if not path.is_dir() or path.name.startswith("."):
             continue

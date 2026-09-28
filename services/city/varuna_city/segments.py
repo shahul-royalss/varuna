@@ -102,12 +102,55 @@ SEGMENT_COLUMNS = (
 )
 
 
-def classify_highway(value: Any) -> str:
-    """Map an OSM ``highway`` tag (possibly a list) onto a VARUNA road class.
+_LITERAL_BRACKETS = frozenset({"[]", "{}", "()"})
+"""How a stringified list, set or tuple starts and ends. A set is written ``"{400, 500}"``, and
+splitting that on its comma would read the way ids as ``"{400"`` and ``"500}"``."""
 
-    Unknown or missing tags fall back to ``"service"``, the least exposed class.
+
+def osm_items(value: Any) -> list[Any]:
+    """The items of an OSM tag value that may carry several, whatever shape it arrived in.
+
+    OSMnx merges ways when it simplifies the graph, and the merged edge carries every way's tag
+    as a collection. That collection has three shapes in this repository, and they must all mean
+    the same thing or a rebuild from cache disagrees with the build that did the download:
+
+    * a live fetch hands over a real ``list`` (or ``set``/``tuple``);
+    * ``osm.gpkg``'s ``roads`` layer has no list type, so the same value comes back as the text
+      ``"[123, 456]"`` or ``"['residential', 'service']"`` - 1,886 of Mumbai's 34,539 road
+      edges carry their ``osmid`` that way, 171 their ``highway`` and 17 their ``lanes``;
+    * the feature layers go through ``osm._sanitize``, which writes ``"a,b"``.
+
+    Treating only the first shape was the defect behind 1,247 of Mumbai's segment ids reading
+    ``S0-*`` (the way id collapsed to 0 when the text was not an int), and behind 839 more that
+    kept their form but shifted ordinal and so named a different street than the same id did in
+    every baked run. Anything that reads a list-valued OSM column goes through here.
+
+    Not for ``name``: a street name may legitimately contain a comma, so names are parsed by
+    :func:`split_names`, which only unpacks a genuine list literal.
     """
-    tags = value if isinstance(value, (list, tuple, set)) else [value]
+    if isinstance(value, (list, tuple, set)):
+        return list(value)
+    if isinstance(value, str):
+        text = value.strip()
+        if text[:1] + text[-1:] in _LITERAL_BRACKETS:
+            try:
+                parsed = ast.literal_eval(text)
+            except (ValueError, SyntaxError):
+                parsed = None
+            if isinstance(parsed, (list, tuple, set)):
+                return list(parsed)
+        if "," in text:
+            return [part.strip() for part in text.split(",")]
+    return [value]
+
+
+def classify_highway(value: Any) -> str:
+    """Map an OSM ``highway`` tag (possibly a list, or a list as text) onto a VARUNA road class.
+
+    Unknown or missing tags fall back to ``"service"``, the least exposed class. A merged edge
+    takes the highest class among its ways, because :data:`CLASS_TAGS` is walked in order.
+    """
+    tags = osm_items(value)
     for name, members in CLASS_TAGS.items():
         for tag in tags:
             if isinstance(tag, str) and tag in members:
@@ -116,11 +159,14 @@ def classify_highway(value: Any) -> str:
 
 
 def _first_way_id(value: Any) -> int:
-    """The stable OSM way id for an edge; osmnx merges ways, so take the smallest."""
-    if isinstance(value, (list, tuple, set)):
-        ids = [int(v) for v in value if _is_int(v)]
-        return min(ids) if ids else 0
-    return int(value) if _is_int(value) else 0
+    """The stable OSM way id for an edge; osmnx merges ways, so take the smallest.
+
+    ``osm_items`` makes the GeoPackage text ``"[123, 456]"`` and the live list ``[123, 456]``
+    give the same id, which is what keeps a segment id the same street across ``make city``
+    runs (the module docstring's promise, broken until 2026-09-26 for every merged edge).
+    """
+    ids = [int(v) for v in osm_items(value) if _is_int(v)]
+    return min(ids) if ids else 0
 
 
 def _is_int(value: Any) -> bool:
@@ -139,16 +185,17 @@ def _as_int(value: Any) -> int | None:
     string hashing. Taking the first item therefore made ``make city`` non-reproducible
     (CLAUDE.md rule 8). We take the maximum instead: it is order-independent, and where a
     simplified edge spans a widening the widest cross-section is what carries the traffic the
-    exposure weight is meant to represent.
+    exposure weight is meant to represent. The GeoPackage text ``"['2', '4']"`` is the same
+    collection (:func:`osm_items`).
     """
-    values = value if isinstance(value, (list, tuple, set)) else [value]
-    found = [int(item) for item in values if _is_int(item)]
+    found = [int(item) for item in osm_items(value) if _is_int(item)]
     return max(found) if found else None
 
 
 def _as_bool(value: Any) -> bool:
-    if isinstance(value, (list, tuple, set)):
-        return any(_as_bool(v) for v in value)
+    items = osm_items(value)
+    if len(items) != 1 or items[0] is not value:
+        return any(_as_bool(v) for v in items)
     if isinstance(value, str):
         return value.strip().lower() in {"yes", "true", "1", "-1"}
     return bool(value)
@@ -501,6 +548,7 @@ __all__ = [
     "build_segments",
     "classify_highway",
     "edges_to_frame",
+    "osm_items",
     "sample_dem_along",
     "sample_raster",
     "segments_near",

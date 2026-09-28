@@ -349,11 +349,16 @@ def bake_cycles(
 
 
 def describe_result(result: CycleResult) -> str:
-    """One line for a finished cycle: its id, time, ensemble size, water balance and reach."""
+    """One line for a finished cycle: its id, time, ensemble size, water balance and reach.
+
+    The peak is the land's (``CycleResult.peak_depth_cm``): the whole grid's would be the sea
+    the Twin holds at the tide, up to 2.58 m of bay at Mumbai's crest.
+    """
     seconds = result.stage_ms.get("total", 0) / 1000.0
     return (
         f"{result.run_id}  {seconds:.1f} s  {result.ensemble_n} member(s)  "
-        f"mass balance {result.mass_balance_err * 100:.3f} %  peak {result.peak_depth_cm:.1f} cm  "
+        f"mass balance {result.mass_balance_err * 100:.3f} %  "
+        f"land peak {result.peak_depth_cm:.1f} cm  "
         f"{result.wet_segments:,} wet segments"
     )
 

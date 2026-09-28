@@ -124,7 +124,32 @@ def route(body: Annotated[dict[str, Any], Body()]) -> dict[str, Any]:
         )
     except FileNotFoundError as error:
         raise api_error(404, "no_run", str(error)) from error
-    return as_dict(result)
+    return name_streets(as_dict(result))
+
+
+def name_streets(payload: dict[str, Any]) -> dict[str, Any]:
+    """Replace every "Unnamed road" a route response carries with the segment's display name.
+
+    The router writes "Unnamed road" for a street OSM does not name - and the Rust port writes
+    the same, which is why the rule lives here and not in ``varuna_route``: the two routers are
+    held to each other leaf by leaf (ADR-0063). ``avoided[]`` and ``reasons[]`` both carry a
+    ``segment_id`` beside the name, so the name is looked up rather than guessed. Every other
+    field is untouched.
+    """
+    from varuna_schemas.settings import get_settings
+
+    from varuna_api import street_names
+    from varuna_api.runs_util import city_of_run
+
+    run_id = payload.get("run_id")
+    city = (city_of_run(str(run_id)) if run_id else None) or get_settings().varuna_city
+    for key in ("avoided", "reasons"):
+        for entry in payload.get(key) or []:
+            if not isinstance(entry, dict) or "name" not in entry:
+                continue
+            if street_names.is_unnamed(entry.get("name")) and entry.get("segment_id"):
+                entry["name"] = street_names.display_name_for(city, entry["segment_id"])
+    return payload
 
 
 @router.get("/route/facilities", summary="Hospitals and fire stations the isochrones can start at")
@@ -191,6 +216,8 @@ def road_conditions(
     from varuna_route.profiles import PROFILES
     from varuna_route.profiles import profile as get_profile
 
+    from varuna_api import street_names
+
     if profile not in PROFILES:
         raise api_error(
             422,
@@ -207,6 +234,8 @@ def road_conditions(
 
     vehicle = get_profile(profile)
     overlay = ops.active(city, at=depths.valid_ts)
+    # OSM names barely half of Mumbai's streets; `display_name` names the rest (street_names).
+    names = street_names.street_names(city)
     # One representative edge per segment carries its name and geometry endpoints.
     first_edge: dict[str, int] = {}
     for e, segment_id in enumerate(graph.edge_segment):
@@ -245,6 +274,11 @@ def road_conditions(
                 "properties": {
                     "segment_id": segment_id,
                     "name": graph.edge_name[edge] or None,
+                    "display_name": (
+                        names.for_segment(segment_id)
+                        if names is not None
+                        else street_names.display_name_for(city, segment_id, graph.edge_name[edge])
+                    ),
                     "condition": "impassable",
                     "cause": "closure" if closure is not None else "forecast",
                     "closed_reason": closure.reason if closure is not None else None,

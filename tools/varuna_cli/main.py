@@ -145,6 +145,25 @@ def build_app(target: typer.Typer | None = None) -> typer.Typer:
         register_optional(target, module=f"varuna_{engine}.cli", name=engine)
     for name, (module, attr, help_text) in groups.items():
         register_optional(target, module=module, attr=attr, name=name, help_text=help_text)
+    # `varuna whatif prewarm`: full-city Twin what-ifs computed ahead of the demo. It lives here
+    # rather than in an engine because it drives the API's own scenario code and cache.
+    register_optional(
+        target,
+        module="varuna_cli.whatif",
+        name="whatif",
+        help_text="What-if scenarios on the full-city Twin: compute them ahead of the demo.",
+    )
+    # `varuna verify --event <id>` (Appendix B): the scores /v1/verification serves, written to
+    # the landing page's committed copy. It lives here because `varuna_verify` has no CLI of its
+    # own; if one ever ships, the engine's group wins and this one is not attached.
+    if "verify" not in probed:
+        verify_app, _reason = load_sub_app("varuna_cli.verify")
+        if verify_app is not None:
+            target.add_typer(
+                verify_app,
+                name="verify",
+                help="Score an event from its artifacts and write the landing page's copy.",
+            )
     return target
 
 

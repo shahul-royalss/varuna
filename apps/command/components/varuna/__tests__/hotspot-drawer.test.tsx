@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
+import { HotspotDrawer, PIPE_NOT_RECORDED } from "@/components/varuna/hotspot-drawer";
 import type { Hotspot } from "@/lib/api/hotspots";
 
 /**
@@ -140,6 +140,29 @@ describe("HotspotDrawer", () => {
     expect(first).toHaveTextContent("1.62 cm");
   });
 
+  it("names a row with no pipe by its segment, and one with neither as not recorded, never 'unnamed'", () => {
+    // The parser writes an absent `pipe_id` as "", so the fallback must not stop at an empty id.
+    const [a, b, c] = SION_SUBWAY.attribution;
+    const hotspot: Hotspot = {
+      ...SION_SUBWAY,
+      attribution: [
+        a!,
+        { ...b!, pipeId: "", segmentId: "S0-227" },
+        { ...c!, pipeId: "", segmentId: null },
+      ],
+    };
+    render(<HotspotDrawer hotspot={hotspot} step={0} validTs={VALID_TS} />);
+    const rows = screen
+      .getByRole("table", { name: /Inferred pipes ranked/ })
+      .querySelectorAll("tbody tr");
+    // Every row is kept: its depth is a measurement, and the ranks stay 1, 2, 3.
+    expect(rows).toHaveLength(3);
+    expect(rows[1]).toHaveTextContent(/^2S0-227/);
+    expect(rows[2]).toHaveTextContent(PIPE_NOT_RECORDED);
+    expect(rows[2]).toHaveTextContent("1.32 cm");
+    expect(screen.queryByText(/unnamed/i)).not.toBeInTheDocument();
+  });
+
   it("prints the combined effect of cleaning them together, before and after", () => {
     render(<HotspotDrawer hotspot={SION_SUBWAY} step={0} validTs={VALID_TS} />);
     expect(screen.getByText(/Cleaning these/)).toHaveTextContent(
@@ -228,11 +251,12 @@ describe("HotspotDrawer", () => {
   it("offers nothing to clean when the junction has no segments recorded", () => {
     render(<HotspotDrawer hotspot={{ ...HINDMATA, segmentIds: [] }} step={0} validTs={VALID_TS} />);
     expect(screen.queryByRole("button", { name: "Clean in what-if" })).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "No road segments are recorded for this junction, so there is nothing to send to the what-if lab.",
-      ),
-    ).toBeInTheDocument();
+    // The lab is named as the rail names it (ADR-0085), with the Sanskrit kept from translation.
+    const note = screen.getByText(/nothing to send to/);
+    expect(note).toHaveTextContent(
+      "No road segments are recorded for this junction, so there is nothing to send to Kalpana, the what-if lab.",
+    );
+    expect(within(note).getByText("Kalpana")).toHaveAttribute("translate", "no");
   });
 
   it("leaves nothing in the drawer marked busy, since nothing in it is loading", () => {

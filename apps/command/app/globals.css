@@ -252,3 +252,13 @@
     background-image: none;
   }
 }
+
+/*
+ * Sanskrit screen names in Devanagari (ADR-0085): an accent beside the romanised name, never the
+ * name alone. Unlayered, like lib/i18n/devanagari.css, so no utility's font stack can put the
+ * glyphs back on the system fallback. Geist stays first; only Devanagari code points reach Noto,
+ * whose file is fetched the first time one is drawn.
+ */
+[lang="sa"] {
+  font-family: var(--font-geist-sans), var(--font-devanagari), system-ui, sans-serif;
+}

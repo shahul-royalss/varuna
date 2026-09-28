@@ -25,11 +25,25 @@
  * segment ids and the map would have to resolve each to a geometry before it could draw one; that
  * is a real join, not a prop, and claiming it here by drawing nothing would be worse than saying
  * so. The closures list below the map is where they are read today.
+ *
+ * **Citizen reports are drawn on it** (2026-09-27): the same list the inbox beside it shows, read
+ * from the desk's context (`components/authority/desk-reports.tsx`) because this map is handed to
+ * the screen by a server component and cannot take a callback from it. A report with a photo
+ * carries a ring; its status is the pin's outline (`layers/reports.ts`). Tapping a pin opens its
+ * row in the inbox; opening a row flies the map here, on motion M10's fly-to. Outside the desk -
+ * no provider - the map draws no pins and nothing is pickable.
  */
 
+import { useMemo } from "react";
+
+import { useDeskReports } from "@/components/authority/desk-reports";
 import { FloodMap } from "@/components/map/flood-map";
 import { ENTRY_AOI } from "@/components/varuna/globe-entry";
 import type { Bbox } from "@/components/map/basemap";
+import { reportToPin, type ReportPin } from "@/lib/api/reports";
+
+/** Stable empty list, so a desk with no reports hands the map the same array every render. */
+const NO_PINS: readonly ReportPin[] = [];
 
 /** The step the desk shows: now. The officer acts on the present, not on a lead time. */
 const NOW_STEP = 0;
@@ -51,6 +65,13 @@ export function entryBounds(): Bbox {
 }
 
 export function WardMap() {
+  const desk = useDeskReports();
+  const list = desk?.list ?? null;
+  const pins = useMemo(() => (list ? list.reports.map(reportToPin) : NO_PINS), [list]);
+  const select = desk?.select;
+  // A pin is already in view, so tapping one selects without a flight.
+  const pick = useMemo(() => (select ? (id: string) => select(id) : undefined), [select]);
+
   return (
     <FloodMap
       city="mumbai"
@@ -61,6 +82,10 @@ export function WardMap() {
       showDrains={false}
       showSurcharge
       showHotspots
+      reports={pins}
+      selectedReportId={desk?.selectedId ?? null}
+      onPickReport={pick}
+      focus={desk?.focus ?? null}
       // `MapSlot` is not mounted behind this map, so this map draws its own credit line.
       attribution
     />

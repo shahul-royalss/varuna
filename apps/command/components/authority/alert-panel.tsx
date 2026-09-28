@@ -32,10 +32,16 @@ import {
 
 import { ActionResult, type ActionOutcome } from "./action-result";
 
-/** The steps of the escalation matrix an alert can be sent up (blueprint 6.10). */
+/**
+ * The steps of the escalation matrix an alert can be sent up (blueprint 6.10). The keys are the
+ * tier ids of `config/escalation.yaml`, which `POST /v1/alerts/{id}/escalate` takes as
+ * `escalate_to` (varuna_schemas `EscalationTarget`) and `/alerts` reads to name the next step.
+ * The desk used to send "police", which that type does not contain, so choosing police and
+ * traffic here was refused by the API as an invalid body.
+ */
 const TARGETS = [
   { key: "control_room", label: "Control room" },
-  { key: "police", label: "Police and traffic" },
+  { key: "police_traffic", label: "Police and traffic" },
   { key: "transit", label: "Transit" },
   { key: "public", label: "Public" },
 ] as const;

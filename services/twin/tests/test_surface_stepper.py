@@ -56,10 +56,13 @@ def _coastal_terrain(seed: int = 2019) -> tuple[TerrainGrid, np.ndarray]:
     sea = np.zeros(SHAPE, dtype=bool)
     sea[:, -1] = True
     blocked[sea] = False
-    # A sea floor 1.5 m down, so the rising stage stands more than 1.8 m deep on it: that is the
-    # depth at which a 30 m cell needs a second CFL sub-step inside a 5 s sync, which is exactly
-    # what sets the sub-step count on Mumbai (a tidal sea cell, not street water).
+    # A sea floor 1.5 m down and a quay 1.0 m below mean sea level beside it, so the rising stage
+    # stands up to 2.0 m over the quay - on its cell and across its face with the sea. More than
+    # 1.8 m is the depth at which a 30 m cell needs a second CFL sub-step inside a 5 s sync. The
+    # quay is what makes it so: the sea's own depth no longer sets the step (`swe2d.CflScope`),
+    # only land and the flow over the shoreline faces do.
     z[sea] = -1.5
+    z[:, -2] = -1.0
     terrain = TerrainGrid(
         z=z,
         manning_n=rng.uniform(0.015, 0.05, size=SHAPE),
@@ -172,6 +175,12 @@ class _RunSurfaceEachSync:
     def __init__(self, state, terrain, *, sea_mask=None, audit_every=None) -> None:
         self.state = state
         self.terrain = terrain
+        # `coupling.advance_surface_with_capture` reads the stepper's grid and CFL scope for the
+        # step at which it splits a sync; the runner hands this double the prepared kernel
+        # terrain, and run_surface builds the same scope from the same sea mask on every call.
+        self.kernel = terrain
+        kernel = prepare_terrain(terrain)
+        self.cfl_scope = swe2d.cfl_scope(swe2d._sea_index(sea_mask, kernel), kernel)
         self.sea_mask = sea_mask
         self.rain = None
         self.initial_m3 = state.volume_m3(terrain.cell_area_m2)

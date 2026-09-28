@@ -1,17 +1,15 @@
 "use client";
 
-import type { Route } from "next";
 import Link from "next/link";
 import { Settings2 } from "lucide-react";
 
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { CitySwitcher } from "@/components/varuna/city-switcher";
-import { IconRail } from "@/components/varuna/icon-rail";
+import { DARK_TOOLTIP_CLASS, IconRail, useAddressCity } from "@/components/varuna/icon-rail";
 import { Wordmark } from "@/components/varuna/wordmark";
+import { navHref, navItem } from "@/lib/nav";
 import { cn } from "@/lib/utils";
 import { useUiStore } from "@/lib/stores/ui";
-
-const CONSOLE_HREF = "/console" as Route;
 
 const iconButtonClass = cn(
   "inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-control px-1.5 text-text-2",
@@ -25,6 +23,8 @@ export interface TopBarProps {
 /** The 52 px top bar: wordmark, city and settings. */
 export function TopBar({ className }: TopBarProps) {
   const toggleSettings = useUiStore((s) => s.toggleSettings);
+  // The wordmark opens the console the nav's Drishti opens: this city's, never a silent Mumbai.
+  const consoleHref = navHref(navItem("console"), useAddressCity());
 
   return (
     <header
@@ -34,7 +34,7 @@ export function TopBar({ className }: TopBarProps) {
       )}
     >
       <Link
-        href={CONSOLE_HREF}
+        href={consoleHref}
         aria-label="VARUNA console"
         className="rounded-control flex shrink-0 items-center px-1"
       >
@@ -47,8 +47,9 @@ export function TopBar({ className }: TopBarProps) {
           run stamp, the verification chip and the search and shortcuts buttons were removed at the
           team's request. Ctrl+K and ? still open the palette and the shortcuts overlay - the keys
           are unchanged, only the buttons are gone. The nav moved here from the left rail, also at
-          the team's request, so it wraps to a scroll rather than pushing settings off a 1366 px
-          bar. CLAUDE.md 6.5 and 7.2 still describe the older shell. */}
+          the team's request, and names every screen in text from 1280 px up (ADR-0085). It
+          scrolls inside its own strip rather than pushing settings off a narrower bar. CLAUDE.md
+          6.5 and 7.2 still describe the older shell. */}
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <IconRail className="min-w-0 overflow-x-auto" />
       </div>
@@ -67,7 +68,7 @@ export function TopBar({ className }: TopBarProps) {
           >
             <Settings2 aria-hidden="true" className="size-5" strokeWidth={1.75} />
           </TooltipTrigger>
-          <TooltipContent>Settings</TooltipContent>
+          <TooltipContent className={DARK_TOOLTIP_CLASS}>Settings</TooltipContent>
         </Tooltip>
       </div>
     </header>

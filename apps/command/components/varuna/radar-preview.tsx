@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CloudRain, Radar } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Skeleton } from "@/components/varuna/skeleton";
 import {
@@ -25,6 +26,72 @@ export const TRUTH_RAIN_MEMBER = "truth/rain.zarr";
 
 /** Motion M25: 4 fps, so a 25-frame cube loops in 6.25 s. */
 const FRAME_MS = 250;
+
+/** A rectangle of radar-cube pixels, top-left origin, the same convention as `aoi_px`. */
+export interface CubeRect {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** What the preview shows: the forecast area and the rain around it, or the whole radar domain. */
+export type RadarFraming = "area" | "domain";
+
+/**
+ * Share of the forecast area's own width and height added on every side of the framed view.
+ *
+ * Measured on MUM-2019-07-02 on 2026-09-28 against `truth/rain.zarr`: the AOI is 21 x 32 cells of
+ * the 120 x 120 cube, 4.7 % of the image, and holds 15.5 % of the window's rain. A quarter of its
+ * size on every side, widened to the cube's square, is 48 x 48 cells; that frame holds 41 % of the
+ * window's rain, 1,307 of the 1,361 cells (96 %) where the accumulation reaches half its 102.2 mm
+ * peak, and at least 40 dBZ in all 18 of the 25 frames that reach 40 dBZ anywhere - the storm is
+ * seen arriving from the south-west edge. The AOI then fills 29 % of the image. The other rule on
+ * the table, the box around the heaviest accumulation, is the whole domain on both design storms,
+ * whose rain is spatially uniform, so it frames nothing there.
+ */
+export const AREA_MARGIN = 0.25;
+
+/**
+ * The cube rectangle the preview draws for `framing`, in whole cells.
+ *
+ * `domain` is the whole cube. `area` is the AOI grown by `margin` of its own size on every side,
+ * then widened on its short side to the cube's own aspect ratio, so switching framing never changes
+ * the preview's box on the page; it is centred on the AOI, rounded to whole cells so a source
+ * rectangle never samples half a cell, and shifted inside the cube where it would cross an edge.
+ * A frame that would be as large as the cube is the cube.
+ */
+export function radarFrameRect(
+  aoi: Pick<RadarPreviewIndex["aoi_px"], "left" | "top" | "width" | "height">,
+  cubeWidth: number,
+  cubeHeight: number,
+  framing: RadarFraming = "area",
+  margin: number = AREA_MARGIN,
+): CubeRect {
+  const whole = { left: 0, top: 0, width: cubeWidth, height: cubeHeight };
+  if (framing === "domain") return whole;
+  if (!(cubeWidth > 0 && cubeHeight > 0 && aoi.width > 0 && aoi.height > 0)) return whole;
+
+  let width = aoi.width * (1 + 2 * Math.max(0, margin));
+  let height = aoi.height * (1 + 2 * Math.max(0, margin));
+  const ratio = cubeWidth / cubeHeight;
+  if (width / height < ratio) width = height * ratio;
+  else height = width / ratio;
+  // A hair under a whole number is that number: 31.5 x 1.5 must not become 48.000000001 -> 49.
+  width = Math.ceil(width - 1e-9);
+  height = Math.ceil(height - 1e-9);
+  if (width >= cubeWidth || height >= cubeHeight) return whole;
+
+  const centreX = aoi.left + aoi.width / 2;
+  const centreY = aoi.top + aoi.height / 2;
+  const clamp = (value: number, max: number) => Math.min(Math.max(value, 0), max);
+  return {
+    left: clamp(Math.round(centreX - width / 2), cubeWidth - width),
+    top: clamp(Math.round(centreY - height / 2), cubeHeight - height),
+    width,
+    height,
+  };
+}
 
 /** One bundle's frames, held only once every image of that index has settled. */
 interface LoadedFrames {
@@ -125,6 +192,9 @@ export function RadarPreview({
   const [hovered, setHovered] = useState(false);
   const [focused, setFocused] = useState(false);
   const [tabHidden, setTabHidden] = useState(false);
+  // Opens on the forecast area, not on the 60 km domain where the city is a small outline: the
+  // "open on the main affected area" request. The whole domain is one press away.
+  const [framing, setFraming] = useState<RadarFraming>("area");
 
   const frames = preview?.frames ?? [];
   const frameCount = frames.length;
@@ -186,8 +256,18 @@ export function RadarPreview({
    * never changes, which is the M25 fallback; otherwise it is wherever the rAF timer has reached,
    * wrapped so a bundle with fewer frames than the last one still draws.
    */
-  const shown =
-    frameCount === 0 ? 0 : reduced ? Math.floor(frameCount / 2) : frame % frameCount;
+  const shown = frameCount === 0 ? 0 : reduced ? Math.floor(frameCount / 2) : frame % frameCount;
+
+  const cubeWidth = preview?.width ?? 1;
+  const cubeHeight = preview?.height ?? 1;
+  const aoiPx = preview?.aoi_px;
+  const rect = useMemo(
+    () =>
+      aoiPx
+        ? radarFrameRect(aoiPx, cubeWidth, cubeHeight, framing)
+        : { left: 0, top: 0, width: cubeWidth, height: cubeHeight },
+    [aoiPx, cubeWidth, cubeHeight, framing],
+  );
 
   const draw = useCallback(
     (index: number) => {
@@ -199,9 +279,23 @@ export function RadarPreview({
       // Nearest neighbour: a 120 x 120 dBZ field must read as pixels, not as blur.
       ctx.imageSmoothingEnabled = false;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      // The framed cells only: the PNG is the whole domain, so the crop is a source rectangle,
+      // scaled by the image's own size in case the API ever renders it at more than a pixel a cell.
+      const sx = image.naturalWidth / cubeWidth;
+      const sy = image.naturalHeight / cubeHeight;
+      ctx.drawImage(
+        image,
+        rect.left * sx,
+        rect.top * sy,
+        rect.width * sx,
+        rect.height * sy,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
     },
-    [settled],
+    [settled, rect, cubeWidth, cubeHeight],
   );
 
   useEffect(() => {
@@ -244,7 +338,12 @@ export function RadarPreview({
   if (query.isError) {
     return (
       <PreviewShell className={className}>
-        <EmptyState size="sm" icon={Radar} title="Radar preview unavailable" description={query.error.message} />
+        <EmptyState
+          size="sm"
+          icon={Radar}
+          title="Radar preview unavailable"
+          description={query.error.message}
+        />
       </PreviewShell>
     );
   }
@@ -275,11 +374,12 @@ export function RadarPreview({
     );
   }
 
-  const width = preview?.width ?? 1;
-  const height = preview?.height ?? 1;
   const aoi = preview?.aoi_px;
   const current = frames[shown];
-  const aspectRatio = `${width} / ${height}`;
+  // The frame's own ratio, which `radarFrameRect` keeps equal to the cube's: switching framing
+  // never moves anything else on the page.
+  const aspectRatio = `${rect.width} / ${rect.height}`;
+  const framedOnArea = rect.width < cubeWidth || rect.height < cubeHeight;
 
   // ADR-0007 puts the demo window at 05:40-09:40 IST, four hours, so the label is built from the
   // bundle's own t0 and t1 rather than naming a fixed span the bundle may not have.
@@ -297,12 +397,14 @@ export function RadarPreview({
     <div className={cn("flex flex-col gap-2", className)}>
       {compact || !preview ? null : (
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h3 className="type-small font-medium text-text">Radar preview</h3>
+          <h3 className="type-small text-text font-medium">Radar preview</h3>
           <p className="type-micro text-text-2">
             {preview.label}, frames every {formatMinutes(preview.step_min)}
           </p>
         </div>
       )}
+
+      {preview && aoi ? <FramingToggle framing={framing} onChange={setFraming} /> : null}
 
       {/* Side by side in the console rail too: a 120 px cube is already near its native size
           there, and stacking the two images would double the panel's height. */}
@@ -313,7 +415,7 @@ export function RadarPreview({
             role="img"
             aria-label={
               preview
-                ? `Radar frames for ${preview.bundle_id}: ${frameCount} frames every ${formatMinutes(preview.step_min)}, outlined rectangle is the forecast area`
+                ? `Radar frames for ${preview.bundle_id}: ${frameCount} frames every ${formatMinutes(preview.step_min)}, ${framedOnArea ? "framed on the forecast area and the rain around it" : "the whole radar domain"}; outlined rectangle is the forecast area`
                 : `Radar frames for ${bundleId}, loading`
             }
             onPointerEnter={() => setHovered(true)}
@@ -321,16 +423,16 @@ export function RadarPreview({
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             className={cn(
-              "relative overflow-hidden rounded-control border border-line bg-ink",
-              "outline-none focus-visible:ring-2 focus-visible:ring-tide",
+              "rounded-control border-line bg-ink relative overflow-hidden border",
+              "focus-visible:ring-tide outline-none focus-visible:ring-2",
             )}
             style={{ aspectRatio }}
           >
             {ready && preview ? (
               <canvas
                 ref={canvasRef}
-                width={preview.width}
-                height={preview.height}
+                width={rect.width}
+                height={rect.height}
                 className="block h-full w-full"
                 style={{ imageRendering: "pixelated" }}
               />
@@ -338,15 +440,19 @@ export function RadarPreview({
               <Skeleton className="h-full w-full rounded-none" />
             )}
 
-            {ready && aoi ? <AoiOutline aoi={aoi} width={width} height={height} /> : null}
+            {ready && aoi ? <AoiOutline aoi={aoi} frame={rect} /> : null}
           </div>
 
-          <div className="flex flex-wrap items-baseline justify-between gap-2 type-micro">
+          <div className="type-micro flex flex-wrap items-baseline justify-between gap-2">
             <span className="num text-text-2">
               {ready && current ? `${formatIst(current.ts)} IST` : "Loading frames"}
             </span>
             <span className="num text-text-3">
-              {ready ? `Frame ${shown + 1} of ${frameCount}` : preview ? `${frameCount} frames` : ""}
+              {ready
+                ? `Frame ${shown + 1} of ${frameCount}`
+                : preview
+                  ? `${frameCount} frames`
+                  : ""}
             </span>
           </div>
         </div>
@@ -356,6 +462,7 @@ export function RadarPreview({
           preview={preview}
           hasCube={built && !missingMembers.includes(TRUTH_RAIN_MEMBER)}
           aspectRatio={aspectRatio}
+          frame={rect}
           totalMm={totalMm}
           windowLabel={windowLabel}
           honesty={honesty}
@@ -366,7 +473,7 @@ export function RadarPreview({
         <>
           <ul className="flex flex-wrap gap-x-3 gap-y-1">
             {rainLegendStops().map((stop) => (
-              <li key={stop.key} className="flex items-center gap-1.5 type-micro text-text-2">
+              <li key={stop.key} className="type-micro text-text-2 flex items-center gap-1.5">
                 <span
                   aria-hidden="true"
                   className="size-2.5 shrink-0 rounded-full"
@@ -391,24 +498,71 @@ export function RadarPreview({
 interface AoiOutlineProps {
   /** The area of interest in cube pixels, top-left origin. */
   aoi: RadarPreviewIndex["aoi_px"];
-  /** Cube size in pixels, so the rectangle is placed in percentages and stays crisp when scaled. */
-  width: number;
-  height: number;
+  /** The cube rectangle on screen, so the outline is placed in percentages of what is drawn. */
+  frame: CubeRect;
+}
+
+/** Where a cube rectangle sits inside the drawn frame, as CSS percentages. */
+export function rectInFrame(rect: CubeRect, frame: CubeRect) {
+  return {
+    left: `${((rect.left - frame.left) / frame.width) * 100}%`,
+    top: `${((rect.top - frame.top) / frame.height) * 100}%`,
+    width: `${(rect.width / frame.width) * 100}%`,
+    height: `${(rect.height / frame.height) * 100}%`,
+  };
+}
+
+/** The whole cube placed so that `frame` fills the box: the crop an image gets by position. */
+export function wholeInFrame(cubeWidth: number, cubeHeight: number, frame: CubeRect) {
+  return rectInFrame({ left: 0, top: 0, width: cubeWidth, height: cubeHeight }, frame);
 }
 
 /** The forecast area drawn over a cube image: 1 px of `--line-strong`, never a fill. */
-function AoiOutline({ aoi, width, height }: AoiOutlineProps) {
+function AoiOutline({ aoi, frame }: AoiOutlineProps) {
   return (
     <div
       aria-hidden="true"
-      className="pointer-events-none absolute border border-line-strong"
-      style={{
-        left: `${(aoi.left / width) * 100}%`,
-        top: `${(aoi.top / height) * 100}%`,
-        width: `${(aoi.width / width) * 100}%`,
-        height: `${(aoi.height / height) * 100}%`,
-      }}
+      className="border-line-strong pointer-events-none absolute border"
+      style={rectInFrame(aoi, frame)}
     />
+  );
+}
+
+interface FramingToggleProps {
+  framing: RadarFraming;
+  onChange: (framing: RadarFraming) => void;
+}
+
+/** The two framings, in the order the toggle lists them. */
+const FRAMING_OPTIONS: readonly { value: RadarFraming; label: string }[] = [
+  { value: "area", label: "Forecast area" },
+  { value: "domain", label: "Whole radar domain" },
+];
+
+/**
+ * Forecast area or whole radar domain: two buttons carrying `aria-pressed`, in one labelled group,
+ * so a keyboard reaches both with Tab and a screen reader hears which is on. The switch is a cut:
+ * section 8 has no row for a radar zoom, and a cut is also what reduced motion would ask for.
+ */
+function FramingToggle({ framing, onChange }: FramingToggleProps) {
+  return (
+    <div role="group" aria-label="Radar preview extent" className="flex flex-wrap gap-1.5">
+      {FRAMING_OPTIONS.map((option) => {
+        const pressed = framing === option.value;
+        return (
+          <Button
+            key={option.value}
+            type="button"
+            size="xs"
+            variant={pressed ? "default" : "outline"}
+            aria-pressed={pressed}
+            onClick={() => onChange(option.value)}
+          >
+            {option.label}
+          </Button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -418,8 +572,10 @@ interface AccumulationFigureProps {
   preview: RadarPreviewIndex | undefined;
   /** False when `truth/rain.zarr` is not on disk; the image is then never requested. */
   hasCube: boolean;
-  /** The cube's own ratio, so the image holds its place while the index is still loading. */
+  /** The frame's ratio, so the image holds its place while the index is still loading. */
   aspectRatio: string;
+  /** The cube rectangle the frames beside it show, so both images frame the same ground. */
+  frame: CubeRect;
   /** Accumulation over the AOI for the whole window, in mm, as the API reports it. */
   totalMm: number | null;
   /** "AOI accumulation, 05:40–09:40 IST", from the bundle's own window. */
@@ -440,6 +596,7 @@ function AccumulationFigure({
   preview,
   hasCube,
   aspectRatio,
+  frame,
   totalMm,
   windowLabel,
   honesty,
@@ -475,7 +632,7 @@ function AccumulationFigure({
   return (
     <figure className="flex min-w-0 flex-col gap-2">
       <div
-        className="relative overflow-hidden rounded-control border border-line bg-ink"
+        className="rounded-control border-line bg-ink relative overflow-hidden border"
         style={{ aspectRatio }}
       >
         {preview ? (
@@ -484,15 +641,18 @@ function AccumulationFigure({
             src={radarAccumulationUrl(preview)}
             alt={`${preview.accumulation.label}, ${preview.bundle_id}, with the forecast area outlined`}
             onError={() => setFailed(true)}
-            className="block h-full w-full"
-            style={{ imageRendering: "pixelated" }}
+            // The whole domain's render, placed so the frame's cells fill the box: the same crop
+            // the radar canvas draws, done by position because this is an image, not a canvas.
+            className="absolute block max-w-none"
+            style={{
+              imageRendering: "pixelated",
+              ...wholeInFrame(preview.width, preview.height, frame),
+            }}
           />
         ) : (
           <Skeleton className="h-full w-full rounded-none" />
         )}
-        {preview ? (
-          <AoiOutline aoi={preview.aoi_px} width={preview.width} height={preview.height} />
-        ) : null}
+        {preview ? <AoiOutline aoi={preview.aoi_px} frame={frame} /> : null}
       </div>
 
       <figcaption className="flex flex-col gap-1">
@@ -513,7 +673,7 @@ function PreviewShell({ children, className }: { children: React.ReactNode; clas
   return (
     <div
       className={cn(
-        "flex min-h-40 items-center justify-center rounded-control border border-line bg-ink",
+        "rounded-control border-line bg-ink flex min-h-40 items-center justify-center border",
         className,
       )}
     >

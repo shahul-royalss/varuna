@@ -1,7 +1,12 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { TimeBar } from "@/components/varuna/time-bar";
+import {
+  TimeBar,
+  computeLiveCopy,
+  computeLiveLabel,
+  type ComputeInfo,
+} from "@/components/varuna/time-bar";
 import { renderWithProviders, stubFetch } from "@/lib/test-utils";
 import { useReplayStore } from "@/lib/stores/replay";
 import { useRunStore } from "@/lib/stores/run";
@@ -22,6 +27,27 @@ const CLOCK = {
   note: null,
   progress: 0.25,
 };
+
+/** `GET /v1/cycle/compute` on the demo laptop, with the figures measured there (8 runs). */
+const COMPUTE_ON: ComputeInfo = {
+  enabled: true,
+  reason: null,
+  busy: false,
+  budget_ms: 15_000,
+  expected: { median_ms: 104_466, min_ms: 48_228, max_ms: 224_308, n_runs: 8 },
+};
+
+/** `GET /v1/replay/bundles` as the three committed manifests label them. */
+function bundle(id: string, label: string, t0: string) {
+  return { id, city: "mumbai", label, t0, t1: t0, seed: 2019, total_cycles: 49 };
+}
+const BUNDLES = [
+  bundle("MUM-2019-07-02", "Reconstructed replay", T0),
+  bundle("MUM-IDF-25yr", "Design storm", "2026-07-01T05:40:00+05:30"),
+  bundle("CHN-IDF-25yr", "Design storm", "2026-07-01T05:40:00+05:30"),
+];
+
+const RECONSTRUCTED_LABEL = "Live compute on the reconstructed replay";
 
 /** No API in jsdom by default: every replay request answers 404, as it would with no bundle. */
 function renderTimeBar() {
@@ -120,6 +146,67 @@ describe("TimeBar", () => {
     expect(screen.getByRole("button", { name: "Compute live" })).toBeDisabled();
   });
 
+  it("says Compute live runs the reconstructed replay, and how long it takes here, before it is pressed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(stubFetch({ "/v1/cycle/compute": COMPUTE_ON, "/v1/replay/bundles": BUNDLES })),
+    );
+    act(() => {
+      useRunStore.getState().setRun({
+        run_id: "MUM-20190702T0110Z-sky1.0-twin1.0-flash0.1-baked",
+        city: "mumbai",
+        cycle_ts: "2019-07-02T06:40:00+05:30",
+        mode: "replay",
+        replay_mode: "baked",
+        ensemble_n: 50,
+      });
+    });
+    renderTimeBar();
+
+    const button = screen.getByRole("button", { name: "Compute live" });
+    await waitFor(() => expect(button).toBeEnabled());
+    // The button is described by the note under it: what it runs, then how long it takes here.
+    const note = document.getElementById(button.getAttribute("aria-describedby") ?? "");
+    await waitFor(() =>
+      expect(note).toHaveTextContent(
+        `${RECONSTRUCTED_LABEL} About 1 min 44 s a cycle here, against 15.0 s`,
+      ),
+    );
+  });
+
+  it("names a design storm as one when /replay has switched the shared clock to it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        stubFetch({
+          "/v1/cycle/compute": COMPUTE_ON,
+          "/v1/replay/bundles": BUNDLES,
+          "/v1/replay/clock": {
+            ...CLOCK,
+            bundle_id: "MUM-IDF-25yr",
+            sim_time: "2026-07-01T06:40:00+05:30",
+            t0: "2026-07-01T05:40:00+05:30",
+            t1: "2026-07-01T09:40:00+05:30",
+          },
+        }),
+      ),
+    );
+    renderTimeBar();
+    await screen.findByText("Live compute on the design storm");
+    expect(screen.queryByText(/reconstructed/i)).not.toBeInTheDocument();
+  });
+
+  it("says Compute live is off on this server when the API has it off", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(stubFetch({ "/v1/cycle/compute": { ...COMPUTE_ON, enabled: false, reason: "Off." } })),
+    );
+    renderTimeBar();
+    await screen.findByText("Off on this server");
+    // Until the bundle list answers, the bundle is named by its id rather than guessed.
+    expect(screen.getByText("Live compute on bundle MUM-2019-07-02")).toBeInTheDocument();
+  });
+
   it("asks the API to play once the clock is available", async () => {
     const fetchMock = vi.fn(
       stubFetch({ "/v1/replay/clock": CLOCK, "/v1/replay/play": { ...CLOCK, playing: true } }),
@@ -139,5 +226,99 @@ describe("TimeBar", () => {
       expect(posted?.[1]?.method).toBe("POST");
     });
     expect(useReplayStore.getState().playing).toBe(true);
+  });
+});
+
+describe("computeLiveCopy", () => {
+  const base = {
+    bundle: { id: "MUM-2019-07-02", label: "Reconstructed replay" },
+    hasRun: true,
+    active: false,
+    elapsedMs: null,
+    cycleTimeLabel: "06:40 IST",
+    cycleDateLabel: "2 Jul 2019",
+  };
+
+  it("names the replay cycle it re-runs and says it is not today's weather", () => {
+    const { label, tooltip } = computeLiveCopy({ ...base, info: COMPUTE_ON });
+    expect(label).toBe(RECONSTRUCTED_LABEL);
+    expect(tooltip).toBe(
+      "Re-runs the 06:40 IST cycle of 2 Jul 2019 from the reconstructed replay bundle " +
+        "MUM-2019-07-02 with real computation. It is not today's weather. A cycle takes about " +
+        "1 min 44 s here (48.2 s to 3 min 44 s over 8 runs), against a 15.0 s budget.",
+    );
+  });
+
+  it("calls a design storm a design storm and never the reconstructed replay (rule 7)", () => {
+    const { label, tooltip } = computeLiveCopy({
+      ...base,
+      bundle: { id: "MUM-IDF-25yr", label: "Design storm" },
+      cycleDateLabel: "1 Jul 2026",
+      info: COMPUTE_ON,
+    });
+    expect(label).toBe("Live compute on the design storm");
+    expect(tooltip).toBe(
+      "Re-runs the 06:40 IST cycle of 1 Jul 2026 from the design storm bundle MUM-IDF-25yr with " +
+        "real computation. It is not today's weather. A cycle takes about 1 min 44 s here " +
+        "(48.2 s to 3 min 44 s over 8 runs), against a 15.0 s budget.",
+    );
+    expect(`${label} ${tooltip}`).not.toMatch(/reconstructed/i);
+  });
+
+  it("names a bundle by its id until its manifest label is known", () => {
+    expect(computeLiveLabel({ id: "MUM-2019-07-02", label: null })).toBe(
+      "Live compute on bundle MUM-2019-07-02",
+    );
+    expect(computeLiveLabel({ id: "CHN-IDF-25yr", label: "Design storm" })).toBe(
+      "Live compute on the design storm",
+    );
+    const { tooltip } = computeLiveCopy({
+      ...base,
+      bundle: { id: "MUM-IDF-25yr", label: null },
+      info: COMPUTE_ON,
+    });
+    expect(tooltip).toMatch(/^Re-runs the 06:40 IST cycle of 2 Jul 2019 from bundle MUM-IDF-25yr /);
+  });
+
+  it("counts the elapsed time against the expected one while a cycle runs", () => {
+    const { note, tooltip } = computeLiveCopy({
+      ...base,
+      info: { ...COMPUTE_ON, busy: true },
+      active: true,
+      elapsedMs: 12_000,
+    });
+    expect(note).toBe("Running, 12.0 s so far of about 1 min 44 s");
+    expect(tooltip).toBe("A live cycle is running; its stages fill the bar below");
+  });
+
+  it("carries the server's reason when Compute live is off", () => {
+    const { note, tooltip } = computeLiveCopy({
+      ...base,
+      info: { ...COMPUTE_ON, enabled: false, reason: "Compute live is off on this server." },
+    });
+    expect(note).toBe("Off on this server");
+    expect(tooltip).toBe("Compute live is off on this server.");
+  });
+
+  it("says the API did not answer rather than asking forever", () => {
+    const { note, tooltip } = computeLiveCopy({ ...base, info: null, unreachable: true });
+    expect(note).toBe("The API did not say whether it can compute");
+    expect(tooltip).toBe(
+      "The API did not answer, so Compute live stays off. The baked replay is unaffected.",
+    );
+    expect(computeLiveCopy({ ...base, info: null }).note).toBe(
+      "Asking the server how long a cycle takes",
+    );
+  });
+
+  it("says when no cycle has been timed yet rather than inventing a figure", () => {
+    const { note } = computeLiveCopy({
+      ...base,
+      info: {
+        ...COMPUTE_ON,
+        expected: { median_ms: null, min_ms: null, max_ms: null, n_runs: 0 },
+      },
+    });
+    expect(note).toBe("No cycle timed on this server yet");
   });
 });

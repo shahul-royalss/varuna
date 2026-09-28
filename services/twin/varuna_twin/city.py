@@ -21,6 +21,7 @@ vectorised: the id map is a single ``pandas.Index.get_indexer``, not a Python lo
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -42,6 +43,8 @@ __all__ = [
     "BOUNDARY_INTERIOR",
     "BOUNDARY_TIDAL",
     "RASTERS",
+    "SEA_RASTER",
+    "CityTerrain",
     "load_nests",
     "load_network",
     "load_terrain",
@@ -70,6 +73,27 @@ RASTERS = {
 of CLAUDE.md 10.1 step 4, with buildings burned, roads carved and culverts breached. Running on
 the raw DEM would dam every street at its kerb line.
 """
+
+
+SEA_RASTER = "sea_mask.tif"
+"""The city's sea (``varuna_city.sea``): 0 land, 1 open sea, 2 tidal creek. Optional."""
+
+
+@dataclass(frozen=True, slots=True)
+class CityTerrain(TerrainGrid):
+    """A :class:`TerrainGrid` that also carries the city's sea.
+
+    ``sea`` is True on every cell the tide is imposed on - open sea and tidal creek alike - and
+    ``None`` for a city built before the sea step wrote ``sea_mask.tif``. The runner reads it with
+    ``getattr(terrain, "sea", None)``, so a plain ``TerrainGrid`` (every test grid, a nest) runs
+    exactly as before, and a run on a city without the raster imposes the tide on its tidal
+    outfalls' cells alone, as every run did until then.
+
+    A subclass rather than a field on ``TerrainGrid`` only because ``types.py`` belongs to
+    another part of this change; the field belongs there, and moving it is a rename.
+    """
+
+    sea: NDArray[np.bool_] | None = None
 
 
 def _open_raster(path: Path):
@@ -126,7 +150,8 @@ def load_terrain(city: str = "mumbai") -> TerrainGrid:
     assert reference is not None and res_m is not None and crs is not None
     assert transform is not None
 
-    terrain = TerrainGrid(
+    sea = _read_sea(root / SEA_RASTER, reference)
+    terrain = CityTerrain(
         z=np.asarray(fields["z"], dtype=np.float64),
         manning_n=np.asarray(fields["manning_n"], dtype=np.float64),
         blocked=np.asarray(fields["blocked"]) != 0,
@@ -135,6 +160,7 @@ def load_terrain(city: str = "mumbai") -> TerrainGrid:
         res_m=res_m,
         crs=crs,
         transform=transform,
+        sea=sea,
     )
     log.info(
         "twin.terrain_loaded",
@@ -143,8 +169,32 @@ def load_terrain(city: str = "mumbai") -> TerrainGrid:
         res_m=res_m,
         crs=crs,
         blocked_fraction=round(float(terrain.blocked.mean()), 4),
+        sea_cells=None if sea is None else int(sea.sum()),
     )
     return terrain
+
+
+def _read_sea(path: Path, shape: tuple[int, int]) -> NDArray[np.bool_] | None:
+    """``sea_mask.tif`` as a boolean mask on the city grid, or ``None`` when the city has none.
+
+    Absent is a city built before the sea step, and is not an error: the runner falls back to
+    the tidal outfalls' cells. Present on another grid is an error, for the reason
+    :func:`load_terrain` checks every raster - a mask one cell off would put the sea's level on
+    the first row of streets.
+    """
+    if not path.is_file():
+        log.info("twin.no_sea_mask", path=str(path))
+        return None
+    with _open_raster(path) as src:
+        if (int(src.height), int(src.width)) != shape:
+            msg = (
+                f"{path.name} is {src.height} x {src.width} but the grid is "
+                f"{shape[0]} x {shape[1]}; every city raster must share one grid"
+            )
+            raise ValueError(msg)
+        band = src.read(1)
+    # 255 is the writer's no-data; nothing the sea step writes carries it, and it is not sea.
+    return np.asarray((band != 0) & (band != 255), dtype=np.bool_)
 
 
 def _boundary_codes(nodes) -> NDArray[np.int8]:

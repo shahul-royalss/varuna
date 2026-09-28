@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -6,6 +6,10 @@ import { AlertsScreen } from "@/app/alerts/alerts-screen";
 import { toast } from "sonner";
 
 import { clearPassphrase, writePassphrase } from "@/lib/api/ops";
+
+// The screen mounts the whole app shell; under a parallel run its first render has taken past
+// the 1 s default, which failed a find that passes alone.
+configure({ asyncUtilTimeout: 5000 });
 
 // `<Toaster />` is mounted by the app layout, not by a test render, so the toast is asserted
 // where it is raised. Same shape as `app/pumps/__tests__/pumps-screen.test.tsx`.
@@ -153,12 +157,9 @@ describe("AlertsScreen motion M16", () => {
     await waitFor(() => expect(cards()).toHaveLength(3));
     const entering = cards()
       .filter((c) => c.dataset.entering === "true")
-      .map((c) => c.querySelector("button")?.textContent ?? "");
+      .map((c) => c.getAttribute("aria-label") ?? "");
     expect(entering.sort()).toEqual(
-      [
-        "Mahatma Gandhi Road: depth likely above 45 cm",
-        "Sant Shitolebaba Maharaj Marg: depth likely above 45 cm",
-      ].sort(),
+      ["Severe: Mahatma Gandhi Road", "Severe: Sant Shitolebaba Maharaj Marg"].sort(),
     );
     expect(phone).toHaveAttribute("data-pop-key", "1");
 
@@ -167,15 +168,19 @@ describe("AlertsScreen motion M16", () => {
     expect(messages).toHaveLength(2);
   });
 
-  it("never asks a cycle for the CAP of an alert another cycle raised", async () => {
+  it("reads a CAP document only when it is opened, and from the cycle that raised it", async () => {
     render(
       <TooltipProvider>
         <AlertsScreen />
       </TooltipProvider>,
     );
-    await waitFor(() => expect(capRequests.length).toBeGreaterThan(0));
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    expect(capRequests, "no CAP is read for a row nobody opened").toHaveLength(0);
 
     fireEvent.click(await screen.findByRole("button", { name: /^Forecast from 08:40 IST/ }));
+    await waitFor(() => expect(cards()).toHaveLength(3));
+    fireEvent.click(within(cards()[0]!).getByRole("button", { name: "See more" }));
+    fireEvent.click(within(cards()[0]!).getByRole("button", { name: "CAP 1.2 document" }));
     await waitFor(() => expect(capRequests.some((r) => r.runId === RUN_0840)).toBe(true));
 
     for (const request of capRequests) {
@@ -195,6 +200,11 @@ describe("AlertsScreen acknowledgement", () => {
     return cards()[0]!;
   }
 
+  /** The acts live behind "See more", with the rest of an alert's details. */
+  function expandFirst(): void {
+    fireEvent.click(within(first()).getByRole("button", { name: "See more" }));
+  }
+
   it("shows the state the API returns, without anyone clicking", async () => {
     acked.add((QUEUES[RUN_0640] as { id: string }[])[0]!.id);
     render(
@@ -204,6 +214,7 @@ describe("AlertsScreen acknowledgement", () => {
     );
 
     await waitFor(() => expect(cards()).toHaveLength(2));
+    // The row's status pill, without anything opened.
     expect(within(first()).getByText("Acknowledged")).toBeInTheDocument();
     expect(actions).toHaveLength(0);
   });
@@ -219,6 +230,7 @@ describe("AlertsScreen acknowledgement", () => {
     const id = (QUEUES[RUN_0640] as { id: string }[])[0]!.id;
     expect(within(first()).queryByText("Acknowledged")).toBeNull();
 
+    expandFirst();
     fireEvent.click(within(first()).getByRole("button", { name: "Acknowledge" }));
 
     await waitFor(() => expect(actions).toHaveLength(1));
@@ -227,8 +239,12 @@ describe("AlertsScreen acknowledgement", () => {
       action: "ack",
       passphrase: "monsoon desk 2026",
     });
-    // The card turns only because the queue was read again, not because the click said so.
-    await waitFor(() => expect(within(first()).getByText("Acknowledged")).toBeInTheDocument());
+    // The row turns only because the queue was read again, not because the click said so. The
+    // pill and the open details both say it.
+    await waitFor(() =>
+      expect(within(first()).getAllByText("Acknowledged").length).toBeGreaterThan(0),
+    );
+    expect(within(first()).queryByRole("button", { name: "Acknowledge" })).toBeNull();
   });
 
   it("sends nothing when the tab holds no passphrase, and says where to enter it", async () => {
@@ -239,6 +255,13 @@ describe("AlertsScreen acknowledgement", () => {
     );
     await waitFor(() => expect(cards()).toHaveLength(2));
 
+    expandFirst();
+    // Said where the act is, before anyone presses it.
+    expect(within(first()).getByText(/need the desk passphrase/)).toBeInTheDocument();
+    expect(within(first()).getByRole("link", { name: /authority desk/ })).toHaveAttribute(
+      "href",
+      "/authority",
+    );
     fireEvent.click(within(first()).getByRole("button", { name: "Acknowledge" }));
 
     await waitFor(() =>
@@ -249,5 +272,85 @@ describe("AlertsScreen acknowledgement", () => {
     );
     expect(actions, "a write with no passphrase never leaves the browser").toHaveLength(0);
     expect(within(first()).queryByText("Acknowledged")).toBeNull();
+  });
+});
+
+/**
+ * Since the 2026-09-26 re-bake the 06:40 cycle the screen opens on raises nothing, and three
+ * "No severe alerts" boxes over a "Press Play" the page never followed were all it showed.
+ */
+describe("AlertsScreen on a cycle that raises nothing", () => {
+  it("says so in one line and offers the cycle with the most alerts", async () => {
+    const base = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+      const url = new URL(raw, "http://localhost:8000");
+      const run = url.searchParams.get("run_id") ?? RUN_0640;
+      if (url.pathname.endsWith("/v1/alerts") && run === RUN_0640) {
+        return json({
+          run_id: RUN_0640,
+          cycle_ts: "2019-07-02T06:40:00+05:30",
+          alerts: [],
+          pending: [
+            {
+              id: "P-0926",
+              level: "watch",
+              headline: "Sant Shitolebaba Maharaj Marg: depth above 15 cm",
+              area_desc: "Sant Shitolebaba Maharaj Marg",
+              scope: "segment",
+              peak_cm: 22,
+              since_ts: "2019-07-02T06:40:00+05:30",
+            },
+          ],
+          n_pending: 105,
+          cleared: [],
+          n_cleared: 0,
+          hysteresis: { previous_run_id: null },
+        });
+      }
+      return base(input, init);
+    });
+    render(
+      <TooltipProvider>
+        <AlertsScreen />
+      </TooltipProvider>,
+    );
+
+    expect(
+      await screen.findByText(
+        "06:40 raises nothing yet: 105 places crossed a threshold for the first time and raise at 08:40 if they hold.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/Press Play/)).toBeNull();
+    // Replay alerts are drills, said even when there is no alert to carry the CAP status.
+    expect(screen.getByText("Exercise: replay alerts are drills")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Watching, not raised yet (1 shown of 105)" }),
+    ).toHaveAttribute("aria-expanded", "false");
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open 08:40, the storm's peak (3 alerts listed)" }),
+    );
+    await waitFor(() => expect(cards()).toHaveLength(3));
+  });
+});
+
+/*
+ * The alert centre carries a Sanskrit name like the other screens: Sanket, a signal. The heading is
+ * the name, the line under it says in English what the screen is, and the Exercise chip that tells
+ * a replay's alerts from live ones is still on the page.
+ */
+describe("AlertsScreen header", () => {
+  it("is titled Sanket with its English gloss, and keeps the Exercise label", async () => {
+    render(
+      <TooltipProvider>
+        <AlertsScreen />
+      </TooltipProvider>,
+    );
+    const heading = await screen.findByRole("heading", { level: 1, name: "Sanket" });
+    expect(heading).toHaveAttribute("translate", "no");
+    expect(heading).toHaveAccessibleDescription(/Alert centre/);
+    await waitFor(() => expect(cards()).toHaveLength(2));
+    expect(screen.getByText("Exercise: replay alerts are drills")).toBeInTheDocument();
   });
 });

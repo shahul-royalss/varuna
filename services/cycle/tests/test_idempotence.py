@@ -99,6 +99,23 @@ def test_baking_the_same_cycle_twice_writes_identical_products(tmp_path: Path) -
     )
 
     _assert_rain_cube_round_trips(kept, second.run_dir)
+    _assert_provenance_agrees(kept, second.run_dir)
+
+
+def _assert_provenance_agrees(first: Path, second: Path) -> None:
+    """run.json is excluded from the byte comparison for its timings, not for its provenance.
+
+    The city fingerprint and the Twin revision say which city and which Twin a run came from;
+    two bakes of one cycle on one city must record the same ones, or `stale_runs` would call a
+    fresh re-bake stale.
+    """
+    import json
+
+    left = json.loads((first / "run.json").read_text(encoding="utf-8"))
+    right = json.loads((second / "run.json").read_text(encoding="utf-8"))
+    for key in ("city_fingerprint", "twin_revision"):
+        assert left.get(key) is not None, f"run.json carries no {key}"
+        assert left[key] == right.get(key), f"{key} differs between two bakes of one cycle"
 
 
 def _assert_rain_cube_round_trips(first: Path, second: Path) -> None:

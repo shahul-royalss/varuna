@@ -146,11 +146,13 @@ def _write_full_bundle(
             for station in ("santacruz", "colaba")
         ]
     members.write_gauges(layout.gauges, rows)
+    # The tide runs past t1 to the last cycle's forecast horizon, as the reconstruction's does
+    # (`members.TIDE_LOOKAHEAD_MIN`); the clock still schedules only the window's stages.
     members.write_tide(
         layout.tide,
         [
             {"ts": stamp, "stage_m": 2.4, "source": "illustrative"}
-            for stamp in _stamps(CADENCES["tide"])
+            for stamp in _stamps(CADENCES["tide"], WINDOW_MIN + members.TIDE_LOOKAHEAD_MIN)
         ],
     )
     members.write_traffic(

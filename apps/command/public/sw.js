@@ -38,8 +38,16 @@ const DATA_CACHE = `${PREFIX}data-${VERSION}`;
 /** The pages this worker keeps. Their query strings are ignored when matching. */
 const SHELL_PATHS = ["/map", "/report"];
 
-/** Same-origin files worth keeping besides `/_next/static`: the manifest and the icon. */
-const STATIC_FILES = ["/manifest.webmanifest", "/icon.svg", "/favicon.ico"];
+/** Same-origin files worth keeping besides `/_next/static`: the manifest, the favicon and the
+ * three install icons the manifest lists, so an installed app offline still has its icon. */
+const STATIC_FILES = [
+  "/manifest.webmanifest",
+  "/icon.svg",
+  "/favicon.ico",
+  "/brand/varuna-app-icon-192.png",
+  "/brand/varuna-app-icon-512.png",
+  "/brand/varuna-app-icon-maskable-512.png",
+];
 
 /** Where the saved forecast's provenance lives, inside the data cache. */
 const META_PATH = "/__varuna/forecast-meta";

@@ -1,9 +1,13 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
+import { BRAND_MARK_64_SRC } from "@/components/varuna/wordmark";
 import type { RoutePlan } from "@/lib/api/route";
 import { RURAL_VEHICLES, buildAdvisory, stopper, type RuralVehicle } from "@/lib/rural";
 
-import { esc, renderRural, type RuralBody, type RuralPage } from "./html";
+import { BRAND_MARK, esc, renderRural, type RuralBody, type RuralPage } from "./html";
 
 /** UI_SPEC 7: "under 30 KB". The document alone, before any transport compression. */
 const BUDGET_BYTES = 30 * 1024;
@@ -118,6 +122,18 @@ describe("the rural document", () => {
       expect(html).not.toMatch(/<link/i);
       expect(html).not.toMatch(/@import/i);
       expect(html).not.toMatch(/url\(/i);
+    }
+  });
+
+  it("carries the team's 64 px emblem as a plain image, and counts it against the budget", () => {
+    const markBytes = readFileSync(join(__dirname, "..", "..", "public", BRAND_MARK)).length;
+    expect(BRAND_MARK).toBe(BRAND_MARK_64_SRC);
+    for (const body of BODIES) {
+      const html = renderRural(page(body));
+      expect(html).toContain(`<h1><img src="${BRAND_MARK}" width="32" height="32" alt="">`);
+      // The page and the one image it asks for, together, still inside UI_SPEC 7's 30 KB.
+      const bytes = Buffer.byteLength(html, "utf8") + markBytes;
+      expect(bytes, `${body.kind} with its emblem is ${bytes} bytes`).toBeLessThan(BUDGET_BYTES);
     }
   });
 

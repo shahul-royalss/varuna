@@ -254,6 +254,7 @@ WsTopic = Literal[
     "onboard.progress",
     "pumps.dispatched",
     "reports.ack",
+    "whatif.progress",
 ]
 
 WS_TOPICS: Final[tuple[WsTopic, ...]] = (
@@ -268,10 +269,12 @@ WS_TOPICS: Final[tuple[WsTopic, ...]] = (
     "onboard.progress",
     "pumps.dispatched",
     "reports.ack",
+    "whatif.progress",
 )
 """Events relayed on ``WS /v1/live`` (CLAUDE.md 11.11: runs.published, cycle.stage,
 alert.*, obs.assimilated, replay.clock, onboard.progress) plus ``pumps.dispatched``
-for the phone mock and ``reports.ack`` for the citizen feedback count."""
+for the phone mock, ``reports.ack`` for the citizen feedback count and ``whatif.progress``
+for a what-if Twin run's step-by-step progress (motion M31)."""
 
 # ------------------------------------------------------------------- honesty labels
 EMULATOR_LABEL: Final[str] = "Reduced-order emulator calibrated to VARUNA-Twin"

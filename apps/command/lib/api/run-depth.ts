@@ -276,8 +276,36 @@ export interface GeoSegment {
   /** threshold cm -> P(depth > threshold) per step; absent when the run has no spread. */
   pGt?: Record<string, number[]>;
   width: number;
-  /** OSM street name; 10,096 of Mumbai's 21,296 segments have one. */
+  /** OSM street name; 10,096 of Mumbai's 21,296 segments have one. Map labels draw only this. */
   name?: string;
+  /**
+   * The name a list or a popover prints: OSM's where it has one, else the API's `display_name`
+   * ("off Dr Ambedkar Road", "Service road near Wadala Depot"). Undefined only on a layer served
+   * before the API named every segment, where the screen prints its own "Road" rather than a
+   * class word that would read as the street's name. No screen prints "Unnamed road".
+   */
+  displayName?: string;
+}
+
+function text(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || /^unnamed (road|way|street)$/i.test(trimmed)) return undefined;
+  return ["none", "nan", "null", "[]"].includes(trimmed.toLowerCase()) ? undefined : trimmed;
+}
+
+/**
+ * The name a screen prints for one segment feature of `/v1/city/{city}/layers/segments`.
+ *
+ * `display_name` is served on every feature (`varuna_api.street_names`), and OSM's `name` covers a
+ * layer served before it was. Nothing else: a bare class word ("Residential street") would read
+ * as the street's own name, so a feature with neither is undefined and the screen says "Road".
+ */
+export function segmentDisplayName(
+  properties: Record<string, unknown> | null | undefined,
+): string | undefined {
+  const props = properties ?? {};
+  return text(props.display_name) ?? text(props.name);
 }
 
 /**
@@ -313,6 +341,7 @@ export function joinSegments(
       pGt: pGt?.get(id),
       width: CLASS_WIDTH[String(feature.properties?.class ?? "residential")] ?? 2,
       name: typeof feature.properties?.name === "string" ? feature.properties.name : undefined,
+      displayName: segmentDisplayName(feature.properties),
     });
   }
   return out;
@@ -341,6 +370,7 @@ export function allSegments(geojson: {
       depthCm: [],
       width: CLASS_WIDTH[String(feature.properties?.class ?? "residential")] ?? 2,
       name: typeof feature.properties?.name === "string" ? feature.properties.name : undefined,
+      displayName: segmentDisplayName(feature.properties),
     });
   }
   return out;

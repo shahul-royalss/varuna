@@ -40,6 +40,7 @@ log = structlog.get_logger("varuna.route.ops_overlay")
 __all__ = [
     "KINDS",
     "PUMP_STATES",
+    "REPORT_STATES",
     "Closure",
     "OpsOverlay",
     "PumpStatus",
@@ -52,13 +53,30 @@ __all__ = [
 IST = timezone(timedelta(hours=5, minutes=30))
 """Every time this repository writes carries an offset (CLAUDE.md 12); ops entries are IST."""
 
-KINDS = frozenset({"closure", "reopen", "pump_status", "alert_ack", "alert_escalate", "dispatch"})
+KINDS = frozenset(
+    {
+        "closure",
+        "reopen",
+        "pump_status",
+        "alert_ack",
+        "alert_escalate",
+        "dispatch",
+        "report_status",
+    }
+)
 """Entry kinds the log accepts.
 
 :func:`active` folds the first three; the rest are audit records other screens read, kept in the
-same file so one append-only log is the whole history."""
+same file so one append-only log is the whole history. ``report_status`` is the desk's answer to
+a citizen report (received, seen, crew sent, resolved, dismissed); the report itself stays as it
+was posted in ``data/reports/inbox.jsonl`` and ``GET /v1/reports`` folds the latest status onto it
+at read time, the way the alert queue folds ``alert_ack``."""
 
 PUMP_STATES = frozenset({"available", "unavailable", "moved"})
+
+REPORT_STATES = ("received", "seen", "crew_sent", "resolved", "dismissed")
+"""A citizen report's life at the desk, in the order it usually moves. Any may follow any: a
+dismissal can be reversed by a later ``seen``, because the log is append-only and later wins."""
 
 
 def overlay_path(city: str) -> Path:
@@ -184,6 +202,15 @@ def append(city: str, entry: dict[str, Any]) -> dict[str, Any]:
             msg = (
                 f"Unknown pump status {status!r}. Valid statuses: {', '.join(sorted(PUMP_STATES))}."
             )
+            raise ValueError(msg)
+
+    if kind == "report_status":
+        if not str(entry.get("report_id", "")).strip():
+            msg = "An ops entry of kind 'report_status' must name the report_id it applies to."
+            raise ValueError(msg)
+        state = str(entry.get("status", "")).strip()
+        if state not in REPORT_STATES:
+            msg = f"Unknown report status {state!r}. Valid statuses: {', '.join(REPORT_STATES)}."
             raise ValueError(msg)
 
     stored = dict(entry)

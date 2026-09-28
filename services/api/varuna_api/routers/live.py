@@ -4,7 +4,7 @@ Protocol:
 
 - on connect the server sends ``{"topic": "hello", "ts", "payload": {version, mode, city,
   bundle, topics, heartbeat_s}}``;
-- every bus event whose topic is in ``WS_TOPICS`` arrives as a ``LiveEvent`` object;
+- every bus event whose topic is in :data:`RELAYED_TOPICS` arrives as a ``LiveEvent`` object;
 - the client may send ``{"type": "ping"}`` and gets ``{"type": "pong", "ts"}``;
 - the server sends ``{"topic": "heartbeat", "ts", "payload": {"uptime_s"}}`` every 15 s.
 """
@@ -18,6 +18,7 @@ from typing import Any
 
 import structlog
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from varuna_cycle.bus import TOPICS as BUS_TOPICS
 from varuna_cycle.bus import Subscription
 from varuna_schemas.constants import IST, WS_TOPICS
 
@@ -25,6 +26,17 @@ from varuna_api.state import AppState
 
 router = APIRouter(tags=["live"])
 log = structlog.get_logger("varuna.api.live")
+
+EXTRA_WS_TOPICS: tuple[str, ...] = ("whatif.progress",)
+"""Topics relayed beside ``WS_TOPICS``: a full-city what-if Twin's step-by-step progress
+(`routers/whatif.py`). Each is relayed only once the bus accepts it - the bus refuses a topic
+``varuna_schemas.constants`` does not list - so adding one here before the schema does is inert
+rather than an error, and the what-if job's GET carries the same progress meanwhile."""
+
+RELAYED_TOPICS: tuple[str, ...] = tuple(
+    dict.fromkeys((*WS_TOPICS, *(topic for topic in EXTRA_WS_TOPICS if topic in BUS_TOPICS)))
+)
+"""Every topic ``WS /v1/live`` subscribes to and relays."""
 
 
 def _now() -> str:
@@ -45,7 +57,7 @@ async def _reader(ws: WebSocket) -> None:
 
 async def _relay(ws: WebSocket, sub: Subscription) -> None:
     async for event in sub:
-        if event.is_ws_topic:
+        if event.is_ws_topic or event.topic in RELAYED_TOPICS:
             await ws.send_text(event.model_dump_json())
 
 
@@ -61,7 +73,7 @@ async def _heartbeat(ws: WebSocket, state: AppState) -> None:
 async def live(ws: WebSocket) -> None:
     state = _state(ws)
     await ws.accept()
-    sub = state.bus.subscribe(list(WS_TOPICS))
+    sub = state.bus.subscribe(list(RELAYED_TOPICS))
     settings = state.settings
     last = state.latest_run()
     await ws.send_json(
@@ -74,7 +86,7 @@ async def live(ws: WebSocket) -> None:
                 "mode": settings.varuna_mode,
                 "city": settings.varuna_city,
                 "bundle": settings.varuna_bundle if settings.is_replay else None,
-                "topics": list(WS_TOPICS),
+                "topics": list(RELAYED_TOPICS),
                 "heartbeat_s": state.ws_heartbeat_s,
                 "last_run_id": last.run_id if last else None,
             },
@@ -103,4 +115,4 @@ async def live(ws: WebSocket) -> None:
         log.debug("live.closed", dropped=sub.dropped)
 
 
-__all__ = ["router"]
+__all__ = ["EXTRA_WS_TOPICS", "RELAYED_TOPICS", "router"]

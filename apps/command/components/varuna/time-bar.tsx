@@ -21,7 +21,7 @@ import {
   type StageId,
   type StageTiming,
 } from "@/components/varuna/cycle-budget-bar";
-import { useReplayControls } from "@/lib/api";
+import { useReplayBundles, useReplayControls } from "@/lib/api";
 import { apiUrl } from "@/lib/api/client";
 import { useLive } from "@/lib/api/live";
 import type { LiveEvent } from "@/lib/api/schemas";
@@ -36,6 +36,8 @@ import {
   REPLAY_SPEEDS,
   isReplaySpeed,
   selectLeadLabel,
+  selectSimDateLabel,
+  selectSimTimeLabel,
   selectValidTimeLabel,
   useReplayStore,
 } from "@/lib/stores/replay";
@@ -103,6 +105,13 @@ export function TimeBar() {
   const setLeadMin = useReplayStore((s) => s.setLeadMin);
   const validLabel = useReplayStore(selectValidTimeLabel);
   const leadLabel = useReplayStore(selectLeadLabel);
+  const cycleTimeLabel = useReplayStore(selectSimTimeLabel);
+  const cycleDateLabel = useReplayStore(selectSimDateLabel);
+  // `POST /v1/cycle/compute` runs the shared clock's bundle, which /replay can switch, so the copy
+  // names that bundle by its manifest label rather than assuming the 2019 reconstruction.
+  const bundleId = useReplayStore((s) => s.bundleId);
+  const bundles = useReplayBundles();
+  const bundleLabel = bundles.data?.find((b) => b.id === bundleId)?.label ?? null;
   const hasRun = useRunStore((s) => s.currentRun !== null);
   const band = useRunStore((s) => s.currentRun?.aoi_depth_band ?? null);
   const stepMin = useRunStore((s) => s.currentRun?.step_min ?? 5);
@@ -119,27 +128,16 @@ export function TimeBar() {
   const compute = useComputeLive();
   const info = compute.info;
   const canCompute = hasRun && Boolean(info?.enabled) && !compute.active && !info?.busy;
-  const expected = info?.expected;
-  const typical =
-    expected && expected.median_ms !== null
-      ? `about ${formatMs(expected.median_ms)} here (${formatMs(expected.min_ms)} to ${formatMs(expected.max_ms)} over ${expected.n_runs} runs), against a ${formatMs(info?.budget_ms ?? 15_000)} budget`
-      : null;
-  const computeNote = compute.active
-    ? `Running, ${formatMs(compute.elapsedMs)} so far${expected?.median_ms ? ` of about ${formatMs(expected.median_ms)}` : ""}`
-    : !info
-      ? "Compute live: asking the server"
-      : !info.enabled
-        ? "Compute live is off on this server"
-        : typical
-          ? `A cycle takes ${typical}`
-          : "No cycle timed on this server yet";
-  const computeTooltip = !hasRun
-    ? "Available once a bundle is loaded"
-    : info && !info.enabled
-      ? (info.reason ?? "Compute live is off on this server")
-      : info?.busy || compute.active
-        ? "A live cycle is running; its stages fill the bar below"
-        : `Re-runs the current cycle with real computation${typical ? `: ${typical}` : ""}`;
+  const copy = computeLiveCopy({
+    bundle: { id: bundleId, label: bundleLabel },
+    info,
+    unreachable: compute.unreachable,
+    hasRun,
+    active: compute.active,
+    elapsedMs: compute.elapsedMs,
+    cycleTimeLabel,
+    cycleDateLabel,
+  });
 
   return (
     <div
@@ -297,7 +295,7 @@ export function TimeBar() {
       </div>
 
       {/* Right: valid time, compute live, cycle budget */}
-      <div className="flex shrink-0 flex-col items-end gap-2">
+      <div className="flex shrink-0 flex-col items-end gap-1">
         <div className="flex items-center gap-3">
           <span className="num type-h3 text-text" aria-live="polite">
             {validLabel}
@@ -316,12 +314,17 @@ export function TimeBar() {
                 Compute live
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{computeTooltip}</TooltipContent>
+            <TooltipContent className="max-w-80">{copy.tooltip}</TooltipContent>
           </Tooltip>
         </div>
-        <div className="flex w-72 flex-col gap-1">
-          <p id="compute-live-note" className="num type-micro text-text-3 truncate">
-            {computeNote}
+        {/* Two short lines rather than one long one: what Compute live runs, then how long it
+            takes here. With the budget bar under them the column is 90 px of the bar's 96
+            (measured at 1366 x 768 and 1440 x 900), so the gaps stay at 4 and 2 px. */}
+        <div className="flex w-72 flex-col gap-0.5">
+          <p id="compute-live-note" className="type-micro leading-tight">
+            <span className="text-text-2 block truncate">{copy.label}</span>
+            {/* Keeps the two lines apart when read as one description. */}{" "}
+            <span className="num text-text-3 block truncate">{copy.note}</span>
           </p>
           <CycleBudgetBar
             compact
@@ -335,8 +338,105 @@ export function TimeBar() {
   );
 }
 
+/** The bundle the shared replay clock is on: its id and its manifest label once served. */
+export interface ComputeLiveBundle {
+  id: string;
+  /** `label` from `GET /v1/replay/bundles` ("Reconstructed replay", "Design storm"); null until known. */
+  label: string | null;
+}
+
+/**
+ * What the bundle is, in the words the time bar prints, taken from its manifest label. Only the
+ * 2019 reconstruction is called "reconstructed" (rule 7); a design storm says so; a bundle whose
+ * label is not yet known, or is neither, is named by its id rather than guessed.
+ */
+function bundleKind(bundle: ComputeLiveBundle): "reconstructed" | "design" | null {
+  const label = bundle.label?.trim().toLowerCase() ?? "";
+  if (label === "reconstructed replay") return "reconstructed";
+  if (label === "design storm") return "design";
+  return null;
+}
+
+/**
+ * The line over Compute live's note. Compute live re-runs the replay clock's current cycle from
+ * that clock's bundle with real computation; it is not today's weather, which the console's
+ * "Today, next 3 h" card carries on its own clock.
+ */
+export function computeLiveLabel(bundle: ComputeLiveBundle): string {
+  const kind = bundleKind(bundle);
+  if (kind === "reconstructed") return "Live compute on the reconstructed replay";
+  if (kind === "design") return "Live compute on the design storm";
+  return `Live compute on bundle ${bundle.id}`;
+}
+
+/** "the reconstructed replay bundle MUM-2019-07-02", "the design storm bundle MUM-IDF-25yr". */
+function bundlePhrase(bundle: ComputeLiveBundle): string {
+  const kind = bundleKind(bundle);
+  if (kind === "reconstructed") return `the reconstructed replay bundle ${bundle.id}`;
+  if (kind === "design") return `the design storm bundle ${bundle.id}`;
+  return `bundle ${bundle.id}`;
+}
+
+/** The note under the label and the button's tooltip, for every state the button can be in. */
+export function computeLiveCopy({
+  bundle,
+  info,
+  unreachable = false,
+  hasRun,
+  active,
+  elapsedMs,
+  cycleTimeLabel,
+  cycleDateLabel,
+}: {
+  /** The shared clock's bundle, which is what `POST /v1/cycle/compute` runs. */
+  bundle: ComputeLiveBundle;
+  info: ComputeInfo | null;
+  /** `GET /v1/cycle/compute` failed or is not served: the button stays off and says why. */
+  unreachable?: boolean;
+  hasRun: boolean;
+  active: boolean;
+  elapsedMs: number | null;
+  cycleTimeLabel: string;
+  cycleDateLabel: string;
+}): { label: string; note: string; tooltip: string } {
+  const expected = info?.expected;
+  const median = expected?.median_ms ?? null;
+  const budget = formatMs(info?.budget_ms ?? 15_000);
+  const range =
+    expected && median !== null
+      ? `${formatMs(expected.min_ms)} to ${formatMs(expected.max_ms)} over ${expected.n_runs} runs`
+      : null;
+  const cycle = `the ${cycleTimeLabel} cycle of ${cycleDateLabel || "the bundle"}`;
+
+  const note = active
+    ? `Running, ${formatMs(elapsedMs)} so far${median !== null ? ` of about ${formatMs(median)}` : ""}`
+    : !info
+      ? unreachable
+        ? "The API did not say whether it can compute"
+        : "Asking the server how long a cycle takes"
+      : !info.enabled
+        ? "Off on this server"
+        : median !== null
+          ? `About ${formatMs(median)} a cycle here, against ${budget}`
+          : "No cycle timed on this server yet";
+
+  const what = `Re-runs ${cycle} from ${bundlePhrase(bundle)} with real computation. It is not today's weather.`;
+  const tooltip = !hasRun
+    ? "Available once a bundle is loaded"
+    : !info && unreachable
+      ? "The API did not answer, so Compute live stays off. The baked replay is unaffected."
+      : info && !info.enabled
+        ? (info.reason ?? "Compute live is off on this server")
+        : info?.busy || active
+          ? "A live cycle is running; its stages fill the bar below"
+          : range && median !== null
+            ? `${what} A cycle takes about ${formatMs(median)} here (${range}), against a ${budget} budget.`
+            : what;
+  return { label: computeLiveLabel(bundle), note, tooltip };
+}
+
 /** What `GET /v1/cycle/compute` says about this server. */
-interface ComputeInfo {
+export interface ComputeInfo {
   enabled: boolean;
   reason: string | null;
   busy: boolean;
@@ -360,6 +460,8 @@ interface ComputeInfo {
  */
 function useComputeLive() {
   const [info, setInfo] = useState<ComputeInfo | null>(null);
+  // The server did not answer, or answered without the endpoint: said, never "asking" forever.
+  const [unreachable, setUnreachable] = useState(false);
   const [stageMs, setStageMs] = useState<Partial<Record<StageId, number>>>({});
   const [running, setRunning] = useState<StageId | null>(null);
   const [active, setActive] = useState(false);
@@ -373,8 +475,11 @@ function useComputeLive() {
       .then((r) => (r.ok ? (r.json() as Promise<ComputeInfo>) : null))
       .then((body) => {
         if (body) setInfo(body);
+        setUnreachable(!body);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!controller.signal.aborted) setUnreachable(true);
+      });
     return () => controller.abort();
   }, [refresh]);
 
@@ -451,5 +556,14 @@ function useComputeLive() {
   const reported = Object.values(stageMs).filter((v): v is number => typeof v === "number");
   const totalMs = reported.length > 0 ? reported.reduce((a, b) => a + b, 0) : null;
   const elapsedMs = active && startedAt !== null ? Math.max(0, now - startedAt) : null;
-  return { info, stages, running: active ? running : null, active, totalMs, elapsedMs, start };
+  return {
+    info,
+    unreachable,
+    stages,
+    running: active ? running : null,
+    active,
+    totalMs,
+    elapsedMs,
+    start,
+  };
 }

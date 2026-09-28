@@ -202,6 +202,9 @@ export function consoleProps(overrides: Partial<CityMapProps> = {}): CityMapProp
     labels,
     step: 1,
     showDrains: true,
+    // Asked for explicitly since `CityMap`'s default turned buildings off: "everything on" is what
+    // the monolith fixture captured, and saying so here keeps that picture byte-identical.
+    showBuildings: true,
     selectedHotspotId: "H-hindmata",
     onSegmentPick: () => {},
     ...overrides,

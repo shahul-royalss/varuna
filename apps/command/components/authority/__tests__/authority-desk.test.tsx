@@ -23,7 +23,7 @@ vi.mock("@/lib/api/ops", async (importOriginal) => {
 
 import { ActionResult } from "@/components/authority/action-result";
 import { OpsLog } from "@/components/authority/ops-log";
-import { PassphraseGate } from "@/components/authority/passphrase-gate";
+import { PassphraseGate, writesDisabledReason } from "@/components/authority/passphrase-gate";
 import { composeNote, SituationNote } from "@/components/authority/situation-note";
 import {
   GATE_NOTE,
@@ -56,6 +56,26 @@ beforeEach(() => {
   } catch {
     // A jsdom without storage is not a case this screen has to survive in a test.
   }
+});
+
+describe("writesDisabledReason", () => {
+  const READ_ONLY = "This API is read-only: VARUNA_OPS_PASSPHRASE is not set where it runs.";
+  const NAMES =
+    "Report statuses name the officer's role, not the officer. Send the desk passphrase in X-Varuna-Ops to see the name.";
+
+  it("picks the note that says why, wherever it sits", () => {
+    expect(writesDisabledReason(["This changed no forecast.", READ_ONLY, NAMES])).toBe(READ_ONLY);
+    expect(writesDisabledReason([READ_ONLY, NAMES])).toBe(READ_ONLY);
+    expect(writesDisabledReason([NAMES, READ_ONLY])).toBe(READ_ONLY);
+    const older = "Writes are disabled: VARUNA_OPS_PASSPHRASE is unset where this API runs.";
+    expect(writesDisabledReason([older, NAMES])).toBe(older);
+  });
+
+  it("returns nothing rather than another note when none says why", () => {
+    expect(writesDisabledReason(["This changed no forecast.", NAMES])).toBeNull();
+    expect(writesDisabledReason([])).toBeNull();
+    expect(writesDisabledReason(undefined)).toBeNull();
+  });
 });
 
 describe("PassphraseGate", () => {

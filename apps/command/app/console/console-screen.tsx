@@ -1,7 +1,8 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Maximize2, Minimize2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { FloodMap } from "@/components/map/flood-map";
@@ -29,7 +30,11 @@ import { ReplayPanel } from "@/components/varuna/replay-panel";
 import { HotspotDrawer } from "@/components/varuna/hotspot-drawer";
 import { CyclePicker } from "@/components/varuna/cycle-picker";
 import { LayerPanel, type LayerToggles, type LayerKey } from "@/components/varuna/layer-panel";
-import { registerLayerShortcut, type LayerKey as ShortcutLayerKey } from "@/lib/shortcuts";
+import {
+  isTextEntry,
+  registerLayerShortcut,
+  type LayerKey as ShortcutLayerKey,
+} from "@/lib/shortcuts";
 import { ProbabilityLegend } from "@/components/varuna/probability-legend";
 import { SegmentPopover } from "@/components/varuna/segment-popover";
 import { Skeleton } from "@/components/varuna/skeleton";
@@ -37,13 +42,15 @@ import type { SegmentPick } from "@/components/map/city-map";
 import { useTruthPins } from "@/lib/hooks/use-truth-pins";
 import { RightRail } from "@/components/varuna/right-rail";
 import { SkyPanel } from "@/components/varuna/sky-panel";
+import { LiveOutlookCard } from "@/components/varuna/live-outlook-card";
 import { TimeBar } from "@/components/varuna/time-bar";
 import { edgeFadeStyle, useScrollEdges } from "./use-scroll-edges";
 import { useConsoleRoutes, type ConsoleRouteState } from "./use-console-routes";
 import { WhatIfDrawer, type WhatIfDiff } from "./whatif-drawer";
 import { fetchOpeningRunId } from "@/lib/opening-run";
-import { formatMassBalance } from "@/lib/format";
+import { formatMassBalance, minutesBetween } from "@/lib/format";
 import { DEFAULT_CITY, cityFromSearch } from "@/lib/city";
+import { MIN_AREA_M, type AffectedFrame } from "@/lib/map/affected-bounds";
 import { DEFAULT_SIM_TIME } from "@/lib/stores/replay";
 import { useRunStore } from "@/lib/stores/run";
 import { useUiStore } from "@/lib/stores/ui";
@@ -87,6 +94,106 @@ function routeDetail(state: ConsoleRouteState): string | undefined {
       : `around ${avoided} street${avoided === 1 ? "" : "s"} an ambulance cannot pass.`)
   );
 }
+
+/**
+ * Minutes from the run's cycle to `step`'s valid time: the lead the scrub and the caption print.
+ *
+ * Step i is valid at the cycle plus i + 1 steps (the 06:40 cycle's first step is 06:45), so the
+ * lead is read from the two timestamps rather than as `step * stepMin`, which printed every lead
+ * five minutes short. A run with no cycle time counts from one step before its first valid time,
+ * which is how the cycle writes them (`stepLeads` on `/onboard` does the same).
+ */
+export function leadMin(
+  run: Pick<RunDepth, "validTs"> & {
+    provenance: Pick<RunDepth["provenance"], "stepMin" | "cycleTs">;
+  },
+  step: number,
+): number {
+  const ts = run.validTs[step];
+  const lead = run.provenance.cycleTs && ts ? minutesBetween(run.provenance.cycleTs, ts) : null;
+  return lead ?? (step + 1) * run.provenance.stepMin;
+}
+
+/** How many of the rail's ranked chronic spots the console's frame must hold: its top five rows. */
+export const RAIL_TOP_SPOTS = 5;
+
+/**
+ * What the camera's fit keeps clear, in pixels, so the frame lands where nothing floats over it.
+ * The layer column is 16 px in and 380 px wide; the scrub card is 16 px up and about 130 px tall
+ * with its caption; the replay panel is 16 px in and 360 px wide. Each carries a 16 px gap.
+ * Measured before the change, 27-34 % of the framed deep street length sat under the column and
+ * another 11-20 % under the scrub card.
+ */
+export const FIT_CLEARANCE = { column: 412, scrub: 160, replay: 392, edge: 16 } as const;
+
+/** The console's fit margins: the column, the scrub and the replay panel, or in full view the
+ *  scrub alone - full view has no column and no replay panel. */
+export function consoleFitPadding(fullView: boolean, replayPanelOpen: boolean) {
+  const { column, scrub, replay, edge } = FIT_CLEARANCE;
+  return fullView
+    ? { top: edge, right: edge, bottom: scrub, left: edge }
+    : { top: edge, right: replayPanelOpen ? replay : edge, bottom: scrub, left: column };
+}
+
+/**
+ * What the map is framed on, in one sentence under the scrub (the "fit by default" request).
+ * Every number comes from the run: the length, the share and the time are `affectedFrame`'s own,
+ * read at the run's peak step, so the time it names is the peak's and the scrub never changes it.
+ * The normal view holds the densest 7 km of water and the rail's top five chronic spots; full view
+ * holds every qualifying street (`WHOLE`) at `askedStep`, the step on screen when it opened, and
+ * says so - and says so too when that step was too dry to frame and it framed the peak instead.
+ */
+export function frameCaption(
+  frame: AffectedFrame | null,
+  run: Pick<RunDepth, "validTs"> & {
+    provenance: Pick<RunDepth["provenance"], "stepMin" | "cycleTs">;
+  },
+  fullView = false,
+  askedStep: number | null = null,
+): string | null {
+  if (!frame) return null;
+  const back = " F or Esc goes back.";
+  if (frame.basis === "aoi") {
+    return fullView
+      ? `Full view: nothing in this run is wet, so it shows the whole city.${back}`
+      : "Nothing in this run is wet, so the map shows the whole city.";
+  }
+  if (frame.basis === "hotspots") {
+    return fullView
+      ? `Full view: no street reaches 5 cm in this run, so it frames the chronic spots.${back}`
+      : "No street reaches 5 cm in this run, so the map opened on its chronic spots.";
+  }
+  const km = (frame.lengthM / 1000).toLocaleString("en-IN", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
+  const step = frame.step ?? 0;
+  const what =
+    `streets at ${frame.thresholdCm} cm or more at ` +
+    `${formatStep(run.validTs[step])} (+${leadMin(run, step)} min)`;
+  const pct = Math.round(frame.share * 100);
+  if (fullView) {
+    const held = pct >= 100 ? `all ${km} km of ${what}` : `${pct} % of the ${km} km of ${what}`;
+    if (askedStep !== null && askedStep !== step && run.validTs[askedStep]) {
+      const asked = `${formatStep(run.validTs[askedStep])} (+${leadMin(run, askedStep)} min)`;
+      return (
+        `Full view: less than ${MIN_AREA_M} m of street is 5 cm deep at ${asked}, ` +
+        `so it frames the peak: ${held}.${back}`
+      );
+    }
+    return `Full view: ${held}.${back}`;
+  }
+  return pct >= 100
+    ? `Opened on all ${km} km of ${what}.`
+    : `Opened on the densest water and the rail's top ${RAIL_TOP_SPOTS} spots: ${pct} % of the ${km} km of ${what}. Full view (F) shows all of it.`;
+}
+
+/**
+ * How the console's full view is being shown. `screen` is the Fullscreen API on the map region;
+ * `layout` is the fallback when the browser refuses it (or has none), where the region is pinned
+ * over the whole viewport instead. Both show the same thing: the map, its scrub and its legend.
+ */
+export type FullViewMode = "off" | "screen" | "layout";
 
 /**
  * What the photorealistic-city row says: what it is waiting for, what it drew, or which switch is
@@ -280,7 +387,18 @@ function ConsoleView() {
     null,
   );
   const [selectedHotspotId, setSelectedHotspotId] = useState<string | null>(null);
-  const [focus, setFocus] = useState<MapFocus | null>(null);
+  // `?focus=<lon>,<lat>` flies the map to a point (M10), which is how an alert's "Show on the
+  // map" lands on its street. Seeded from the address at mount and adjusted during render when
+  // the parameter changes (React's pattern for state derived from a prop); a malformed pair is
+  // ignored rather than flying to (0, 0).
+  const focusParam = searchParams.get("focus");
+  const [focus, setFocus] = useState<MapFocus | null>(() => focusFromParam(focusParam));
+  const [seenFocusParam, setSeenFocusParam] = useState(focusParam);
+  if (focusParam !== seenFocusParam) {
+    setSeenFocusParam(focusParam);
+    const next = focusFromParam(focusParam);
+    if (next) setFocus(next);
+  }
   // Reachability bands live here rather than in the rail, because two things need them: the rail
   // draws the clocks and the map draws the polygons, and the rail is unmounted whenever the
   // hotspot drawer is open.
@@ -332,6 +450,59 @@ function ConsoleView() {
   // The street the operator last clicked (task P6.9). Cleared by clicking empty map, by Escape,
   // and by a new run - a popover about a segment of a run that is no longer on screen is a lie.
   const [pick, setPick] = useState<SegmentPick | null>(null);
+  // Full view (F, or the control at the map's top-right): the map region - the map, its scrub and
+  // its legend - takes the whole screen through the Fullscreen API, or the whole viewport when the
+  // browser refuses. Entering frames every street under water at the step on screen (`frameWhole`,
+  // `frameStep`), or at the run's peak when that step is still dry. The step is read once, on
+  // entering, so scrubbing inside full view never moves the camera; F twice re-frames at the new
+  // step. Leaving hands back the camera the operator had (`keepViewOf`), panned or not. Every
+  // change is a cut: section 8 has no row for it (M23).
+  const regionRef = useRef<HTMLDivElement>(null);
+  const fullViewControlRef = useRef<HTMLButtonElement>(null);
+  const [fullView, setFullViewState] = useState<FullViewMode>("off");
+  const inFullView = fullView !== "off";
+  // Read by the callbacks below, which the key registry holds on to: a ref, so the Fullscreen
+  // API's late answers see the current mode.
+  const fullViewRef = useRef<FullViewMode>("off");
+  // The step on screen, for `enterFullView`, which the key registry holds on to between renders.
+  const stepRef = useRef(step);
+  useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+  const [fullViewStep, setFullViewStep] = useState<number | null>(null);
+  // Set when the console leaves the browser's full screen itself, to show an overlay the full
+  // screen would hide; the exit that follows then drops to the layout rather than closing.
+  const demotingRef = useRef(false);
+  const setFullView = useCallback((next: FullViewMode) => {
+    fullViewRef.current = next;
+    setFullViewState(next);
+  }, []);
+  const enterFullView = useCallback(() => {
+    setFullViewStep(stepRef.current);
+    const region = regionRef.current;
+    if (!region || !document.fullscreenEnabled || typeof region.requestFullscreen !== "function") {
+      setFullView("layout");
+      return;
+    }
+    setFullView("screen");
+    region.requestFullscreen({ navigationUI: "hide" }).catch(() => {
+      // Refused - an iframe without `allow="fullscreen"`, a browser setting, a key press the
+      // browser did not count as a gesture. The layout shows the same map instead.
+      if (fullViewRef.current === "screen") setFullView("layout");
+    });
+  }, [setFullView]);
+  const exitFullView = useCallback(() => {
+    const wasScreen = fullViewRef.current === "screen";
+    setFullView("off");
+    if (wasScreen && document.fullscreenElement) {
+      document.exitFullscreen().catch(() => undefined);
+    }
+  }, [setFullView]);
+  const toggleFullView = useCallback(() => {
+    if (fullViewRef.current === "off") enterFullView();
+    else exitFullView();
+  }, [enterFullView, exitFullView]);
+  const [frame, setFrame] = useState<AffectedFrame | null>(null);
   // The what-if drawer (W) and the answer it has drawn on the map, if any.
   const [whatIfOpen, setWhatIfOpen] = useState(false);
   const [whatIfDiff, setWhatIfDiff] = useState<WhatIfDiff | null>(null);
@@ -529,8 +700,71 @@ function ConsoleView() {
     );
     // W opens the what-if drawer over the rail, and closes it again (CLAUDE.md 7.2, 7.7).
     unsubscribes.push(registerLayerShortcut("w", () => setWhatIfOpen((open) => !open)));
+    // F is the full view, and back.
+    unsubscribes.push(registerLayerShortcut("f", toggleFullView));
     return () => unsubscribes.forEach((off) => off());
-  }, [run]);
+  }, [run, toggleFullView]);
+
+  // Escape leaves full view. Only while it is on, so Escape keeps meaning "close the open panel"
+  // everywhere else; a field or an open dialog keeps its own Escape. Listened for in the capture
+  // phase, ahead of the global handler, which would otherwise close the `?` overlay first and make
+  // one Escape close both. In the browser's full screen the browser takes Escape itself, and the
+  // `fullscreenchange` below is what hears it.
+  useEffect(() => {
+    if (fullView === "off") return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // A text field keeps its Escape. The scrub is a range input with none of its own, and it is
+      // the control holding focus after a drag, so it must not swallow the way back.
+      if (isTextEntry(event.target)) return;
+      const ui = useUiStore.getState();
+      if (ui.commandPaletteOpen || ui.shortcutsOpen || ui.settingsOpen) return;
+      exitFullView();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [fullView, exitFullView]);
+
+  // The browser left its full screen: Escape, F11, a tab switch on some platforms. The console
+  // follows - out of full view, or down to the layout when it left on purpose to show an overlay.
+  useEffect(() => {
+    const onChange = () => {
+      if (document.fullscreenElement || fullViewRef.current !== "screen") return;
+      const demoted = demotingRef.current;
+      demotingRef.current = false;
+      if (demoted) setFullView("layout");
+      else setFullView("off");
+    };
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, [setFullView]);
+
+  // The palette, the `?` overlay and settings render outside the map region, where the browser's
+  // full screen cannot show them. Opening one drops full view to the layout, which can.
+  useEffect(() => {
+    if (fullView !== "screen") return;
+    return useUiStore.subscribe((ui) => {
+      if (!(ui.commandPaletteOpen || ui.shortcutsOpen || ui.settingsOpen)) return;
+      if (!document.fullscreenElement) return;
+      demotingRef.current = true;
+      document.exitFullscreen().catch(() => {
+        demotingRef.current = false;
+      });
+    });
+  }, [fullView]);
+
+  // In full view the top bar, the rail and the time bar are covered but still in the page, so Tab
+  // would walk into controls nobody can see. The shell makes them inert for as long as full view
+  // lasts (`chromeInert` below), and focus goes to the full-view control, which is where it came
+  // from on a click and is the one control that stays put on both sides of the toggle.
+  const fullViewWasOn = useRef(false);
+  useEffect(() => {
+    // Only on a change between off and on; the drop from the screen to the layout keeps focus.
+    const on = fullView !== "off";
+    if (on === fullViewWasOn.current) return;
+    fullViewWasOn.current = on;
+    fullViewControlRef.current?.focus({ preventScroll: true });
+  }, [fullView]);
 
   // 3D mode's ground (task P6.15). The map probes it too, and the verdict is cached per key for
   // the life of the tab, so this second call costs no second request; the console reads it only
@@ -593,11 +827,41 @@ function ConsoleView() {
     threeD: photorealDetail(photoreal),
     xray: xrayDetail(xrayState, photoreal.kind === "ready", xrayExaggeration),
   };
+  const caption = run
+    ? frameCaption(frame, run, inFullView, inFullView ? fullViewStep : null)
+    : null;
+  const fitPadding = useMemo(
+    () => consoleFitPadding(inFullView, replayPanelOpen),
+    [inFullView, replayPanelOpen],
+  );
+  // The street popover and the probability legend live in the layer column, which full view hides.
+  // They are drawn in their own corner there instead: a click on a street has to answer, and a map
+  // whose opacity means P(above threshold) has to say so (CLAUDE.md 7.2).
+  const segmentPopover =
+    pick && run ? (
+      <SegmentPopover
+        pick={pick}
+        step={step}
+        validTs={run.validTs}
+        hotspot={pickedHotspot}
+        onWhy={openWhy}
+        onClose={() => setPick(null)}
+      />
+    ) : null;
+  const probabilityLegend = layers.probability ? (
+    <ProbabilityLegend
+      thresholdCm={probabilityThresholdCm}
+      onThresholdChange={setProbabilityThresholdCm}
+      deterministic={(run?.provenance.ensembleN ?? 1) <= 1}
+    />
+  ) : null;
 
   return (
     <AppShell
+      chromeInert={inFullView}
       rightRail={
-        // The drawers slide in *over* the rail (CLAUDE.md 7.2), so they take the same slot.
+        // The drawers slide in *over* the rail (CLAUDE.md 7.2), so they take the same slot. Full
+        // view covers the rail rather than unmounting it, so it comes back exactly as it was.
         whatIfOpen ? (
           <WhatIfDrawer
             runId={loadedRunId ?? null}
@@ -627,10 +891,22 @@ function ConsoleView() {
       }
       bottomBar={<TimeBar />}
     >
-      <div className="relative h-full min-h-0 w-full">
+      {/* The map region, which full view gives the whole screen: through the Fullscreen API, or
+          pinned over the viewport when the browser refuses (`layout`). The scrub and the legend
+          live inside it, so both still work in full view. */}
+      <div
+        ref={regionRef}
+        data-testid="console-map-region"
+        data-full-view={fullView}
+        className={
+          fullView === "layout"
+            ? "fixed inset-0 z-50 min-h-0 bg-[var(--ink)]"
+            : "relative h-full min-h-0 w-full bg-[var(--ink)]"
+        }
+      >
         {/* The map is the one memorable element on this screen (CLAUDE.md 6.1); everything else
             floats over it. `MapSlot` stays behind it as the legend and attribution host. */}
-        <MapSlot legendClearsRightPanel={replayPanelOpen} />
+        <MapSlot legendClearsRightPanel={replayPanelOpen && !inFullView} />
         {/* 3D, the routes layer and the what-if difference reach the map through context: they
             are console-only asks, and `FloodMap` is shared by every screen with a map. */}
         <MapOverlayContext.Provider value={overlay}>
@@ -642,6 +918,19 @@ function ConsoleView() {
             deferLoad={!mapReady}
             step={step}
             onLoaded={handleLoaded}
+            // Opens on the run's main affected area at its peak step, not the whole 9.5 x 15.5 km
+            // AOI: the densest 7 km of water, grown to hold the rail's top five chronic spots, in
+            // the part of the map the layer column and the scrub card leave clear. Full view
+            // frames every street under water at the step it opened on. The key re-arms the fit on
+            // entering, and the camera kept for "affected" comes back on exit.
+            frameOn="affected"
+            frameWhole={inFullView}
+            frameStep={inFullView ? fullViewStep : null}
+            frameHolds={RAIL_TOP_SPOTS}
+            fitPadding={fitPadding}
+            fitKey={inFullView ? "full-view" : "affected"}
+            keepViewOf="affected"
+            onFrame={setFrame}
             hotspots={hotspots?.hotspots ?? []}
             selectedHotspotId={selectedHotspotId}
             surcharge={surcharge?.runId === loadedRunId ? surcharge?.set : null}
@@ -662,9 +951,54 @@ function ConsoleView() {
           />
         </MapOverlayContext.Provider>
 
-        {/* The scrub. Owned here so the map, the readout and the keyboard share one step. */}
+        {/* Full view's control, at the map's top-right: beside the replay panel when that is open,
+            as the legend is, and in the corner otherwise. One name in both states with
+            `aria-pressed` carrying on or off, so a screen reader hears one toggle, not two
+            buttons; the icon and the fill say it to the eye. */}
         {run ? (
-          <div className="pointer-events-auto absolute bottom-4 left-1/2 z-30 w-[min(680px,calc(100%-2rem))] -translate-x-1/2 rounded-xl border border-[var(--line)] bg-[var(--ink)]/80 p-3 backdrop-blur-[12px]">
+          <div
+            className={`absolute top-4 z-30 ${replayPanelOpen && !inFullView ? "right-[24.5rem]" : "right-4"}`}
+          >
+            <Button
+              ref={fullViewControlRef}
+              size="sm"
+              variant={inFullView ? "default" : "outline"}
+              className={inFullView ? undefined : "bg-[var(--deep)] dark:bg-[var(--deep)]"}
+              onClick={toggleFullView}
+              aria-pressed={inFullView}
+              aria-keyshortcuts="F"
+              title={
+                inFullView ? "Leave full view (F or Esc)" : "Give the map the whole screen (F)"
+              }
+              data-testid="console-full-view"
+            >
+              {inFullView ? (
+                <Minimize2 aria-hidden="true" strokeWidth={1.75} />
+              ) : (
+                <Maximize2 aria-hidden="true" strokeWidth={1.75} />
+              )}
+              Full view
+            </Button>
+          </div>
+        ) : null}
+
+        {/* The scrub. Owned here so the map, the readout and the keyboard share one step.
+
+            It sits between the "Reconstructed replay" chip (16 px in, 154 px wide) and the depth
+            legend (16 px in, 288 px wide), both of which `MapSlot` draws at the map's foot. Centred
+            on the map, as it was, it covered the legend's three deepest rows at 1440 x 900 - the
+            thresholds a judge reads first - and the legend is always visible (CLAUDE.md 6.7). With
+            the replay panel open the legend moves inboard past where the card could fit, so the
+            card stays centred there, as before. */}
+        {run ? (
+          <div
+            data-testid="console-scrub"
+            className={`pointer-events-auto absolute bottom-4 z-30 rounded-xl border border-[var(--line)] bg-[var(--ink)]/80 p-3 backdrop-blur-[12px] ${
+              replayPanelOpen && !inFullView
+                ? "left-1/2 w-[min(680px,calc(100%-2rem))] -translate-x-1/2"
+                : "right-[20rem] left-[12rem] mx-auto max-w-[680px]"
+            }`}
+          >
             <div className="flex items-center gap-3">
               <Button
                 size="sm"
@@ -687,9 +1021,14 @@ function ConsoleView() {
                 aria-label="Scrub the forecast"
               />
               <span className="num min-w-[132px] text-right text-[13px] text-[var(--text)]">
-                {formatStep(run.validTs[step])} · +{step * run.provenance.stepMin} min
+                {formatStep(run.validTs[step])} · +{leadMin(run, step)} min
               </span>
             </div>
+            {caption ? (
+              <p className="num mt-2 text-[12px] text-[var(--text-2)]" data-testid="console-frame">
+                {caption}
+              </p>
+            ) : null}
             <p className="num mt-2 text-[12px] text-[var(--text-3)]">
               run {run.provenance.runId} · {run.provenance.mode} ·{" "}
               {run.provenance.ensembleN === 1
@@ -719,7 +1058,9 @@ function ConsoleView() {
           data-scroll-above={columnAbove ? "yes" : "no"}
           data-scroll-below={columnBelow ? "yes" : "no"}
           style={edgeFadeStyle({ above: columnAbove, below: columnBelow })}
-          className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] min-h-0 w-[380px] max-w-[calc(100%-2rem)] [scrollbar-color:var(--line-strong)_var(--well)] [scrollbar-gutter:stable] flex-col items-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain"
+          // Hidden rather than unmounted in full view, so the outlook card and the popover keep
+          // what they loaded and come back as they were.
+          className={`absolute top-4 left-4 z-20 ${inFullView ? "hidden" : "flex"} max-h-[calc(100%-12rem)] min-h-0 w-[380px] max-w-[calc(100%-2rem)] [scrollbar-color:var(--line-strong)_var(--well)] [scrollbar-gutter:stable] flex-col items-start gap-2 overflow-x-hidden overflow-y-auto overscroll-contain`}
         >
           {/* The chips are 414 px of clock times in a 380 px column, so they wrap to a second row
               rather than spilling over the map (UI_SPEC 8). */}
@@ -734,16 +1075,7 @@ function ConsoleView() {
               className="w-full flex-wrap"
             />
           ) : null}
-          {pick && run ? (
-            <SegmentPopover
-              pick={pick}
-              step={step}
-              validTs={run.validTs}
-              hotspot={pickedHotspot}
-              onWhy={openWhy}
-              onClose={() => setPick(null)}
-            />
-          ) : null}
+          {inFullView ? null : segmentPopover}
           <LayerPanel
             value={layers}
             onChange={toggleLayer}
@@ -756,13 +1088,7 @@ function ConsoleView() {
           {/* Below the panel, never over it (UI_SPEC 8): the legend used to be positioned
               absolutely at a fixed offset from the map's top-left, which put it on top of the
               layer rows as soon as probability mode was on. */}
-          {layers.probability ? (
-            <ProbabilityLegend
-              thresholdCm={probabilityThresholdCm}
-              onThresholdChange={setProbabilityThresholdCm}
-              deterministic={(run?.provenance.ensembleN ?? 1) <= 1}
-            />
-          ) : null}
+          {inFullView ? null : probabilityLegend}
           {/* The X-ray's one control. A 1.5 m cover under a photographed street is about four
               pixels at the zoom this view is read at, so stretching it is what makes the network
               legible - and the label says what the stretch is doing, every time it is not 1
@@ -815,6 +1141,15 @@ function ConsoleView() {
               )}
             </div>
           ) : null}
+          {/* Today's outlook, on today's clock: the one forecast here that is not the replay. It
+              loads when opened, reads nothing from the replay and writes nothing to it, so the
+              scrub, the map and the run above never move because of it. */}
+          {/* 248 px like the layer panel above it: at 1366 x 768 with the replay panel open the
+              depth legend reaches to x = 327 over the column's lower edge, and a full-width card
+              ran under it. */}
+          <PanelErrorBoundary title="Today, next 3 h">
+            <LiveOutlookCard city={city} className="w-[248px]" />
+          </PanelErrorBoundary>
           <Button size="sm" variant="outline" onClick={() => setSkyPanelOpen((open) => !open)}>
             {skyPanelOpen ? "Hide the rain nowcast" : "Show the rain nowcast"}
           </Button>
@@ -827,7 +1162,17 @@ function ConsoleView() {
           ) : null}
         </div>
 
-        {replayPanelOpen ? (
+        {inFullView && (segmentPopover || probabilityLegend) ? (
+          <div
+            data-testid="console-full-view-overlays"
+            className="absolute top-4 left-4 z-20 flex max-h-[calc(100%-12rem)] w-[380px] max-w-[calc(100%-2rem)] flex-col items-start gap-2 overflow-y-auto overscroll-contain"
+          >
+            {segmentPopover}
+            {probabilityLegend}
+          </div>
+        ) : null}
+
+        {replayPanelOpen && !inFullView ? (
           <div className="absolute top-4 right-4 z-20 max-h-[calc(100%-2rem)] w-[360px] max-w-[calc(100%-2rem)] overflow-y-auto">
             <ReplayPanel />
           </div>
@@ -835,4 +1180,14 @@ function ConsoleView() {
       </div>
     </AppShell>
   );
+}
+
+/** A `?focus=<lon>,<lat>` value as a map focus, or null when it is absent or not a coordinate. */
+function focusFromParam(value: string | null): MapFocus | null {
+  if (!value) return null;
+  const [lon, lat] = value.split(",").map(Number);
+  if (lon === undefined || lat === undefined) return null;
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return null;
+  if (Math.abs(lon) > 180 || Math.abs(lat) > 90) return null;
+  return { lon, lat, key: `focus-${value}`, zoom: 15 };
 }

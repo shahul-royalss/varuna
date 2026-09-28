@@ -36,7 +36,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 import structlog
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 from varuna_schemas import net
 from varuna_schemas.constants import IST
@@ -63,7 +63,22 @@ TTL_S = 900.0
 
 HOURLY_STEPS = 4
 REQUEST_HOURS = 6
-"""Six asked for, four returned: the first steps can already be in the past (see `_hourly`)."""
+"""Six asked for, four returned: the first steps can already be in the past (see `_hourly`).
+
+Four hours after "now" is also exactly what `/v1/outlook` needs: a three-hour horizon that starts
+part-way through an hour ends part-way through the fourth, and each hourly value is the sum over
+the hour *before* its timestamp (Open-Meteo's definition), so the fourth step is the one that
+covers the tail."""
+
+MINUTELY_STEPS = 16
+REQUEST_MINUTELY = 20
+"""Four hours of Open-Meteo's 15-minute precipitation, asked for with a little margin for the same
+reason as :data:`REQUEST_HOURS`. Outside Europe and North America that series is interpolated
+from the hourly models (Open-Meteo's own documentation), so for Mumbai it carries no information
+the hourly one does not; it is kept so `/v1/outlook` can say how the two compare rather than
+assert it."""
+
+MINUTELY_FIELDS = ("precipitation",)
 
 TIMEOUT_S = 6.0
 RETRIES = 1
@@ -130,10 +145,14 @@ class WeatherNow(BaseModel):
 
 
 class WeatherStep(BaseModel):
-    """One hourly step of the short forecast."""
+    """One step of the short forecast: hourly, or 15-minutely in `Weather.minutely_15`."""
 
-    ts: datetime
-    precipitation_mm: float | None = None
+    ts: datetime = Field(description="End of the interval the precipitation was summed over.")
+    precipitation_mm: float | None = Field(
+        default=None,
+        description="Precipitation summed over the interval before `ts` (the preceding hour for "
+        "`hourly`, the preceding 15 minutes for `minutely_15`), millimetres.",
+    )
     precipitation_probability_pct: float | None = None
 
 
@@ -147,6 +166,12 @@ class Weather(BaseModel):
     elevation_m: float | None = None
     current: WeatherNow
     hourly: list[WeatherStep]
+    minutely_15: list[WeatherStep] = Field(
+        default_factory=list,
+        description="Open-Meteo's 15-minute precipitation for the next four hours. Outside Europe "
+        "and North America it is interpolated from hourly models; empty in copies fetched before "
+        "it was asked for.",
+    )
     fetched_at: datetime = Field(description="When this copy was retrieved from Open-Meteo.")
     age_s: float = Field(description="Seconds since `fetched_at`, computed per request.")
     stale: bool = Field(description=f"True once `age_s` exceeds the {int(TTL_S)} s cache window.")
@@ -169,6 +194,26 @@ def clear_cache() -> None:
     """Forget every kept response (tests)."""
     with _lock:
         _cache.clear()
+
+
+class WeatherRefused(HTTPException):
+    """The 503 for "no copy to serve", with the cause kept apart from any one page's framing.
+
+    ``reason`` says what happened and how to fix it, and nothing about who is asking. The weather
+    route appends the dashboard's note ("the flood forecast on this page does not depend on it");
+    ``/v1/outlook``, whose answer is made of this rain, words its own refusal around ``reason``
+    alone, so it never repeats a sentence that is false on its screen.
+    """
+
+    def __init__(self, code: str, reason: str, note: str = "") -> None:
+        message = f"{reason} {note}".strip()
+        super().__init__(status_code=503, detail={"code": code, "message": message, "run_id": None})
+        self.code = code
+        self.reason = reason
+
+
+DASHBOARD_NOTE = "The flood forecast on this page does not depend on it."
+"""Appended by the weather route only: true of the dashboard, false of the live outlook."""
 
 
 def cache_path(city: str) -> Path:
@@ -242,7 +287,19 @@ def _hourly(payload: dict[str, Any], offset_s: int, after: datetime | None) -> l
     usually already in the past. Six are requested and the ones that have happened are dropped,
     which is why "the next four hours" is the next four, not "this hour and three more".
     """
-    block = payload.get("hourly") or {}
+    return _series(payload, "hourly", offset_s, after, HOURLY_STEPS)
+
+
+def _minutely(payload: dict[str, Any], offset_s: int, after: datetime | None) -> list[WeatherStep]:
+    """The next :data:`MINUTELY_STEPS` 15-minute steps strictly after ``after``; see `_hourly`."""
+    return _series(payload, "minutely_15", offset_s, after, MINUTELY_STEPS)
+
+
+def _series(
+    payload: dict[str, Any], block_name: str, offset_s: int, after: datetime | None, limit: int
+) -> list[WeatherStep]:
+    """One of Open-Meteo's time blocks as steps strictly after ``after``, at most ``limit``."""
+    block = payload.get(block_name) or {}
     times = block.get("time") or []
     rain = block.get("precipitation") or []
     prob = block.get("precipitation_probability") or []
@@ -258,7 +315,7 @@ def _hourly(payload: dict[str, Any], offset_s: int, after: datetime | None) -> l
                 precipitation_probability_pct=_number(prob, index),
             )
         )
-        if len(steps) == HOURLY_STEPS:
+        if len(steps) == limit:
             break
     return steps
 
@@ -281,6 +338,8 @@ def _fetch(city: str, config: CityConfig) -> dict[str, Any]:
             "current": CURRENT_FIELDS,
             "hourly": list(HOURLY_FIELDS),
             "forecast_hours": REQUEST_HOURS,
+            "minutely_15": list(MINUTELY_FIELDS),
+            "forecast_minutely_15": REQUEST_MINUTELY,
             "timezone": "Asia/Kolkata",
         },
         timeout=TIMEOUT_S,
@@ -316,6 +375,7 @@ def _fetch(city: str, config: CityConfig) -> dict[str, Any]:
             weather=WMO_LABELS.get(code_int) if code_int is not None else None,
         ),
         hourly=_hourly(raw, offset_s, now_ts),
+        minutely_15=_minutely(raw, offset_s, now_ts),
         fetched_at=datetime.now(IST),
         age_s=0.0,
         stale=False,
@@ -399,6 +459,15 @@ def weather(
     good copy with its true age and `stale: true`. Only when no copy has ever been fetched does
     this answer 503, with the reason named.
     """
+    return get_weather(city)
+
+
+def get_weather(city: str) -> Weather:
+    """The route's whole answer as a function, so `/v1/outlook` reads the same copy and cache.
+
+    Raises the section 12 envelope (400, 404 or 503) exactly as the route does; a 503 is a
+    :class:`WeatherRefused`, whose ``reason`` a caller can re-word for its own screen.
+    """
     slug = _city(city)
     config = _config(slug)
     kept = _cached(slug)
@@ -415,8 +484,7 @@ def weather(
                     "fetched before the network was switched off."
                 ],
             )
-        raise api_error(
-            503,
+        raise WeatherRefused(
             "offline",
             "VARUNA_OFFLINE=1 blocks outbound requests and no weather has been cached for "
             f"{slug} yet. Unset VARUNA_OFFLINE, or run once with the network to fill "
@@ -432,11 +500,10 @@ def weather(
                 kept,
                 [f"Open-Meteo could not be reached ({error}); showing the last good copy."],
             )
-        raise api_error(
-            503,
+        raise WeatherRefused(
             "weather_unavailable",
-            f"Open-Meteo could not be reached ({error}) and nothing has been cached for {slug}. "
-            "The flood forecast on this page does not depend on it.",
+            f"Open-Meteo could not be reached ({error}) and nothing has been cached for {slug}.",
+            DASHBOARD_NOTE,
         ) from error
 
     _store(slug, fresh)
@@ -447,14 +514,18 @@ def weather(
 __all__ = [
     "ATTRIBUTION",
     "LICENCE",
+    "LICENCE_URL",
     "OPEN_METEO_URL",
     "SOURCE",
+    "SOURCE_URL",
     "TTL_S",
     "GeoPoint",
     "Weather",
     "WeatherNow",
+    "WeatherRefused",
     "WeatherStep",
     "cache_path",
     "clear_cache",
+    "get_weather",
     "router",
 ]

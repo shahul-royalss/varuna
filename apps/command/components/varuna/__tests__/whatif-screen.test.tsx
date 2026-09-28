@@ -6,6 +6,8 @@ import { WhatIfScreen } from "@/app/whatif/whatif-screen";
 import { useRunStore } from "@/lib/stores/run";
 import { useUiStore } from "@/lib/stores/ui";
 
+import fixture from "@/lib/api/__tests__/whatif-emulator.fixture.json";
+
 /** The query string the lab reads at mount (P7.11). Set it before `renderScreen`. */
 const nav = vi.hoisted(() => ({ params: new URLSearchParams() }));
 
@@ -32,7 +34,9 @@ describe("WhatIfScreen", () => {
 
   it("labels the emulator honestly", () => {
     renderScreen();
-    expect(screen.getByRole("heading", { level: 1, name: "What-if lab" })).toBeInTheDocument();
+    // The screen is Kalpana (ADR-0085), and the page answers the name with its English gloss.
+    const heading = screen.getByRole("heading", { level: 1, name: "Kalpana" });
+    expect(heading).toHaveAccessibleDescription(/^What-if lab/);
     expect(
       screen.getByText("Reduced-order emulator calibrated to VARUNA-Twin"),
     ).toBeInTheDocument();
@@ -104,38 +108,131 @@ describe("WhatIfScreen", () => {
     }
   });
 
-  it("disables the two levers the request does not carry, and leaves them out of the scenario line", () => {
+  it("offers every emulator lever, and names each set lever in the scenario line", () => {
     renderScreen();
 
-    // Cleaning itself is a lever now - segments picked on a hotspot are sent and cleaned - but
-    // *ranking* pipes by beta is not, because nothing attributes a junction's depth to pipes on
-    // an element-wise emulator (ADR-0042); and there is no pump-plan field at all. Both switches
-    // say what is missing rather than sitting inert (section 17).
-    for (const [name, reason] of [
-      ["Clean top 14 by beta", "Pipes are ranked per junction, in the hotspot's drawer"],
-      ["Pump plan", "The pump plan is not a what-if lever yet (P7.7)"],
-    ]) {
-      // Base UI renders a disabled switch as a span with aria-disabled rather than a form
-      // element, so jest-dom's toBeDisabled does not apply; the announced state is the assertion.
-      const lever = screen.getByRole("switch", { name });
-      expect(lever).toHaveAttribute("aria-disabled", "true");
-      const helpId = lever.getAttribute("aria-describedby");
-      expect(helpId).toBeTruthy();
-      expect(document.getElementById(helpId as string)).toHaveTextContent(reason);
+    // "Clean top 14 by blockage" and the pump plan are levers of POST /v1/whatif now: each switch
+    // is live, and its sub-copy says what the endpoint does with it, including the lower bound.
+    const top = screen.getByRole("switch", { name: "Clean top 14 by blockage" });
+    const pump = screen.getByRole("switch", { name: "Pump plan" });
+    for (const lever of [top, pump]) {
+      expect(lever).not.toHaveAttribute("aria-disabled", "true");
     }
+    const pumpHelp = document.getElementById(pump.getAttribute("aria-describedby") as string);
+    expect(pumpHelp).toHaveTextContent("A lower bound");
+    expect(pumpHelp).toHaveTextContent("Synthetic pump inventory");
 
-    // The pre-run line named both switches while sending neither; it now names only the levers.
     expect(screen.getByText(/^Scenario ready to run:/)).toHaveTextContent(
       "Scenario ready to run: Rain 1.0x, tide +0.0 m.",
     );
-    expect(screen.queryByText(/pipes cleaned/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/pump plan on/)).not.toBeInTheDocument();
+    act(() => {
+      fireEvent.click(top);
+      fireEvent.click(pump);
+    });
+    expect(screen.getByText(/^Scenario ready to run:/)).toHaveTextContent(
+      "Rain 1.0x, tide +0.0 m, top 14 pipes cleaned, pump plan on.",
+    );
+    // The tide note says what happens now, before Run: the tide is not refused, it runs on the
+    // full physics, because the emulator has no sea level to move.
+    expect(screen.getByText(/^Tide runs the full physics/)).toHaveTextContent(
+      "The emulator cannot move the sea.",
+    );
+    // With the tide at the run's own, there is nothing to reset it to.
+    expect(screen.getByRole("button", { name: "Reset the tide offset to +0.0 m" })).toBeDisabled();
+  });
+
+  it("draws every changed street, tables each hotspot and names the largest changes", async () => {
+    // The body `POST /v1/whatif` produced on the five-street test run (rain 1.5x, tide +0.5 m,
+    // the pump plan and "clean top 1"): services/api/tests/test_whatif_emulator.py.
+    const layer = {
+      type: "FeatureCollection",
+      features: ["S-A", "S-B", "S-C", "S-D"].map((id, i) => ({
+        type: "Feature",
+        properties: { segment_id: id, name: null, road_class: "primary" },
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [72.84 + i * 0.001, 19.01],
+            [72.841 + i * 0.001, 19.011],
+          ],
+        },
+      })),
+    };
+    const fetchMock = vi.fn(async (input: RequestInit | RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/v1/whatif")) {
+        return new Response(JSON.stringify(fixture.emulator), { status: 200 });
+      }
+      if (url.includes("/layers/segments")) {
+        return new Response(JSON.stringify(layer), { status: 200 });
+      }
+      void init;
+      return new Response(JSON.stringify({ features: [], runs: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      renderScreen();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("switch", { name: "Pump plan" }));
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Run what-if" }));
+      });
+      const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/v1/whatif"));
+      expect(JSON.parse(String((call?.[1] as RequestInit).body))).toMatchObject({
+        pump_plan: true,
+      });
+
+      // The endpoint's own count, and how much of it the map could draw: five changed, four
+      // with geometry in the served layer (S-E has none in this layer).
+      expect(await screen.findByText(fixture.emulator.summary)).toBeInTheDocument();
+      expect(screen.getByText(/^Drawn:/)).toHaveTextContent(
+        "Drawn: 4 of 5. 1 changed segment has no geometry in the served street layer",
+      );
+      // Tide, clean-top and pump lines, in the endpoint's words.
+      expect(screen.getByText(/not in this answer: the emulator has no sea level/)).toBeVisible();
+      expect(screen.getByText(/^Top 1 pipe by learned blockage, city-wide: 1 pipe/)).toBeVisible();
+      expect(screen.getByText(/^Pump plan: 3 segments drained/)).toHaveTextContent(
+        "Synthetic pump inventory",
+      );
+
+      // Per hotspot from the register, with its minutes above 30 cm; the street table by name,
+      // with the street the run had dry saying so rather than showing 0 cm.
+      expect(screen.getByText("Test junction")).toBeInTheDocument();
+      expect(screen.getByText("Minutes above 30 cm")).toBeInTheDocument();
+      expect(screen.getByText("Segment S-D")).toBeInTheDocument();
+      expect(screen.getAllByText(/^Below/).length).toBeGreaterThan(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("says a tide-only physics check runs on the Twin instead of printing a disagreement", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/v1/whatif/physics-check")) {
+        return new Response(JSON.stringify(fixture.physics_tide), { status: 200 });
+      }
+      return new Response(JSON.stringify({ features: [], runs: [] }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      renderScreen();
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Physics check" }));
+      });
+      expect(await screen.findByText("Runs on the Twin")).toBeInTheDocument();
+      expect(screen.queryByText("Outside tolerance")).not.toBeInTheDocument();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("holds the result panels in their empty states until a what-if has run", () => {
     renderScreen();
-    expect(screen.getByText("No what-if yet")).toBeInTheDocument();
-    expect(screen.getByText("Set the controls and run one.")).toBeInTheDocument();
+    // Both result tables, per hotspot and largest street changes, wait for the first run.
+    expect(screen.getAllByText("No what-if yet")).toHaveLength(2);
+    expect(screen.getAllByText("Set the controls and run one.")).toHaveLength(2);
     // The physics check answers now (P7.8), so its empty state is the ordinary "not run yet"
     // and the button that runs it is live rather than disabled with a reason.
     expect(screen.getByText("Physics check not run")).toBeInTheDocument();

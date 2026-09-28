@@ -43,6 +43,30 @@ def test_a_disabled_deployment_refuses_with_the_envelope_and_starts_nothing(
     assert started == [], "a refused request must not start a build"
 
 
+@pytest.mark.parametrize("asked", ["mumbai", "Mumbai", " mumbai "])
+def test_the_replay_city_is_refused_and_nothing_is_rebuilt(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, fresh_settings: None, asked: str
+) -> None:
+    """One click on /onboard?city=mumbai would rewrite city/mumbai/ under the demo, and its
+    design-storm run would displace the 2 July 2019 bake as Mumbai's default run."""
+    import varuna_api.routers.onboard as onboard_router
+
+    started: list[object] = []
+    monkeypatch.setattr(onboard_router, "start_job", lambda **kw: started.append(kw))
+    monkeypatch.delenv("VARUNA_ONBOARD_ENABLED", raising=False)
+    monkeypatch.setenv("VARUNA_CITY", "mumbai")
+
+    res = client.post("/v1/onboard", json={"city": asked, "design_storm": "MUM-IDF-25yr"})
+
+    assert res.status_code == 409, res.text
+    error = res.json()["error"]
+    assert error["code"] == "city_is_replay_city"
+    # Section 6.8: it says what happened and what to do instead.
+    assert "city/mumbai/" in error["message"]
+    assert "city=chennai" in error["message"]
+    assert started == [], "a refused request must not start a build"
+
+
 def test_the_laptop_default_still_accepts_a_build(
     client: TestClient, monkeypatch: pytest.MonkeyPatch, fresh_settings: None
 ) -> None:

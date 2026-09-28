@@ -78,6 +78,7 @@ __all__ = [
     "DT_MAX_S",
     "DT_MIN_S",
     "FRICTION_DEPTH_EXPONENT",
+    "CflScope",
     "KernelTerrain",
     "MassBalanceError",
     "StepTally",
@@ -85,6 +86,7 @@ __all__ = [
     "SurfaceRun",
     "SurfaceStepper",
     "cfl_dt",
+    "cfl_scope",
     "dry_state",
     "prepare_terrain",
     "run_surface",
@@ -505,16 +507,127 @@ def _update_depth(
 
 
 # ============================================================================ time step
-def cfl_dt(h: NDArray[np.floating], res_m: float, max_dt_s: float = DT_MAX_S) -> float:
+def cfl_dt(
+    h: NDArray[np.floating],
+    res_m: float,
+    max_dt_s: float = DT_MAX_S,
+    scope: CflScope | None = None,
+) -> float:
     """``dt = 0.7 * dx / sqrt(g * h_max)``, clamped to ``[0.5, max_dt_s]`` (CLAUDE.md 11.3).
 
     A dry grid has no wave to resolve, so the clamp returns ``max_dt_s``.
+
+    ``scope`` is the grid's :class:`CflScope` when it has a sea, and then ``h_max`` is the depth
+    of the land and of the shoreline faces, never of the sea's own water. With ``None`` every
+    cell counts, which is the expression this function always evaluated. A NaN on land still
+    comes back as NaN, which is what stops a poisoned run's sub-stepping.
+    """
+    return _cfl_step(h, res_m, max_dt_s, scope)
+
+
+def _cfl_step(
+    h: NDArray[np.floating], res_m: float, max_dt_s: float, scope: CflScope | None
+) -> float:
+    """:func:`cfl_dt`'s arithmetic, shared with ``coupling._first_substep_s``.
+
+    The whole grid's maximum comes first, and it is the answer when there is no sea. The sea's
+    scope is only read when that maximum would shorten the step below ``max_dt_s``: the scope's
+    depth is never deeper, so a grid whose deepest cell cannot shorten the step is at the ceiling
+    either way. At 30 m and a 5 s sync that is any grid shallower than about 1.8 m, which is
+    most of a monsoon morning, so the scope costs nothing then.
     """
     h_max = float(np.max(h)) if h.size else 0.0
+    if scope is not None and _step_for(h_max, res_m, max_dt_s) < max_dt_s:
+        h_max = scope.depth_m(h)
+    return _step_for(h_max, res_m, max_dt_s)
+
+
+def _step_for(h_max: float, res_m: float, max_dt_s: float) -> float:
     if h_max <= 0.0:
         return float(max_dt_s)
     dt = CFL_ALPHA * float(res_m) / np.sqrt(GRAVITY * h_max)
     return float(min(max(dt, DT_MIN_S), max_dt_s))
+
+
+@dataclass(frozen=True, slots=True)
+class CflScope:
+    """The depths that can make the explicit step unstable on a grid with a sea.
+
+    A sea cell is clamped to ``max(stage - z, 0)`` before the fluxes and again after continuity
+    (:func:`_step`). Two sea cells side by side therefore start every step at the same level, so
+    the face between them sees no slope and carries nothing, and whatever continuity moves
+    between them the second clamp overwrites. What survives the clamp is the flux across a face
+    between a sea cell and open land (neither sea nor a building), and that flux is carried by
+    the face's flow depth ``h_f = max(h + z) - max(z)`` (:func:`_update_flux`), not by the sea
+    cell's own depth: a 5 m hole beside a quay moves only what stands above the quay.
+
+    So ``h_max`` is the deepest of the land cells and of the shoreline faces. On land that is the
+    old rule - a face between two land cells is never deeper than the deeper of them. Counting
+    the sea's own water let one hole set the step for a whole run: Chennai's sea holds a cell at
+    -5.29 m, joined to the rest of the sea only at a corner, with land on two faces and buildings
+    on the other two. At mean sea level it stands 5.29 m deep, so every 5 s sync split in two
+    (2.91 s), while the deepest face any sea cell has with dry land there carries 0.18 m.
+    Leaving out only the cells with no land face would not have caught it: the hole is shore.
+    """
+
+    land: NDArray[np.bool_]
+    """Every cell that is not clamped sea; buildings included, which hold no water."""
+    face_sea: NDArray[np.intp]
+    """Flat index of the sea cell of each face between the sea and open land."""
+    face_land: NDArray[np.intp]
+    """Flat index of that face's land cell."""
+    z_sea: NDArray[np.float64]
+    z_land: NDArray[np.float64]
+    z_top: NDArray[np.float64]
+    """``max(z_sea, z_land)`` per face: the sill the flow depth is measured from."""
+
+    def depth_m(self, h: NDArray[np.floating]) -> float:
+        """The deepest land cell or shoreline face flow depth; NaN on land comes back as NaN."""
+        land = float(np.max(h, where=self.land, initial=0.0))
+        if not self.face_sea.size:
+            return land
+        flat = np.ravel(h)
+        level = np.maximum(flat[self.face_sea] + self.z_sea, flat[self.face_land] + self.z_land)
+        return float(np.max((land, float(np.max(level - self.z_top)))))
+
+
+def cfl_scope(
+    sea_index: tuple[NDArray[np.intp], NDArray[np.intp]] | None, kernel: KernelTerrain
+) -> CflScope | None:
+    """The :class:`CflScope` of a grid whose ``sea_index`` cells are clamped; ``None`` with no sea,
+    and :func:`cfl_dt` then evaluates exactly the expression it always did."""
+    if sea_index is None:
+        return None
+    shape = kernel.shape
+    sea = np.zeros(shape, dtype=np.bool_)
+    sea[sea_index] = True
+    open_land = ~sea & ~kernel.blocked
+    index = np.arange(sea.size, dtype=np.intp).reshape(shape)
+    face_sea: list[NDArray[np.intp]] = []
+    face_land: list[NDArray[np.intp]] = []
+    # Each face once: between a cell and its southern neighbour, then its eastern one.
+    for first, second in (
+        ((slice(None, -1), slice(None)), (slice(1, None), slice(None))),
+        ((slice(None), slice(None, -1)), (slice(None), slice(1, None))),
+    ):
+        a, b = index[first], index[second]
+        sea_a, sea_b = sea[first], sea[second]
+        land_a, land_b = open_land[first], open_land[second]
+        forward = sea_a & land_b
+        backward = land_a & sea_b
+        face_sea += [a[forward], b[backward]]
+        face_land += [b[forward], a[backward]]
+    sea_cells = np.concatenate(face_sea)
+    land_cells = np.concatenate(face_land)
+    z = kernel.z.ravel()
+    return CflScope(
+        land=~sea,
+        face_sea=sea_cells,
+        face_land=land_cells,
+        z_sea=z[sea_cells],
+        z_land=z[land_cells],
+        z_top=np.maximum(z[sea_cells], z[land_cells]),
+    )
 
 
 # ============================================================================ public step
@@ -616,6 +729,7 @@ def run_surface(
     if sea_index is not None and tide_stage_m is None:
         raise ValueError("sea_mask was given without tide_stage_m; the stage sets their level")
     stage_at = _stage_function(tide_stage_m)
+    scope = cfl_scope(sea_index, kernel)
 
     initial = state.volume_m3(kernel.cell_area_m2)
     totals = dict.fromkeys(("rain", "surcharge", "inlet", "tide_in", "tide_out", "created"), 0.0)
@@ -627,7 +741,7 @@ def run_surface(
     n_clamped_low = 0
 
     while elapsed_s < duration_s - _TIME_EPS_S:
-        dt = cfl_dt(state.h, kernel.res_m, max_dt_s)
+        dt = cfl_dt(state.h, kernel.res_m, max_dt_s, scope)
         if dt <= DT_MIN_S + _TIME_EPS_S:
             n_clamped_low += 1
         remaining = duration_s - elapsed_s
@@ -754,6 +868,7 @@ class SurfaceStepper:
         "_audit_every",
         "_audits",
         "_call_ms",
+        "_cfl_scope",
         "_dt_max",
         "_dt_min",
         "_n_clamped_low",
@@ -788,6 +903,7 @@ class SurfaceStepper:
         self.kernel = kernel
         self.state = state
         self._sea_index = _sea_index(sea_mask, kernel)
+        self._cfl_scope = cfl_scope(self._sea_index, kernel)
         self._workspace = _Workspace(shape)
         self._rain: NDArray[np.float64] | None = None
         self._rain_seen = np.zeros(shape, dtype=np.bool_)
@@ -832,6 +948,11 @@ class SurfaceStepper:
         return _source(value, self.kernel.shape, name)
 
     # ------------------------------------------------------------------ stepping
+    @property
+    def cfl_scope(self) -> CflScope | None:
+        """What :func:`cfl_dt` reads on this grid, built once; ``None`` when it has no sea."""
+        return self._cfl_scope
+
     @property
     def n_steps(self) -> int:
         """CFL sub-steps taken since the stepper was built."""
@@ -881,7 +1002,7 @@ class SurfaceStepper:
         elapsed_s = 0.0
         n_steps = 0
         while elapsed_s < duration_s - _TIME_EPS_S:
-            dt = cfl_dt(state.h, kernel.res_m, max_dt_s)
+            dt = cfl_dt(state.h, kernel.res_m, max_dt_s, self._cfl_scope)
             if dt <= DT_MIN_S + _TIME_EPS_S:
                 self._n_clamped_low += 1
             remaining = duration_s - elapsed_s

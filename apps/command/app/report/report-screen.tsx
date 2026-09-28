@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { ArrowLeft } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import { LanguageToggle } from "@/components/varuna/language-toggle";
 import { PageHeader } from "@/components/varuna/page-header";
 import { ReportWizard } from "@/components/varuna/report-wizard";
@@ -22,16 +22,15 @@ export function ReportScreen() {
         <Wordmark size="sm" withMark />
         <LanguageToggle />
       </div>
-      <Button
-        variant="ghost"
-        size="lg"
-        className="h-11 self-start"
-        render={<Link href={MAP_ROUTE} />}
-        nativeButton={false}
+      {/* Navigation, so a real link rather than a link announced as a button, as the
+          confirmation's links are. */}
+      <Link
+        href={MAP_ROUTE}
+        className={buttonVariants({ variant: "ghost", size: "lg", className: "h-11 self-start" })}
       >
         <ArrowLeft aria-hidden="true" />
         {t("backToMap")}
-      </Button>
+      </Link>
 
       <PageHeader title={t("title")} description={t("description")} honesty={t("honesty")} />
 

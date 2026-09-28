@@ -91,6 +91,7 @@ export function matchStreets(streets: StreetOption[], query: string): StreetOpti
     ? streets.filter(
         (street) =>
           (street.name ?? "").toLowerCase().includes(needle) ||
+          (street.displayName ?? "").toLowerCase().includes(needle) ||
           street.segmentId.toLowerCase().includes(needle),
       )
     : streets;
@@ -105,20 +106,19 @@ export function matchStreets(streets: StreetOption[], query: string): StreetOpti
 /**
  * How a street reads in the list and in the result sentence.
  *
- * **"Unnamed road" is a claim, and it is only made where the feed makes it.** A street picked from
- * the list arrives with `name: null` because OSM names none of 52.6 % of Mumbai's segments, so
- * calling it unnamed is true. A segment id typed into the form carries no name because this panel
- * never asked for one - `Dr Babasaheb Ambedkar Marg` closed by its id would have been printed as
- * "Unnamed road S618477973-001", which is a fact the screen invented. `known` separates not-named
- * from not-looked-up, and the typed path says "Segment <id>" instead.
+ * OSM's name, else the feed's display name for the 52.6 % of Mumbai's segments OSM does not name
+ * ("off Dr Ambedkar Road", "Service road near Wadala Depot"), else "Segment <id>". Never
+ * "Unnamed road": a segment id typed into the form carries no name because this panel never
+ * asked for one - `Dr Babasaheb Ambedkar Marg` closed by its id once read "Unnamed road
+ * S618477973-001", a fact the screen invented - and a listed street always has a display name.
  */
 export function streetLabel(
-  street: Pick<StreetOption, "name" | "segmentId"> & { known?: boolean },
+  street: Pick<StreetOption, "name" | "segmentId" | "displayName"> & { known?: boolean },
 ): string {
   if (street.name) return street.name;
-  return street.known === false
-    ? `Segment ${street.segmentId}`
-    : `Unnamed road ${street.segmentId}`;
+  if (street.displayName && street.known !== false)
+    return `${street.displayName} (${street.segmentId})`;
+  return `Segment ${street.segmentId}`;
 }
 
 export interface ClosurePanelProps {

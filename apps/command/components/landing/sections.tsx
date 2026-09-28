@@ -17,6 +17,7 @@ import type { Route } from "next";
 
 import { ENGINE_DIAGRAMS, type EngineName } from "@/components/landing/engine-diagrams";
 import { BODY, H2, LEAD, SECTION } from "@/components/landing/styles";
+import { navAccessibleName, navItem } from "@/lib/nav";
 
 // The cycle diagram (item 4, motion M3) and the roadmap (item 9, motion M5) live in their own
 // files: the cycle is a client component that fetches its timings, and the roadmap carries the
@@ -397,15 +398,30 @@ export function DataSources() {
 
 /* ---- 10. Team and footer ---------------------------------------------------------------- */
 
-const LINKS = [
-  { href: "/console", label: "Command console" },
-  { href: "/drains", label: "Drain X-ray" },
-  { href: "/route", label: "Route planner" },
-  { href: "/alerts", label: "Alert centre" },
-  { href: "/pumps", label: "Pump dispatch" },
-  { href: "/verify", label: "Verification" },
+/**
+ * Every operator screen is listed by its Sanskrit name and gloss ("Nadi, drain health", "Drishti,
+ * command console"), from the same rail entry the console's nav reads (ADR-0085), so the footer
+ * can never name a screen the bar does not. The public map and the API explorer are not on the
+ * rail and keep their English names.
+ */
+const screenLink = (id: string) => ({
+  href: navItem(id).href,
+  label: navAccessibleName(navItem(id)),
+  // The Sanskrit word is a proper noun a translator must leave alone; the gloss is not.
+  name: navItem(id).label,
+});
+
+const LINKS: { href: string; label: string; name?: string }[] = [
+  screenLink("console"),
+  screenLink("drains"),
+  screenLink("route"),
+  screenLink("alerts"),
+  screenLink("pumps"),
+  screenLink("whatif"),
+  screenLink("replay"),
+  screenLink("verify"),
   { href: "/map", label: "Public map" },
-  { href: "/onboard", label: "City onboarding" },
+  screenLink("onboard"),
   { href: "/api", label: "API explorer" },
 ];
 
@@ -468,7 +484,14 @@ export function Footer() {
               href={link.href as Route}
               className="text-small text-text-2 underline"
             >
-              {link.label}
+              {link.name ? (
+                <>
+                  <span translate="no">{link.name}</span>
+                  {link.label.slice(link.name.length)}
+                </>
+              ) : (
+                link.label
+              )}
             </Link>
           ))}
           <a

@@ -20,7 +20,9 @@ per process, which is far above a human at a desk and far below anything that co
 
 **Why reads are ungated.** A closure is a public fact - the citizen dashboard has to be able to
 say why a street is refused - so ``GET /v1/ops/closures``, ``/v1/ops/log`` and ``/v1/ops/alerts``
-answer anyone. Only the acts are gated.
+answer anyone. Only the acts are gated, plus two things only the desk may read: a reporter's
+exact position (``GET /v1/ops/reports``) and the officer's name on a report status, which the
+ungated log withholds unless the request carries the passphrase.
 """
 
 from __future__ import annotations
@@ -164,6 +166,46 @@ def require_ops(
 
 OpsWrite = Annotated[None, Depends(require_ops)]
 """Dependency alias, so every gated route reads the same and none can forget the gate."""
+
+
+def require_ops_read(
+    x_varuna_ops: Annotated[str | None, Header(description="The desk passphrase.")] = None,
+) -> None:
+    """Gate a read only the desk may make: a reporter's exact position, an officer's name.
+
+    The same passphrase and the same refusals as :func:`require_ops`, and not counted against
+    the write window: reading the inbox is not an act, and a desk refreshing it must not use up
+    the minute's closures.
+    """
+    expected = _configured_passphrase()
+    if not expected:
+        _refuse_disabled()
+    if not x_varuna_ops:
+        raise api_error(
+            401,
+            "ops_passphrase_required",
+            f"This read is for the ward desk and it carries no passphrase. Send it in the "
+            f"{OPS_HEADER} header.",
+        )
+    if not hmac.compare_digest(x_varuna_ops.strip(), expected):
+        raise api_error(
+            403,
+            "ops_passphrase_rejected",
+            f"The {OPS_HEADER} passphrase does not match this API's {PASSPHRASE_ENV}.",
+        )
+
+
+OpsRead = Annotated[None, Depends(require_ops_read)]
+"""The desk's gated reads: passphrase checked, write window untouched."""
+
+
+def presents_passphrase(x_varuna_ops: str | None) -> bool:
+    """Whether an ungated read also carries the desk's passphrase, so it may see what only the
+    desk sees. Never refuses: a missing or wrong passphrase just gets the public answer."""
+    expected = _configured_passphrase()
+    if not expected or not x_varuna_ops:
+        return False
+    return hmac.compare_digest(x_varuna_ops.strip(), expected)
 
 
 # ---- request bodies ---------------------------------------------------------------------
@@ -840,14 +882,148 @@ def post_pump_status(pump_id: str, body: PumpStatusRequest, _gate: OpsWrite) -> 
     }
 
 
+# ---- citizen reports ----------------------------------------------------------------------
+class ReportStatusRequest(VarunaModel):
+    """Body of ``POST /v1/ops/reports/{report_id}/status``."""
+
+    status: Literal["received", "seen", "crew_sent", "resolved", "dismissed"]
+    note: str | None = Field(
+        default=None,
+        max_length=300,
+        description="Shown to the reporter beside the status, so write it for them.",
+    )
+    user: str = Field(default="ward officer", max_length=80, description="Kept on the desk only.")
+    role: Literal["ward officer", "control room", "field crew"] = Field(
+        default="ward officer", description="What the reporter sees in place of the name."
+    )
+
+
+@router.post(
+    "/ops/reports/{report_id}/status",
+    tags=["ops"],
+    summary="Set a citizen report's status (recorded in the ops log)",
+)
+def post_report_status(
+    report_id: str, body: ReportStatusRequest, _gate: OpsWrite
+) -> dict[str, Any]:
+    """Tell a reporter what the desk did: seen, crew sent, resolved, or dismissed.
+
+    An append, like every desk act: the report stays exactly as it was sent, and ``GET
+    /v1/reports`` folds the latest status onto it when it is read. A dismissed report leaves
+    every public list and its photo stops being served; it stays here, and a later status brings
+    it back.
+    """
+    from varuna_api.routers.reports import find_report, report_histories, report_view, status_city
+
+    identifier = report_id.strip()
+    row = find_report(identifier) if identifier and len(identifier) <= 80 else None
+    if row is None:
+        raise api_error(
+            404,
+            "report_not_found",
+            f"No report {identifier} is kept here, so there is nothing to set a status on. "
+            "GET /v1/ops/reports lists the ones that are.",
+        )
+    # The report's own city's log; one from outside every city goes to the configured city's,
+    # which is one of the logs `report_histories` reads back.
+    city = _city(status_city(row))
+    entry = _append(
+        city,
+        {
+            "kind": "report_status",
+            "report_id": identifier,
+            "status": body.status,
+            "note": body.note or None,
+            "user": body.user,
+            "role": body.role,
+        },
+    )
+    history = report_histories().get(identifier, [])
+    log.info("api.report_status", report_id=identifier, status=body.status, city=city)
+    return {
+        "entry": entry,
+        "city": city,
+        "report": report_view(row, history, exact=True),
+        "notes": [
+            "The status is appended to the ops log; the report is unchanged and no forecast moved.",
+            (
+                "Dismissed: the report is hidden from every public list and its photo is no longer "
+                "served. A later status brings it back."
+                if body.status == "dismissed"
+                else "Everyone who opens the citizen dashboard sees this status, your role and your note, never your name."
+            ),
+        ],
+    }
+
+
+@router.get(
+    "/ops/reports",
+    tags=["ops"],
+    summary="Citizen reports as the desk sees them (exact coordinates; gated)",
+)
+def ops_reports(
+    _gate: OpsRead,
+    city: Annotated[str | None, Query(description="mumbai or chennai.")] = None,
+    bbox: Annotated[str | None, Query(description="min_lon,min_lat,max_lon,max_lat")] = None,
+    status_filter: Annotated[
+        Literal["received", "seen", "crew_sent", "resolved", "dismissed"] | None,
+        Query(alias="status"),
+    ] = None,
+    since: Annotated[str | None, Query(description="Received at or after, ISO 8601.")] = None,
+    origin: Annotated[Literal["citizen", "seed"] | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+) -> dict[str, Any]:
+    """Every report, dismissed and out-of-area ones included, with exact coordinates and names.
+
+    Behind the passphrase because a reporter's exact position is often their home. Not counted
+    against the write window.
+    """
+    from varuna_api.routers.reports import select_reports
+
+    body = select_reports(
+        exact=True,
+        city=city,
+        bbox=bbox,
+        status_filter=status_filter,
+        since=since,
+        origin=origin,
+        limit=limit,
+    )
+    return {**body, "writes_enabled": writes_enabled()}
+
+
 # ---- the log ----------------------------------------------------------------------------
+def _public_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    """An ops entry as the ungated log prints it.
+
+    A report status names the role and never the officer: ``POST /v1/ops/reports/{id}/status``
+    tells the officer so, and ``GET /v1/reports`` keeps it. The ungated log has to keep it too,
+    or ``?kind=report_status`` hands anyone every officer's name beside the report they handled.
+    Other kinds are unchanged; a closure is a public fact (module docstring).
+    """
+    if entry.get("kind") != "report_status":
+        return entry
+    public = {key: value for key, value in entry.items() if key != "user"}
+    public["user_withheld"] = True
+    return public
+
+
 @router.get("/ops/log", tags=["ops"], summary="The append-only authority log")
 def ops_log(
     city: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=2000)] = 200,
     kind: Annotated[str | None, Query(description="Filter to one entry kind.")] = None,
+    x_varuna_ops: Annotated[
+        str | None,
+        Header(description="Optional. With the desk passphrase, report statuses keep the name."),
+    ] = None,
 ) -> dict[str, Any]:
-    """Every authority edit for a city, newest first - the audit trail the desk is judged on."""
+    """Every authority edit for a city, newest first - the audit trail the desk is judged on.
+
+    Ungated, with one exception: a report status's officer name is printed only when the request
+    carries the desk passphrase. Without it the entry keeps its role and says the name was
+    withheld; a wrong passphrase is not refused, it just gets the public answer.
+    """
     from varuna_route import ops_overlay as ops
 
     name = _city(city)
@@ -861,19 +1037,37 @@ def ops_log(
             )
         rows = [r for r in rows if r.get("kind") == kind]
     newest = list(reversed(rows))[:limit]
+    desk = presents_passphrase(x_varuna_ops)
+    if not desk:
+        newest = [_public_entry(row) for row in newest]
     return {
         "city": name,
         "n_entries": len(rows),
         "n_returned": len(newest),
         "entries": newest,
+        "officer_names": "shown" if desk else "withheld",
         "writes_enabled": writes_enabled(),
         "passphrase_env": PASSPHRASE_ENV,
+        # The sentence a screen prints when writes are off, as its own field so no client has to
+        # find it among the notes by matching its words.
+        "writes_disabled_reason": (
+            None
+            if writes_enabled()
+            else f"This API is read-only: {PASSPHRASE_ENV} is not set where it runs."
+        ),
         "notes": [
             NO_FORECAST_CHANGED,
             (
                 "Writes are enabled on this API."
                 if writes_enabled()
                 else f"This API is read-only: {PASSPHRASE_ENV} is not set where it runs."
+            ),
+            (
+                "Officer names on report statuses are shown because this request carries the "
+                "desk passphrase."
+                if desk
+                else "Report statuses name the officer's role, not the officer. Send the desk "
+                f"passphrase in {OPS_HEADER} to see the name."
             ),
         ],
     }
@@ -1115,6 +1309,47 @@ def pumps_price(body: PumpPriceRequest) -> dict[str, Any]:
     return priced
 
 
+@router.get(
+    "/pumps/map",
+    tags=["pumps"],
+    summary="The run's pump plan on the city: depots, roads, and depth with and without each pump",
+)
+def pumps_map(
+    run_id: Annotated[str | None, Query()] = None,
+    city: Annotated[str | None, Query()] = None,
+    routes: Annotated[bool, Query()] = True,
+) -> dict[str, Any]:
+    """Each assignment of the run's own ``pump_plan.json``, drawn (Jalayantra, CLAUDE.md 7.6).
+
+    Per leg: the depot and the place with coordinates, the plan's ETA, the depth series at the
+    place with and without the pump (recomputed with the optimiser's own functions, with
+    ``agrees`` saying whether the recount reproduces the plan's minutes), its window above 45 cm,
+    and - with ``routes`` - the road a truck would take at the cycle time and what the pump buys
+    if it arrives when that road says. Read-only and ungated; the first answer for a run is slow
+    (the city's segment table and twelve routes) and is remembered, ``cached`` says which.
+    """
+    from varuna_api.pump_map import cached_dispatch_map
+
+    return cached_dispatch_map(run_id, _city(city), routes=routes)
+
+
+@router.get(
+    "/pumps/cycles",
+    tags=["pumps"],
+    summary="Which cycles carry a pump plan, and how many pumps each sends",
+)
+def pumps_cycles(city: Annotated[str | None, Query()] = None) -> dict[str, Any]:
+    """Every run of the city with a ``pump_plan.json``, oldest first, with its counts.
+
+    For the cycle that sends no pump: Jalayantra names the cycles that do and offers the one whose
+    plan avoids the most minutes above 45 cm (``busiest_run_id``). Read-only and ungated; nothing
+    is recomputed.
+    """
+    from varuna_api.pump_map import pump_cycles
+
+    return pump_cycles(_city(city))
+
+
 def _dispatch_messages(
     run_id: str, city: str, orders: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -1255,8 +1490,11 @@ __all__ = [
     "WRITES_PER_MINUTE",
     "ClosureRequest",
     "PumpStatusRequest",
+    "ReportStatusRequest",
     "apply_alert_state",
+    "presents_passphrase",
     "require_ops",
+    "require_ops_read",
     "reset_rate_limit",
     "router",
     "writes_enabled",
