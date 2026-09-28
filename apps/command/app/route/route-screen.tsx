@@ -25,6 +25,9 @@ import { apiUrl } from "@/lib/api/client";
 import { allSegments } from "@/lib/api/run-depth";
 import { apiProfile, loadPlaces, planRoute, type Place, type RoutePlan } from "@/lib/api/route";
 import { useReplayStore } from "@/lib/stores/replay";
+import { navItem } from "@/lib/nav";
+import { cityBounds } from "@/components/map/basemap";
+import { extentFrame, pathsFrame } from "@/lib/map/affected-bounds";
 
 /**
  * How long the form must hold still before a changed trip is routed again.
@@ -60,6 +63,10 @@ export function RouteScreen() {
   const [asked, setAsked] = useState(0);
   // The run the trip is costed against; undefined means the newest for this city.
   const [runId, setRunId] = useState<string | undefined>(undefined);
+  // An alert's "Plan a route around it" sends `?to=<lon>,<lat>&place=<street>`. The planner only
+  // routes between registered places (each with its source), so it picks the nearest registered
+  // place within ARRIVAL_SNAP_M and says which, rather than routing to a typed coordinate.
+  const [arrivalNote, setArrivalNote] = useState<string | null>(null);
 
   // A different cycle is a different answer, so the last one stops being shown with it.
   const pickCycle = useCallback((next: string) => {
@@ -76,8 +83,11 @@ export function RouteScreen() {
         // Preselect the demo trip: KEM Hospital to Sion Hospital (CLAUDE.md 3.3, 15).
         const kem = loaded.find((p) => p.name.includes("(KEM)"));
         const sion = loaded.find((p) => p.name.includes("(LTMG)"));
-        if (kem && sion) {
-          setRequest((current) => ({ ...current, originId: kem.id, destinationId: sion.id }));
+        const arrival = arrivalFromSearch(window.location.search, loaded);
+        if (arrival) setArrivalNote(arrival.note);
+        const destinationId = arrival?.place?.id ?? sion?.id;
+        if (kem && destinationId) {
+          setRequest((current) => ({ ...current, originId: kem.id, destinationId }));
         }
       })
       .catch(() => undefined);
@@ -177,6 +187,25 @@ export function RouteScreen() {
 
   const noIsochrones: Isochrone[] = useMemo(() => [], []);
 
+  // Where the map opens: on the trip, never on the whole city. With an answer, on every line it
+  // drew - both routes, the alternates and the streets avoided - so the detour and what it went
+  // around are in view together; before one, on the corridor between the trip's two ends (KEM
+  // Hospital to Sion Hospital by default). Choosing a different end re-arms the fit, because that
+  // is a different trip; a new departure time or profile re-frames only a camera nobody moved.
+  const routeFrame = useMemo(() => {
+    const within = cityBounds("mumbai");
+    // A route is a thin thing in a wide panel, so it gets more air than a flood does.
+    if (routes.length > 0) {
+      return pathsFrame(
+        routes.map((line) => line.path),
+        { within, padFraction: 0.2 },
+      );
+    }
+    const ends = places.filter((p) => p.id === request.originId || p.id === request.destinationId);
+    return extentFrame(ends, { within });
+  }, [routes, places, request.originId, request.destinationId]);
+  const tripKey = `${request.originId}>${request.destinationId}`;
+
   const naive: RouteSummary | null = plan?.naive
     ? {
         etaMin: plan.naive.minutes,
@@ -220,7 +249,8 @@ export function RouteScreen() {
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col gap-4 p-6">
           <PageHeader
-            title="Route planner"
+            title={navItem("route").label}
+            screen={navItem("route")}
             description="Prediction turned into an ambulance route."
           />
 
@@ -255,6 +285,11 @@ export function RouteScreen() {
                   {asked > 0 ? (
                     <p className="type-micro text-text-3 mt-2">
                       Changing the departure time, the profile or the tolerance routes again.
+                    </p>
+                  ) : null}
+                  {arrivalNote ? (
+                    <p className="type-micro text-text-2 mt-3" role="status">
+                      {arrivalNote}
                     </p>
                   ) : null}
                   {error ? <p className="type-small text-text-2 mt-3">{error}</p> : null}
@@ -318,6 +353,8 @@ export function RouteScreen() {
                       showBuildings={false}
                       showHotspots={false}
                       step={0}
+                      fitBounds={routeFrame}
+                      fitKey={tripKey}
                     />
                   ) : (
                     <EmptyState
@@ -337,4 +374,46 @@ export function RouteScreen() {
       </div>
     </AppShell>
   );
+}
+
+/** How close a registered place must be to an alert's street to stand in for it. */
+const ARRIVAL_SNAP_M = 300;
+
+/**
+ * The destination an alert's link asks for, as a registered place near it, with the sentence that
+ * says what happened. Null when the link carries no destination.
+ */
+export function arrivalFromSearch(
+  search: string,
+  places: readonly Place[],
+): { place: Place | null; note: string } | null {
+  const params = new URLSearchParams(search);
+  const to = params.get("to");
+  if (!to) return null;
+  const [lon, lat] = to.split(",").map(Number);
+  const street = params.get("place") ?? "the alert's street";
+  if (lon === undefined || lat === undefined || !Number.isFinite(lon) || !Number.isFinite(lat)) {
+    return null;
+  }
+  let best: Place | null = null;
+  let bestM = Infinity;
+  for (const place of places) {
+    const dx = (place.lon - lon) * 111_320 * Math.cos((lat * Math.PI) / 180);
+    const dy = (place.lat - lat) * 110_540;
+    const d = Math.hypot(dx, dy);
+    if (d < bestM) {
+      best = place;
+      bestM = d;
+    }
+  }
+  if (best && bestM <= ARRIVAL_SNAP_M) {
+    return {
+      place: best,
+      note: `Destination set to ${best.name}, the registered place ${Math.round(bestM)} m from ${street}.`,
+    };
+  }
+  return {
+    place: null,
+    note: `${street} is not near a registered place, so the trip stays KEM Hospital to Sion Hospital. Pick the destination the alert affects.`,
+  };
 }

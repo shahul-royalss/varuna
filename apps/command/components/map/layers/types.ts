@@ -18,6 +18,9 @@ export interface SegmentPath {
   width: number;
   /** Street name from OSM, where it has one. Drawn as a label at high zoom. */
   name?: string;
+  /** The name a tooltip or list prints: OSM's, else "off <street>" or "<class> near <place>"
+   * from the API's `display_name`. Never drawn as a map label - only OSM's name is. */
+  displayName?: string;
   /** Change in peak depth under a what-if, in cm. Negative is an improvement. */
   deltaCm?: number;
 }

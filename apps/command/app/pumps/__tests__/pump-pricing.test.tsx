@@ -23,7 +23,9 @@ const pricePumpPlacements = vi.fn<(input: unknown) => Promise<PricedPlan>>();
 vi.mock("@/lib/api/pumps", () => ({
   loadPumpPlan: () => loadPumpPlan(),
   pricePumpPlacements: (input: unknown) => pricePumpPlacements(input),
+  loadPumpMap: () => Promise.resolve(null),
 }));
+vi.mock("@/components/pumps/dispatch-map", () => ({ DispatchMap: () => null }));
 
 const dispatchPumps = vi.fn();
 vi.mock("@/lib/api/ops", async (importOriginal) => {
@@ -181,6 +183,7 @@ describe("PumpsScreen dispatch", () => {
 
   async function optimised() {
     render(<PumpsScreen />);
+    fireEvent.click(screen.getByRole("tab", { name: "Plan board" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "Optimise" })).toBeEnabled());
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Optimise" }));

@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from varuna_schemas.models import ErrorEnvelope, RunList, RunMeta
 
+from varuna_api.runs_util import onboarded_run_for
 from varuna_api.state import AppState, get_state, run_not_found
 
 router = APIRouter(prefix="/v1/runs", tags=["runs"])
@@ -30,9 +31,18 @@ def list_runs(
     in the same directory, and since ids sort chronologically `CHN-` came out above `MUM-` - so the
     console's run stamp, which reads `latest_run_id` from here, began naming a Chennai run over a
     map of Mumbai. `city=all` is the way to ask for the whole registry.
+
+    An onboarded city (Chennai) reports its onboarding build's first forecast as `latest_run_id`
+    when that run is on disk, the same run the wizard and its finish card open on
+    (`runs_util.onboarded_run_for`). Name order alone had let a superseded run win.
     """
     scope = None if city == "all" else (city or state.settings.varuna_city)
-    return state.registry.run_list(city=scope, bundle=bundle, limit=limit)
+    listing = state.registry.run_list(city=scope, bundle=bundle, limit=limit)
+    if scope is not None and bundle is None:
+        onboarded = onboarded_run_for(scope)
+        if onboarded is not None:
+            listing = listing.model_copy(update={"latest_run_id": onboarded.name})
+    return listing
 
 
 @router.get(

@@ -20,6 +20,7 @@ import {
   explainReasons,
   shareInTen,
   streetName,
+  UNNAMED_ROAD,
   vehicleNoun,
   type ExplainedReason,
 } from "@/lib/explain";
@@ -335,7 +336,7 @@ export function detourStreet(naive: RouteLeg | null, varuna: RouteLeg | null): s
   const onNaive = new Set(naive.streets.map((street) => streetName(street)));
   for (const street of varuna.streets) {
     const name = streetName(street);
-    if (!onNaive.has(name) && name !== "an unnamed road") return name;
+    if (!onNaive.has(name) && name !== UNNAMED_ROAD) return name;
   }
   return null;
 }
@@ -376,7 +377,7 @@ export function roadNames(leg: RouteLeg | null, limit = 3): string[] {
   const seen: string[] = [];
   for (const street of leg.streets) {
     const name = streetName(street);
-    if (name === "an unnamed road" || seen.includes(name)) continue;
+    if (name === UNNAMED_ROAD || seen.includes(name)) continue;
     seen.push(name);
     if (seen.length >= limit) break;
   }

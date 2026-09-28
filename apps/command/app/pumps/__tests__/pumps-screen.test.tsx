@@ -19,7 +19,10 @@ vi.mock("@number-flow/react", async () => {
 const loadPumpPlan = vi.fn<(runId?: string, signal?: AbortSignal) => Promise<PumpPlan | null>>();
 vi.mock("@/lib/api/pumps", () => ({
   loadPumpPlan: (runId?: string, signal?: AbortSignal) => loadPumpPlan(runId, signal),
+  // The dispatch map is its own test (pump-map.test.tsx); the board's tests do not wait for it.
+  loadPumpMap: () => Promise.resolve(null),
 }));
+vi.mock("@/components/pumps/dispatch-map", () => ({ DispatchMap: () => null }));
 
 import { PumpsScreen } from "@/app/pumps/pumps-screen";
 
@@ -105,6 +108,8 @@ function benefitOf(id: string): HTMLElement {
 
 async function openBoard() {
   render(<PumpsScreen />);
+  // The screen opens on the dispatch map; the kanban is the second view.
+  fireEvent.click(screen.getByRole("tab", { name: "Plan board" }));
   // Re-queried inside waitFor: the board mounts under a DndContext once the plan arrives, so the
   // button present before the fetch is not the one that becomes enabled.
   await waitFor(() => expect(screen.getByRole("button", { name: "Optimise" })).toBeEnabled());

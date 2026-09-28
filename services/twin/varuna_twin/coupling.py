@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import structlog
 
+from varuna_twin import swe2d
 from varuna_twin.types import GRAVITY, CouplingFluxes, DrainNetwork
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -57,6 +58,8 @@ __all__ = [
     "ORIFICE_CD",
     "SURCHARGE_CD",
     "WEIR_CD",
+    "advance_surface_with_capture",
+    "cap_inlet_to_cell_water",
     "compute_exchange",
     "coupling_to_drain_rates",
     "coupling_to_surface_rates",
@@ -200,6 +203,7 @@ def compute_exchange(
     compiled: bool = True,
     out: ExchangeBuffers | None = None,
     blocked: NDArray[np.bool_] | None = None,
+    sea: NDArray[np.bool_] | None = None,
 ) -> ExchangeResult:
     """Compute the inlet capture and surcharge fluxes for one sync interval.
 
@@ -223,6 +227,16 @@ def compute_exchange(
             the surcharge and 0.17 % of the inflow - and the building mask is dense over exactly
             the wards where the drain graph is densest (ADR-0039). Passing ``None`` keeps the old
             behaviour, which is only safe when the grid has no blocked cells.
+        sea: the city's sea, ``True`` on every cell the tide is imposed on (``terrain.sea``). A
+            node whose cell is sea exchanges nothing, exactly as under a building: no inlet
+            capture and no surcharge. The clamp refills a sea cell to the stage at every
+            sub-step, so an inlet there is an ungated pipe from the sea at ground minus 1.5 m -
+            past the coast wall, the tidal-outfall invert and any flap gate - and what it took
+            would be booked as ``sea_to_land`` where the audit cannot see it. The Mumbai build
+            puts 148 interior nodes on sea cells (106 on the Mithi creek buffer, 42 on open sea),
+            all 148 under water at the +2.218 m crest. The pipes meet the sea only at tidal
+            outfalls, whose head is pinned to the stage. ``None`` is a grid with no sea raster
+            and changes nothing.
 
     Returns:
         An :class:`ExchangeResult` with per-node and per-cell rates.
@@ -232,7 +246,16 @@ def compute_exchange(
 
     if compiled:
         return _compute_exchange_compiled(
-            surface_h, surface_z, drain_head, network, solver, cell_area_m2, sync_s, out, blocked
+            surface_h,
+            surface_z,
+            drain_head,
+            network,
+            solver,
+            cell_area_m2,
+            sync_s,
+            out,
+            blocked,
+            sea,
         )
 
     # Gather the 2D depth and elevation at each node's cell
@@ -240,12 +263,14 @@ def compute_exchange(
     col = np.asarray(network.cell_col, dtype=np.intp)
 
     # Nodes that have no 2D cell (row == -1) cannot exchange; nor can a node under a building,
-    # because the cell it would exchange with is one the 2D solver holds at zero depth.
+    # because the cell it would exchange with is one the 2D solver holds at zero depth; nor a
+    # node on the sea, whose cell the tide clamp holds at the stage.
     has_cell = (row >= 0) & (col >= 0)
-    if blocked is not None:
-        on_building = np.zeros(n_nodes, dtype=bool)
-        on_building[has_cell] = np.asarray(blocked, dtype=bool)[row[has_cell], col[has_cell]]
-        has_cell &= ~on_building
+    for mask in (blocked, sea):
+        if mask is not None:
+            excluded = np.zeros(n_nodes, dtype=bool)
+            excluded[has_cell] = np.asarray(mask, dtype=bool)[row[has_cell], col[has_cell]]
+            has_cell &= ~excluded
 
     h_at_node = np.zeros(n_nodes, dtype=np.float64)
     z_at_node = np.zeros(n_nodes, dtype=np.float64)
@@ -333,9 +358,12 @@ def compute_exchange(
         on_street = h_at_node[pulling_down] * cell_area_m2 / dt
         q_inlet[pulling_down] += np.minimum(orifice, on_street)
 
-    # No surcharge at outfalls
+    # No surcharge at outfalls, and no capture either: the reversed branch above can add to an
+    # outfall's inlet after the first zeroing, which the kernel never did. An outfall's head is
+    # imposed, so what it would "capture" is booked nowhere on the drain's side.
     q_surcharge[solver.fixed_head] = 0.0
     q_surcharge[~has_cell] = 0.0
+    q_inlet[solver.fixed_head] = 0.0
 
     # ---- Scatter onto the 2D grid --------------------------------------------
     q_inlet_cell = np.zeros(grid_shape, dtype=np.float64)
@@ -357,6 +385,9 @@ def compute_exchange(
     cols_active = col[active]
     np.add.at(q_inlet_cell, (rows_active, cols_active), q_inlet[active] * rate_factor)
     np.add.at(q_surcharge_cell, (rows_active, cols_active), q_surcharge[active] * rate_factor)
+    cap_inlet_to_cell_water(
+        q_inlet, q_inlet_cell, np.asarray(surface_h, dtype=np.float64), row, col, rate_factor, dt
+    )
 
     return ExchangeResult(
         q_inlet_node=q_inlet,
@@ -364,6 +395,155 @@ def compute_exchange(
         q_inlet_cell=q_inlet_cell,
         q_surcharge_cell=q_surcharge_cell,
     )
+
+
+def cap_inlet_to_cell_water(
+    q_inlet: NDArray[np.floating],
+    q_inlet_cell: NDArray[np.floating],
+    surface_h: NDArray[np.floating],
+    row: NDArray[np.integer],
+    col: NDArray[np.integer],
+    rate_factor: float,
+    dt: float,
+) -> bool:
+    """Scale every node on an over-asked cell so together they take no more than the cell holds.
+
+    In place on both arrays; returns whether any cell was capped. ``q_inlet`` is per node in m3/s,
+    ``q_inlet_cell`` the same scattered onto the grid in m/s, and the cell's limit is its depth
+    over the interval, ``h / dt`` in m/s - the volume standing on it, handed over across the sync.
+
+    **Why it exists.** Each node is limited against the street on its own: the regular inlet by
+    its weir, orifice and remaining capacity, the reversed branch by ``h * A / dt``. Up to eight
+    nodes share one 30 m cell on the Mumbai graph (7,880 of the 35,841 unblocked cells that carry
+    an interior node carry more than one), so together they could ask for several times the water
+    there. The surface gives up ``min(wanted, available)`` and the network, which has already
+    stepped, keeps what it asked for; the difference is water neither solver holds - the
+    ``inlet_gap_m3`` of the ledger. On a 12 x 12 test street with six manholes on one cell under
+    a 3 m sea it was -650.9 m3 over half an hour, and -279,059 m3 with larger manholes
+    (``tests/test_inlet_exchange.py``). On the full city at tide +1 m on the 08:40 cycle the gap
+    was -66,269 m3, 0.140 % of the inflow and over CLAUDE.md 11.3's budget.
+
+    Every node on a capped cell is scaled by the same factor, so the split between them is the
+    one the formulae gave; the cell's rate is then rebuilt as the sum of the scaled nodes, in
+    node order, which is how :func:`compute_exchange` scattered it in the first place. Nodes are
+    only read where ``q_inlet > 0``, so outfalls and nodes without a cell, already zero, are never
+    indexed. The compiled kernel does the same arithmetic in the same order.
+    """
+    taking = np.flatnonzero(np.asarray(q_inlet) > 0.0)
+    if taking.size == 0:
+        return False
+    r = row[taking]
+    c = col[taking]
+    asked = q_inlet_cell[r, c]
+    limit = surface_h[r, c] / dt
+    over = asked > limit
+    if not np.any(over):
+        return False
+    capped = taking[over]
+    q_inlet[capped] = q_inlet[capped] * (limit[over] / asked[over])
+    q_inlet_cell[r[over], c[over]] = 0.0
+    np.add.at(q_inlet_cell, (r[over], c[over]), q_inlet[capped] * rate_factor)
+    return True
+
+
+def advance_surface_with_capture(
+    stepper: swe2d.SurfaceStepper,
+    duration_s: float,
+    *,
+    q_inlet_ms: NDArray[np.floating],
+    q_surcharge_ms: NDArray[np.floating],
+    tide_stage_m: float | None,
+    capture_buffer: NDArray[np.floating],
+    no_capture: NDArray[np.floating],
+) -> tuple[int, float, float, float, float, float, float]:
+    """Advance the surface one sync with the whole capture taken in its first CFL sub-step.
+
+    Returns ``(n_steps, rain, surcharge, inlet, tide_in, tide_out, created)``, the fields of
+    :class:`~varuna_twin.swe2d.SurfaceAdvance` summed over the calls made.
+
+    **Why the capture is front-loaded.** :func:`compute_exchange` limits what a cell's nodes ask
+    for to the water on the cell at the start of the sync, and the network then accepts all of
+    it over the sync. The surface used to hand it over at the same rate across every CFL
+    sub-step, which it can only do if the water is still there: a cell its neighbours drain in
+    the first sub-step has nothing left for the second, and the network keeps what it was
+    promised. Measured on a 30 m street cell holding 450 m3 beside a 3 m pool, all of it
+    promised to the drains: 348.4 m3 given in two sub-steps, 450.0 m3 front-loaded. The same
+    mechanism alone, with one node per cell, invented 620.9 m3 on the 12 x 12 test street.
+
+    So the sync is split at the first CFL sub-step. That sub-step is the one the solver would
+    have taken anyway - its length is :func:`swe2d.cfl_dt` of the same depth with the same
+    ceiling - and it removes the whole sync's capture, which is available by construction because
+    ``wanted <= h <= h + gained`` and the kernel serves the inlet before any face flux. The rest
+    of the sync runs with no capture. The sub-step boundaries are those of a single call; only
+    where in the sync the capture lands has moved, which is the same operator splitting the
+    coupling already makes when it freezes the exchange for the interval. The network still
+    integrates the same volume over the sync, so both sides move one volume.
+
+    When the first sub-step already spans the sync - a grid shallower than about 1.8 m at 30 m,
+    which is most of a monsoon morning - this is one call with the caller's arrays, bitwise what
+    it was before.
+    """
+    kernel = stepper.kernel
+    dt0 = _first_substep_s(stepper.state.h, kernel.res_m, duration_s, stepper.cfl_scope)
+    if dt0 >= duration_s:
+        run = stepper.advance(
+            duration_s,
+            q_inlet_ms=q_inlet_ms,
+            q_surcharge_ms=q_surcharge_ms,
+            tide_stage_m=tide_stage_m,
+            max_dt_s=duration_s,
+        )
+        return (
+            run.n_steps,
+            run.volume_rain_m3,
+            run.volume_surcharge_m3,
+            run.volume_inlet_m3,
+            run.volume_tide_in_m3,
+            run.volume_tide_out_m3,
+            run.volume_created_m3,
+        )
+    np.multiply(q_inlet_ms, duration_s / dt0, out=capture_buffer)
+    first = stepper.advance(
+        dt0,
+        q_inlet_ms=capture_buffer,
+        q_surcharge_ms=q_surcharge_ms,
+        tide_stage_m=tide_stage_m,
+        max_dt_s=duration_s,
+    )
+    rest = stepper.advance(
+        duration_s - dt0,
+        q_inlet_ms=no_capture,
+        q_surcharge_ms=q_surcharge_ms,
+        tide_stage_m=tide_stage_m,
+        max_dt_s=duration_s,
+    )
+    return (
+        first.n_steps + rest.n_steps,
+        first.volume_rain_m3 + rest.volume_rain_m3,
+        first.volume_surcharge_m3 + rest.volume_surcharge_m3,
+        first.volume_inlet_m3 + rest.volume_inlet_m3,
+        first.volume_tide_in_m3 + rest.volume_tide_in_m3,
+        first.volume_tide_out_m3 + rest.volume_tide_out_m3,
+        first.volume_created_m3 + rest.volume_created_m3,
+    )
+
+
+def _first_substep_s(
+    h: NDArray[np.floating],
+    res_m: float,
+    max_dt_s: float,
+    scope: swe2d.CflScope | None = None,
+) -> float:
+    """The length of the first CFL sub-step :meth:`swe2d.SurfaceStepper.advance` will take.
+
+    :func:`swe2d.cfl_dt`'s own arithmetic (``swe2d._cfl_step``), so the two agree to the bit
+    (``tests/test_inlet_exchange.py`` pins it). Not :func:`swe2d.cfl_dt` itself because deciding
+    where to split a sync is not a sub-step: ``tools/profile_twin.py`` counts every call to
+    ``swe2d.cfl_dt`` as one, and a second call per sync doubled its ``cfl_substeps``. ``scope``
+    is the stepper's own :attr:`~varuna_twin.swe2d.SurfaceStepper.cfl_scope`, so a deep hole in
+    the sea moves neither the split nor the step.
+    """
+    return swe2d._cfl_step(h, res_m, max_dt_s, scope)
 
 
 def scatter_node_volumes_to_cells(
@@ -443,24 +623,23 @@ def coupling_to_drain_rates(
     return exchange.q_inlet_node, exchange.q_surcharge_node
 
 
-_NO_BLOCKED: dict[tuple[int, int], NDArray[np.bool_]] = {}
+_EMPTY_MASK: dict[tuple[int, int], NDArray[np.bool_]] = {}
 
 
-def _blocked_or_empty(
-    blocked: NDArray[np.bool_] | None, shape: tuple[int, ...]
-) -> NDArray[np.bool_]:
-    """The mask the kernel reads: the caller's, or an all-False one cached per grid shape.
+def _mask_or_empty(mask: NDArray[np.bool_] | None, shape: tuple[int, ...]) -> NDArray[np.bool_]:
+    """A cell mask the kernel reads: the caller's, or an all-False one cached per grid shape.
 
     Numba needs a typed array rather than ``None``, and allocating a 323 x 522 array of zeros on
-    each of the 2,160 syncs to say "no buildings" would cost more than the mask saves. The cache
-    is keyed on the shape, so a second grid gets its own."""
-    if blocked is not None:
-        return np.ascontiguousarray(blocked, dtype=np.bool_)
+    each of the 2,160 syncs to say "no buildings" or "no sea" would cost more than the mask saves.
+    The cache is keyed on the shape, so a second grid gets its own; the kernel only reads it, so
+    the building and the sea masks can share one."""
+    if mask is not None:
+        return np.ascontiguousarray(mask, dtype=np.bool_)
     grid = (int(shape[0]), int(shape[1]))
-    found = _NO_BLOCKED.get(grid)
+    found = _EMPTY_MASK.get(grid)
     if found is None:
         found = np.zeros(grid, dtype=np.bool_)
-        _NO_BLOCKED[grid] = found
+        _EMPTY_MASK[grid] = found
     return found
 
 
@@ -474,6 +653,7 @@ def _compute_exchange_compiled(
     sync_s: float,
     out: ExchangeBuffers | None,
     blocked: NDArray[np.bool_] | None = None,
+    sea: NDArray[np.bool_] | None = None,
 ) -> ExchangeResult:
     """:func:`compute_exchange` through the compiled kernel (task P4.6)."""
     from varuna_twin.coupling_kernel import exchange_kernel
@@ -482,16 +662,21 @@ def _compute_exchange_compiled(
     # Fresh buffers unless the caller supplied its own; see `ExchangeBuffers`.
     buffers = out or ExchangeBuffers.allocate(network.n_nodes, surface_h.shape)
 
+    def arr(name: str) -> NDArray[np.generic]:
+        # `_node_arrays` stores every constant as `object`; each is the array its builder made.
+        return cast("NDArray[np.generic]", nodes[name])
+
     exchange_kernel(
-        nodes["row"],
-        nodes["col"],
-        nodes["z_ground"],
-        nodes["kappa"],
-        nodes["inlet_length"],
-        nodes["inlet_area"],
-        nodes["storage_area"],
+        arr("row"),
+        arr("col"),
+        arr("z_ground"),
+        arr("kappa"),
+        arr("inlet_length"),
+        arr("inlet_area"),
+        arr("storage_area"),
         np.ascontiguousarray(solver.fixed_head),
-        _blocked_or_empty(blocked, surface_h.shape),
+        _mask_or_empty(blocked, surface_h.shape),
+        _mask_or_empty(sea, surface_h.shape),
         np.ascontiguousarray(surface_h, dtype=np.float64),
         np.ascontiguousarray(surface_z, dtype=np.float64),
         np.ascontiguousarray(drain_head, dtype=np.float64),

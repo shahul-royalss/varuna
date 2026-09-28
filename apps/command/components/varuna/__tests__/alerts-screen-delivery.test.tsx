@@ -1,9 +1,13 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AlertsScreen } from "@/app/alerts/alerts-screen";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { clearPassphrase, writePassphrase } from "@/lib/api/ops";
+
+// The screen mounts the whole app shell; under a parallel run its first render has taken past
+// the 1 s default, which failed a find that passes alone.
+configure({ asyncUtilTimeout: 5000 });
 
 vi.mock("sonner", () => ({ toast: vi.fn() }));
 vi.mock("next/navigation", () => ({
@@ -145,12 +149,22 @@ beforeEach(() => {
             ts: "2019-07-02T08:40:00+05:30",
           },
           {
+            id: "a-w",
+            alert_id: ALERT_ID,
+            label: "WhatsApp mock",
+            kind: "mock",
+            status: "Shown on the on-screen phone",
+            ts: "2019-07-02T08:40:00+05:30",
+            text: "VARUNA severe alert (exercise)\nHindmata junction: depth above 45 cm.\nPump P-05 dispatched.",
+          },
+          {
             id: "a-s",
             alert_id: ALERT_ID,
             label: "SMS mock",
             kind: "mock",
             status: "Rendered, not sent",
             ts: "2019-07-02T08:40:00+05:30",
+            text: "VARUNA severe exercise: Hindmata junction: depth above 45 cm. Avoid the street.",
           },
         ],
       });
@@ -173,20 +187,63 @@ function renderScreen() {
 }
 
 describe("AlertsScreen cross-cycle state", () => {
-  it("says when the alert was raised and for how many cycles it has held", async () => {
+  it("says how long the alert has held, and lists what raises next cycle under watching", async () => {
     renderScreen();
-    const card = await screen.findByRole("article");
-    expect(within(card).getByText(/raised 08:10 - persists 2 cycles/)).toBeInTheDocument();
-    expect(screen.getByText("Raises next cycle if it holds")).toBeInTheDocument();
-    expect(screen.getByText(/Sion Circle: depth above 30 cm/)).toBeInTheDocument();
-    expect(screen.getByText("and 2 more places this cycle")).toBeInTheDocument();
+    const row = await screen.findByRole("article");
+    expect(within(row).getByText("Held 2 cycles")).toBeInTheDocument();
+    // The panel states the rule the product computes, not a probability it never uses.
+    expect(
+      screen.getByText(/two 5-minute steps in a row, on two consecutive cycles/),
+    ).toBeVisible();
+    expect(screen.queryByText(/P ≥ 0\.6/)).toBeNull();
+    // 7 places are pending; the run lists one, and it names a place the queue has no row for.
+    expect(screen.getByText(/places raise a level next cycle if they hold/)).toBeInTheDocument();
+    const watching = screen.getByRole("button", {
+      name: "Watching, not raised yet (1)",
+    });
+    expect(screen.getByText("Sion Circle")).not.toBeVisible();
+    fireEvent.click(watching);
+    expect(screen.getByText("Sion Circle")).toBeVisible();
+    expect(
+      screen.getByText("This run lists 1 of the 7 places waiting to raise or go up a level."),
+    ).toBeVisible();
   });
 
   it("puts the dispatched pumps on the phone", async () => {
     renderScreen();
     await screen.findByRole("article");
     const phone = screen.getByRole("figure", { name: "Ward officer's phone" });
-    expect(within(phone).getByText(/Pump P-05 dispatched\./)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(phone).getByText(/Pump P-05 dispatched\./)).toBeInTheDocument(),
+    );
+  });
+
+  it("opens the details under the row: what to do, who was told, the timeline and the messages", async () => {
+    renderScreen();
+    const row = await screen.findByRole("article");
+    const more = within(row).getByRole("button", { name: "See more" });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    expect(within(row).queryByText("What to do")).toBeNull();
+
+    fireEvent.click(more);
+    expect(within(row).getByRole("button", { name: "See less" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
+    expect(within(row).getByText("Avoid Hindmata junction for the window")).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: "Plan a route around it" })).toHaveAttribute(
+      "href",
+      expect.stringMatching(/^\/route\?run=/),
+    );
+    await waitFor(() =>
+      expect(
+        within(row).getByText("Told when raised: Ward officer, Control room, Police and traffic."),
+      ).toBeInTheDocument(),
+    );
+    expect(within(row).getByText(/Next step: escalate to Transit/)).toBeInTheDocument();
+    expect(within(row).getByText("Raised")).toBeInTheDocument();
+    // The API's own renders, not text composed on this screen.
+    await waitFor(() => expect(within(row).getByText(/Avoid the street\./)).toBeInTheDocument());
   });
 });
 
@@ -195,31 +252,43 @@ describe("AlertsScreen escalation, sender and delivery", () => {
     writePassphrase("monsoon desk 2026");
     renderScreen();
     await waitFor(() => expect(served).toContain("/v1/alerts/escalation"));
-    const card = await screen.findByRole("article");
-    fireEvent.click(within(card).getByRole("button", { name: "Escalate" }));
+    const row = await screen.findByRole("article");
+    fireEvent.click(within(row).getByRole("button", { name: "See more" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Escalate" }));
     await waitFor(() => expect(acts).toHaveLength(1));
     expect(acts[0]!.path).toBe(`/v1/alerts/${ALERT_ID}/escalate`);
     // Severe already reached ward officer, control room and police; the next step is transit.
     expect(acts[0]!.body.escalate_to).toBe("transit");
   });
 
-  it("keeps the delivery log shut until it is asked for", async () => {
+  it("lists an alert's delivery rows only once its details are opened", async () => {
+    renderScreen();
+    const row = await screen.findByRole("article");
+    await waitFor(() => expect(served).toContain("/v1/alerts/delivery"));
+    expect(screen.queryByText("Rendered, not sent")).toBeNull();
+    fireEvent.click(within(row).getByRole("button", { name: "See more" }));
+    // In the document rather than visible: the details open with M29, which starts transparent.
+    expect(within(row).getByText("Rendered, not sent")).toBeInTheDocument();
+  });
+
+  it("keeps the escalation matrix shut until it is asked for", async () => {
     renderScreen();
     await screen.findByRole("article");
-    await screen.findByText("Rendered, not sent");
-    expect(screen.getByText("Rendered, not sent")).not.toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Show" }));
-    expect(screen.getByText("Rendered, not sent")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Hide" }));
-    expect(screen.getByText("Rendered, not sent")).not.toBeVisible();
+    const cell = await screen.findByText("Transit (buses, suburban rail)", { selector: "td" });
+    expect(cell).not.toBeVisible();
+    const show = screen
+      .getAllByRole("button", { name: "Show" })
+      .find((b) => b.getAttribute("aria-controls") === "escalation-matrix")!;
+    fireEvent.click(show);
+    expect(cell).toBeVisible();
+    expect(screen.getAllByText("By escalation only")).toHaveLength(2);
   });
 
   it("draws no Send to my phone without a configured sender", async () => {
     renderScreen();
     await screen.findByRole("article");
-    await screen.findByText("Rendered, not sent");
+    await screen.findByText(/no message has been sent to any phone/);
     expect(screen.queryByRole("button", { name: /Send to my phone/ })).toBeNull();
-    expect(screen.getByText(/no message has been sent to any phone/)).toBeInTheDocument();
   });
 
   it("offers Send to my phone only when the API reports a sender, and sends through the gate", async () => {

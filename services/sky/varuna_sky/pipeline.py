@@ -163,8 +163,11 @@ def run_sky(inputs: SkyInputs, aoi: AoiGrid | str = "mumbai") -> SkyResult:
     timed("merge", mark)
 
     # -- step 4: optical flow, measured on the field the nowcast starts from ------------
+    # Outside QC's coverage the frames are missing, not dry: floored to dry, the range edge is
+    # a static feature Lucas-Kanade tracks to zero, and the storm is forecast at a fifth to a
+    # third of its speed (varuna_sky.motion module docstring).
     mark = perf_counter()
-    motion = optical_flow(inputs.frames, zr, merge.rain_mm_h)
+    motion = optical_flow(inputs.frames, zr, merge.rain_mm_h, coverage=qc.coverage)
     timed("motion", mark)
 
     # -- step 5: the STEPS ensemble (pySTEPS, or the section 17 fallback) ---------------

@@ -4,6 +4,7 @@ import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 
 import { SwRegister } from "@/components/varuna/sw-register";
+import { devanagari } from "@/lib/i18n/devanagari";
 import { Providers } from "@/lib/providers";
 
 import "./globals.css";
@@ -27,8 +28,11 @@ export const metadata: Metadata = {
   description:
     "Street-level urban flood nowcasting digital twin: Doppler radar to street-by-street depth for the next three hours, a drain map that learns from every flood, and routes for emergency services. SIH 2026, PS SIH26085.",
   applicationName: "VARUNA",
+  // The SVG mark for browser tabs, and the 180 px PNG iOS asks for when the public map is added
+  // to a home screen: Safari ignores an SVG there and would screenshot the page instead.
   icons: {
     icon: "/icon.svg",
+    apple: "/apple-icon.png",
   },
 };
 
@@ -43,9 +47,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html
       lang="en"
-      className={`dark h-full ${bricolage.variable} ${GeistSans.variable} ${GeistMono.variable}`}
+      className={`dark h-full ${bricolage.variable} ${GeistSans.variable} ${GeistMono.variable} ${devanagari.variable}`}
     >
-      <body className="flex min-h-full flex-col bg-ink font-sans text-text antialiased">
+      <body className="bg-ink text-text flex min-h-full flex-col font-sans antialiased">
         <Providers>{children}</Providers>
         <SwRegister />
       </body>

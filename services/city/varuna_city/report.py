@@ -314,6 +314,146 @@ def _table(rows: list[tuple[str, str]], header: tuple[str, str]) -> list[str]:
     return lines
 
 
+def _dropped_reason(entry: dict[str, Any]) -> str:
+    parts = []
+    if entry.get("nearest_tidal_outfall_m") is not None:
+        parts.append(f"nearest tidal outfall {_fmt(entry['nearest_tidal_outfall_m'], 0)} m")
+    if entry.get("nearest_node_m") is not None:
+        parts.append(
+            f"nearest node {_fmt(entry['nearest_node_m'], 0)} m away and "
+            f"{_fmt(entry.get('nearest_node_sea_distance_cells'))} cells from the sea"
+        )
+    return "; ".join(parts) or str(entry.get("reason", "no tidal outfall"))
+
+
+def _coastline_section(
+    sea: dict[str, Any] | None,
+    tidal: dict[str, Any] | None,
+    condition: dict[str, Any],
+) -> list[str]:
+    """The sea the Twin imposes the tide on, the land conditioning changed at the shore, and every
+    tidal outfall with its distance to the sea (``varuna_city.sea``). Empty for a city built
+    before the sea step, which keeps the one-paragraph note on the config's tidal points."""
+    if not sea:
+        return []
+    open_sea = sea.get("open_sea") or {}
+    creek = sea.get("tidal_creek") or {}
+    rivers = creek.get("rivers") or {}
+    config = sea.get("config") or {}
+    rows: list[tuple[str, str]] = [
+        (
+            "Sea cells (open sea and tidal creek)",
+            f"{_fmt(sea.get('cells'))} ({_fmt(sea.get('km2'), 2)} km2)",
+        ),
+        ("Open sea", f"{_fmt(open_sea.get('cells', sea.get('open_sea_cells')))} cells"),
+        (
+            "Tidal creek",
+            f"{_fmt(creek.get('cells', sea.get('tidal_creek_cells')))} cells"
+            + (
+                " from "
+                + ", ".join(
+                    f"{name} ({_fmt(v.get('osm_ways'))} OSM ways)" for name, v in rivers.items()
+                )
+                if rivers
+                else ""
+            ),
+        ),
+        ("Building cells kept out of the sea", _fmt(sea.get("blocked_cells_removed"))),
+    ]
+    if "flattened_cells" in condition:
+        rows.append(
+            (
+                "Land held at sea level beside the sea, raised to its neighbours' median",
+                f"{_fmt(condition.get('flattened_repaired'))} of "
+                f"{_fmt(condition.get('flattened_cells'))} cells",
+            )
+        )
+    if "culvert_ends_on_sea_ignored" in condition:
+        rows.append(
+            (
+                "Culvert and bridge ends on the sea ignored",
+                _fmt(condition["culvert_ends_on_sea_ignored"]),
+            )
+        )
+    if "coast_wall_m" in condition:
+        behind = (
+            f", behind {_fmt(condition['intertidal_cells'])} intertidal cells left to the tide"
+            if "intertidal_cells" in condition
+            else ""
+        )
+        rows.append(
+            (
+                "Coast wall (assumption)",
+                f"{_fmt(condition.get('coast_wall_cells_raised'))} of "
+                f"{_fmt(condition.get('shore_ring_cells'))} shore cells raised to "
+                f"{_fmt(condition.get('coast_wall_m'))} m{behind}",
+            )
+        )
+        if "intertidal_mask_cells" in condition:
+            rows.append(
+                (
+                    "Intertidal land left out of street and hotspot depths",
+                    f"{_fmt(condition['intertidal_mask_cells'])} cells in "
+                    f"{condition.get('intertidal_mask_file', 'intertidal_mask.tif')}; the Twin "
+                    "floods them at high water, the products never read them as a street",
+                )
+            )
+        if "coast_wall_basin_cells" in condition:
+            rows.append(
+                (
+                    "Closed basins the coast wall made (assumption: they drain by inlets only)",
+                    f"{_fmt(condition['coast_wall_basin_cells'])} land cells "
+                    f"({_fmt(condition.get('coast_wall_basin_km2'), 3)} km2) in "
+                    f"{_fmt(condition.get('coast_wall_basins'))} basins, "
+                    f"{_fmt(condition.get('coast_wall_basin_m3'), 0)} m3, deepest "
+                    f"{_fmt(condition.get('coast_wall_basin_max_m'))} m",
+                )
+            )
+    elif config:
+        rows.append(("Coast wall", "none: the city's sea config sets no level"))
+    lines = _table(rows, ("Coastline", "Value"))
+    rules = sea.get("rules") or {}
+    if rules:
+        lines += [
+            "",
+            f"Open sea: {rules.get('open_sea')}. Tidal creek: {rules.get('tidal_creek')}.",
+        ]
+        if rules.get("assumption"):
+            lines += ["", rules["assumption"]]
+    if not tidal:
+        return lines
+    outfalls = tidal.get("outfalls") or []
+    lines += [
+        "",
+        f"Every outfall within {_fmt(tidal.get('tidal_within_cells'))} cells (chessboard) of the "
+        f"sea is tidal, with its invert at {_fmt(tidal.get('tidal_outfall_invert_m'))} m "
+        "(an assumption: no outfall invert is sourced for any city). "
+        f"{_fmt(len(outfalls))} are.",
+    ]
+    if outfalls:
+        lines += [
+            "",
+            "| Tidal outfall | Config id | Cells to the sea | Ground (m) | Invert (m) | Flap gate |",
+            "|---|---|---|---|---|---|",
+        ]
+        lines += [
+            f"| {row['node_id']} | {row.get('outfall_id') or ''} "
+            f"| {_fmt(row.get('sea_distance_cells'))} | {_fmt(row.get('z_ground_m'))} "
+            f"| {_fmt(row.get('z_invert_m'))} | {'yes' if row.get('flap_gate') else 'no'} |"
+            for row in outfalls
+        ]
+    dropped = tidal.get("config_dropped") or []
+    if dropped:
+        lines += [
+            "",
+            "Config tidal points with no tidal outfall within reach, dropped rather than made "
+            "an outfall of whatever node lies nearest: "
+            + ", ".join(f"{d.get('outfall_id')} ({_dropped_reason(d)})" for d in dropped)
+            + ".",
+        ]
+    return lines
+
+
 def _gravity(
     config: CityConfig, grid: CityGrid, nodes: Any, edges: Any, hotspots: Any
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -765,8 +905,13 @@ def write_report(
         ],
         ("Drains", "Value"),
     )
+    coastline = _coastline_section(
+        art.get("sea_stats") or stats.get("sea"), drains.get("tidal"), condition
+    )
     tidal = [o.name for o in config.tidal_outfalls]
-    if tidal:
+    if coastline:
+        lines += ["", "## Coastline", "", *coastline]
+    elif tidal:
         lines += [
             "",
             f"Tidal boundary from the city config: {', '.join(tidal)}. Their stage follows the "

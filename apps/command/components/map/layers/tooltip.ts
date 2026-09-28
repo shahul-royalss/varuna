@@ -28,7 +28,7 @@ export function mapTooltip({
     if (!object) return null;
     const depth = object.depthCm[step] ?? 0;
     return {
-      text: `${object.name || "Unnamed road"}\n${depth.toFixed(1)} cm`,
+      text: `${object.displayName || object.name || "Road"}\n${depth.toFixed(1)} cm`,
       style: {
         backgroundColor: "var(--deep)",
         color: "var(--text)",

@@ -23,6 +23,10 @@ import type { RuralAdvisory, RuralVehicle } from "@/lib/rural";
 // per run means one place that decides the article.
 import { RURAL_VEHICLES, stopsPhrase, tooDeepPhrase } from "@/lib/rural";
 
+/** `BRAND_MARK_64_SRC` in `components/varuna/wordmark.tsx`, written out so this route handler
+ *  does not pull next/image in for one string; `html.test.ts` holds the two equal. */
+export const BRAND_MARK = "/brand/varuna-mark-64.png";
+
 /** What the page knows about the run it is quoting; every number on screen belongs to it. */
 export interface RuralRunStamp {
   runId: string;
@@ -103,7 +107,7 @@ export function styles(): string {
     // lint-design-allow-next-line
     `body{margin:0;background:var(--ink);color:var(--text);font-family:${font};font-size:16px;line-height:1.5}`,
     "main{max-width:36rem;margin:0 auto;padding:16px 16px 40px}",
-    "h1{font-size:18px;font-weight:600;margin:0}",
+    "h1{display:flex;align-items:center;gap:8px;font-size:18px;font-weight:600;margin:0}",
     "h2{font-size:15px;font-weight:600;margin:0 0 8px;color:var(--text-2)}",
     "p{margin:0 0 8px}",
     "ul{margin:0 0 8px;padding-left:20px}",
@@ -163,7 +167,10 @@ function header(page: RuralPage): string {
     ? `${page.city.name} - ${stamp.label} of ${stamp.cycleDate} - ${stamp.cycleTime} IST`
     : `${page.city.name} - no run loaded`;
   const runLine = stamp ? `<p class="muted">Run ${esc(stamp.runId)} - ${esc(stamp.mode)}</p>` : "";
-  return `<h1>VARUNA - road advisory</h1><p class="sub">${esc(line)}</p>${runLine}`;
+  // The team's emblem, as every other screen's header carries it: the 64 px file (3 KB, drawn at
+  // 32 px so a 2x phone gets every pixel) as a plain <img>, because this page has no image
+  // optimiser and no script. alt is empty - the heading's own words already say VARUNA.
+  return `<h1><img src="${BRAND_MARK}" width="32" height="32" alt="">VARUNA - road advisory</h1><p class="sub">${esc(line)}</p>${runLine}`;
 }
 
 function body(page: RuralPage): string {

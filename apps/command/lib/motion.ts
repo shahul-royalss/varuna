@@ -157,6 +157,8 @@ export const DUR_MS = {
   globeArrive: 1000,
   globeUnroll: 2600,
   heroHandover: 900,
+  staggerPumps: 150,
+  gaugeDrain: 900,
 } as const;
 
 export type DurationKey = keyof typeof DUR_MS;
@@ -202,7 +204,14 @@ export type MotionId =
   | "M25"
   | "M26"
   | "M27"
-  | "M28";
+  | "M28"
+  | "M29"
+  | "M30"
+  | "M31"
+  | "M32"
+  | "M33"
+  | "M34"
+  | "M35";
 
 /** Framer props for one motion; spread onto a `motion.*` element. */
 export interface MotionPreset {
@@ -519,6 +528,75 @@ export const M: Readonly<Record<MotionId, MotionSpec>> = {
       "Google's photorealistic surface fades to 20 % opacity over 300 ms while the inferred pipes beneath it fade up to full",
     trigger: "X-ray toggle",
     reduced: "both layers at their final opacity, no fade",
+    durations: ["crossFade"],
+  },
+  M29: {
+    id: "M29",
+    where: "Alert centre",
+    motion: "An alert's details open under its row over 220 ms; one alert is open at a time",
+    trigger: "See more",
+    reduced: "details shown at once, no expand",
+    durations: ["drawerSlide"],
+    full: {
+      initial: { opacity: 0, height: 0 },
+      animate: { opacity: 1, height: "auto" },
+      exit: { opacity: 0, height: 0 },
+      transition: tween(0.22),
+    },
+    fallback: instant,
+  },
+  M30: {
+    id: "M30",
+    where: "Drain health before and after",
+    motion:
+      "A drag handle splits the prior on the left from the posterior on the right; pressing Before or After slides the split across in 300 ms",
+    trigger: "drag or Before or After",
+    reduced: "split jumps, no slide",
+    durations: ["crossFade"],
+  },
+  M31: {
+    id: "M31",
+    where: "What-if physics run",
+    motion:
+      "A bar fills as each of the Twin's output steps arrives, and the physics answer replaces the emulator's with a 300 ms cross-fade",
+    trigger: "Twin progress",
+    reduced: "bar jumps to each step, result swaps with no fade",
+    durations: ["budgetFill", "crossFade"],
+  },
+  M32: {
+    id: "M32",
+    where: "Citizen report pins on the dashboard and the ward map",
+    motion:
+      "A new report's pin drops in, scale 0 to 1 on the spring, with a 600 ms ripple, as M18 does",
+    trigger: "a report appears",
+    reduced: "pin appears, no ripple",
+    durations: ["pinRipple"],
+  },
+  M33: {
+    id: "M33",
+    where: "Jalayantra dispatch map",
+    motion:
+      "Each dispatched pump travels its road route from depot to hotspot over 1.2 s, the route drawing behind it, staggered 150 ms per pump",
+    trigger: "Optimise or dispatch",
+    reduced: "pumps at their hotspots and routes drawn, no travel",
+    durations: ["routeDrawOn", "staggerPumps"],
+  },
+  M34: {
+    id: "M34",
+    where: "Jalayantra hotspot gauges",
+    motion:
+      "A hotspot's water gauge drains from the no-pump level to the planned level over 900 ms as its pump arrives, and its minutes above 45 cm roll down",
+    trigger: "pump arrival",
+    reduced: "gauge and number at the final value, no drain",
+    durations: ["gaugeDrain"],
+  },
+  M35: {
+    id: "M35",
+    where: "Jalayantra arrival timeline",
+    motion:
+      "Each pump's arrival marker slides onto the flood-window timeline in 300 ms when the plan lands",
+    trigger: "Optimise",
+    reduced: "markers at their times, no slide",
     durations: ["crossFade"],
   },
 };

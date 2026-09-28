@@ -30,12 +30,28 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#0A1020", // lint-design-allow: manifest colours must be literals; equals --ink
     categories: ["weather", "navigation", "utilities"],
     prefer_related_applications: false,
+    // Raster icons at the sizes an install asks for, drawn from the team's logo by
+    // `tools/brand_assets.py`. The SVG favicon is not listed: Android's install and splash
+    // screens want a 192 and a 512 PNG, and the maskable one keeps the mark inside the safe zone
+    // a launcher crops to a circle or squircle.
     icons: [
       {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
+        src: "/brand/varuna-app-icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
         purpose: "any",
+      },
+      {
+        src: "/brand/varuna-app-icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/brand/varuna-app-icon-maskable-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "maskable",
       },
     ],
     shortcuts: [
@@ -44,7 +60,7 @@ export default function manifest(): MetadataRoute.Manifest {
         short_name: "Report",
         description: "Tell VARUNA how deep the water is where you are.",
         url: "/report",
-        icons: [{ src: "/icon.svg", sizes: "any", type: "image/svg+xml" }],
+        icons: [{ src: "/brand/varuna-app-icon-192.png", sizes: "192x192", type: "image/png" }],
       },
     ],
   };

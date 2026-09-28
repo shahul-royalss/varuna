@@ -196,19 +196,35 @@ describe("order and cap", () => {
 });
 
 describe("street names", () => {
-  it("reads an unnamed road as words, never as undefined", () => {
+  it("reads a street with no name as 'a road', never as 'unnamed' or undefined", () => {
+    expect(UNNAMED_ROAD).toBe("a road");
     expect(streetName(undefined)).toBe(UNNAMED_ROAD);
     expect(streetName("")).toBe(UNNAMED_ROAD);
     expect(streetName("Unnamed road")).toBe(UNNAMED_ROAD);
+    expect(streetName("Unnamed way")).toBe(UNNAMED_ROAD);
     expect(streetName("None")).toBe(UNNAMED_ROAD);
     expect(textOf({ ...AVOIDED, name: "" })).toBe(
-      "Avoids an unnamed road — 47 cm at 08:20, deeper than a car can cross (30 cm).",
+      "Avoids a road — 47 cm at 08:20, deeper than a car can cross (30 cm).",
     );
   });
 
-  it("capitalises an unnamed road when it opens the sentence", () => {
+  it("capitalises the no-name wording when it opens the sentence", () => {
     expect(textOf({ ...CLOSURE, name: "" })).toBe(
-      "An unnamed road: closed by the ward officer at 08:12 — water main work.",
+      "A road: closed by the ward officer at 08:12 — water main work.",
+    );
+  });
+
+  it("says the API's proximity labels as proximity, never as the street's own name", () => {
+    expect(streetName("off Dr Ambedkar Road")).toBe("a road off Dr Ambedkar Road");
+    expect(streetName("Service road near Wadala Depot")).toBe("a service road near Wadala Depot");
+    expect(streetName("Expressway ramp near Sion Circle")).toBe(
+      "an expressway ramp near Sion Circle",
+    );
+    expect(textOf({ ...AVOIDED, name: "off Dr Ambedkar Road" })).toBe(
+      "Avoids a road off Dr Ambedkar Road — 47 cm at 08:20, deeper than a car can cross (30 cm).",
+    );
+    expect(textOf({ ...CLOSURE, name: "Residential street in Mumbai" })).toBe(
+      "A residential street in Mumbai: closed by the ward officer at 08:12 — water main work.",
     );
   });
 

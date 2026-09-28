@@ -20,25 +20,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from varuna_api.onboard import OnboardState, _Tap, _warm_cache
+from varuna_api.onboard import STEP_OF, OnboardState, _Tap, _warm_cache
+from varuna_city.pipeline import STEPS
 
-PIPELINE_STEPS = (
-    "cache",
-    "dem",
-    "osm",
-    "landcover",
-    "hotspots",
-    "assets",
-    "condition",
-    "roughness",
-    "depressions",
-    "segments",
-    "drains",
-    "units",
-    "export",
-    "report",
-)
-"""The fourteen steps of `varuna_city.pipeline.STEPS`, in order."""
+PIPELINE_STEPS: tuple[str, ...] = tuple(step.name for step in STEPS)
+"""`varuna_city.pipeline.STEPS` by name, in order - the real list, never a copy of it."""
 
 
 def a_job(*, from_cache_only: bool = True, city: str = "chennai") -> OnboardState:
@@ -75,6 +61,48 @@ def drive(state: OnboardState, *, fail_at: str | None) -> None:
             )
     finally:
         tap.detach()
+
+
+class TestEveryPipelineStepHasARow:
+    """The sea mask landed as a fifteenth step and its 13.0 s fell into no row (the rows added up
+    to 147.5 s of a 160.5 s Chennai build), because these tests carried a copy of the step list."""
+
+    def test_every_pipeline_step_is_mapped_in_the_pipelines_order(self) -> None:
+        assert tuple(STEP_OF) == PIPELINE_STEPS
+
+    def test_the_sea_mask_is_part_of_conditioning_the_terrain(self) -> None:
+        assert STEP_OF["sea"] == "condition_terrain"
+
+    def test_every_steps_milliseconds_land_in_some_row(self) -> None:
+        state = a_job()
+        drive(state, fail_at=None)
+        rows = state.to_dict()["steps"]
+        pipeline_ms = sum(rows[name]["ms"] for name in set(STEP_OF.values()))
+        assert pipeline_ms == pytest.approx(1.0 * len(PIPELINE_STEPS))
+
+    def test_an_unmapped_step_is_added_to_the_row_the_wizard_is_on(self) -> None:
+        state = a_job()
+        state.pipeline_steps = (*PIPELINE_STEPS[:6], "tomorrows_step", *PIPELINE_STEPS[6:])
+        tap = _Tap()
+        tap.attach(state)
+        try:
+            state.begin("fetch_open_data")
+            for name in state.pipeline_steps:
+                tap(None, "info", {"event": "city.step", "step": name, "status": "ok", "ms": 2.0})
+        finally:
+            tap.detach()
+        rows = state.to_dict()["steps"]
+        # Fetch finished at `assets` and handed over to "Condition terrain", which is where the
+        # unmapped step's time goes; it neither completes nor reopens a row.
+        condition = rows["condition_terrain"]
+        assert condition["ms"] == pytest.approx(2.0 * (len(state.members("condition_terrain")) + 1))
+        assert condition["status"] == "done"
+        assert rows["fetch_open_data"]["ms"] == pytest.approx(
+            2.0 * len(state.members("fetch_open_data"))
+        )
+        total = sum(rows[name]["ms"] for name in set(STEP_OF.values()))
+        assert total == pytest.approx(2.0 * len(state.pipeline_steps))
+        assert state.step == "build_graph"
 
 
 class TestFailureIsReportedWhereItHappened:
@@ -128,7 +156,7 @@ class TestWhenItMayDownload:
         cache_rows([FakeCheck("dem/a.tif", True), FakeCheck("worldcover/b.tif", True)])
         state = a_job(from_cache_only=True)
         _warm_cache(state)
-        assert "already cached" in state.lines[-1]
+        assert "already cached" in state.texts[-1]
 
     def test_a_cold_cache_is_refused_when_the_job_may_not_download(self, cache_rows: Any) -> None:
         cache_rows([FakeCheck("dem/a.tif", False), FakeCheck("worldcover/b.tif", True)])

@@ -139,9 +139,9 @@ export function RailPumps({ runId }: { runId?: string | null }) {
       </ol>
       <p className="type-micro text-text-3">
         <Link href="/pumps" className="text-tide underline underline-offset-2">
-          Open the dispatch board
-        </Link>{" "}
-        to move a pump or send the order.
+          Open <span translate="no">Jalayantra</span>, pump dispatch
+        </Link>
+        , to move a pump or send the order.
       </p>
     </div>
   );

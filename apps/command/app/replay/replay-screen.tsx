@@ -25,6 +25,7 @@ import { bundleWindowLabel } from "@/lib/format";
 import { useCycleLog } from "@/lib/hooks/use-cycle-log";
 import { useReplayStore } from "@/lib/stores/replay";
 import { useUiStore } from "@/lib/stores/ui";
+import { navItem } from "@/lib/nav";
 
 /** A finite number, or undefined: the radar index is read as loose JSON, so nothing is assumed. */
 function finite(value: unknown): number | undefined {
@@ -170,7 +171,15 @@ export function ReplayScreen() {
     <AppShell>
       <div className="h-full min-h-0 overflow-y-auto">
         <div className="mx-auto flex max-w-[1440px] flex-col gap-6 p-6">
-          <PageHeader title="Replay" description="Stream a past event through the live pipeline." />
+          {/* The chip is the selected bundle's own label, so the page's first statement about what
+              is replaying is "Reconstructed replay" or "Design storm", never a claim that it is
+              the event as it happened (section 6.8, rule 7). */}
+          <PageHeader
+            title={navItem("replay").label}
+            screen={navItem("replay")}
+            honesty={selected?.kind}
+            description="Stream a stored storm through the live pipeline: a reconstructed event or a design storm."
+          />
 
           <PanelErrorBoundary title="Bundles">
             <Panel

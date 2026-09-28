@@ -55,7 +55,7 @@ export const TYPE_ROWS: readonly TypeRow[] = [
     metrics: "24 / 1.2",
     family: "Geist Sans",
     use: "page titles, section headings",
-    sample: "Drain X-ray",
+    sample: "Why Hindmata floods",
   },
   {
     preset: "type-h1",

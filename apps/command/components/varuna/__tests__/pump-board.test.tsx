@@ -1,5 +1,12 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// NumberFlow draws into a custom element jsdom cannot update; the value it is handed is the point.
+vi.mock("@number-flow/react", () => ({
+  default: ({ value, suffix = "" }: { value: number; suffix?: string }) => (
+    <span data-number-flow="">{`${value}${suffix}`}</span>
+  ),
+}));
 
 import {
   DEFAULT_PUMP_COLUMNS,
@@ -24,8 +31,45 @@ describe("PumpBoard", () => {
     expect(screen.getByRole("heading", { name: "Hindmata junction" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "King's Circle" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Sion Circle" })).toBeInTheDocument();
-    expect(screen.getAllByText("Excess inflow appears with the first run")).toHaveLength(3);
+    // No run carries a depth series for these columns: said as a settled answer, with no line.
+    expect(screen.getAllByText("No depth series for this place in this run")).toHaveLength(3);
+    // The sparkline is the board's only 254 px wide drawing; icons are 24 px.
+    expect(document.querySelector('svg[width="254"]')).toBeNull();
     expect(screen.getAllByText("Minutes above 45 cm: no data")).toHaveLength(3);
+  });
+
+  it("says the series is loading while it is, never that there is none", () => {
+    render(
+      <PumpBoard
+        pumps={[]}
+        columns={DEFAULT_PUMP_COLUMNS}
+        depthNote="Loading this place's depth series"
+      />,
+    );
+
+    expect(screen.getAllByText("Loading this place's depth series")).toHaveLength(3);
+    expect(screen.queryByText("No depth series for this place in this run")).toBeNull();
+  });
+
+  it("draws each column's depth line and captions its peak with and without the plan", () => {
+    const columns = DEFAULT_PUMP_COLUMNS.map((column, i) =>
+      i === 0
+        ? {
+            ...column,
+            minutesAbove45: { before: 70, after: 20 },
+            depthCm: { before: [12, 38.2, 58.4, 51, 40], after: [12, 30, 46.2, 44, 35] },
+          }
+        : column,
+    );
+    const { container, rerender } = render(<PumpBoard pumps={[]} columns={columns} />);
+
+    expect(screen.getByText("Peak 46 cm with the plan, 58 cm without")).toBeInTheDocument();
+    expect(container.querySelectorAll('svg[width="254"]')).toHaveLength(1);
+    expect(screen.getAllByText("No depth series for this place in this run")).toHaveLength(2);
+
+    // Before Optimise the plan's line is not the board's: the no-pump peak only.
+    rerender(<PumpBoard pumps={[]} columns={columns} planApplied={false} />);
+    expect(screen.getByText("Peak 58 cm with no pump, next 3 h")).toBeInTheDocument();
   });
 
   it("shows the empty inventory and empty hotspot columns", () => {

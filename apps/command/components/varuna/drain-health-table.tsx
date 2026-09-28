@@ -26,21 +26,29 @@ export interface DrainHealthRow {
   observations: number;
   /** ISO 8601 with +05:30 of the last assimilation that moved this pipe. */
   lastUpdated: string;
+  /**
+   * What this cycle's update moved the blockage by, posterior minus prior. Absent where the
+   * caller has no prior; the column then prints a dash rather than a zero it does not know.
+   */
+  betaDelta?: number;
 }
 
 /** Columns the operator can sort by; the rest are labels. */
-export type DrainSortKey = "beta" | "sd" | "capacity";
+export type DrainSortKey = "beta" | "sd" | "capacity" | "change";
 export type SortDirection = "asc" | "desc";
 
 const SORT_LABELS: Record<DrainSortKey, string> = {
   beta: "Blockage",
   sd: "Uncertainty",
   capacity: "Capacity reduction",
+  change: "Learned change",
 };
 
 function sortValue(row: DrainHealthRow, key: DrainSortKey): number {
   if (key === "beta") return row.betaMean;
   if (key === "sd") return row.betaSd;
+  // By size, so a pipe an observation cleared ranks beside one it raised by as much.
+  if (key === "change") return Math.abs(row.betaDelta ?? 0);
   return row.capacityReduction;
 }
 
@@ -51,7 +59,16 @@ export function sortDrainRows(
   direction: SortDirection,
 ): DrainHealthRow[] {
   const factor = direction === "asc" ? 1 : -1;
-  return [...rows].sort((a, b) => (sortValue(a, key) - sortValue(b, key)) * factor);
+  return [...rows].sort(
+    (a, b) => (sortValue(a, key) - sortValue(b, key)) * factor || a.id.localeCompare(b.id),
+  );
+}
+
+/** "+0.34" or "-0.19": a learned change in blockage, signed. */
+export function formatBetaDelta(delta: number | undefined): string {
+  if (typeof delta !== "number" || !Number.isFinite(delta)) return "—";
+  if (Math.abs(delta) < 0.005) return "0.00";
+  return `${delta > 0 ? "+" : "-"}${Math.abs(delta).toFixed(2)}`;
 }
 
 function SortButton({
@@ -72,7 +89,7 @@ function SortButton({
       type="button"
       onClick={() => onToggle(column)}
       className={cn(
-        "inline-flex items-center gap-1 rounded-control px-1 py-0.5 text-left transition-colors hover:text-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-tide",
+        "rounded-control hover:text-text focus-visible:outline-tide inline-flex items-center gap-1 px-1 py-0.5 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2",
         active ? "text-text" : "text-text-2",
       )}
     >
@@ -84,6 +101,12 @@ function SortButton({
 
 export interface DrainHealthTableProps {
   rows: readonly DrainHealthRow[];
+  /**
+   * The column the table opens sorted by, descending. Blockage by default (the desilting order);
+   * `/drains` opens on learned change, because the top of the blockage ranking is the land-use
+   * prior rather than anything Pulse learned.
+   */
+  defaultSort?: DrainSortKey;
   className?: string;
 }
 
@@ -92,8 +115,8 @@ export interface DrainHealthTableProps {
  * posterior blockage and the hotspots it explains. Blockage carries the magenta drain ramp as a
  * dot, but the number is always printed so colour is never the only carrier of meaning.
  */
-export function DrainHealthTable({ rows, className }: DrainHealthTableProps) {
-  const [sortKey, setSortKey] = useState<DrainSortKey>("beta");
+export function DrainHealthTable({ rows, defaultSort = "beta", className }: DrainHealthTableProps) {
+  const [sortKey, setSortKey] = useState<DrainSortKey>(defaultSort);
   const [direction, setDirection] = useState<SortDirection>("desc");
 
   const sorted = useMemo(() => sortDrainRows(rows, sortKey, direction), [rows, sortKey, direction]);
@@ -125,16 +148,21 @@ export function DrainHealthTable({ rows, className }: DrainHealthTableProps) {
     <div className={cn("overflow-x-auto", className)}>
       <table className="w-full border-collapse text-left">
         <caption className="sr-only">
-          Inferred pipes by posterior blockage, sortable by blockage, uncertainty and capacity
-          reduction
+          Inferred pipes by posterior blockage, sortable by blockage, uncertainty, capacity
+          reduction and learned change
         </caption>
         <thead>
-          <tr className="border-b border-line type-micro text-text-2">
+          <tr className="border-line type-micro text-text-2 border-b">
             <th scope="col" className="py-2 pr-3 font-medium">
               Pipe
             </th>
-            <th scope="col" className="py-2 pr-3 font-medium">
-              Street
+            <th scope="col" aria-sort={ariaSort("change")} className="py-2 pr-3 font-medium">
+              <SortButton
+                column="change"
+                sortKey={sortKey}
+                direction={direction}
+                onToggle={toggle}
+              />
             </th>
             <th scope="col" aria-sort={ariaSort("beta")} className="py-2 pr-3 font-medium">
               <SortButton column="beta" sortKey={sortKey} direction={direction} onToggle={toggle} />
@@ -143,7 +171,12 @@ export function DrainHealthTable({ rows, className }: DrainHealthTableProps) {
               <SortButton column="sd" sortKey={sortKey} direction={direction} onToggle={toggle} />
             </th>
             <th scope="col" aria-sort={ariaSort("capacity")} className="py-2 pr-3 font-medium">
-              <SortButton column="capacity" sortKey={sortKey} direction={direction} onToggle={toggle} />
+              <SortButton
+                column="capacity"
+                sortKey={sortKey}
+                direction={direction}
+                onToggle={toggle}
+              />
             </th>
             <th scope="col" className="py-2 pr-3 font-medium">
               Explains
@@ -160,11 +193,12 @@ export function DrainHealthTable({ rows, className }: DrainHealthTableProps) {
           {sorted.map((row) => {
             const band = drainBand(row.betaMean);
             return (
-              <tr key={row.id} className="border-b border-line last:border-b-0 type-small">
-                <th scope="row" className="num py-2 pr-3 font-medium text-text">
-                  {row.id}
+              <tr key={row.id} className="border-line type-small border-b last:border-b-0">
+                <th scope="row" className="py-2 pr-3 text-left font-medium">
+                  <span className="text-text block">{row.street}</span>
+                  <span className="num type-micro text-text-3 block font-normal">{row.id}</span>
                 </th>
-                <td className="py-2 pr-3 text-text-2">{row.street}</td>
+                <td className="num text-text py-2 pr-3">{formatBetaDelta(row.betaDelta)}</td>
                 <td className="py-2 pr-3">
                   <span className="inline-flex items-center gap-2">
                     <span
@@ -175,13 +209,13 @@ export function DrainHealthTable({ rows, className }: DrainHealthTableProps) {
                     <span className="num text-text">{formatBeta(row.betaMean)}</span>
                   </span>
                 </td>
-                <td className="num py-2 pr-3 text-text-2">{formatBeta(row.betaSd)}</td>
-                <td className="num py-2 pr-3 text-text-2">{formatPct(row.capacityReduction)}</td>
-                <td className="py-2 pr-3 text-text-2">
+                <td className="num text-text-2 py-2 pr-3">{formatBeta(row.betaSd)}</td>
+                <td className="num text-text-2 py-2 pr-3">{formatPct(row.capacityReduction)}</td>
+                <td className="text-text-2 py-2 pr-3">
                   {row.hotspotsExplained.length > 0 ? row.hotspotsExplained.join(", ") : "—"}
                 </td>
-                <td className="num py-2 pr-3 text-text-2">{formatCount(row.observations)}</td>
-                <td className="num py-2 text-text-2">{formatIst(row.lastUpdated)}</td>
+                <td className="num text-text-2 py-2 pr-3">{formatCount(row.observations)}</td>
+                <td className="num text-text-2 py-2">{formatIst(row.lastUpdated)}</td>
               </tr>
             );
           })}

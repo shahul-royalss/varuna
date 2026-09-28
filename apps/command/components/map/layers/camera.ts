@@ -29,6 +29,40 @@ export type ViewState = typeof INITIAL_VIEW & {
  * panel it is meant to fill. */
 const FIT_PADDING = 12;
 
+/** A fit margin in pixels: one number for every side, or one per side. */
+export type FitPadding = number | { top: number; right: number; bottom: number; left: number };
+
+/** The share of the map's width or height a fit always keeps for the frame itself. */
+const MIN_FIT_ROOM = 0.4;
+
+/**
+ * `padding` per side, shrunk where it would leave the frame less than 40 % of the map's width or
+ * height. A screen passes the furniture it floats over its map - the console's layer column is
+ * 412 px - and on a narrow window that alone would leave nothing to fit into (deck's `fitBounds`
+ * answers a negative room with a nonsense zoom), so both sides of an axis give back in proportion.
+ */
+export function usablePadding(
+  width: number,
+  height: number,
+  padding: FitPadding = FIT_PADDING,
+): { top: number; right: number; bottom: number; left: number } {
+  const p =
+    typeof padding === "number"
+      ? { top: padding, right: padding, bottom: padding, left: padding }
+      : padding;
+  const squeeze = (a: number, b: number, span: number): [number, number] => {
+    const lo = Math.max(0, a);
+    const hi = Math.max(0, b);
+    const most = span * (1 - MIN_FIT_ROOM);
+    if (lo + hi <= most || lo + hi === 0) return [lo, hi];
+    const k = most / (lo + hi);
+    return [lo * k, hi * k];
+  };
+  const [left, right] = squeeze(p.left, p.right, width);
+  const [top, bottom] = squeeze(p.top, p.bottom, height);
+  return { top, right, bottom, left };
+}
+
 interface InteractionState {
   isDragging?: boolean;
   isPanning?: boolean;
@@ -54,6 +88,26 @@ export interface CityCameraInput {
   threeD?: boolean;
   /** Pitch to use in 3D; the caller passes `PHOTOREAL_PITCH` (CLAUDE.md 6.7 fixes it at 55). */
   pitch3d?: number;
+  /**
+   * A change re-arms the fit: whatever the operator did to the camera is dropped and `frame` is
+   * framed again, as a cut (section 8 has no row for a re-frame, so there is no flight). For an
+   * explicit ask - the console's full view, a new route - and never for a scrub or a data load:
+   * a camera somebody has moved is otherwise theirs, whatever the data does.
+   */
+  fitKey?: string | number | null;
+  /**
+   * The one `fitKey` whose camera is kept when the map leaves it and handed back when the map
+   * returns to it, as a cut: the console's own layout, so leaving full view puts back the view the
+   * operator had, panned or not. Arriving at any other key re-fits, as before. Absent, nothing is
+   * kept, and every screen that does not pass it behaves exactly as it did.
+   */
+  keepViewOf?: string | number | null;
+  /**
+   * The fit's margin, per side when the screen floats panels over its map (the console's layer
+   * column and scrub card). Defaults to 12 px all round, so a screen that passes nothing is
+   * framed exactly as before.
+   */
+  fitPadding?: FitPadding;
 }
 
 export interface CityCamera {
@@ -71,6 +125,9 @@ export function useCityCamera({
   interactive,
   threeD = false,
   pitch3d = 55,
+  fitKey = null,
+  keepViewOf = null,
+  fitPadding = FIT_PADDING,
 }: CityCameraInput): CityCamera {
   // **The camera is controlled.** It used to be handed to deck.gl as `initialViewState` on the
   // theory that deck would notice a changed object and move itself. It does not: `initialViewState`
@@ -92,15 +149,19 @@ export function useCityCamera({
   const [owned, setOwned] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Keyed on the values, not the object: a screen that writes its padding inline hands a new
+  // object every render, and a new fit every render would be a new view state every render.
+  const paddingKey = JSON.stringify(fitPadding);
   const fitted = useMemo<ViewState>(() => {
     if (!size || size.width < 2 || size.height < 2) return INITIAL_VIEW;
     const [[west, south], [east, north]] = frame;
+    const padding = usablePadding(size.width, size.height, JSON.parse(paddingKey) as FitPadding);
     const view = new WebMercatorViewport({ width: size.width, height: size.height }).fitBounds(
       [
         [west, south],
         [east, north],
       ],
-      { padding: FIT_PADDING },
+      { padding },
     );
     return {
       longitude: view.longitude,
@@ -109,7 +170,7 @@ export function useCityCamera({
       bearing: 0,
       pitch: threeD ? pitch3d : 0,
     };
-  }, [size, frame, threeD, pitch3d]);
+  }, [size, frame, threeD, pitch3d, paddingKey]);
 
   useEffect(() => {
     const element = containerRef.current;
@@ -180,6 +241,28 @@ export function useCityCamera({
         transitionDuration: 0,
         transitionInterpolator: undefined,
       });
+    }
+  }
+
+  // A new `fitKey` hands the camera back to the fit. Adjusted during render, like the pitch above,
+  // so the frame that paints is already the re-fitted one.
+  //
+  // Leaving `keepViewOf` stashes the camera first - the operator's own view, or null when the fit
+  // had it, since the fit is derived and will frame the same box again at the same size. Coming
+  // back to it hands that view back instead of re-fitting; the stash is spent either way.
+  const [seenFitKey, setSeenFitKey] = useState(fitKey);
+  const [kept, setKept] = useState<{ view: ViewState | null } | null>(null);
+  if (seenFitKey !== fitKey) {
+    setSeenFitKey(fitKey);
+    const leaving = keepViewOf !== null && seenFitKey === keepViewOf;
+    const returning = keepViewOf !== null && fitKey === keepViewOf ? kept : null;
+    setKept(leaving ? { view: owned ? camera : null } : null);
+    if (returning?.view) {
+      setOwned(true);
+      setCamera({ ...returning.view, transitionDuration: 0, transitionInterpolator: undefined });
+    } else {
+      setOwned(false);
+      setCamera(null);
     }
   }
 

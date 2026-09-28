@@ -145,20 +145,57 @@ def test_an_unchanged_scenario_disagrees_with_the_physics_by_nothing(run_id: str
     assert body["agrees"] is True
 
 
-def test_a_tide_offset_is_refused_because_there_would_be_nothing_to_check(run_id: str) -> None:
-    """The Twin can answer a tide scenario; the emulator cannot, so there is no comparison.
+def test_a_tide_offset_says_the_scenario_runs_on_the_twin(run_id: str) -> None:
+    """The Twin answers a tide scenario; the emulator cannot, so there is nothing to check.
 
-    Returning the Twin's answer alone would turn an agreement report into a forecast, which is
-    the one thing a 990 m crop with free outfalls at its edge must not publish.
+    It used to be a 422 that sent the user back to the what-if, which sent them here. Now the
+    check says the scenario runs on the full-city Twin and hands over the job to start - and
+    still publishes no crop level, because a 990 m crop with free outfalls at its edge cannot see
+    the sea.
     """
     from varuna_api.main import create_app
 
     with TestClient(create_app()) as client:
         res = client.post("/v1/whatif/physics-check", json={"run_id": run_id, "tide_offset_m": 0.5})
-    assert res.status_code == 422, res.text
-    error = res.json()["error"]
-    assert error["code"] == "unsupported_scenario"
-    assert "tide" in error["message"]
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["runs_on_twin"] is True
+    assert body["agrees"] is None
+    assert body["hotspots"] == []
+    assert body["twin_job"]["endpoint"] == "/v1/whatif/twin"
+    assert body["twin_job"]["body"]["tide_offset_m"] == 0.5
+    assert body["levers_not_checked"] == []
+
+
+def test_clean_top_is_checked_in_both_models_and_the_pump_plan_is_named(run_id: str) -> None:
+    """The check runs the what-if's levers, or says which one it could not run.
+
+    "Clean top 14" desilts the same pipes in the emulator's re-join and in the crop's graph, so
+    the comparison is of one scenario. The pump plan has no sink in the Twin, so neither model
+    runs it here and the response names it rather than comparing a scenario with pumps against
+    one without.
+    """
+    from varuna_api.main import create_app
+
+    with TestClient(create_app()) as client:
+        res = client.post(
+            "/v1/whatif/physics-check",
+            json={"run_id": run_id, "clean_top": True, "pump_plan": True},
+        )
+    assert res.status_code == 200, res.text
+    body = res.json()
+    top = body["clean_top"]
+    assert top is not None and top["label"] == "Top 14 pipes by learned blockage, city-wide"
+    if top["applied"]:
+        assert {p["edge_id"] for p in top["pipes"]} <= set(body["cleaned_edges"])
+    # The fourteen worst pipes are city-wide and the window is 990 m: how many it holds is said,
+    # because a check that agrees about pipes it cannot see has checked nothing.
+    inside = body["window"]["cleaned_edges_inside"]
+    assert 0 <= inside <= len(body["cleaned_edges"])
+    if body["cleaned_edges"] and inside == 0:
+        assert any("None of the" in note and "inside the window" in note for note in body["notes"])
+    assert body["levers_not_checked"] == ["pump_plan"]
+    assert any("pump plan is not in this check" in note for note in body["notes"])
 
 
 def test_drain_edge_ids_are_refused_the_way_the_what_if_refuses_them(run_id: str) -> None:

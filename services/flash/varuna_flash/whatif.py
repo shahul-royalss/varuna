@@ -30,21 +30,18 @@ storms its CSI at the 30 cm car threshold is 0.085. So:
   survives, rather than putting a rank-ordered list of zeros on screen. It is kept because it is
   the honest record of what this emulator can do, and because the what-if lab still cleans on it;
   the hotspot drawer reads :func:`attribute_pipes` instead.
-* **A what-if depth is not a forecast, and nothing here checks it against the physics.** The
-  delta is reported with the emulator's measured error attached, and the level it is added to
-  comes from the Twin's own forecast for the run. The physics check of CLAUDE.md 7.7 - re-run
-  the Twin on the same scenario, print the disagreement - is specified and unbuilt: there is no
-  ``physics_check`` in this package, and ``POST /v1/whatif/physics-check`` answers 501 naming
-  why. The reason is cost, not absence: the Twin runs every baked cycle, at 58-114 s per
-  full-AOI Mumbai run in six of the seven baked cycles (47 s in the lightest) against section
-  14's 10 s budget for the check. A bounded hotspot crop is the route to that budget, and it is
-  not built. So the disagreement is not displayed here because it has not been measured - which
-  is what the endpoint says rather than leaving the screen implying a button was never pressed.
+* **A what-if depth is not a forecast, and nothing in this module checks it against the
+  physics.** The delta is reported with the emulator's measured error attached, and the level it
+  is added to comes from the Twin's own forecast for the run. The physics check of CLAUDE.md 7.7
+  lives in the API (``POST /v1/whatif/physics-check``, two coupled Twin runs on a 990 m crop,
+  P7.8), and a scenario the emulator cannot represent at all - a different sea level - runs on
+  one full-city Twin (``POST /v1/whatif/twin``).
 
-**The tide control is refused, not approximated.** The emulator is a perturbation around a base
-state measured from Twin runs that all shared one tide series (see :mod:`varuna_flash.model`),
-so it has no representation of a different sea level. Returning a plausible number for a tide
-offset would be inventing one.
+**The tide control is refused here, not approximated.** The emulator is a perturbation around a
+base state measured from Twin runs that all shared one tide series (see
+:mod:`varuna_flash.model`), so it has no representation of a different sea level. Returning a
+plausible number for a tide offset would be inventing one. A tide scenario runs on the Twin itself
+(``POST /v1/whatif/twin``): one full-city coupled run, whose answer is the physics.
 """
 
 from __future__ import annotations
@@ -164,6 +161,8 @@ def run_scenario(
     rain_scale: float = 1.0,
     cleaned_segments: set[str] | None = None,
     pump_cm_per_step: NDArray[np.floating] | None = None,
+    pump_from_step: NDArray[np.integer] | None = None,
+    scenario_beta: NDArray[np.floating] | None = None,
     tide_offset_m: float = 0.0,
 ) -> ScenarioResult:
     """Run one scenario against the unmodified baseline and report the difference.
@@ -172,11 +171,21 @@ def run_scenario(
         model: the fitted emulator.
         rain_mm_h: the cycle's rain, ``(steps,)`` or ``(steps, segments)``.
         beta: current blockage per segment - Pulse's posterior, joined onto segments.
+        scenario_beta: the blockage the *scenario* runs at, before ``cleaned_segments`` is
+            applied. Absent, it is ``beta``. Given, it is how a lever that cleans *pipes* rather
+            than streets reaches the emulator: the caller re-joins the posterior with those pipes
+            cleaned, so a street whose worst pipe was desilted drops to its next-worst pipe
+            rather than to :data:`CLEANED_BETA` (the "clean top 14" lever, CLAUDE.md 7.7).
         rain_scale: multiplier on the storm (CLAUDE.md 7.7's 0.5x to 2.0x).
         cleaned_segments: segments whose pipe is desilted to :data:`CLEANED_BETA`. An id this
             fit has no segment for is dropped, and the returned note counts only what was
             actually cleaned - the caller is expected to have told the user about the rest.
         pump_cm_per_step: extra drawdown per segment from a pump plan.
+        pump_from_step: the step each segment's pump arrives at, ``(segments,)``. Absent, a pump
+            runs from step 0, which is what this function always did. Given, the drawdown a
+            pump running from step 0 would have produced is shifted to start at the arrival -
+            the same construction :func:`varuna_products.pumps._after_delta` prices a plan with,
+            so the lab and the pump board cannot disagree about what a lorry does.
         tide_offset_m: refused; see the module docstring.
 
     Raises:
@@ -188,8 +197,8 @@ def run_scenario(
     if abs(tide_offset_m) > 1e-9:
         msg = (
             "Flash-lite cannot move the tide: it is a perturbation around a base state measured "
-            "at one tide series, so a sea level it never saw is outside what it represents. Run "
-            "the physics check for a tide scenario."
+            "at one tide series, so a sea level it never saw is outside what it represents. A "
+            "tide scenario runs on the Twin (POST /v1/whatif/twin)."
         )
         raise ValueError(msg)
 
@@ -199,19 +208,39 @@ def run_scenario(
 
     baseline = simulate(model, rain, beta=beta_now, pump_cm_per_step=None)
 
-    beta_scenario = beta_now.copy()
+    beta_scenario = (
+        beta_now.copy()
+        if scenario_beta is None
+        else np.asarray(scenario_beta, dtype=np.float64).copy()
+    )
+    if beta_scenario.shape != beta_now.shape:
+        msg = (
+            f"scenario_beta has shape {beta_scenario.shape}, the baseline blockage "
+            f"{beta_now.shape}: they must describe the same segments."
+        )
+        raise ValueError(msg)
+    repinned = int(np.count_nonzero(beta_scenario != beta_now))
     picked: list[int] = []
     if cleaned_segments:
         index = {sid: i for i, sid in enumerate(model.segment_ids)}
         picked = [index[s] for s in cleaned_segments if s in index]
         beta_scenario[picked] = CLEANED_BETA
 
-    scenario = simulate(
-        model,
-        rain * rain_scale,
-        beta=beta_scenario,
-        pump_cm_per_step=pump_cm_per_step,
-    )
+    if pump_cm_per_step is None or pump_from_step is None:
+        scenario = simulate(
+            model,
+            rain * rain_scale,
+            beta=beta_scenario,
+            pump_cm_per_step=pump_cm_per_step,
+        )
+    else:
+        scenario = _pumped_from_arrival(
+            model,
+            rain * rain_scale,
+            beta_scenario,
+            np.asarray(pump_cm_per_step, dtype=np.float64),
+            np.asarray(pump_from_step, dtype=np.int64),
+        )
 
     delta = scenario.max(axis=0) - baseline.max(axis=0)
     notes = [
@@ -226,8 +255,19 @@ def run_scenario(
         notes.append(
             f"{len(picked)} pipe{'' if len(picked) == 1 else 's'} cleaned to beta = {CLEANED_BETA}."
         )
+    if repinned:
+        notes.append(
+            f"{repinned} segment{'' if repinned == 1 else 's'} run at a changed blockage "
+            "supplied by the caller."
+        )
     if abs(rain_scale - 1.0) > 1e-9:
         notes.append(f"Rain scaled to {rain_scale:.2f}x.")
+    if pump_cm_per_step is not None:
+        pumped = int(np.count_nonzero(np.asarray(pump_cm_per_step) > 0.0))
+        notes.append(
+            f"Pumps drain {pumped} segment{'' if pumped == 1 else 's'}"
+            + (" from each pump's arrival." if pump_from_step is not None else " from step 0.")
+        )
 
     result = ScenarioResult(
         depth_cm=scenario,
@@ -247,6 +287,36 @@ def run_scenario(
         worse=result.n_worse,
     )
     return result
+
+
+def _pumped_from_arrival(
+    model: FlashModel,
+    rain: NDArray[np.floating],
+    beta: NDArray[np.floating],
+    pump_cm_per_step: NDArray[np.float64],
+    pump_from_step: NDArray[np.int64],
+) -> NDArray[np.floating]:
+    """The scenario with each segment's pump switched on at its own arrival step.
+
+    Two emulator runs, without and with the pump from step 0; their difference is the water the
+    pump finds to remove, non-negative by construction (extra outflow cannot raise a depth, and it
+    is clipped rather than trusted). That removal profile is then shifted to start at each
+    segment's arrival - a pump that arrives at step ``a`` has been running ``t - a`` steps at step
+    ``t`` - and subtracted from the unpumped run, floored at zero. Segments without a pump are
+    returned exactly as the unpumped run has them.
+    """
+    unpumped = simulate(model, rain, beta=beta)
+    pumped = simulate(model, rain, beta=beta, pump_cm_per_step=pump_cm_per_step)
+    removal = np.maximum(unpumped - pumped, 0.0)
+    n_steps = unpumped.shape[0]
+    shifted = np.zeros_like(removal)
+    arrival = np.clip(pump_from_step, 0, n_steps)
+    for step in np.unique(arrival[pump_cm_per_step > 0.0]).tolist():
+        if step >= n_steps:
+            continue  # arrives after the window closes: it drains nothing the forecast can see
+        columns = np.flatnonzero((arrival == step) & (pump_cm_per_step > 0.0))
+        shifted[step:, columns] = removal[: n_steps - step, columns]
+    return np.maximum(unpumped - shifted, 0.0)
 
 
 def attribute(
@@ -680,6 +750,7 @@ def _removed_series(
     sync_s: float,
     cell_area_m2: float,
     tide_stage_m: NDArray[np.floating] | None,
+    on_sea: NDArray[np.bool_] | None = None,
 ) -> NDArray[np.floating]:
     """Cumulative water the drain has taken off the street at every node, per step, in m3.
 
@@ -687,6 +758,13 @@ def _removed_series(
     produced, held constant through each step, which is CLAUDE.md 11.6's "surface inflows frozen
     from the last Twin run". The return is the running sum of ``(Q_inlet - Q_surch) * dt``, so a
     node that surcharges contributes negatively - it is putting water back onto the street.
+
+    ``on_sea`` is ``(n_nodes,)``, True on a node whose cell is the city's sea. It is handed to
+    :func:`~varuna_twin.coupling.compute_exchange` as the ``sea`` of this module's one-column
+    grid, so such a node neither captures nor surcharges - the rule the coupled Twin runs by. A
+    zero street depth alone is not that rule: it stops the inlet, but a sea node whose head
+    passes its ground would still vent into a cell the Twin holds at the tide. ``None``, or a
+    mask with no node on it, is the call this function always made.
     """
     from varuna_twin import coupling, drain1d
     from varuna_twin.types import DrainState
@@ -697,6 +775,14 @@ def _removed_series(
         flow=np.zeros(int(net.n_edges), dtype=np.float64),
     )
     z_grid = np.asarray(net.z_ground, dtype=np.float64).reshape(-1, 1)
+    sea_grid: NDArray[np.bool_] | None = None
+    if on_sea is not None:
+        mask = np.asarray(on_sea, dtype=np.bool_)
+        if mask.shape != (int(net.n_nodes),):
+            msg = f"on_sea has shape {mask.shape}; the network has {int(net.n_nodes)} nodes"
+            raise ValueError(msg)
+        if mask.any():
+            sea_grid = np.ascontiguousarray(mask.reshape(-1, 1))
     n_steps = int(surface_depth_m.shape[0])
     per_step = max(round(step_s / sync_s), 1)
 
@@ -707,7 +793,7 @@ def _removed_series(
         stage = None if tide_stage_m is None else float(tide_stage_m[step])
         for _ in range(per_step):
             exchange = coupling.compute_exchange(
-                h_grid, z_grid, state.head, net, solver, cell_area_m2, sync_s
+                h_grid, z_grid, state.head, net, solver, cell_area_m2, sync_s, sea=sea_grid
             )
             q_inlet, q_surch = coupling.coupling_to_drain_rates(exchange)
             drain1d.simulate(
@@ -741,6 +827,7 @@ def attribute_pipes(
     tide_stage_m: NDArray[np.floating] | None = None,
     floor_cm: float = ATTRIBUTION_FLOOR_CM,
     node_segment_ids: Sequence[str | None] | None = None,
+    node_on_sea: Sequence[bool] | NDArray[np.bool_] | None = None,
 ) -> PipeAttributionResult:
     """Which pipes explain one junction's peak, measured on `drain1d` (CLAUDE.md 11.7, P7.7).
 
@@ -774,6 +861,15 @@ def attribute_pipes(
             ``city/<city>/graph/nodes.parquet``. Supplying it lets each row name the street the
             pipe runs under, which is the vocabulary the what-if lab cleans in; without it the
             rows carry pipe ids only, and say so by leaving ``segment_id`` null.
+        node_on_sea: ``(network.n_nodes,)``, True on every node whose cell is the city's sea
+            (``terrain.sea``, the ``sea_mask.tif`` of open sea and tidal creek; an intertidal
+            cell behind the coast wall is land to the Twin and is False here). Such a node
+            exchanges nothing with the street - no inlet capture and no surcharge - exactly as
+            :func:`~varuna_twin.coupling.compute_exchange` treats it in the coupled run, while
+            its pipes still carry water through it to the outfall. Freezing its street depth at
+            zero, which the products stage also does, stops the inlet but not the vent: a sea
+            node whose head passed its ground would still surcharge. ``None`` is a city without
+            a sea raster, and the answer is the one this function always gave.
 
     Returns:
         A :class:`PipeAttributionResult` with a ranking, or with ``reason`` set and no rows.
@@ -796,6 +892,17 @@ def attribute_pipes(
     started = perf_counter()
     if adjacency is None:
         adjacency = build_adjacency(network)
+    sea_nodes: NDArray[np.bool_] | None = None
+    if node_on_sea is not None:
+        sea_nodes = np.asarray(node_on_sea, dtype=np.bool_)
+        if sea_nodes.shape != (int(network.n_nodes),):
+            # A mask built on another graph would keep the wrong nodes out of the exchange and
+            # still produce a plausible ranking, so it is refused rather than truncated.
+            msg = (
+                f"node_on_sea has shape {sea_nodes.shape}; the drain graph has "
+                f"{int(network.n_nodes)} nodes"
+            )
+            raise ValueError(msg)
 
     seeds = sorted({int(n) for n in target_nodes})
     if not seeds:
@@ -846,7 +953,13 @@ def attribute_pipes(
     # so the steps after the peak cannot change what is read at it. It is the identical answer
     # for less work - verified line for line across the 28-point register on the 08:40 cycle,
     # where it took the register from 79.1 s to 27.0 s.
-    surface_sub = np.ascontiguousarray(full[: step + 1, np.asarray(node_list, dtype=np.int64)])
+    local_nodes = np.asarray(node_list, dtype=np.int64)
+    surface_sub = np.ascontiguousarray(full[: step + 1, local_nodes])
+    # The sea, on the local network. A catchment that reaches none - 25 of Mumbai's 28 register
+    # junctions - passes `None` and runs exactly as it did before there was a sea.
+    sea_sub = None if sea_nodes is None else sea_nodes[local_nodes]
+    if sea_sub is not None and not sea_sub.any():
+        sea_sub = None
 
     # Copy 0 is the untouched baseline; copy c + 1 has candidate c cleaned. One run answers all
     # of them (see `_replicate`), and the baseline travels in the same run so it cannot drift
@@ -864,6 +977,7 @@ def attribute_pipes(
         sync_s=sync_s,
         cell_area_m2=cell_area_m2,
         tide_stage_m=tide_stage_m,
+        on_sea=None if sea_sub is None else np.tile(sea_sub, len(local_candidates) + 1),
     )
     n_nodes = int(sub.n_nodes)
     at_peak = series[step].reshape(len(local_candidates) + 1, n_nodes)[:, seed_local].sum(axis=1)
@@ -937,6 +1051,7 @@ def attribute_pipes(
         sync_s=sync_s,
         cell_area_m2=cell_area_m2,
         tide_stage_m=tide_stage_m,
+        on_sea=sea_sub,
     )
     combined_cm = float((combined_series[step][seed_local].sum() - at_peak[0]) / area_m2 * 100.0)
 

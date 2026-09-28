@@ -230,6 +230,11 @@ def tide_rows(
     The demo needs the stage rising through the window so the tide-locked outfall surcharges;
     with high water at 11:30 IST and the window opening at 05:40 it does, and that rise is a
     consequence of the anchor, not an observation of the morning.
+
+    ``window_min`` is the length of the series, not of the replay window: a reconstruction asks
+    for the window plus the forecast horizon (``bundle.TIDE_LOOKAHEAD_MIN``) so the last cycle's
+    Twin has a stage to read for all three hours. Each row is a function of its own instant only,
+    so a longer series holds the shorter one's rows unchanged and appends to them.
     """
     amplitude = (high_water_m - low_water_m) / 2.0
     mean_level = (high_water_m + low_water_m) / 2.0

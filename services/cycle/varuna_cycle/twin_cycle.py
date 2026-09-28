@@ -37,7 +37,13 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import structlog
 from varuna_schemas.constants import IST, N_STEPS, STEP_MIN
-from varuna_schemas.models.run import EngineVersions, GridSpec, RunMeta, build_run_id
+from varuna_schemas.models.run import (
+    CityFingerprint,
+    EngineVersions,
+    GridSpec,
+    RunMeta,
+    build_run_id,
+)
 from varuna_schemas.paths import bundles_dir, city_dir, repo_root
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -47,8 +53,10 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 log = structlog.get_logger("varuna.cycle.twin")
 
 __all__ = [
+    "TWIN_REVISION",
     "CycleResult",
     "aoi_hyetograph",
+    "land_peak_depth_cm",
     "mass_balance_ledger",
     "pump_benefit_notes",
     "run_cycle",
@@ -57,6 +65,20 @@ __all__ = [
 
 SKY_VERSION = "1.0"
 TWIN_VERSION = "1.0"
+TWIN_REVISION = "1.0+coast-2026-09-28"
+"""Which Twin computed a run, finer than the run id says; ``run.json`` keeps it.
+
+The coastline changed what the Twin computes - the city's own sea held at the tide, the coast
+wall behind the intertidal zone, tidal outfalls from the sea raster, no exchange or rain on sea
+cells, the CFL read off land and shoreline faces, products that never read the sea - without
+changing ``TWIN_VERSION``. The version is in the run id (``...-twin1.0-...``), and the id is what
+the console's deep links, the demo runs the API seeds, the fixtures and the end-to-end tests key
+on - 281 tracked files carry a ``twin1.0`` id on 2026-09-28, 208 of them the shipped runs under
+``demo/runs`` - so bumping it would orphan every shipped run and link while saying less than
+this string does. A re-bake overwrites each run in place under the same id; this
+revision, with :func:`varuna_cycle.provenance.city_fingerprint` beside it, is how a reader tells
+a run baked before the coastline from one baked after (:func:`varuna_cycle.provenance.stale_runs`).
+Change it whenever the Twin's physics changes and its version does not."""
 FLASH_VERSION = "0.1"
 """The fitted emulator's version, used only on a cycle where it actually ran."""
 
@@ -127,10 +149,61 @@ class CycleResult:
     ensemble_n: int
     mass_balance_err: float
     peak_depth_cm: float
+    """Deepest water on land over the run, in cm (:func:`land_peak_depth_cm`): never the sea's."""
     wet_segments: int
     surcharging_nodes: int
     backflow_edges: int
     notes: tuple[str, ...]
+
+
+def _tidal_cells(
+    terrain: Any, intertidal: NDArray[np.bool_] | None = None
+) -> NDArray[np.bool_] | None:
+    """The cells whose water is the tide's: the city's sea, plus its intertidal zone.
+
+    ``terrain.sea`` and ``terrain.intertidal`` are read with ``getattr`` so a plain
+    ``TerrainGrid`` - every test grid, a nest, a city built before the sea step - has neither and
+    gets ``None``. ``intertidal`` is the wet land the tide may cover (mangrove, wetland, open
+    water behind the sea, in front of the coast wall). The Twin's terrain does not carry it yet,
+    so the cycle also passes the city's ``intertidal_mask.tif`` as read by the products
+    (:func:`varuna_products.depth.city_intertidal_mask`); the union is taken, so a terrain that
+    starts carrying it later changes nothing.
+    """
+    shape = tuple(np.shape(terrain.z))
+    mask: NDArray[np.bool_] | None = None
+    sources = [(f"terrain.{name}", getattr(terrain, name, None)) for name in ("sea", "intertidal")]
+    sources.append(("intertidal", intertidal))
+    for label, cells in sources:
+        if cells is None:
+            continue
+        cells = np.asarray(cells, dtype=np.bool_)
+        if cells.shape != shape:
+            raise ValueError(f"{label} has shape {cells.shape}, expected {shape}")
+        mask = cells if mask is None else (mask | cells)
+    return mask
+
+
+def land_peak_depth_cm(
+    depth_m: NDArray[np.floating],
+    terrain: Any,
+    *,
+    intertidal: NDArray[np.bool_] | None = None,
+) -> float:
+    """Deepest water off the sea and the intertidal zone over the whole run, in cm to 0.1.
+
+    The Twin holds the city's sea at the tide, so its whole-grid maximum is the deepest sea cell:
+    Chennai's first onboarded forecast published "peak 529.1 cm", which was its -5.29 m sea cell
+    at mean sea level, and on Mumbai's coastline it is up to 2.58 m of bay at the crest. Neither
+    is a street, and nor is a mangrove the tide walks onto, which the segment table and the
+    hotspot rank already leave out. Without a sea or intertidal mask every cell counts, exactly
+    as before - the same ``nanmax`` over the same array - and it is 0 when the tide covers the
+    whole grid.
+    """
+    tidal = _tidal_cells(terrain, intertidal)
+    if tidal is None:
+        return round(float(np.nanmax(depth_m)) * 100.0, 1)
+    land = np.asarray(depth_m)[:, ~tidal]
+    return round(float(np.nanmax(land)) * 100.0, 1) if land.size else 0.0
 
 
 def _is_design_storm(bundle: str) -> bool:
@@ -545,11 +618,13 @@ def run_cycle(
     from varuna_products.alerts import (
         STREET_POINTS,
         build_alerts,
+        street_member_series,
         street_series,
         write_alerts,
     )
     from varuna_products.depth import (
         aoi_depth_band,
+        city_intertidal_mask,
         depth_bounds,
         segment_cell_index,
         segment_forecast,
@@ -568,6 +643,7 @@ def run_cycle(
     from varuna_twin.runner import run_twin
     from varuna_twin.types import TwinInputs
 
+    from varuna_cycle.provenance import city_fingerprint
     from varuna_cycle.registry import RunRegistry
 
     stage_ms: dict[str, int] = {}
@@ -579,6 +655,14 @@ def run_cycle(
     cycle_ts = sky.cycle_ts
     n_steps = int(rain_cube.shape[0])
     stage_ms["sky"] = round((perf_counter() - mark) * 1000.0)
+
+    # Which city files this run reads, hashed before the Twin loads them and outside its mark:
+    # the run id cannot say the coastline changed (TWIN_REVISION), so run.json does. Decoded
+    # once per bake and cached on the files' bytes: on Mumbai about 30 ms a cycle warm, 0.2-0.4 s
+    # on a process's first call. Billed to its own key so `total` is never unexplained.
+    mark = perf_counter()
+    fingerprint = city_fingerprint(city_dir(city))
+    stage_ms["provenance"] = round((perf_counter() - mark) * 1000.0)
 
     # ---- Twin ---------------------------------------------------------------------------
     mark = perf_counter()
@@ -695,7 +779,20 @@ def run_cycle(
     street_depths = street_series(
         {sid: list(depth_cm[:, k]) for k, sid in enumerate(index[0])}, names, points
     )
-    alerts = build_alerts(hotspots, run_id, cycle_ts, twin.times, mode, streets=street_depths)
+    # How many of the members also cross each level, counted on the same street collapse, so an
+    # alert can say "N of 50 members above" beside the deterministic raise it comes from.
+    street_members = (
+        street_member_series(depth_cm, members, index[0], names) if members is not None else None
+    )
+    alerts = build_alerts(
+        hotspots,
+        run_id,
+        cycle_ts,
+        twin.times,
+        mode,
+        streets=street_depths,
+        street_members=street_members,
+    )
     # The storm the Twin was driven by, handed to the plan so the benefit is the emulator
     # re-run with the pump's outflow rather than the bathtub fallback (CLAUDE.md 11.10). The
     # plan never reads it back off disk - a first bake would find nothing and a re-bake would
@@ -772,6 +869,10 @@ def run_cycle(
         # harder", and without it stored the endpoint can only answer questions about pipes.
         # The same list the pump plan was priced on, so the two cannot disagree.
         rain_aoi_mm_h=rain_aoi_mm_h,
+        # Provenance the run id cannot carry: which Twin revision ran, and a hash of each city
+        # file it read. `varuna_cycle.provenance.stale_runs` compares both against the city now.
+        twin_revision=TWIN_REVISION,
+        city_fingerprint=CityFingerprint(**fingerprint),
     )
 
     def _write(tmp: Path) -> None:
@@ -780,7 +881,20 @@ def run_cycle(
             # cube is the only artifact carrying the nowcaster, its seed and the Z-R relation,
             # so a run with one and not the other is a run whose rain cannot be traced.
             write_rain_products(tmp, rain_ensemble, sky.products, load_aoi_grid(city))
-        write_depth_rasters(tmp, twin.depth_m, terrain.transform, terrain.crs, stat="p50")
+        # The city's sea and its intertidal land are drawn transparent: the Twin holds the sea at
+        # the tide's level and lets the tide walk onto the mangroves, and through the depth ramp
+        # either would read "rescue vehicles only" where no street is. The segment table and the
+        # hotspot rank leave out the same cells.
+        write_depth_rasters(
+            tmp,
+            twin.depth_m,
+            terrain.transform,
+            terrain.crs,
+            stat="p50",
+            sea_mask=_tidal_cells(
+                terrain, city_intertidal_mask(city_dir(city), tuple(np.shape(terrain.z)))
+            ),
+        )
         frame.to_parquet(tmp / "segment_forecast.parquet", index=False)
         write_wet_segments(tmp, depth_cm, index[0], twin.times, run_id)
         (tmp / "hotspots.json").write_text(json.dumps(hotspots, indent=2) + "\n", encoding="utf-8")
@@ -828,7 +942,11 @@ def run_cycle(
         stage_ms=stage_ms,
         ensemble_n=ensemble_n,
         mass_balance_err=float(twin.mass_balance.error_fraction),
-        peak_depth_cm=round(float(np.nanmax(twin.depth_m)) * 100.0, 1),
+        peak_depth_cm=land_peak_depth_cm(
+            twin.depth_m,
+            terrain,
+            intertidal=city_intertidal_mask(city_dir(city), tuple(np.shape(terrain.z))),
+        ),
         wet_segments=int((depth_cm.max(axis=0) > 5.0).sum()) if depth_cm.size else 0,
         surcharging_nodes=int((twin.q_surcharge[-1] > 0).sum()),
         backflow_edges=int((twin.edge_flow[-1] < 0).sum()),

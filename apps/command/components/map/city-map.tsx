@@ -61,7 +61,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { cityBounds, type Bbox } from "./basemap";
 import { buildingsLayers, dryStreetsLayers } from "./layers/base";
-import { useCityCamera } from "./layers/camera";
+import { useCityCamera, type FitPadding } from "./layers/camera";
 import { wipeLongitude } from "./layers/diff";
 import { drainsLayers } from "./layers/drains";
 import { drawnExtent } from "./layers/frame";
@@ -82,6 +82,12 @@ import {
   onSurface,
   verifyLocalWorkers,
 } from "./layers/surface";
+import {
+  isReportLayer,
+  reportPinLayers,
+  reportTooltipText,
+  useReportDrops,
+} from "./layers/reports";
 import { mapTooltip } from "./layers/tooltip";
 import { truthPinLayers } from "./layers/truth-pins";
 import { useMapOverlay } from "./layers/overlay-context";
@@ -109,6 +115,7 @@ import type { CityMapMode } from "./types";
 /** The loader-heavy half of 3D, fetched on demand (`layers/surface.ts` is the light half). */
 type PhotorealModule = typeof import("./layers/photoreal");
 import { MapAttribution } from "@/components/varuna/map-attribution";
+import type { ReportPin } from "@/lib/api/reports";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { createCreditStore, useMapCredits, usePhotorealTileset } from "@/lib/maps/photoreal";
 import { googleMapsKey } from "@/lib/maps/google";
@@ -123,6 +130,8 @@ const NO_ROUTES: readonly RouteLine[] = [];
 const NO_LAYERS: readonly unknown[] = [];
 /** Stable empty default for the X-ray's nodes: a fresh `[]` would rebuild its memo every render. */
 const NO_NODES: readonly DrainNode[] = [];
+/** Stable empty default for citizen reports: every screen that shows none draws exactly as before. */
+const NO_REPORTS: readonly ReportPin[] = [];
 /** How far the photographed surface fades under the X-ray (motion row M28: "to 20 % opacity"). */
 const XRAY_SURFACE_OPACITY = 0.2;
 
@@ -154,6 +163,16 @@ export interface CityMapProps {
   isochrones?: readonly Isochrone[];
   /** Sourced ground-truth pins the replay clock has reached (CLAUDE.md 7.2's 2:40 moment). */
   truthPins?: readonly TruthPin[];
+  /**
+   * Citizen reports, drawn as `--obs-report` pins with their status in the outline and a ring when
+   * a photo is attached (`layers/reports.ts`). A report that arrives after the first list drops in
+   * (motion M32). Empty by default, and an empty list draws nothing and changes nothing else.
+   */
+  reports?: readonly ReportPin[];
+  /** The report whose card is open, drawn with a ring outside its pin. */
+  selectedReportId?: string | null;
+  /** A report pin was tapped. Absent leaves the pins unpickable. */
+  onPickReport?: (id: string) => void;
   /** Called when a wet street is clicked, with the segment and where on screen it was (P6.9).
    * Absent leaves the streets unpickable, which is what the hero and the public map want. */
   onSegmentPick?: (pick: SegmentPick | null) => void;
@@ -165,12 +184,41 @@ export interface CityMapProps {
   /** Fly the camera here when `key` changes. */
   focus?: MapFocus | null;
   step: number;
-  /** The area the camera frames on first paint. Defaults to the city's AOI. */
+  /**
+   * The area the camera frames when nothing is drawn yet. Defaults to the city's AOI. Once the
+   * streets load the camera frames what is drawn, unless `fitBounds` says otherwise.
+   */
   bounds?: Bbox;
+  /**
+   * The box the camera opens on, instead of everything drawn: a screen's main affected area
+   * (`lib/map/affected-bounds.ts`). Absent or null, the camera frames what is drawn, as it always
+   * has. A camera the operator has moved is theirs: a changed `fitBounds` re-frames only a camera
+   * nobody has touched, so a new run can re-frame the map and a scrub never yanks it.
+   */
+  fitBounds?: Bbox | null;
+  /**
+   * Change it to re-arm the fit - drop the operator's pan and zoom and frame `fitBounds` (or what
+   * is drawn) again, as a cut. For an explicit ask such as the console's full view.
+   */
+  fitKey?: string | number | null;
+  /**
+   * The `fitKey` whose camera is kept on leaving it and given back on returning: the console
+   * passes its normal layout's key, so leaving full view restores the view the operator had.
+   */
+  keepViewOf?: string | number | null;
+  /**
+   * The fit's margin in pixels, per side where a screen floats panels over its map, so the frame
+   * lands in the part of the map nobody has covered. Defaults to 12 px all round.
+   */
+  fitPadding?: FitPadding;
   showRaster?: boolean;
   showSegments?: boolean;
   showSurcharge?: boolean;
   showHotspots?: boolean;
+  /**
+   * Building footprints. Off unless asked for: every screen either passes it or wants it off, and
+   * 11 MB of polygons is an operator's load, not a default.
+   */
   showBuildings?: boolean;
   showDrains?: boolean;
   /** Draw Esri's aerial imagery under everything (section 6.7's basemap slot). */
@@ -235,17 +283,24 @@ export function CityMap({
   routes: routesProp = NO_ROUTES,
   isochrones = [],
   truthPins = [],
+  reports = NO_REPORTS,
+  selectedReportId = null,
+  onPickReport,
   onSegmentPick,
   passableBelowCm,
   selectedHotspotId = null,
   focus = null,
   step,
   bounds,
+  fitBounds = null,
+  fitKey = null,
+  keepViewOf = null,
+  fitPadding,
   showRaster = true,
   showSegments = true,
   showSurcharge = true,
   showHotspots = true,
-  showBuildings = true,
+  showBuildings = false,
   showDrains = false,
   probabilityThresholdCm,
   diffMode: diffModeProp = false,
@@ -333,10 +388,13 @@ export function CityMap({
   // The camera (fit, fly-to, ownership) lives in `layers/camera.ts`; it frames what is drawn.
   const aoi = bounds ?? cityBounds("mumbai");
 
-  const frame = useMemo<Bbox>(
+  const drawn = useMemo<Bbox>(
     () => drawnExtent({ routes, baseSegments, segments, drains, hotspots, fallback: aoi }),
     [routes, baseSegments, segments, drains, hotspots, aoi],
   );
+  // A screen's own frame wins over the drawn extent; the what-if wipe then sweeps across what is
+  // on screen rather than across the whole city.
+  const frame = fitBounds ?? drawn;
 
   const wipeLon = useMemo(
     () => wipeLongitude(diffMode, diffProgress, frame),
@@ -350,6 +408,9 @@ export function CityMap({
     interactive,
     threeD,
     pitch3d: PHOTOREAL_PITCH,
+    fitKey,
+    keepViewOf,
+    fitPadding,
   });
 
   // ---- Keyboard -------------------------------------------------------------------------
@@ -604,6 +665,21 @@ export function CityMap({
     [routes, shownIsochrones, routeProgress, truthPins, reducedMotion],
   );
 
+  // Citizen reports over the overlays and under the labels, so a pin is never hidden by a route
+  // and a street name is never hidden by a pin. Their own memo: a report arriving rebuilds these
+  // few pins and nothing else, and a scrub never touches them.
+  const shownReports = useReportDrops(reports, reducedMotion);
+  const reportLayers = useMemo(
+    () =>
+      reportPinLayers({
+        reports: shownReports,
+        selectedReportId,
+        onPick: onPickReport,
+        reducedMotion,
+      }),
+    [shownReports, selectedReportId, onPickReport, reducedMotion],
+  );
+
   const labelDrawLayers = useLabelLayers({
     baseSegments,
     segments,
@@ -622,6 +698,7 @@ export function CityMap({
       ...drainFlowLayers,
       ...markerLayers,
       ...overlayLayers,
+      ...reportLayers,
       // Labels last: a street name the depth ramp paints over is a name nobody can read.
       ...labelDrawLayers,
     ];
@@ -654,8 +731,31 @@ export function CityMap({
     drainFlowLayers,
     markerLayers,
     overlayLayers,
+    reportLayers,
     labelDrawLayers,
   ]);
+
+  // A hovered report pin names itself; every other object keeps the street tooltip it had. Only
+  // wrapped when there are pickable pins, so a screen without reports hands deck the same function.
+  const streetTooltip = mapTooltip({ step, streetsPickable: Boolean(onSegmentPick) });
+  const getTooltip =
+    onPickReport && reports.length > 0
+      ? (info: { object?: unknown; layer?: unknown }) =>
+          isReportLayer(info.layer) && info.object
+            ? {
+                text: reportTooltipText(info.object as ReportPin),
+                style: {
+                  backgroundColor: "var(--deep)",
+                  color: "var(--text)",
+                  border: "1px solid var(--line)",
+                  borderRadius: "8px",
+                  fontSize: "12px",
+                  padding: "6px 8px",
+                  whiteSpace: "pre-line",
+                },
+              }
+            : (streetTooltip?.(info as { object?: SegmentPath }) ?? null)
+      : streetTooltip;
 
   const animate = deckAnimates({
     reducedMotion,
@@ -672,7 +772,7 @@ export function CityMap({
         layers={layers as never}
         pickingRadius={6}
         _animate={animate}
-        getTooltip={mapTooltip({ step, streetsPickable: Boolean(onSegmentPick) }) as never}
+        getTooltip={getTooltip as never}
         onClick={
           onSegmentPick
             ? ((({ object, x, y }: { object?: SegmentPath; x: number; y: number }) => {

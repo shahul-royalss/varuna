@@ -7,10 +7,13 @@ CLAUDE.md 10.2 fixes the layout, and this module is the only place that knows it
       radar/frames.zarr       dBZ[t, y, x] on the storm domain, every 10 min
       truth/rain.zarr         mm/h[t, y, x] on the same grid, every 5 min (synthetic bundles)
       gauges.csv              ts, station_id, lat, lon, mm_5min, synthetic
-      tide.csv                ts, stage_m, source
+      tide.csv                ts, stage_m, source; from t0 to t1 + 3 h
       traffic/speeds.parquet  ts, segment_id, kmh, baseline_kmh, synthetic
       reports.jsonl           one JSON object per line
       ground_truth.geojson    real, sourced pins; properties follow GroundTruthPin
+
+One extension in time: ``tide.csv`` runs on :data:`TIDE_LOOKAHEAD_MIN` past ``t1``, because a
+cycle at the end of the window forecasts that far ahead and the tide is its boundary.
 
 Three extensions to the table in CLAUDE.md 10.2: ``gauges.csv`` and
 ``traffic/speeds.parquet`` carry an explicit ``synthetic`` column, so a stream cannot reach
@@ -34,7 +37,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import structlog
-from varuna_schemas.constants import IST
+from varuna_schemas.constants import IST, LEAD_MAX_MIN
 from varuna_schemas.models.bundle import BundleManifest
 from varuna_schemas.paths import bundle_dir, bundles_dir
 
@@ -71,6 +74,17 @@ GAUGES_COLUMNS: tuple[str, ...] = (
 ``synthetic``: a gauge site is the one part of the stream that is real and sourced, and a bare
 station id would send the reader back to the research file to find out whose gauge it is."""
 TIDE_COLUMNS: tuple[str, ...] = ("ts", "stage_m", "source")
+TIDE_LOOKAHEAD_MIN: int = LEAD_MAX_MIN
+"""How far ``tide.csv`` runs past ``t1``: the forecast horizon, 3 h (CLAUDE.md 10.3).
+
+Every other stream stops at ``t1`` because it is observed, and nothing observed exists after the
+window. The tide is not observed: it is the sea boundary the Twin forecasts against, and a cycle
+at ``t1`` forecasts to ``t1 + 3 h``. :meth:`varuna_twin.types.TideSeries.at` holds the stage
+flat past the last row, so a series that stopped at ``t1`` froze the sea for the last cycle's
+whole horizon - on MUM-2019-07-02 at the 09:40 stage, 0.98 m below the 11:30 high water the
+series is anchored to. An astronomical tide is known before the day, which is what makes running
+it past the window a boundary rather than a look at the future. The replay clock still stops at
+``t1``, so the stages after it are read by the Twin and never published on the bus."""
 TRAFFIC_COLUMNS: tuple[str, ...] = ("ts", "segment_id", "kmh", "baseline_kmh", "synthetic")
 REPORT_REQUIRED_KEYS: tuple[str, ...] = ("ts", "lat", "lon", "depth_hint", "synthetic")
 
@@ -509,6 +523,7 @@ __all__ = [
     "REPORT_REQUIRED_KEYS",
     "TIDE_COLUMNS",
     "TIDE_CSV",
+    "TIDE_LOOKAHEAD_MIN",
     "TRAFFIC_COLUMNS",
     "TRAFFIC_PARQUET",
     "TRUTH_VARIABLE",

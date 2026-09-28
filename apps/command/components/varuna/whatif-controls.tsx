@@ -14,7 +14,7 @@ export interface WhatIfValues {
   rainScale: number;
   /** Tide offset in metres, -0.5 to +1.0. */
   tideOffsetM: number;
-  /** Clean the top 14 pipes by posterior beta (beta to 0.05). */
+  /** Clean the top 14 pipes by learned blockage, city-wide (beta to 0.05). */
   cleanTop14: boolean;
   /**
    * Road segments whose pipe is cleaned (beta to 0.05), picked on a hotspot and carried here by
@@ -22,7 +22,7 @@ export interface WhatIfValues {
    * takes; drain edge ids are refused by it with 422.
    */
   cleanedSegments: string[];
-  /** Apply the current pump plan as extra outflow at hotspots. */
+  /** Run the cycle's own pump plan from each pump's arrival (a lower bound). */
   pumpPlan: boolean;
 }
 
@@ -39,19 +39,25 @@ export const CLEANING_CEILING_NOTE =
   "ceiling: cleaning all 21,296 segments at once moves the deepest street 3.5 cm (ADR-0042).";
 
 /**
- * What the tide slider can do on this screen, said before Run rather than only as the 422.
+ * What the tide slider does, said before Run rather than discovered after it.
  *
- * `POST /v1/whatif` refuses any non-zero tide offset: Flash-lite is a perturbation around a base
- * state measured at one tide series, so it has nothing to move a tide with. The slider stays
- * because the request carries the field and the refusal is the API's own. The physics check
- * refuses it too, because it compares the emulator's answer with the Twin's and there is no
- * emulator answer to compare; the note says so before either button is pressed (CLAUDE.md 17,
- * "never a dead control").
+ * Flash-lite has no sea level: it is a perturbation around a base state measured at one tide
+ * series, so a tide cancels out of every difference it computes (ADR-0025). A different sea level
+ * is answered by one full-city coupled Twin run (`POST /v1/whatif/twin`); the emulator's answer
+ * for the other levers shows at once, labelled as leaving the tide out, until the Twin's lands.
  */
 export const TIDE_OFFSET_NOTE =
-  "The emulator cannot move the tide: it was fitted at one tide series, so Run what-if and " +
-  "Physics check both refuse a tide offset. A different sea level is a Twin forecast, not a " +
-  "what-if.";
+  "Tide runs the full physics (about a minute). The emulator cannot move the sea.";
+
+/** The pump lever, as the endpoint prices it (CLAUDE.md 7.7; a lower bound, labelled). */
+export const PUMP_PLAN_NOTE =
+  "Runs this cycle's pump plan from each pump's arrival. A lower bound: the emulator prices a " +
+  "pump against local rain only. Synthetic pump inventory.";
+
+/** Section 7.7's "Clean top 14 by blockage", said as what the endpoint does. */
+export const CLEAN_TOP_NOTE =
+  "Cleans the 14 pipes with the highest learned blockage, city-wide, to 0.05. A street under " +
+  "one runs at its next-worst pipe.";
 
 export const RAIN_SCALE_MIN = 0.5;
 export const RAIN_SCALE_MAX = 2.0;
@@ -79,8 +85,13 @@ export function formatTideOffset(metres: number): string {
   return `${sign}${Math.abs(rounded).toFixed(1)} m`;
 }
 
+/**
+ * The slider's value on the 0.1 grid it steps on. A range from -0.5 in steps of 0.1 lands on
+ * 5.55e-17 rather than 0, and a tide that is not exactly 0 sends the question to the Twin.
+ */
 function firstValue(value: number | readonly number[]): number {
-  return Array.isArray(value) ? Number(value[0]) : Number(value);
+  const raw = Array.isArray(value) ? Number(value[0]) : Number(value);
+  return Math.round(raw / WHATIF_STEP) / Math.round(1 / WHATIF_STEP);
 }
 
 interface SwitchRowProps {
@@ -304,9 +315,22 @@ export function WhatIfControls({
           <span id={tideLabelId} className="type-small text-text font-medium">
             Tide offset
           </span>
-          <output className="num type-small text-text-2" htmlFor={tideLabelId}>
-            {formatTideOffset(values.tideOffsetM)}
-          </output>
+          <span className="flex items-baseline gap-2">
+            <output className="num type-small text-text-2" htmlFor={tideLabelId}>
+              {formatTideOffset(values.tideOffsetM)}
+            </output>
+            {/* Back to the run's own tide in one press: a slider has no reliable way to land
+                exactly on 0 by drag, and a tide of +0.1 m sends the question to the Twin. */}
+            <Button
+              variant="ghost"
+              size="xs"
+              aria-label="Reset the tide offset to +0.0 m"
+              disabled={values.tideOffsetM === 0}
+              onClick={() => update({ tideOffsetM: 0 })}
+            >
+              Reset
+            </Button>
+          </span>
         </div>
         <Slider
           aria-labelledby={tideLabelId}
@@ -331,8 +355,8 @@ export function WhatIfControls({
 
       <section className="space-y-3">
         <SwitchRow
-          label="Clean top 14 by beta"
-          description="Sets blockage to 0.05 on the 14 worst pipes."
+          label="Clean top 14 by blockage"
+          description={CLEAN_TOP_NOTE}
           checked={values.cleanTop14}
           onCheckedChange={(checked) => update({ cleanTop14: checked })}
           disabled={cleanDisabled}
@@ -340,7 +364,7 @@ export function WhatIfControls({
         />
         <SwitchRow
           label="Pump plan"
-          description="Applies the current dispatch as extra outflow."
+          description={PUMP_PLAN_NOTE}
           checked={values.pumpPlan}
           onCheckedChange={(checked) => update({ pumpPlan: checked })}
           disabled={pumpDisabled}

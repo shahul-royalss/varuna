@@ -46,7 +46,7 @@ export function LogStream({
     return (
       <div
         className={cn(
-          "flex h-64 items-center justify-center rounded-control border border-line bg-ink",
+          "rounded-control border-line bg-ink flex h-64 items-center justify-center border",
           className,
         )}
       >
@@ -61,8 +61,11 @@ export function LogStream({
       role="log"
       aria-live="polite"
       aria-label="Pipeline log"
+      // Focusable because it scrolls: a build writes more lines than the box shows, and a keyboard
+      // user has to be able to reach the earlier ones (WCAG 2.1.1, axe scrollable-region-focusable).
+      tabIndex={0}
       className={cn(
-        "h-64 overflow-y-auto rounded-control border border-line bg-ink p-3 font-mono text-micro leading-relaxed",
+        "rounded-control border-line bg-ink text-micro focus-visible:ring-tide/50 h-64 overflow-y-auto border p-3 font-mono leading-relaxed focus-visible:ring-3 focus-visible:outline-none",
         className,
       )}
     >
@@ -76,7 +79,7 @@ export function LogStream({
             (line.level ?? "info") === "info" && "text-text-2",
           )}
         >
-          <span className="num shrink-0 text-text-3">{formatIst(line.ts, { seconds: true })}</span>
+          <span className="num text-text-3 shrink-0">{formatIst(line.ts, { seconds: true })}</span>
           <span className="min-w-0 break-words">{line.text}</span>
         </div>
       ))}

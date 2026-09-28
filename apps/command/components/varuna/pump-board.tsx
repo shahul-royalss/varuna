@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { MinutesFlow } from "@/components/varuna/minutes-flow";
 import { PumpCard, type Pump } from "@/components/varuna/pump-card";
+import { Sparkline } from "@/components/varuna/sparkline";
 import { usePrefersReducedMotion } from "@/lib/hooks/use-media-query";
 import { presetFor } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -33,6 +34,12 @@ export interface PumpColumn {
   pumps: Pump[];
   /** Minutes above 45 cm without and with the plan; null until a run has been loaded. */
   minutesAbove45?: { before: number; after: number } | null;
+  /**
+   * The place's forecast depth over the next three hours, one value per step, with no pump and
+   * with the optimiser's plan (`GET /v1/pumps/map`). `after` is null when the board no longer is
+   * the optimiser's plan, since the series belongs to that plan and not to a hand-moved one.
+   */
+  depthCm?: { before: readonly number[]; after: readonly number[] | null } | null;
 }
 
 /** The three chronic hotspots the demo dispatches to (CLAUDE.md section 3.3). */
@@ -46,8 +53,34 @@ export const DEFAULT_PUMP_COLUMNS: readonly PumpColumn[] = [
 export const PUMP_ACTIONS_HELPER =
   "The plan is the greedy optimiser's; it is recomputed when the cycle runs.";
 
-/** Placeholder line where the excess-inflow sparkline will be drawn. */
-export const SPARKLINE_PLACEHOLDER = "Excess inflow appears with the first run";
+/** The shared vertical scale of every column's sparkline, so a taller line is deeper water. */
+function depthCeiling(columns: readonly PumpColumn[]): number {
+  let peak = 60;
+  for (const c of columns) for (const v of c.depthCm?.before ?? []) peak = Math.max(peak, v);
+  return peak;
+}
+
+/**
+ * What a column's sparkline shows, in words: the peak with no pump, and with the plan.
+ *
+ * `pending` is what to say while there is no series because the answer that carries it has not
+ * arrived or failed - "No depth series" is kept for a settled answer that has none, since said
+ * while the series is still loading it is false.
+ */
+export function depthCaption(
+  column: PumpColumn,
+  planApplied: boolean,
+  pending: string | null = null,
+): string {
+  const before = column.depthCm?.before ?? [];
+  if (before.length === 0) return pending ?? "No depth series for this place in this run";
+  const peakBefore = Math.round(Math.max(...before));
+  const after = planApplied ? column.depthCm?.after : null;
+  if (after && after.length > 0) {
+    return `Peak ${Math.round(Math.max(...after))} cm with the plan, ${peakBefore} cm without`;
+  }
+  return `Peak ${peakBefore} cm with no pump, next 3 h`;
+}
 
 export interface PumpBoardProps {
   /** The available pumps, not yet assigned to a hotspot. */
@@ -68,6 +101,11 @@ export interface PumpBoardProps {
    * Optimise rolls it to the plan's (motion M17).
    */
   planApplied?: boolean;
+  /**
+   * What a column with no depth series says while the series is loading or failed to load (the
+   * screen's words); null or absent once the answer is settled.
+   */
+  depthNote?: string | null;
   className?: string;
 }
 
@@ -189,6 +227,7 @@ export function PumpBoard({
   onDispatch,
   onAssign,
   planApplied = true,
+  depthNote = null,
   className,
 }: PumpBoardProps) {
   const helperId = "pump-board-actions-helper";
@@ -198,6 +237,7 @@ export function PumpBoard({
   // A short activation distance, so a click on a card is still a click and only a deliberate
   // pull starts a drag.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const ceiling = depthCeiling(columns);
 
   const byId = new Map<string, Pump>();
   for (const pump of pumps) byId.set(pump.id, pump);
@@ -307,13 +347,22 @@ export function PumpBoard({
           >
             <header className="border-line border-b px-4 py-3">
               <h3 className="type-small text-text font-medium">{column.title}</h3>
-              <p className="type-micro text-text-3">{SPARKLINE_PLACEHOLDER}</p>
+              <p className="num type-micro text-text-3">{depthCaption(column, planApplied, depthNote)}</p>
             </header>
             <div className="flex min-h-0 flex-1 flex-col gap-2 p-3">
-              <div
-                aria-hidden="true"
-                className="rounded-control border-line bg-ink h-10 border border-dashed"
-              />
+              {column.depthCm && column.depthCm.before.length > 1 ? (
+                <Sparkline
+                  values={
+                    planApplied && column.depthCm.after?.length
+                      ? column.depthCm.after
+                      : column.depthCm.before
+                  }
+                  maxValue={ceiling}
+                  width={254}
+                  height={36}
+                  className="rounded-control bg-ink"
+                />
+              ) : null}
               <p className="num type-micro text-text-2">
                 <BenefitLine column={column} planApplied={planApplied} />
               </p>
@@ -321,7 +370,7 @@ export function PumpBoard({
                 <EmptyState
                   size="sm"
                   title="No pump assigned"
-                  description="Assign a pump once the inventory and a run are loaded."
+                  description="Drag a pump here, or press Optimise to place the plan."
                 />
               ) : (
                 column.pumps.map((pump) => (

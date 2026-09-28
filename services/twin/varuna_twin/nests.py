@@ -346,6 +346,24 @@ def build_nest(parent: TerrainGrid, spec: NestSpec) -> Nest:
         )
         row0, col0 = clamped_row0, clamped_col0
 
+    # A nest has no sea boundary. Its ring imposes the parent's depth and its interior is land
+    # under rain, so a window holding any of the city's sea (``terrain.sea``) would treat seawater
+    # held at the tide as street water. Refused rather than run: Mumbai's two nests are 1,549 m
+    # (Hindmata) and 2,154 m (King's Circle) from the nearest sea cell of the rebuilt coastline,
+    # against a half-width of about 510 m, so this guards a nest nobody has placed yet.
+    sea = getattr(parent, "sea", None)
+    if sea is not None:
+        on_sea = int(
+            np.count_nonzero(np.asarray(sea)[row0 : row0 + n_parent, col0 : col0 + n_parent])
+        )
+        if on_sea:
+            msg = (
+                f"nest {spec.id}: the window holds {on_sea} of the city's sea cells, and a nest "
+                "has no sea boundary - its interior would take the sea held at the tide for "
+                "street water. Place it inland, or give the nest a sea boundary first."
+            )
+            raise ValueError(msg)
+
     n_nest = n_parent * refine
     # Nest cell centres as fractional parent indices. Cell (i, j) of the nest has its centre at
     # parent index row0 + (i + 0.5)/refine - 0.5, because parent index k addresses the *centre*

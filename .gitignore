@@ -4,6 +4,8 @@ node_modules/
 # The production build the performance pass measures beside a running `next dev` (P10.4),
 # and the diagnostic scripts that prototyped its instruments.
 .next-perf/
+# A second Next build directory (VARUNA_DIST_DIR), e.g. an agent's private dev server.
+.next-*/
 apps/command/.perf-*.mjs
 out/
 dist/
@@ -99,3 +101,9 @@ data/reports/
 # can run Next at all.
 apps/command/public/workers/
 .wf/
+
+# Stale runs set aside by hand (2026-09-26); kept locally, never committed.
+data/runs-quarantine/
+
+# Local what-if answers; the shipped copy lives in demo/whatif
+data/whatif/

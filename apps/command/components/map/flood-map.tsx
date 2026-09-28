@@ -23,8 +23,11 @@ import {
   type SegmentPick,
   type TruthPin,
 } from "./city-map";
+import type { ReportPin } from "@/lib/api/reports";
 import type { CityMapMode } from "./types";
-import type { Bbox } from "./basemap";
+import { cityBounds, type Bbox } from "./basemap";
+import { affectedFrameAt, WHOLE, type AffectedFrame } from "@/lib/map/affected-bounds";
+import type { FitPadding } from "./layers/camera";
 import {
   loadBuildings,
   loadDrainNodes,
@@ -92,6 +95,7 @@ export interface FloodMapProps {
   /** The run's surcharging manholes; only those active at the current step are drawn. */
   surcharge?: SurchargeSet | null;
   showSurcharge?: boolean;
+  /** Building footprints, and their 11 MB fetch. Off unless asked for, as on `CityMap`. */
   showBuildings?: boolean;
   showDrains?: boolean;
   /** Camera target from the rail; a new `key` starts a new flight (motion M10). */
@@ -116,6 +120,40 @@ export interface FloodMapProps {
    * to be looking at the same place - gets that frame without a fly-to.
    */
   bounds?: Bbox;
+  /**
+   * What the camera opens on once the run has loaded. `drawn` (the default) is every street, as
+   * it always was; `affected` is the run's main affected area at its peak step
+   * (`lib/map/affected-bounds.ts`), which is computed once per run and never follows the scrub.
+   */
+  frameOn?: "drawn" | "affected";
+  /**
+   * With `frameOn="affected"`, frame every qualifying street with no window (`WHOLE`): the
+   * console's full view, which shows the whole affected picture rather than its densest part.
+   * Read at the peak or at `frameStep`, never at the live scrub, so scrubbing never moves the
+   * camera.
+   */
+  frameWhole?: boolean;
+  /**
+   * With `frameOn="affected"`, read the streets at this step rather than at the run's peak, and
+   * fall back to the peak when the step has too little water to frame (`affectedFrameAt`). The
+   * console passes the step on screen when full view opens and holds it there, so the scrub still
+   * never moves the camera. Absent or null, the peak.
+   */
+  frameStep?: number | null;
+  /**
+   * With `frameOn="affected"`, how many of the run's top-ranked chronic spots the frame must hold
+   * (`include`): the console passes the rows its rail lists first, so the map opens on what the
+   * rail names. 0, the default, frames the water alone.
+   */
+  frameHolds?: number;
+  /** The fit's margin, per side where the screen floats panels over the map (`CityMap`). */
+  fitPadding?: FitPadding;
+  /** Change it to re-arm the fit after the operator has moved the camera (`CityMap.fitKey`). */
+  fitKey?: string | number | null;
+  /** The `fitKey` whose camera is kept and given back on return (`CityMap.keepViewOf`). */
+  keepViewOf?: string | number | null;
+  /** The affected frame whenever it changes, for a screen that says what it is framed on. */
+  onFrame?: (frame: AffectedFrame | null) => void;
   /** `hero` makes the map read-only for the landing page's scrub loop (motion M1). */
   mode?: CityMapMode;
   /** Set to draw wet streets in the public map's three colours against this stopping depth. */
@@ -126,6 +164,11 @@ export interface FloodMapProps {
   probabilityThresholdCm?: number;
   /** Sourced ground-truth pins to drop on the map (task P6.12, motion M18). */
   truthPins?: readonly TruthPin[];
+  /** Citizen reports, passed straight to `CityMap` (`layers/reports.ts`, motion M32). */
+  reports?: readonly ReportPin[];
+  selectedReportId?: string | null;
+  /** A report pin was tapped. Absent leaves the pins unpickable. */
+  onPickReport?: (id: string) => void;
   /** A wet street was clicked (task P6.9); absent leaves the streets unpickable. */
   onSegmentPick?: (pick: SegmentPick | null) => void;
   /** Off where `MapSlot` sits behind this map and draws the credit already. */
@@ -146,16 +189,27 @@ export function FloodMap({
   selectedHotspotId = null,
   surcharge: surchargeSet = null,
   showSurcharge = true,
-  showBuildings = true,
+  showBuildings = false,
   showDrains = false,
   drains: learned = NO_LEARNED_DRAINS,
   bounds,
+  frameOn = "drawn",
+  frameWhole = false,
+  frameStep = null,
+  frameHolds = 0,
+  fitPadding,
+  fitKey = null,
+  keepViewOf = null,
+  onFrame,
   focus = null,
   isochrones = [],
   mode = "console",
   passableBelowCm,
   probabilityThresholdCm,
   truthPins,
+  reports,
+  selectedReportId,
+  onPickReport,
   onSegmentPick,
   showSatellite = true,
   attribution = true,
@@ -355,6 +409,40 @@ export function FloodMap({
     [surchargeSet, step],
   );
 
+  // The main affected area, from the run's own depths at its peak step: once per run, so the
+  // scrub never moves the camera. The chronic spots are the fallback for a run with no water deep
+  // enough to frame, and the top `frameHolds` of them are held in the frame either way. Only their
+  // positions and ranks are read, so the rail's depth chips changing never re-frames.
+  const readyStreets = status.kind === "ready" ? status.segments : null;
+  const spotKey = [...ranked]
+    .sort((a, b) => a.rank - b.rank)
+    .map((h) => `${h.lon},${h.lat}`)
+    .join(";");
+  // A screen that asks for the caption gets the frame whichever way it is framed.
+  const wantFrame = frameOn === "affected" || onFrame !== undefined;
+  const affected = useMemo<AffectedFrame | null>(() => {
+    if (!wantFrame || !readyStreets) return null;
+    const spots = spotKey
+      ? spotKey.split(";").map((pair) => {
+          const [lon, lat] = pair.split(",").map(Number);
+          return { lon: lon ?? Number.NaN, lat: lat ?? Number.NaN };
+        })
+      : [];
+    return affectedFrameAt(
+      {
+        streets: readyStreets,
+        hotspots: spots,
+        include: spots.slice(0, Math.max(0, frameHolds)),
+        fallback: bounds ?? cityBounds(city),
+        ...(frameWhole ? WHOLE : {}),
+      },
+      frameStep,
+    );
+  }, [wantFrame, readyStreets, spotKey, bounds, city, frameWhole, frameStep, frameHolds]);
+  useEffect(() => {
+    onFrame?.(affected);
+  }, [affected, onFrame]);
+
   if (status.kind === "loading") {
     const pct = status.total > 0 ? Math.round((status.done / status.total) * 100) : 0;
     return (
@@ -425,6 +513,10 @@ export function FloodMap({
         drains={drains}
         drainNodes={nodes}
         bounds={bounds}
+        fitBounds={frameOn === "affected" ? (affected?.bounds ?? null) : null}
+        fitKey={fitKey}
+        keepViewOf={keepViewOf}
+        fitPadding={fitPadding}
         showBuildings={showBuildings}
         showDrains={showDrains}
         hotspots={rings}
@@ -433,6 +525,9 @@ export function FloodMap({
         passableBelowCm={passableBelowCm}
         probabilityThresholdCm={probabilityThresholdCm}
         truthPins={truthPins}
+        reports={reports}
+        selectedReportId={selectedReportId}
+        onPickReport={onPickReport}
         onSegmentPick={onSegmentPick}
         // Esri's imagery may not be kept offline (P10.6), so a saved forecast draws over VARUNA's own
         // basemap instead, with that basemap's credit.

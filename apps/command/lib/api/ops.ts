@@ -197,6 +197,8 @@ export interface OpsLog {
   entries: OpsEntry[];
   /** False when the API holds no passphrase: the desk is read-only there and says so. */
   writesEnabled: boolean;
+  /** The API's own sentence for why writes are off; null when they are on or an older API omits it. */
+  writesDisabledReason?: string | null;
   passphraseEnv: string;
   notes: string[];
 }
@@ -238,6 +240,7 @@ export async function loadOpsLog(
     nEntries: Number(body.n_entries ?? 0),
     entries: Array.isArray(body.entries) ? body.entries.map(entry) : [],
     writesEnabled: body.writes_enabled === true,
+    writesDisabledReason: text(body.writes_disabled_reason) || null,
     passphraseEnv: text(body.passphrase_env, OPS_PASSPHRASE_ENV),
     notes: notes(body.notes),
   };
@@ -368,8 +371,11 @@ export async function loadDeskAlerts(
 /** One street the officer can act on: what the cycle says, or what the desk already shut. */
 export interface StreetOption {
   segmentId: string;
-  /** OSM's name, or null where the street is unnamed - never invented. */
+  /** OSM's name, or null where OSM names none - never invented. */
   name: string | null;
+  /** The feed's `display_name` for a street OSM does not name ("off Dr Ambedkar Road",
+   * "Service road near Wadala Depot"); absent from a feed that predates it. */
+  displayName?: string | null;
   peakDepthCm: number;
   /** "closure" when an authority shut it, "forecast" when the water did. */
   cause: "closure" | "forecast";
@@ -402,6 +408,9 @@ export async function loadStreetOptions(
     return {
       segmentId: text(properties.segment_id),
       name: typeof properties.name === "string" && properties.name ? properties.name : null,
+      ...(typeof properties.display_name === "string" && properties.display_name
+        ? { displayName: properties.display_name }
+        : {}),
       peakDepthCm: Number(properties.peak_depth_cm ?? 0),
       cause: properties.cause === "closure" ? "closure" : "forecast",
       from: text(properties.from),

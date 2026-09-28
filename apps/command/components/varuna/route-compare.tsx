@@ -4,12 +4,16 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/varuna/empty-state";
 import { Panel } from "@/components/varuna/panel";
 import { MISSING, formatCm, formatIst, formatKm, formatMinutes, formatPct } from "@/lib/format";
+import { listName } from "@/lib/street-label";
 import { cn } from "@/lib/utils";
 
 /** A segment the VARUNA route stepped around, with the probability at the time it was reached. */
 export interface AvoidedSegment {
   segmentId: string;
-  /** Street name, e.g. "Dr Ambedkar Road at Hindmata". */
+  /**
+   * The street as the API names it: OSM's name, else a label that says where it is ("off Dr
+   * Ambedkar Road", "Service road near Wadala Depot"; `varuna_api.street_names`).
+   */
   name: string;
   /** P(impassable for the profile) at the arrival time, 0 to 1. */
   probability: number;
@@ -49,7 +53,7 @@ const DASH = <span className="text-text-3">{MISSING}</span>;
 
 function Metric({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-3 border-b border-line py-2 last:border-b-0">
+    <div className="border-line flex items-baseline justify-between gap-3 border-b py-2 last:border-b-0">
       <span className="type-micro text-text-2">{label}</span>
       <span className="num type-small text-text">{value}</span>
     </div>
@@ -68,10 +72,7 @@ function Column({
   accent: "naive" | "varuna";
 }) {
   return (
-    <section
-      aria-label={title}
-      className="min-w-0 rounded-panel border border-line bg-well p-3"
-    >
+    <section aria-label={title} className="rounded-panel border-line bg-well min-w-0 border p-3">
       <header className="flex items-center gap-2">
         <span
           aria-hidden="true"
@@ -80,9 +81,9 @@ function Column({
             accent === "varuna" ? "bg-tide" : "bg-naive",
           )}
         />
-        <h3 className="type-small font-medium text-text">{title}</h3>
+        <h3 className="type-small text-text font-medium">{title}</h3>
       </header>
-      <p className="mt-1 type-micro text-text-3">{note}</p>
+      <p className="type-micro text-text-3 mt-1">{note}</p>
       <div className="mt-2">
         <Metric
           label="ETA"
@@ -98,9 +99,7 @@ function Column({
         />
         <Metric
           label="Safe until"
-          value={
-            summary?.safeUntil === undefined ? DASH : `${formatIst(summary.safeUntil)} IST`
-          }
+          value={summary?.safeUntil === undefined ? DASH : `${formatIst(summary.safeUntil)} IST`}
         />
       </div>
     </section>
@@ -140,7 +139,7 @@ export function RouteCompare({ naive, varuna, className }: RouteCompareProps) {
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <section aria-label="Avoided segments">
-          <h3 className="type-small font-medium text-text">Avoided</h3>
+          <h3 className="type-small text-text font-medium">Avoided</h3>
           {avoided.length === 0 ? (
             <EmptyState
               size="sm"
@@ -152,10 +151,15 @@ export function RouteCompare({ naive, varuna, className }: RouteCompareProps) {
               {avoided.map((segment) => (
                 <li
                   key={segment.segmentId}
-                  className="flex items-baseline justify-between gap-3 border-b border-line py-1.5 last:border-b-0"
+                  className="border-line flex items-baseline justify-between gap-3 border-b py-1.5 last:border-b-0"
                 >
-                  <span className="min-w-0 truncate type-small text-text">{segment.name}</span>
-                  <span className="num shrink-0 type-micro text-text-2">
+                  <span
+                    className="type-small text-text min-w-0 truncate"
+                    title={listName(segment.name)}
+                  >
+                    {listName(segment.name)}
+                  </span>
+                  <span className="num type-micro text-text-2 shrink-0">
                     {formatPct(segment.probability)}
                     {segment.atTs ? ` at ${formatIst(segment.atTs)}` : ""}
                   </span>
@@ -166,7 +170,7 @@ export function RouteCompare({ naive, varuna, className }: RouteCompareProps) {
         </section>
 
         <section aria-label="Alternate routes">
-          <h3 className="type-small font-medium text-text">Alternates</h3>
+          <h3 className="type-small text-text font-medium">Alternates</h3>
           {alternates.length === 0 ? (
             <EmptyState
               size="sm"
@@ -178,10 +182,10 @@ export function RouteCompare({ naive, varuna, className }: RouteCompareProps) {
               {alternates.map((alternate) => (
                 <li
                   key={alternate.id}
-                  className="flex items-baseline justify-between gap-3 border-b border-line py-1.5 last:border-b-0"
+                  className="border-line flex items-baseline justify-between gap-3 border-b py-1.5 last:border-b-0"
                 >
-                  <span className="min-w-0 truncate type-small text-text">{alternate.label}</span>
-                  <span className="num shrink-0 type-micro text-text-2">
+                  <span className="type-small text-text min-w-0 truncate">{alternate.label}</span>
+                  <span className="num type-micro text-text-2 shrink-0">
                     {alternate.etaMin === undefined ? MISSING : formatMinutes(alternate.etaMin)}
                   </span>
                 </li>
@@ -191,7 +195,7 @@ export function RouteCompare({ naive, varuna, className }: RouteCompareProps) {
         </section>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-line pt-4">
+      <div className="border-line mt-4 flex flex-wrap items-center gap-2 border-t pt-4">
         <Button
           variant="outline"
           size="sm"

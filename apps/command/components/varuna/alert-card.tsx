@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 
 import { Button } from "@/components/ui/button";
 import { AlertLevelChip, type AlertLevel } from "@/components/varuna/alert-level-chip";
-import { formatIst, formatPct } from "@/lib/format";
+import { formatIst } from "@/lib/format";
 import { presetFor, useMotionPref } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -17,8 +17,12 @@ export interface AlertSummary {
   headline: string;
   /** Ward or locality the alert covers. */
   area: string;
-  /** P(> threshold) that triggered the alert, as a fraction. */
-  triggerProbability: number;
+  /**
+   * Not drawn. Every alert is raised on the Twin's own deterministic run, so the product's
+   * `trigger_p` is 1.0 on every alert and printing it said nothing (the alert centre's rows carry
+   * the ensemble's member count in their details instead). Kept optional for older callers.
+   */
+  triggerProbability?: number;
   /** When the alert was raised, ISO 8601 with +05:30. */
   raisedAt: string;
   /** Consecutive cycles the condition has persisted (hysteresis state). */
@@ -52,8 +56,9 @@ export interface AlertCardProps {
 }
 
 /**
- * One alert in the queue (CLAUDE.md section 7.5): level chip, headline, area, trigger
- * probability, the hysteresis line and the acknowledge and escalate actions. Colour is carried
+ * An alert as a card: level chip, headline, area, the hysteresis line and the acknowledge and
+ * escalate actions. The alert centre's queue draws `AlertRow` instead (two lines, details behind
+ * "See more"); this card remains for the /design page. Colour is carried
  * by the level chip only; the border stays `--line` so the map's depth ramp is never imitated.
  *
  * The card carries `layout="position"` under full motion, so when new cards arrive above it the
@@ -71,7 +76,8 @@ export function AlertCard({
   const { reduced } = useMotionPref();
   const preset = presetFor("M16", reduced);
   const unit = alert.persistsUnit ?? "cycle";
-  const hysteresis = `raised ${formatIst(alert.raisedAt)} - persists ${alert.persistsCycles} ${
+  // Sentence case and no hyphen separator (CLAUDE.md 6.8): "Raised 08:10, held 3 cycles".
+  const hysteresis = `Raised ${formatIst(alert.raisedAt)}, held ${alert.persistsCycles} ${
     alert.persistsCycles === 1 ? unit : `${unit}s`
   }`;
 
@@ -106,11 +112,9 @@ export function AlertCard({
         ) : (
           <h3 className="type-body text-text font-medium">{alert.headline}</h3>
         )}
-        <p className="type-small text-text-2">
-          {alert.area}
-          <span className="text-text-3"> - trigger </span>
-          <span className="num">{formatPct(alert.triggerProbability)}</span>
-        </p>
+        {alert.area !== alert.headline ? (
+          <p className="type-small text-text-2">{alert.area}</p>
+        ) : null}
       </div>
 
       <ul className="flex flex-wrap gap-1.5" aria-label="Channels">

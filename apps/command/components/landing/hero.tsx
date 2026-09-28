@@ -35,7 +35,7 @@ const FloodMap = dynamic(
   },
 );
 import { Button } from "@/components/ui/button";
-import { Wordmark } from "@/components/varuna/wordmark";
+import { BrandLockup } from "@/components/varuna/wordmark";
 import { apiUrl } from "@/lib/api/client";
 import type { RunDepth } from "@/lib/api/run-depth";
 import { formatIst } from "@/lib/format";
@@ -298,7 +298,10 @@ export function Hero() {
       >
         <div className="flex max-w-[52ch] flex-col items-start gap-6">
           <BlurFade index={0}>
-            <Wordmark size="lg" />
+            {/* The team's logo, emblem over the lettered name. It is drawn smaller than the
+                headline is wide and its lettering is darker than the headline's, so the headline
+                stays the thing the hero says (section 7.1). */}
+            <BrandLockup width={200} className="w-[152px] sm:w-[200px]" />
           </BlurFade>
           <BlurFade index={1}>
             <h1 className="font-display text-display tracking-display sm:text-hero max-w-[14ch] font-semibold">

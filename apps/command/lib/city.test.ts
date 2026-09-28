@@ -36,6 +36,10 @@ describe("withCity", () => {
   it("leaves the default city out of the URL rather than spelling it", () => {
     expect(withCity("/console", "?city=chennai", DEFAULT_CITY)).toBe("/console");
   });
+
+  it("spells Mumbai on /onboard, whose own default is Chennai", () => {
+    expect(withCity("/onboard", "?city=chennai", DEFAULT_CITY)).toBe("/onboard?city=mumbai");
+  });
 });
 
 describe("parseCities", () => {

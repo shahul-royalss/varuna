@@ -203,18 +203,25 @@ def whatsapp_text(alert: Mapping[str, Any], dispatch_note: str | None = None) ->
     note = dispatch_note or alert.get("dispatch_note")
     if note:
         lines.append(str(note))
-    lines.append(f"Area: {alert.get('area_desc', '')}. Run {alert.get('run_id', '')}.")
+    from varuna_products.alerts import forecast_phrase
+
+    lines.append(
+        f"Area: {alert.get('area_desc', '')}. {forecast_phrase(str(alert.get('run_id', '')))}."
+    )
     return "\n".join(lines)
 
 
 def sms_text(alert: Mapping[str, Any]) -> str:
-    """One SMS segment: level, headline and the exercise flag, cut to fit rather than split."""
+    """One SMS segment: level, headline and the exercise flag, the headline cut to fit, never split."""
     exercise = str(alert.get("cap_status", "Exercise")) != "Actual"
-    text = (
-        f"VARUNA {_level_word(alert).lower()}{' exercise' if exercise else ''}: "
-        f"{alert.get('headline', '')}. Avoid the street."
-    )
-    return text if len(text) <= SMS_LIMIT else text[: SMS_LIMIT - 3].rstrip() + "..."
+    prefix = f"VARUNA {_level_word(alert).lower()}{' exercise' if exercise else ''}: "
+    headline = str(alert.get("headline", ""))
+    text = f"{prefix}{headline}. Avoid the street."
+    if len(text) <= SMS_LIMIT:
+        return text
+    # The instruction is what the reader acts on, so a long headline is cut, never the tail.
+    tail = "... Avoid the street."
+    return f"{prefix}{headline[: SMS_LIMIT - len(prefix) - len(tail)].rstrip()}{tail}"
 
 
 # ---- transport -------------------------------------------------------------------------------

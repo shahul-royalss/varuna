@@ -356,8 +356,15 @@ def _mark_outfalls(
     trunk_chains: list[list[int]],
     z: NDArray[np.float64],
     config: Any,
+    *,
+    legacy_tidal: bool = True,
 ) -> list[int]:
-    """Outfalls: the downstream end of each trunk, plus the config's tidal boundary points."""
+    """Outfalls: the downstream end of each trunk, plus the config's tidal boundary points.
+
+    ``legacy_tidal=False`` (a city with a sea mask) leaves the config's tidal points out: they
+    are flap-gate metadata then, applied by :func:`_mark_tidal_outfalls`, and never make an
+    outfall of whatever node happens to lie nearest.
+    """
     outfalls: list[int] = []
     for chain in trunk_chains:
         end = chain[-1] if z[chain[-1]] <= z[chain[0]] else chain[0]
@@ -368,7 +375,7 @@ def _mark_outfalls(
         row["tidal"] = False
         outfalls.append(end)
 
-    tidal = list(getattr(config, "tidal_outfalls", []) or [])
+    tidal = list(getattr(config, "tidal_outfalls", []) or []) if legacy_tidal else []
     if tidal:
         node_xy = store.xy
         tree = cKDTree(node_xy)
@@ -402,6 +409,111 @@ def _mark_outfalls(
         row["tidal"] = False
         outfalls.append(near)
     return sorted(set(outfalls))
+
+
+def _mark_tidal_outfalls(
+    store: _NodeStore,
+    outfalls: list[int],
+    cell_rows: NDArray[np.int64],
+    cell_cols: NDArray[np.int64],
+    sea: NDArray[np.bool_],
+    config: Any,
+    *,
+    within_cells: int,
+) -> tuple[list[int], dict[str, Any]]:
+    """Make every outfall that discharges into the sea tidal, and hang the config's flap gates.
+
+    An outfall is tidal when its cell is within ``within_cells`` (chessboard) of the sea mask:
+    the pipe mouth is on the shore, and the sea's level is what it discharges against. On
+    Mumbai's trunk ends that is 20 outfalls (measured in memory on 2026-09-27), among them the
+    ones serving Kurla LBS, Bandra Talao and Kalanagar, where the config's three points used to
+    make three - one of them the MITHI point snapped onto a node standing 12.5 m up, 4.8 km
+    from any sea cell.
+
+    The config's ``tidal_outfalls`` are then metadata. Each is snapped to the nearest tidal
+    outfall within :data:`TIDAL_SNAP_M`, which takes the point's ``flap_gate`` and
+    ``outfall_id``; a point with none in reach is dropped and logged, never made an outfall of
+    whatever node lies nearest. Both cities' points are illustrative domain-edge markers, not
+    surveyed pipe mouths: on Mumbai all three drop (MAHIM sits in the bay 1.05 km from any node;
+    WORLI's nearest node is 36 cells from the sea and MITHI's 12, and snapping WORLI further put
+    its flap gate on Mahim's outfall 2.8 km away), so the rebuilt city has no flap gate. The
+    dropped entry records how far the nearest tidal outfall and the nearest node are, so the
+    report can say why.
+
+    Returns the tidal node indices and the numbers ``drains.json`` keeps.
+    """
+    from varuna_city.sea import chessboard_distance
+
+    distance = chessboard_distance(sea)
+
+    def cells_to_sea(node: int) -> int:
+        return int(distance[int(cell_rows[node]), int(cell_cols[node])])
+
+    tidal: list[int] = []
+    for node in outfalls:
+        cells = cells_to_sea(node)
+        row = store.rows[node]
+        row["sea_distance_cells"] = cells
+        if cells <= within_cells:
+            row["boundary_type"] = "tide"
+            row["tidal"] = True
+            tidal.append(node)
+
+    snapped: list[dict[str, Any]] = []
+    dropped: list[dict[str, Any]] = []
+    specs = list(getattr(config, "tidal_outfalls", []) or [])
+    if specs:
+        transformer = Transformer.from_crs(WGS84, config.crs_string, always_xy=True)
+        every = cKDTree(store.xy)
+        shore = (
+            cKDTree([[store.rows[i]["x"], store.rows[i]["y"]] for i in tidal]) if tidal else None
+        )
+        for spec in specs:
+            spec_id = getattr(spec, "id", None)
+            gate = bool(getattr(spec, "flap_gate", False))
+            x, y = transformer.transform(float(spec.lon), float(spec.lat))
+            gap, near = (np.inf, -1) if shore is None else shore.query([x, y])
+            gap = float(gap)
+            if gap <= TIDAL_SNAP_M:
+                node = tidal[int(near)]
+                row = store.rows[node]
+                row["flap_gate"] = bool(row.get("flap_gate", False)) or gate
+                if row.get("outfall_id") is None:
+                    row["outfall_id"] = spec_id
+                snapped.append(
+                    {
+                        "outfall_id": spec_id,
+                        "node": row["node_id"],
+                        "distance_m": round(gap, 1),
+                        "flap_gate": gate,
+                    }
+                )
+                continue
+            node_gap, node = every.query([x, y])
+            dropped.append(
+                {
+                    "outfall_id": spec_id,
+                    "nearest_tidal_outfall_m": round(gap, 1) if np.isfinite(gap) else None,
+                    "nearest_node_m": round(float(node_gap), 1),
+                    "nearest_node_sea_distance_cells": cells_to_sea(int(node)),
+                }
+            )
+    for entry in dropped:
+        log.warning("drains.tidal_outfall_dropped", **entry)
+
+    stats = {
+        "tidal_outfalls": len(tidal),
+        "tidal_within_cells": within_cells,
+        "config_snapped": snapped,
+        "config_dropped": dropped,
+    }
+    log.info(
+        "drains.tidal_outfalls",
+        tidal=len(tidal),
+        snapped=len(snapped),
+        dropped=len(dropped),
+    )
+    return sorted(tidal), stats
 
 
 _SUPER_SOURCE: Final[str] = "__sea__"
@@ -547,6 +659,8 @@ def build_drain_graph(
     *,
     config: Any,
     seed: int,
+    sea_mask: NDArray[np.bool_] | None = None,
+    sea_config: Any = None,
 ) -> tuple[gpd.GeoDataFrame, gpd.GeoDataFrame]:
     """Infer a directed, sized drain network from roads, terrain and water.
 
@@ -560,6 +674,12 @@ def build_drain_graph(
         landcover: imperviousness raster (0-1) or raw WorldCover class codes, DEM-shaped.
         config: the :class:`CityConfig` for this city.
         seed: every random draw comes from ``default_rng(seed)``; two runs agree byte for byte.
+        sea_mask: the city's sea (:mod:`varuna_city.sea`), True on open sea and tidal creek.
+            With it, every outfall within ``sea_config.tidal_outfall_cells`` of the sea is tidal
+            with its invert at ``sea_config.tidal_outfall_invert_m``, and the config's tidal
+            points only hang flap gates (:func:`_mark_tidal_outfalls`). Without it the config's
+            points make the tidal outfalls, as every city built before the sea step had.
+        sea_config: :class:`varuna_city.sea.SeaConfig`; its defaults when ``None``.
 
     Returns:
         ``(nodes, edges)`` GeoDataFrames in the city CRS. Every row carries
@@ -600,7 +720,26 @@ def build_drain_graph(
         if existing is None or length < existing["length"]:
             graph.add_edge(u, v, length=max(length, SNAP_M), repaired=False)
 
-    outfalls = _mark_outfalls(store, trunk_chains, z_ground, config)
+    outfalls = _mark_outfalls(store, trunk_chains, z_ground, config, legacy_tidal=sea_mask is None)
+    tidal_nodes: list[int] = []
+    tidal_stats: dict[str, Any] | None = None
+    if sea_mask is not None:
+        from varuna_city.sea import SeaConfig
+
+        sea_cfg = sea_config if sea_config is not None else SeaConfig()
+        sea = np.asarray(sea_mask, dtype=bool)
+        if sea.shape != dem.shape:
+            msg = f"sea_mask is {sea.shape} but the DEM is {dem.shape}; they must share a grid"
+            raise ValueError(msg)
+        tidal_nodes, tidal_stats = _mark_tidal_outfalls(
+            store,
+            outfalls,
+            cell_rows,
+            cell_cols,
+            sea,
+            config,
+            within_cells=int(sea_cfg.tidal_outfall_cells),
+        )
     downstream, distance = _route_tree(graph, outfalls, z_ground)
     routed = set(distance) | set(outfalls)
     repaired = _repair_orphans(store, graph, routed)
@@ -622,6 +761,17 @@ def build_drain_graph(
     deep = np.asarray([r["kind"] in {"trunk", "outfall"} for r in store.rows], dtype=bool)
     depth = np.where(deep, TRUNK_INVERT_DEPTH_M, INVERT_DEPTH_M)
     z_invert = z_ground - depth
+    # A tidal outfall's invert is the sea config's level (mean sea level unless it says
+    # otherwise). Never above the outfall's own ground: a pipe mouth can sit at the shore, not
+    # over it. It is set before the slope pass as the wave-B spec asks, but that ordering moves
+    # nothing upstream: the pass only raises inverts and the cover clamp below returns every
+    # other node to `ground - depth` (ADR-0048), so the tidal level changes the outfall's own
+    # invert and nothing else. An edge into it can run adverse; the head-driven solver handles
+    # that. test_drains_tidal pins it.
+    tidal_index = np.asarray(tidal_nodes, dtype=np.int64)
+    if tidal_index.size:
+        level = float(sea_cfg.tidal_outfall_invert_m)
+        z_invert[tidal_index] = np.minimum(level, z_ground[tidal_index])
     for node in sorted(range(len(store.rows)), key=lambda i: (distance[i], i)):
         parent = downstream.get(node)
         if parent is None:
@@ -648,6 +798,9 @@ def build_drain_graph(
     # solver is head-driven (CLAUDE.md 11.4 uses dH, not the bed slope), so it handles them.
     # The count is logged so the number is visible rather than buried.
     ceiling = z_ground - depth
+    if tidal_index.size:
+        # The tidal invert is set by the sea, not by cover; the clamp below must not undo it.
+        ceiling[tidal_index] = np.maximum(ceiling[tidal_index], z_invert[tidal_index])
     lifted = z_invert > ceiling + 1e-9
     if bool(np.any(lifted)):
         excess = (z_invert - ceiling)[lifted]
@@ -771,6 +924,23 @@ def build_drain_graph(
     )
     nodes.attrs["stage_ms"] = stage_ms
     edges.attrs["stage_ms"] = stage_ms
+    if tidal_stats is not None:
+        tidal_stats["outfalls"] = [
+            {
+                "node_id": store.rows[i]["node_id"],
+                "outfall_id": store.rows[i].get("outfall_id"),
+                "flap_gate": bool(store.rows[i].get("flap_gate", False)),
+                "sea_distance_cells": int(store.rows[i]["sea_distance_cells"]),
+                "z_ground_m": round(float(z_ground[i]), 3),
+                "z_invert_m": round(float(z_invert[i]), 3),
+            }
+            for i in tidal_nodes
+        ]
+        tidal_stats["tidal_outfall_invert_m"] = float(sea_cfg.tidal_outfall_invert_m)
+        tidal_stats["inverts_capped_at_ground"] = int(
+            np.count_nonzero(z_ground[tidal_index] < float(sea_cfg.tidal_outfall_invert_m))
+        )
+        nodes.attrs["tidal"] = tidal_stats
     return nodes, edges
 
 

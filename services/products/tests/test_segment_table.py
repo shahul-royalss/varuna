@@ -163,8 +163,10 @@ def test_sampling_on_the_real_mumbai_index_is_the_loop() -> None:
     root = city_dir("mumbai")
     if not (root / "segment_cells.npz").is_file():
         pytest.skip("needs city/mumbai/segment_cells.npz: run `make city CITY=mumbai`")
-    # The cache is present, so `segment_cell_index` returns it before touching the grid arguments.
-    index = D.segment_cell_index(root, None, None, None)
+    # Read the file itself rather than through `segment_cell_index`: that call rebuilds an index
+    # whose ids differ from `segments.parquet`, and a test must never rewrite `city/`.
+    with np.load(root / "segment_cells.npz", allow_pickle=True) as data:
+        index = (tuple(data["segment_ids"].tolist()), data["offsets"], data["cells"])
     rng = np.random.default_rng(SEED)
     n_cells = int(index[2].max()) + 1
     field = _field(rng, (N_STEPS, 1, n_cells), np.float64)

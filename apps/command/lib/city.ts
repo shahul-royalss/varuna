@@ -14,6 +14,9 @@
 /** The city every Mumbai screen means when the URL says nothing. Matches the API's own default. */
 export const DEFAULT_CITY = "mumbai";
 
+/** Pages whose default city is not DEFAULT_CITY, so an explicit `?city=mumbai` must survive. */
+const OWN_DEFAULT_PATHS: ReadonlySet<string> = new Set(["/onboard"]);
+
 /** City ids are lowercase slugs, the same shape `varuna_schemas` validates a path segment with. */
 const SLUG = /^[a-z][a-z0-9-]{0,31}$/;
 
@@ -55,7 +58,9 @@ export function currentCity(): string {
  */
 export function withCity(path: string, search: string, city: string): string {
   const params = new URLSearchParams(search);
-  if (city === DEFAULT_CITY) params.delete("city");
+  // /onboard's own default is Chennai, not DEFAULT_CITY, so dropping `?city=mumbai` there would
+  // land the reader back on Chennai; everywhere else the default city carries no parameter.
+  if (city === DEFAULT_CITY && !OWN_DEFAULT_PATHS.has(path)) params.delete("city");
   else params.set("city", city);
   // A run id belongs to one city, so carrying it across a switch would ask for a Chennai console
   // and then pin it to a Mumbai run.

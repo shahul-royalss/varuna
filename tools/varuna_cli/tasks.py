@@ -91,6 +91,40 @@ NO_BUNDLE_MESSAGE = (
 
 _TRUTHY = {"1", "true", "yes", "on"}
 
+COMPUTE_LIVE_ENV = "VARUNA_COMPUTE_LIVE"
+"""The API's Compute live gate (`services/api/varuna_api/routers/cycle.py`), read from its process
+environment only."""
+
+
+def compute_live_flag() -> str:
+    """``VARUNA_COMPUTE_LIVE`` for an API this task runner launches on this machine.
+
+    On unless the shell or ``.env`` says otherwise: ``make dev`` and ``make demo`` run on the demo
+    laptop, where the console's Compute live button is part of the demo (CLAUDE.md 7.2), and the
+    API reads the flag from its process environment only, so without this it was off everywhere.
+    A cycle takes a minute or more here (median about 104 s, 48-224 s over 8 runs, against section
+    14's 15 s), which the button says before it is pressed. The deployed API never goes through
+    this launcher and keeps it off.
+    """
+    explicit = os.environ.get(COMPUTE_LIVE_ENV, "").strip()
+    if explicit:
+        return explicit
+    try:
+        from dotenv import dotenv_values
+
+        from_file = (dotenv_values(repo_root() / ".env").get(COMPUTE_LIVE_ENV) or "").strip()
+    except Exception:  # a broken .env must not stop the task runner
+        from_file = ""
+    return from_file or "1"
+
+
+def _compute_live_words(flag: str) -> str:
+    return (
+        "Compute live on"
+        if flag.strip().lower() in _TRUTHY
+        else f"Compute live off: {COMPUTE_LIVE_ENV}={flag}"
+    )
+
 
 @dataclass(slots=True)
 class RuntimeConfig:
@@ -764,6 +798,7 @@ def dev(
         "VARUNA_REPLAY_AUTOPLAY": "0",
         "VARUNA_API_PORT": str(api_port),
         "VARUNA_UI_PORT": str(ui_port),
+        COMPUTE_LIVE_ENV: compute_live_flag(),
     }
     services = _services(
         config=config,
@@ -776,7 +811,7 @@ def dev(
     )
     console.print(
         f"Starting VARUNA dev: API http://localhost:{api_port}/docs, console http://localhost:{ui_port}/console "
-        "(replay paused). Ctrl+C stops both."
+        f"(replay paused, {_compute_live_words(env[COMPUTE_LIVE_ENV])}). Ctrl+C stops both."
     )
     raise typer.Exit(code=procs.run_concurrently(services))
 
@@ -803,6 +838,7 @@ def demo(
         "VARUNA_REPLAY_SPEED": f"{speed:g}",
         "VARUNA_API_PORT": str(api_port),
         "VARUNA_UI_PORT": str(ui_port),
+        COMPUTE_LIVE_ENV: compute_live_flag(),
     }
     if runs:
         console.print(
@@ -827,6 +863,7 @@ def demo(
     )
     console.print(
         f"Console: http://localhost:{ui_port}/console?bundle={bundle}  API: http://localhost:{api_port}/docs"
+        f"  ({_compute_live_words(env[COMPUTE_LIVE_ENV])})"
     )
     raise typer.Exit(code=procs.run_concurrently(services))
 

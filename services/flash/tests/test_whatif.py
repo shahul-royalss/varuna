@@ -94,3 +94,52 @@ def test_attribution_over_neighbours_refuses_with_its_reason() -> None:
     # The depth it could not explain is still reported: the drawer has a number to show above
     # the refusal.
     assert result.depth_before_cm > 0.0
+
+
+def test_a_pump_drains_nothing_before_it_arrives_and_something_after() -> None:
+    """``pump_from_step``: the drawdown starts at the arrival step and not at step 0."""
+    model = _model()
+    pump = np.array([2.0, 0.0, 0.0])
+    arrival = np.array([6, 0, 0])
+    unpumped = run_scenario(model, _rain(), beta=model.beta_ref)
+    late = run_scenario(
+        model, _rain(), beta=model.beta_ref, pump_cm_per_step=pump, pump_from_step=arrival
+    )
+    early = run_scenario(model, _rain(), beta=model.beta_ref, pump_cm_per_step=pump)
+
+    # Before the lorry arrives the street is exactly what it was without it.
+    assert np.array_equal(late.depth_cm[:6, 0], unpumped.depth_cm[:6, 0])
+    # After it, the street is lower, but not as low as a pump that ran all along.
+    assert late.depth_cm[-1, 0] < unpumped.depth_cm[-1, 0]
+    assert late.depth_cm[-1, 0] >= early.depth_cm[-1, 0]
+    # A segment with no pump is untouched by the other's.
+    assert np.array_equal(late.depth_cm[:, 1], unpumped.depth_cm[:, 1])
+
+
+def test_the_tide_refusal_names_the_engine_that_can_answer_it() -> None:
+    """The emulator refuses a tide offset and points at the Twin, not at the physics check."""
+    import pytest
+
+    model = _model()
+    with pytest.raises(ValueError, match="/v1/whatif/twin"):
+        run_scenario(model, _rain(), beta=model.beta_ref, tide_offset_m=0.5)
+
+
+def test_a_scenario_blockage_moves_only_the_segments_it_changes() -> None:
+    """``scenario_beta``: the "clean top 14" lever's route in, re-joined by the caller.
+
+    A segment whose blockage the caller lowered drains better; the others are the baseline to
+    the bit, and a vector for a different set of segments is refused rather than broadcast.
+    """
+    import pytest
+
+    model = _model()
+    lowered = model.beta_ref.copy()
+    lowered[1] = 0.3  # the next-worst pipe under B, after its worst one was desilted
+    result = run_scenario(model, _rain(), beta=model.beta_ref, scenario_beta=lowered)
+
+    assert result.delta_cm[1] < 0.0
+    assert result.delta_cm[0] == 0.0 and result.delta_cm[2] == 0.0
+    assert any("changed blockage" in note for note in result.notes)
+    with pytest.raises(ValueError, match="same segments"):
+        run_scenario(model, _rain(), beta=model.beta_ref, scenario_beta=np.full(2, 0.3))

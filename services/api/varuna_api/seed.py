@@ -35,20 +35,40 @@ seconds of a test suite starting the API. ``LOCAL_PRODUCT`` is the rule now.
 This is a copy, not a fallback path in the reader: once seeded the runs are ordinary runs on the
 volume, a freshly baked cycle sits beside them, and nothing downstream has to know where they
 came from.
+
+**An onboarding record ships the same way, and never replaces one.** ``demo/onboard/<city>.json``
+is a city-in-a-box build recorded on the demo laptop (`varuna_api.onboard`): its log lines, its
+per-step times and the first forecast it made. The deployment cannot run the wizard (it is
+switched off there, ADR-0038), so without the record its wizard has nothing to show but "built".
+It is copied to ``city/<city>/onboard_last.json`` only when that file is absent and the city is
+built on the volume, and it carries ``seeded: true`` so the wizard says it is a build recorded
+elsewhere rather than presenting another machine's log as this one's. A build on this machine
+writes its own record, which is then never overwritten.
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
+import os
 import shutil
 from pathlib import Path
+from typing import Any
 
 import structlog
-from varuna_schemas.paths import repo_root, runs_dir
+from varuna_schemas.paths import city_dir, repo_root, runs_dir
 
 log = structlog.get_logger("varuna.api.seed")
 
-__all__ = ["LOCAL_PRODUCT", "MARKER", "demo_runs_dir", "run_fingerprint", "seed_demo_runs"]
+__all__ = [
+    "LOCAL_PRODUCT",
+    "MARKER",
+    "demo_onboard_dir",
+    "demo_runs_dir",
+    "run_fingerprint",
+    "seed_demo_runs",
+    "seed_onboard_records",
+]
 
 MARKER = ".seeded"
 """File written inside a seeded run, holding the fingerprint of the copy it came from."""
@@ -61,6 +81,71 @@ directory holding it is this deployment's own work and is never replaced or remo
 def demo_runs_dir() -> Path:
     """Where the committed demo runs live."""
     return repo_root() / "demo" / "runs"
+
+
+def demo_onboard_dir() -> Path:
+    """Where committed onboarding records live: beside the demo runs, ``demo/onboard``."""
+    return demo_runs_dir().parent / "onboard"
+
+
+def _seeded_record(payload: dict[str, Any]) -> dict[str, Any]:
+    """The shipped record, marked as seeded at the top and on each build it holds."""
+    out = dict(payload)
+    out["seeded"] = True
+    for key in ("last_finished", "last_attempt"):
+        build = out.get(key)
+        if isinstance(build, dict):
+            out[key] = {**build, "seeded": True}
+    return out
+
+
+def seed_onboard_records() -> int:
+    """Copy each ``demo/onboard/<city>.json`` to ``city/<city>/onboard_last.json`` where absent.
+
+    Returns how many were written. Skipped, each with a log line: a file that is not a record for
+    the city it is named after, a city that is not built on this volume (a record of a build
+    that is not here would describe nothing), and - always - a city that already has a record,
+    because that one was written by a build on this machine or seeded before.
+    """
+    from varuna_api.onboard import RECORD_FILE
+
+    source = demo_onboard_dir()
+    if not source.is_dir():
+        return 0
+    written = 0
+    for shipped in sorted(source.glob("*.json")):
+        city = shipped.stem
+        try:
+            folder = city_dir(city)
+            payload = json.loads(shipped.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as error:
+            log.warning("api.onboard_record_unreadable", path=str(shipped), error=str(error))
+            continue
+        if not isinstance(payload, dict) or str(payload.get("city", "")).lower() != city.lower():
+            log.warning("api.onboard_record_mismatch", path=str(shipped), city=city)
+            continue
+        target = folder / RECORD_FILE
+        if target.exists():
+            continue
+        if not (folder / "segments.parquet").is_file():
+            log.info("api.onboard_record_city_not_built", city=city)
+            continue
+        tmp = target.with_name(f".{target.name}.seed.tmp")
+        try:
+            tmp.write_text(
+                json.dumps(_seeded_record(payload), indent=1) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            os.replace(tmp, target)
+        except OSError as error:
+            log.warning("api.onboard_record_not_seeded", city=city, error=str(error))
+            tmp.unlink(missing_ok=True)
+            continue
+        written += 1
+    if written:
+        log.info("api.seeded_onboard_records", written=written, source=str(source))
+    return written
 
 
 def run_fingerprint(run: Path) -> str:
@@ -96,6 +181,13 @@ def seed_demo_runs() -> int:
     for a volume that has none. It is recognised by being complete: a baked run carries every
     file the shipped one does and more.
     """
+    # First, and whether or not any runs ship: the record is independent of them. It never breaks
+    # the run seeding - a record is history, the runs are what the console needs.
+    try:
+        seed_onboard_records()
+    except Exception as error:
+        log.warning("api.onboard_records_not_seeded", error=str(error))
+
     source = demo_runs_dir()
     if not source.is_dir():
         return 0

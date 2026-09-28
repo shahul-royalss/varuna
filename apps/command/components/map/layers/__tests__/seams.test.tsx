@@ -188,6 +188,9 @@ describe("MO1 seams draw nothing yet", () => {
     const same = (a: unknown[], b: unknown[]) =>
       expect(serializeLayers(a)).toEqual(serializeLayers(b));
 
+    // The plain drains every screen but `/drains` draws still ignore the cross-fade (M12) and the
+    // hover: `/drains`' learned overlay (`withLearned`) is what honours them, pinned in
+    // `drains-learned.test.ts`.
     same(
       drainsLayers({ drains: fx.drains, show: true, crossFadeMs: 300, onHover: () => {} }),
       drainsLayers({ drains: fx.drains, show: true }),

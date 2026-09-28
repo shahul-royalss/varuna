@@ -103,12 +103,18 @@ ENV UV_NO_SYNC=1
 # build needs about 320 MB beside the Mumbai city on a 500 MB volume: the one started on
 # 13 September 2026 failed with ENOSPC and the API did not come back. The wizard runs on the demo
 # laptop, where the variable is unset and the endpoint accepts builds.
+#
+# Citizen report photos are off here for the same volume, and because the team decided photo
+# uploads are for the demo laptop: a report posted to this image is kept without its photo and
+# the response says so.
 ENV VARUNA_DATA_DIR=/data \
     VARUNA_CITY_DIR=/data/city \
     VARUNA_BUNDLES_DIR=/data/bundles \
     VARUNA_MODE=replay \
     VARUNA_CITY=mumbai \
     VARUNA_ONBOARD_ENABLED=0 \
+    VARUNA_REPORT_PHOTOS=0 \
+    VARUNA_WHATIF_TWIN=0 \
     PORT=8000
 
 COPY docker/entrypoint.sh /usr/local/bin/varuna-entrypoint

@@ -157,7 +157,7 @@ export async function loadPlaces(city = "mumbai", signal?: AbortSignal): Promise
     if (geometry?.type !== "Point" || !geometry.coordinates) continue;
     out.push({
       id: String(props.hotspot_id ?? props.id ?? props.name ?? ""),
-      name: String(props.name ?? "Unnamed junction"),
+      name: String(props.name ?? "Junction"),
       kind: "hotspot",
       lon: Number(geometry.coordinates[0]),
       lat: Number(geometry.coordinates[1]),

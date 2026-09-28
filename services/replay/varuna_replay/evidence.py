@@ -385,12 +385,17 @@ TIDE_BASIS = (
     "That trough is an assumption, not an observation. Everything the demo shows about the "
     "tide inside 05:40-09:40 IST - a stage rising from about 0.0 m to about 3.9 m, and the "
     "tide-locked outfall that follows from it - is a modelled consequence of that one "
-    "anchor, not a record of the morning. What would settle it: the Survey of India or "
-    "INCOIS tide table for Mumbai (Apollo Bandar), 2019. DATUM: tide.csv stays in chart "
+    "anchor, not a record of the morning. The series runs on to 12:40, three hours past the "
+    "window, because the last cycle forecasts that far ahead and the tide is its sea "
+    "boundary; the same harmonic carries it through 4.92 m at 11:30 (4.918 m in the nearest "
+    "15-minute row, 11:25) to about 4.5 m at 12:40. Stopping at 09:40 held the sea flat at the "
+    "09:40 stage for the rest of every late cycle. What would settle it: the Survey of India "
+    "or INCOIS tide table for Mumbai (Apollo Bandar), 2019. DATUM: tide.csv stays in chart "
     "datum, as sourced. manifest.tide_datum carries mean sea level at 2.70 m above chart datum "
     "(PSMSL station 43), which the Twin subtracts to read the stage in the DEM's frame, where "
-    "the same window runs from about -2.7 m to about +1.2 m; the separation between the DEM's "
-    "EGM2008 geoid and local mean sea level is not quantified."
+    "the window runs from about -2.7 m to about +1.2 m and the series crests at about +2.2 m; "
+    "the separation between the DEM's EGM2008 geoid and local mean sea level is not "
+    "quantified."
 )
 
 GAUGE_BASIS = (

@@ -10,6 +10,7 @@ B1    manifest.present      the folder exists and carries ``manifest.json``
 B2    manifest.valid        the manifest validates against ``BundleManifest``
 B3    members.present       every member the bundle's label requires is on disk
 B4    window.cadence        cubes and streams cover ``t0``-``t1`` at the declared cadences
+                            (the tide runs on to ``t1`` + 3 h, the last cycle's horizon)
 B5    grid.agreement        the radar and truth cubes share one CRS, grid and transform
 B6    groundtruth.sourced   every pin carries a ``source_url`` and none is marked synthetic
 B7    streams.flagged       every synthetic stream says so, in the data and in the manifest
@@ -54,6 +55,7 @@ from varuna_replay.bundle import (
     REPORTS_JSONL,
     TIDE_COLUMNS,
     TIDE_CSV,
+    TIDE_LOOKAHEAD_MIN,
     TRAFFIC_COLUMNS,
     TRAFFIC_PARQUET,
     TRUTH_VARIABLE,
@@ -543,8 +545,75 @@ def _check_tide(report: ValidationReport, layout: BundleLayout, manifest: Bundle
     if cadence is None:
         report.add("B4", "error", MANIFEST_NAME, "cadences has no 'tide' entry")
         return
-    for problem in _time_axis_problems(stamps, manifest.t0, manifest.t1, cadence):
-        report.add("B4", "error", TIDE_CSV, problem)
+    _check_tide_extent(report, stamps, manifest, cadence)
+
+
+def _check_tide_extent(
+    report: ValidationReport,
+    stamps: Sequence[datetime],
+    manifest: BundleManifest,
+    cadence_min: int,
+) -> None:
+    """Rule B4 for the tide: from ``t0`` to ``t1 + TIDE_LOOKAHEAD_MIN`` at the declared cadence.
+
+    The tide is the one stream that runs past ``t1`` (:data:`bundle.TIDE_LOOKAHEAD_MIN` says
+    why): a cycle at ``t1`` forecasts three hours on, and the Twin holds the sea flat after the
+    last row. So a series has to open at ``t0`` and reach ``t1`` - anything less leaves the
+    window itself without a sea - and one that stops between ``t1`` and the horizon is a warning,
+    because every late cycle then runs part of its forecast against a frozen stage. Past the
+    horizon is an error: nothing reads it, so it can only mean the window or the series is not
+    the one the manifest describes.
+    """
+    if not stamps:
+        report.add("B4", "error", TIDE_CSV, "no timestamps")
+        return
+    ordered = sorted(stamps)
+    first, last = ordered[0], ordered[-1]
+    horizon = manifest.t1 + timedelta(minutes=TIDE_LOOKAHEAD_MIN)
+    if abs((first - manifest.t0).total_seconds()) > TIME_TOLERANCE_S:
+        report.add(
+            "B4",
+            "error",
+            TIDE_CSV,
+            f"starts at {first.isoformat()}, manifest t0 is {manifest.t0.isoformat()}",
+        )
+    if (manifest.t1 - last).total_seconds() > TIME_TOLERANCE_S:
+        report.add(
+            "B4",
+            "error",
+            TIDE_CSV,
+            f"ends at {last.isoformat()}, before manifest t1 {manifest.t1.isoformat()}",
+        )
+    elif (horizon - last).total_seconds() > TIME_TOLERANCE_S:
+        short = (horizon - last).total_seconds() / 60.0
+        report.add(
+            "B4",
+            "warning",
+            TIDE_CSV,
+            f"ends at {last.isoformat()}, {short:.0f} min before the last cycle's forecast "
+            f"horizon {horizon.isoformat()} (t1 + {TIDE_LOOKAHEAD_MIN} min); the Twin holds the "
+            "sea at the last stage for the rest of every cycle that reaches past it",
+        )
+    elif (last - horizon).total_seconds() > TIME_TOLERANCE_S:
+        report.add(
+            "B4",
+            "error",
+            TIDE_CSV,
+            f"ends at {last.isoformat()}, after the last cycle's forecast horizon "
+            f"{horizon.isoformat()} (t1 + {TIDE_LOOKAHEAD_MIN} min), which nothing reads",
+        )
+    expected = timedelta(minutes=cadence_min)
+    for previous, current in pairwise(ordered):
+        gap = current - previous
+        if abs((gap - expected).total_seconds()) > TIME_TOLERANCE_S:
+            report.add(
+                "B4",
+                "error",
+                TIDE_CSV,
+                f"gap of {gap.total_seconds() / 60:.1f} min at {current.isoformat()} "
+                f"but the manifest declares a {cadence_min}-minute cadence",
+            )
+            break
 
 
 def _check_reports(

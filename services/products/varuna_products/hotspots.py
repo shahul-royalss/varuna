@@ -190,6 +190,7 @@ def _drain_attribution(
     network: Any = None,
     blockage_source: str = "prior",
     timings: dict[str, int] | None = None,
+    sea: NDArray[np.bool_] | None = None,
 ) -> None:
     """Attach the responsible pipes to the worst junctions, in place.
 
@@ -203,6 +204,10 @@ def _drain_attribution(
     which one it was so every label can say so. Without one the graph is loaded from the city
     with its prior. A city with no graph, or a Flash service without the hydraulic operator,
     labels every entry and moves on: the rail, the map and the alerts do not depend on this.
+
+    ``sea`` is the city's sea on the depth grid (``sea_mask.tif``). A node on a sea cell is
+    frozen dry: the Twin holds its cell at the tide's level and keeps it out of the exchange, so
+    the metres of seawater there are not street water its inlet could take.
     """
     from time import perf_counter
 
@@ -268,6 +273,17 @@ def _drain_attribution(
     # because every junction reads the same array.
     surface = np.zeros((n_steps, network.n_nodes), dtype=np.float64)
     surface[:, has_cell] = np.asarray(depth_m, dtype=np.float64)[:, row[has_cell], col[has_cell]]
+    # Handed to `attribute_pipes` as well as zeroed here: the zero stops a sea node's inlet, the
+    # mask also stops its vent, which is the Twin's rule for a node on the sea.
+    on_sea: NDArray[np.bool_] | None = None
+    if sea is not None:
+        # Measured on Mumbai's current graph under the rebuilt sea mask (2026-09-28): 148
+        # interior nodes sit on sea cells, and the catchments of 3 of the 28 register junctions
+        # (Kurla LBS Marg, Bandra Talao, Mahim) reach one down their outfall spine. Frozen at the
+        # sea's depth, each was an inlet taking seawater into the pipes the junction drains to.
+        on_sea = np.zeros(network.n_nodes, dtype=bool)
+        on_sea[has_cell] = np.asarray(sea, dtype=bool)[row[has_cell], col[has_cell]]
+        surface[:, on_sea] = 0.0
     cell_of_node = row * n_cols + col
 
     node_segment_ids: list[str | None] | None = None
@@ -312,6 +328,7 @@ def _drain_attribution(
             depth_before_cm=float(entry["peak_depth_cm"]),
             cell_area_m2=CELL_AREA_M2,
             node_segment_ids=node_segment_ids,
+            node_on_sea=on_sea,
         )
         entry["attribution"] = [dict(r) for r in result.rows]
         entry["attribution_status"] = "ranked" if result.rows else "refused"
@@ -414,10 +431,25 @@ def rank_hotspots(
 
     from pyproj import Transformer
 
+    from varuna_products.depth import city_intertidal_mask, city_sea_mask
+
     features = json.loads(register.read_text(encoding="utf-8")).get("features", [])
     res, _, left, _, _, top = transform
     n_steps, n_rows, n_cols = depth_m.shape
     radius_cells = max(round(HOTSPOT_RADIUS_M / res), 1)
+    # The sea is not part of a junction. The Twin holds it at the tide's level, so a window that
+    # reached a sea cell would read seawater as the junction's depth; none of the register's
+    # chronic spots is on the shore today, but a window is a square and the shore is not.
+    sea = city_sea_mask(city_root, (n_rows, n_cols))
+    # Nor is the intertidal land behind the coast wall (`intertidal_mask.tif`): the Twin lets the
+    # tide onto the mangroves, and that is not water on the junction's streets. Left out of the
+    # window - its series and its cell set - exactly as the sea is. Attribution still freezes
+    # the Twin's depth on an intertidal node (`sea=` below is the sea alone), because to the
+    # Twin's drains that cell is land and its inlet takes water.
+    intertidal = city_intertidal_mask(city_root, (n_rows, n_cols))
+    off_street = sea
+    if intertidal is not None and intertidal.any():
+        off_street = intertidal if sea is None else sea | intertidal
 
     to_metric = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
     ranked: list[dict[str, Any]] = []
@@ -437,12 +469,26 @@ def rank_hotspots(
         r0, r1 = max(row - radius_cells, 0), min(row + radius_cells + 1, n_rows)
         c0, c1 = max(col - radius_cells, 0), min(col + radius_cells + 1, n_cols)
         window = depth_m[:, r0:r1, c0:c1].reshape(n_steps, -1)
+        land = None if off_street is None else ~off_street[r0:r1, c0:c1].ravel()
+        if land is not None and land.any():
+            window = window[:, land]
+        elif land is not None:
+            # A register point whose whole window is sea or intertidal has no street to read; it
+            # reads dry rather than borrowing the tide's depth.
+            window = np.zeros((n_steps, 1), dtype=window.dtype)
         series_cm = np.percentile(window, 90.0, axis=1) * 100.0
 
         peak_index = int(np.argmax(series_cm))
         peak_cm = float(series_cm[peak_index])
         over = np.flatnonzero(series_cm > IMPASSABLE_CM)
-        windows.append({r * n_cols + c for r in range(r0, r1) for c in range(c0, c1)})
+        windows.append(
+            {
+                r * n_cols + c
+                for r in range(r0, r1)
+                for c in range(c0, c1)
+                if off_street is None or not off_street[r, c]
+            }
+        )
 
         ranked.append(
             {
@@ -503,6 +549,7 @@ def rank_hotspots(
             network=network,
             blockage_source=blockage_source,
             timings=timings,
+            sea=sea,
         )
     else:
         # Off is a state the product records, not a silence: a reader who finds no ranking

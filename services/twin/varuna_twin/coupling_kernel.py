@@ -38,6 +38,7 @@ def exchange_kernel(
     storage_area: np.ndarray,
     fixed_head: np.ndarray,
     blocked: np.ndarray,
+    sea: np.ndarray,
     # --- state ----------------------------------------------------------------------------
     surface_h: np.ndarray,
     surface_z: np.ndarray,
@@ -75,6 +76,11 @@ def exchange_kernel(
             # A node under a building. `swe2d._update_depth` zeroes a blocked cell and skips it
             # before it tallies anything, so water sent there is destroyed silently: 5,185.4 m3
             # on the 08:40 cycle of 2 July 2019. There is no street here to surcharge onto.
+            continue
+        if sea[r, c]:
+            # A node on the city's sea. The tide clamp refills its cell to the stage every
+            # sub-step, so an inlet here is an ungated pipe from the sea, and surcharge here is
+            # handed straight back to it. The pipes meet the sea only at tidal outfalls.
             continue
 
         h = surface_h[r, c]
@@ -132,3 +138,35 @@ def exchange_kernel(
         if not fixed_head[j]:
             q_inlet_cell[r, c] += inlet * rate_factor
             q_surcharge_cell[r, c] += surcharge * rate_factor
+
+    # ---- the cell's water caps what all its nodes take together ------------------------
+    # Each node above is limited against the street on its own, and up to eight share one 30 m
+    # cell, so together they can ask for several times the water standing there. The surface then
+    # hands over what it has and the drains accept what they asked for: the difference is water
+    # neither solver holds (`coupling.cap_inlet_to_cell_water`). Scaled here, every node on an
+    # over-asked cell by the same factor, so the cell's total is exactly its water.
+    #
+    # Capped nodes are marked by a negative value between the passes rather than by a second
+    # array: an inlet is never negative, and a zero inlet stays -0.0, which is not below zero.
+    any_capped = False
+    for j in range(n_nodes):
+        inlet = q_inlet[j]
+        if inlet <= 0.0:
+            continue
+        r = row[j]
+        c = col[j]
+        asked = q_inlet_cell[r, c]
+        limit = surface_h[r, c] / dt
+        if asked > limit:
+            q_inlet[j] = -(inlet * (limit / asked))
+            any_capped = True
+    if any_capped:
+        # Rebuild the capped cells from their scaled nodes, in node order, so the cell still reads
+        # as the sum of what the network is told it received.
+        for j in range(n_nodes):
+            if q_inlet[j] < 0.0:
+                q_inlet_cell[row[j], col[j]] = 0.0
+        for j in range(n_nodes):
+            if q_inlet[j] < 0.0:
+                q_inlet[j] = -q_inlet[j]
+                q_inlet_cell[row[j], col[j]] += q_inlet[j] * rate_factor

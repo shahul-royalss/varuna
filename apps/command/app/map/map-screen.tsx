@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/varuna/empty-state";
 import { LanguageToggle } from "@/components/varuna/language-toggle";
 import { Skeleton } from "@/components/varuna/skeleton";
 import { FloodMap, type FloodMapStatusKind } from "@/components/map/flood-map";
-import type { RunDepth } from "@/lib/api/run-depth";
+import { segmentDisplayName, type RunDepth } from "@/lib/api/run-depth";
 import { apiUrl } from "@/lib/api/client";
 import { PublicLegend } from "@/components/varuna/public-legend";
 import { VehicleSelector, type PublicProfile } from "@/components/varuna/vehicle-selector";
@@ -20,7 +20,15 @@ import { useIsClient } from "@/lib/hooks";
 import { currentCity } from "@/lib/city";
 import { useOpeningRun } from "@/lib/use-opening-run";
 import { formatIst } from "@/lib/format";
-import { ENGLISH_MESSAGES, intlLocale, usePublicT, type PublicMessages } from "@/lib/i18n";
+import {
+  ENGLISH_MESSAGES,
+  intlLocale,
+  usePublicLocale,
+  usePublicT,
+  type PublicLocale,
+  type PublicMessages,
+} from "@/lib/i18n";
+import { LIST_ROAD, streetLabelParts, type StreetLabelParts } from "@/lib/street-label";
 import { createTranslator } from "next-intl";
 
 const REPORT_ROUTE = "/report" as Route;
@@ -39,9 +47,12 @@ const STOPS_AT_CM: Record<PublicProfile, number> = {
 /** Streets listed in the sheet. More than this and nobody scrolls to the bottom on a phone. */
 const NEARBY_LIMIT = 12;
 
-/** What OSM calls a road with no `name` tag. 52.6 % of Mumbai's segments have none, and the
- * segment layer's `ward` is empty for every one of them, so there is nothing truer to print. */
-export const UNNAMED_ROAD = "Unnamed road";
+/**
+ * The row name for a street the run wets but the city's street layer does not carry, printed as
+ * the translated "Road". Every segment the layer does carry has a `display_name` - OSM's name,
+ * "off <street>" or "<class> near <place>" - so the list never says "Unnamed road".
+ */
+export const UNLISTED_ROAD = LIST_ROAD;
 
 interface SavedLocation {
   id: string;
@@ -53,7 +64,7 @@ interface SavedLocation {
 
 export interface NearbyStreet {
   id: string;
-  /** The OSM name, `UNNAMED_ROAD` when OSM has none, or null while the names are still loading. */
+  /** The display name, `UNLISTED_ROAD` for a street the layer lacks, or null while loading. */
   name: string | null;
   peakCm: number;
   /** Last step still passable for this vehicle, as IST; null when it is impassable already. */
@@ -64,7 +75,7 @@ export interface NearbyStreet {
  * The streets a run wets worst for one vehicle, with the last time each is still passable.
  *
  * `names` is null while the city's segment layer is loading: a row then carries no name rather
- * than "Unnamed road", which would be a claim about OSM made before OSM was read.
+ * than a guess made before the layer was read.
  */
 export function nearbyStreets(
   run: Pick<RunDepth, "depthCm" | "validTs">,
@@ -80,7 +91,7 @@ export function nearbyStreets(
     const firstOver = series.findIndex((cm) => cm >= stopsAtCm);
     rows.push({
       id,
-      name: names === null ? null : (names.get(id) ?? UNNAMED_ROAD),
+      name: names === null ? null : (names.get(id) ?? UNLISTED_ROAD),
       peakCm: peak,
       passableUntil:
         firstOver < 0
@@ -104,6 +115,29 @@ const ENGLISH_MAP = createTranslator<PublicMessages, "map">({
   namespace: "map",
 });
 type MapT = typeof ENGLISH_MAP;
+
+/**
+ * A street row's name in the reader's language.
+ *
+ * English prints the API's `display_name` as served. In Hindi and Marathi an OSM name stays as
+ * OSM wrote it - a proper noun - but a label the API built ("off Kokri Agar Road", "Residential
+ * street near Saki Naka") is worded again from its parts, so "off" and the road class are
+ * translated and only the street, place or city inside it stays in Latin.
+ */
+export function streetRowName(
+  name: string,
+  label: StreetLabelParts | null | undefined,
+  locale: PublicLocale = "en",
+  t: MapT = ENGLISH_MAP,
+): string {
+  if (name === UNLISTED_ROAD) return t("unnamedRoad");
+  if (locale === "en" || !label || label.kind === "osm" || !label.anchor) return name;
+  if (label.kind === "off") return t("streetOff", { street: label.anchor });
+  const roadClass = t(`roadClass.${label.roadClass}`);
+  return label.kind === "near"
+    ? t("streetNear", { roadClass, place: label.anchor })
+    : t("streetIn", { roadClass, city: label.anchor });
+}
 
 /**
  * The honesty line (CLAUDE.md 7.11), timed from the run the map is actually drawing. It says the
@@ -151,6 +185,7 @@ export function MapScreen() {
   const stageRef = useRef<HTMLDivElement>(null);
   const isClient = useIsClient();
   const t = usePublicT("map");
+  const locale = usePublicLocale()?.locale ?? "en";
   const savedName = (location: SavedLocation) =>
     location.savedAt ? t("savedAt", { time: location.savedAt }) : location.name;
 
@@ -170,6 +205,8 @@ export function MapScreen() {
   // honesty line and the save button read this run, not a registry row the map never loaded.
   const [run, setRun] = useState<RunDepth | null>(null);
   const [names, setNames] = useState<Map<string, string> | null>(null);
+  // How each non-OSM name was made, so Hindi and Marathi can word it themselves.
+  const [labels, setLabels] = useState<Map<string, StreetLabelParts> | null>(null);
   const [namesFailed, setNamesFailed] = useState(false);
   const onLoaded = useCallback((loaded: RunDepth) => setRun(loaded), []);
   const [problem, setProblem] = useState<ForecastProblem>(null);
@@ -188,13 +225,20 @@ export function MapScreen() {
       })
       .then((geojson: { features?: { properties?: Record<string, unknown> }[] }) => {
         const map = new Map<string, string>();
+        const parts = new Map<string, StreetLabelParts>();
         for (const feature of geojson.features ?? []) {
           const props = feature.properties ?? {};
           const id = String(props.segment_id ?? "");
-          const name = props.name;
-          if (id && typeof name === "string" && name) map.set(id, name);
+          // `display_name` names the 52.6 % of segments OSM does not ("off Dr Ambedkar Road").
+          // A layer served before it did leaves the row to the translated "Road".
+          const shown = id ? segmentDisplayName(props) : undefined;
+          if (!shown) continue;
+          map.set(id, shown);
+          const label = streetLabelParts(shown, props);
+          if (label.kind !== "osm") parts.set(id, label);
         }
         setNames(map);
+        setLabels(parts);
       })
       .catch(() => {
         if (!controller.signal.aborted) setNamesFailed(true);
@@ -308,7 +352,7 @@ export function MapScreen() {
                     <span className="min-w-0 flex-1">
                       {street.name !== null ? (
                         <span className="type-small text-text block truncate">
-                          {street.name === UNNAMED_ROAD ? t("unnamedRoad") : street.name}
+                          {streetRowName(street.name, labels?.get(street.id), locale, t)}
                         </span>
                       ) : namesFailed ? (
                         <span className="type-small text-text-2 block truncate">

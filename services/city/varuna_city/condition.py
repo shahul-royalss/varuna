@@ -15,6 +15,15 @@ real sink rather than a data artefact. :func:`condition_dem` applies, in this or
    pure-Python least-cost breach that carves a descending channel from each small pit to
    the first lower cell outside it.
 
+With the city's sea mask (:mod:`varuna_city.sea`) three coastline rules join them: a culvert or
+bridge end on the sea does not set a breach level (inside step 4); land held at sea level beside
+the sea is raised to the median of the land around it (between steps 4 and 5); and the land that
+fronts the sea - behind the mangroves, wetland and open water the tide may cover, where there
+are any - is raised to the config's coast wall level (after step 5, so no breach cuts back
+through it). The closed basins the wall makes are measured and reported, not hidden. The wet land
+the wall stands behind is returned as ``intertidal_mask``, which the city build writes as
+``intertidal_mask.tif`` so the products never read the tide on a mangrove as a street's depth.
+
 The function is pure: it copies its input, writes nothing, and returns the conditioned DEM
 together with a ``changes`` dict that ``city/<city>/REPORT.md`` (P1.10) prints.
 """
@@ -76,6 +85,13 @@ class ConditionedDem:
     sink_mask: NDArray[np.bool_]
     changes: dict[str, Any] = field(default_factory=dict)
     stage_ms: float = 0.0
+    intertidal_mask: NDArray[np.bool_] | None = None
+    """The wet land the coast wall stands behind: :func:`intertidal_zone` less the sea itself.
+
+    ``None`` when no wall was built behind an intertidal zone (no sea, no ``coast_wall_m`` or no
+    land cover). The Twin keeps these cells as land, so the tide walks onto them twice a day;
+    the city build persists them (``intertidal_mask.tif``) so the products can keep that water
+    out of what they read as a street's depth."""
 
 
 # --------------------------------------------------------------------------------------
@@ -184,18 +200,31 @@ def breach_culverts(
     ways: Any,
     *,
     crs: Any = None,
+    sea: NDArray[np.bool_] | None = None,
 ) -> tuple[NDArray[np.float64], dict[str, int]]:
     """Lower each culvert/bridge way to the minimum elevation of its two end cells.
 
     An OSM ``tunnel=culvert`` or ``bridge=yes`` way crosses an embankment that the DEM sees
     as a solid dam. Carving the way down to its lower end lets the flow through without
     inventing a channel anywhere else.
+
+    **An end on the sea is not an end of an embankment** (``sea``, the city's sea mask). A bridge
+    that runs out over the water - the Trans Harbour Link's viaduct leaving Sewri, a creek
+    bridge whose way stops mid-span - has its lower "end" at the DSM's flattened 0 m, and taking
+    that as the target floored the whole landward length of the way to sea level: on Mumbai 143
+    of the 163 land cells the conditioned DEM held at or below 0 m while the raw DEM had them
+    above 0.5 m sat on culvert or bridge lines, and the Sewri port flooded 1.2-1.4 m from the
+    tide alone. So ends on sea cells are ignored, and a way with no end on land is left alone:
+    the water it crosses is already open to the flow.
     """
     out = np.array(dem, dtype=np.float64, copy=True)
     height, width = out.shape
     geoms = _geometries(ways, crs)
+    sea_mask = None if sea is None else np.asarray(sea, dtype=bool)
     breached_ways = 0
     breached_cells = 0
+    sea_ends = 0
+    all_sea = 0
 
     for geom in geoms:
         parts = list(geom.geoms) if geom.geom_type.startswith("Multi") else [geom]
@@ -204,12 +233,18 @@ def breach_culverts(
             if len(coords) < 2:
                 continue
             ends: list[float] = []
+            ends_on_sea = 0
             for x, y in (coords[0], coords[-1]):
                 row, col = rowcol(transform, x, y)
                 row, col = int(row), int(col)
                 if 0 <= row < height and 0 <= col < width and np.isfinite(out[row, col]):
+                    if sea_mask is not None and sea_mask[row, col]:
+                        ends_on_sea += 1
+                        continue
                     ends.append(float(out[row, col]))
+            sea_ends += ends_on_sea
             if not ends:
+                all_sea += int(ends_on_sea > 0)
                 continue
             target = min(ends)
             line_mask = rasterize_mask([part], transform, out.shape, crs=None, all_touched=False)
@@ -220,7 +255,300 @@ def breach_culverts(
             out[affected] = target
             breached_ways += 1
 
-    return out, {"culvert_ways_breached": breached_ways, "culvert_cells_breached": breached_cells}
+    stats = {"culvert_ways_breached": breached_ways, "culvert_cells_breached": breached_cells}
+    if sea_mask is not None:
+        stats["culvert_ends_on_sea_ignored"] = sea_ends
+        stats["culvert_ways_with_no_land_end"] = all_sea
+    return out, stats
+
+
+# --------------------------------------------------------------------------------------
+# the coastline: flattened land and the shore ring
+# --------------------------------------------------------------------------------------
+
+FLATTENED_REPAIR_RADIUS_M = 150.0
+"""A flattened land cell takes the median of the unflattened land within this distance."""
+
+
+def repair_flattened_land(
+    dem: NDArray[np.float64],
+    sea: NDArray[np.bool_],
+    landcover: NDArray[Any],
+    transform: Affine,
+    *,
+    buildings: NDArray[np.bool_] | None = None,
+    protect: NDArray[np.bool_] | None = None,
+    radius_m: float = FLATTENED_REPAIR_RADIUS_M,
+    flat_m: float = 0.0,
+) -> tuple[NDArray[np.float64], dict[str, Any]]:
+    """Raise land held at sea level beside the sea to the median of the land around it.
+
+    A cell is *flattened land* when it is not sea, its WorldCover class is not water, wetland or
+    mangrove (:data:`varuna_city.sea.WET_CLASSES`), it stands at or below ``flat_m`` and it is
+    8-connected to the sea through other such cells. The sea mask is read off the raw DEM, so
+    these cells are the DSM's water flattening spilling onto land and whatever the earlier
+    conditioning steps pulled down to 0 m. Left alone they are sea-level land touching the sea,
+    and the tide walks onto them.
+
+    Each takes the median of the land within ``radius_m`` that is neither sea, nor flattened,
+    nor a building (a burned footprint is 5 m of wall, not ground). A cell with no such land in
+    reach is left as it is and counted. ASSUMPTION: the median of the neighbourhood stands in
+    for a ground level the DSM does not have.
+
+    ``protect`` cells (underpasses, the register) are never raised.
+    """
+    from varuna_city.sea import WET_CLASSES
+
+    out = np.array(dem, dtype=np.float64, copy=True)
+    sea_mask = np.asarray(sea, dtype=bool)
+    finite = np.isfinite(out)
+    zf = np.where(finite, out, np.inf)
+    classes = np.asarray(landcover)
+    candidate = ~sea_mask & finite & (zf <= flat_m) & ~np.isin(classes, WET_CLASSES)
+    if protect is not None:
+        candidate &= ~np.asarray(protect, dtype=bool)
+    stats: dict[str, Any] = {
+        "flattened_cells": 0,
+        "flattened_repaired": 0,
+        "flattened_unrepaired": 0,
+        "flattened_repair_radius_m": radius_m,
+    }
+    if not candidate.any() or not sea_mask.any():
+        return out, stats
+
+    from scipy import ndimage
+
+    labels, _ = ndimage.label(candidate | sea_mask, structure=np.ones((3, 3), dtype=bool))
+    touching = np.unique(labels[sea_mask])
+    flattened = candidate & np.isin(labels, touching[touching > 0])
+    stats["flattened_cells"] = int(flattened.sum())
+    if not flattened.any():
+        return out, stats
+
+    donor = ~sea_mask & finite & ~candidate & (zf > flat_m)
+    if buildings is not None:
+        donor &= ~np.asarray(buildings, dtype=bool)
+    res = abs(float(transform.a))
+    reach = max(int(radius_m // res), 1)
+    offsets = [
+        (dr, dc)
+        for dr in range(-reach, reach + 1)
+        for dc in range(-reach, reach + 1)
+        if (dr * dr + dc * dc) * res * res <= radius_m * radius_m
+    ]
+    height, width = out.shape
+    source = np.array(out, copy=True)  # medians read the surface before any repair
+    rises: list[float] = []
+    for row, col in zip(*np.nonzero(flattened), strict=True):
+        values = [
+            source[row + dr, col + dc]
+            for dr, dc in offsets
+            if 0 <= row + dr < height and 0 <= col + dc < width and donor[row + dr, col + dc]
+        ]
+        if not values:
+            stats["flattened_unrepaired"] += 1
+            continue
+        level = float(np.median(values))
+        rises.append(level - float(out[row, col]))
+        out[row, col] = level
+        stats["flattened_repaired"] += 1
+    if rises:
+        stats["flattened_rise_m"] = {
+            "median": round(float(np.median(rises)), 3),
+            "max": round(float(np.max(rises)), 3),
+        }
+    log.info("condition.flattened_land", **stats)
+    return out, stats
+
+
+def intertidal_zone(
+    dem: NDArray[np.float64],
+    sea: NDArray[np.bool_],
+    landcover: NDArray[Any],
+    *,
+    wall_m: float,
+    blocked: NDArray[np.bool_] | None = None,
+) -> NDArray[np.bool_]:
+    """The sea and the wet land the tide may cover: the side of the coast wall it stands against.
+
+    Wet land is a cell that is not sea and not a building, whose WorldCover class is water,
+    herbaceous wetland or mangrove (:data:`varuna_city.sea.WET_CLASSES`, the classes the sea may
+    legitimately cover), standing at or below ``wall_m``, and 8-connected to the sea through
+    other such cells. A mangrove is intertidal - the tide floods it twice a day - so a wall
+    stands behind it, never on it. Wet cells above the wall level, or cut off from the sea by
+    dry land, are ordinary land.
+    """
+    from scipy import ndimage
+
+    from varuna_city.sea import WET_CLASSES
+
+    sea_mask = np.asarray(sea, dtype=bool)
+    z = np.asarray(dem, dtype=np.float64)
+    finite = np.isfinite(z)
+    zf = np.where(finite, z, np.inf)
+    wet = ~sea_mask & finite & (zf <= wall_m) & np.isin(np.asarray(landcover), WET_CLASSES)
+    if blocked is not None:
+        wet &= ~np.asarray(blocked, dtype=bool)
+    if not wet.any() or not sea_mask.any():
+        return sea_mask.copy()
+    labels, _ = ndimage.label(wet | sea_mask, structure=np.ones((3, 3), dtype=bool))
+    touching = np.unique(labels[sea_mask])
+    return sea_mask | (wet & np.isin(labels, touching[touching > 0]))
+
+
+def raise_coast_wall(
+    dem: NDArray[np.float64],
+    sea: NDArray[np.bool_],
+    *,
+    wall_m: float,
+    blocked: NDArray[np.bool_] | None = None,
+    landcover: NDArray[Any] | None = None,
+    zone: NDArray[np.bool_] | None = None,
+) -> tuple[NDArray[np.float64], dict[str, Any]]:
+    """Raise the land that fronts the sea to at least ``wall_m``.
+
+    ``zone``, when given, is the :func:`intertidal_zone` the caller already computed from
+    ``landcover`` on this same ``dem``; :func:`condition_dem` passes it so the wall and the
+    intertidal raster the city build writes are one array rather than two computations.
+
+    ASSUMPTION: a ring of raised cells stands in for the sea walls, promenades and embankments
+    the 30 m DSM smooths away; the level is the city config's ``coast_wall_m`` and says where it
+    came from. Only the ring moves, and only upwards: the sea still reaches the city through the
+    tidal outfalls and the creek, which is where Mumbai's tide actually gets in.
+
+    **Where the ring stands.** With ``landcover`` it is the land 8-adjacent to the
+    :func:`intertidal_zone` - behind the mangroves, wetland and open water the tide may cover -
+    buildings excluded, so no wet cell is ever raised. Without it, it is the land 8-adjacent to
+    the sea itself, the rule this function first shipped with. That rule put the wall on the
+    mangroves: on Mumbai 412 of the 736 cells it raised were water, wetland or mangrove, and the
+    mangroves behind them became closed basins, 162 of the 212 land cells whose closed depth the
+    wall deepened by more than 1 cm. Behind the intertidal zone the wall raises 382 cells, none
+    of them wet, and leaves 54 cells in basins it made (:func:`wall_basins`). The tide still
+    reaches no dry land at the replay window's +1.236 m or at the +2.218 m crest; it floods 124
+    and 346 wet cells, as it does twice a day.
+    """
+    from varuna_city.sea import shore_ring
+
+    out = np.array(dem, dtype=np.float64, copy=True)
+    sea_mask = np.asarray(sea, dtype=bool)
+    rule = "landward edge of the intertidal zone"
+    if zone is not None:
+        zone = np.asarray(zone, dtype=bool)
+    elif landcover is not None:
+        zone = intertidal_zone(out, sea_mask, landcover, wall_m=wall_m, blocked=blocked)
+    else:
+        zone = sea_mask
+        rule = "shore ring"
+    ring = shore_ring(zone, blocked) & np.isfinite(out)
+    low = ring & (out < wall_m)
+    rise = wall_m - out[low]
+    out[low] = wall_m
+    stats: dict[str, Any] = {
+        "coast_wall_m": wall_m,
+        "coast_wall_rule": rule,
+        "shore_ring_cells": int(ring.sum()),
+        "coast_wall_cells_raised": int(low.sum()),
+    }
+    if rule != "shore ring":
+        stats["intertidal_cells"] = int((zone & ~sea_mask).sum())
+    if rise.size:
+        stats["coast_wall_rise_m"] = {
+            "median": round(float(np.median(rise)), 3),
+            "max": round(float(rise.max()), 3),
+        }
+    log.info("condition.coast_wall", **stats)
+    return out, stats
+
+
+WALL_BASIN_MIN_M = 0.01
+"""A land cell is in a basin the wall made when the wall deepened its closed depression by more."""
+
+
+def _fill_levels(
+    dem: NDArray[np.float64], outlets: NDArray[np.bool_], barrier: NDArray[np.bool_]
+) -> NDArray[np.float64]:
+    """The level water stands at before it can leave each cell, 4-connected like the solver.
+
+    A priority flood from ``outlets`` and the domain edge; ``barrier`` cells and no-data are
+    never entered and keep ``inf``. Pure Python on purpose: pyflwdir's fill is not
+    bit-reproducible between processes (``pipeline._step_depressions``), and this number is
+    printed in REPORT.md. Ties pop in (level, row, column) order, so it never depends on the run.
+    """
+    height, width = dem.shape
+    z = np.where(barrier | ~np.isfinite(dem), np.inf, dem)
+    zz = z.tolist()
+    level = np.full(dem.shape, np.inf).tolist()
+    edge = np.zeros(dem.shape, dtype=bool)
+    edge[0, :] = edge[-1, :] = edge[:, 0] = edge[:, -1] = True
+    seeds = (np.asarray(outlets, dtype=bool) | edge) & np.isfinite(z)
+    seen = seeds.tolist()
+    heap: list[tuple[float, int, int]] = []
+    for row, col in zip(*np.nonzero(seeds), strict=True):
+        r, c = int(row), int(col)
+        level[r][c] = zz[r][c]
+        heap.append((zz[r][c], r, c))
+    heapq.heapify(heap)
+    inf = float("inf")
+    while heap:
+        lv, r, c = heapq.heappop(heap)
+        for rr, cc in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+            if 0 <= rr < height and 0 <= cc < width and not seen[rr][cc]:
+                seen[rr][cc] = True
+                v = zz[rr][cc]
+                if v == inf:
+                    continue
+                if v < lv:
+                    v = lv
+                level[rr][cc] = v
+                heapq.heappush(heap, (v, rr, cc))
+    return np.asarray(level, dtype=np.float64)
+
+
+def wall_basins(
+    before: NDArray[np.float64],
+    after: NDArray[np.float64],
+    sea: NDArray[np.bool_],
+    *,
+    cell_area_m2: float,
+    blocked: NDArray[np.bool_] | None = None,
+    min_gain_m: float = WALL_BASIN_MIN_M,
+) -> dict[str, Any]:
+    """The closed basins a coast wall made: land that no longer drains overland to the sea.
+
+    For every land cell (not sea, not a building) the depth of its closed depression - the fill
+    level with the sea and the domain edge as outlets, less its ground - is taken ``before`` and
+    ``after`` the wall; a cell whose depth grew by more than ``min_gain_m`` is in a basin the wall
+    made. Rain that lands there leaves only through the inlets ``drains.py`` places, and at high
+    water those are tide-locked. ASSUMPTION: that is how low ground behind a real sea wall
+    drains, through its outfalls; it is also where the wall's own inaccuracy shows, so the number
+    is reported rather than engineered away.
+    """
+    from scipy import ndimage
+
+    sea_mask = np.asarray(sea, dtype=bool)
+    barrier = (
+        np.zeros(sea_mask.shape, dtype=bool) if blocked is None else np.asarray(blocked, dtype=bool)
+    )
+    z0 = np.asarray(before, dtype=np.float64)
+    z1 = np.asarray(after, dtype=np.float64)
+    level0 = _fill_levels(z0, sea_mask, barrier)
+    level1 = _fill_levels(z1, sea_mask, barrier)
+    # Land the flood reaches on both surfaces; a cell walled in by buildings is reached by
+    # neither, and has no depression depth to compare.
+    land = ~sea_mask & ~barrier & np.isfinite(level0) & np.isfinite(level1)
+    gain = np.zeros(z0.shape, dtype=np.float64)
+    gain[land] = (level1[land] - z1[land]) - (level0[land] - z0[land])
+    inside = gain > min_gain_m
+    _, n_basins = ndimage.label(inside, structure=np.ones((3, 3), dtype=bool))
+    cells = int(inside.sum())
+    return {
+        "coast_wall_basin_cells": cells,
+        "coast_wall_basin_km2": round(cells * cell_area_m2 / 1e6, 3),
+        "coast_wall_basins": int(n_basins),
+        "coast_wall_basin_m3": round(float(gain[inside].sum()) * cell_area_m2, 1),
+        "coast_wall_basin_max_m": round(float(gain[inside].max()), 2) if cells else 0.0,
+        "coast_wall_basin_cells_over_30cm": int((gain > 0.3).sum()),
+    }
 
 
 # --------------------------------------------------------------------------------------
@@ -454,6 +782,66 @@ def breach_spurious_pits(
 # --------------------------------------------------------------------------------------
 
 
+@dataclass(frozen=True, slots=True)
+class BuildingMasks:
+    """What :func:`resolve_building_mask` resolved."""
+
+    buildings: NDArray[np.bool_]
+    """Footprint cells to burn - and, via roughness, the solver's blocked cells."""
+    sinks: NDArray[np.bool_]
+    """Sink-flagged points: their pits are protected from breaching."""
+    sink_points: int
+    """Sink points that fell inside the grid."""
+    cleared: int
+    """Footprint cells cleared because a sink or register point sits on them."""
+
+
+def resolve_building_mask(
+    buildings: Any,
+    transform: Affine,
+    shape: tuple[int, int],
+    *,
+    crs: Any = None,
+    sinks: Any = None,
+    register: Any = None,
+) -> BuildingMasks:
+    """The building footprint mask, cleared of the chronic-spot register and the sinks.
+
+    One function because two steps need the same answer: :func:`condition_dem` burns it, and
+    :mod:`varuna_city.sea` keeps the sea off it before conditioning runs.
+
+    The sinks are resolved *before* the burn, because a protected sink must not be treated as
+    a building. CLAUDE.md 10.1 step 4 says to "keep underpasses/subways as sinks (OSM
+    tunnel/layer<0 + the hotspot register)", and a cell cannot be both a place water is known
+    to pool and an impermeable obstacle. Two sourced chronic points - Khar Subway and Parel /
+    Bharat Mata Cinema - sit under an OSM building footprint, so burning first raised them
+    5 m and, because the building mask is also what roughness turns into the solver's blocked
+    mask, left them with no flux at all: the Twin could never put water on two of the ten
+    hotspots section 3.3 names. Clearing them from the mask fixes both at once.
+
+    Pit protection is about topography, so it stays on the sink-flagged points. Building
+    clearing is about evidence, so it covers the whole register: Parel / Bharat Mata Cinema
+    is a sourced chronic point that is not a subway, and it sits on a footprint.
+    """
+    footprints = rasterize_mask(buildings, transform, shape, crs=crs, all_touched=False)
+    sink_cells = _point_cells(sinks, transform, shape, crs=crs)
+    sink_mask = np.zeros(shape, dtype=bool)
+    for row, col in sink_cells:
+        sink_mask[row, col] = True
+    no_build_mask = sink_mask.copy()
+    for row, col in _point_cells(
+        sinks if register is None else register, transform, shape, crs=crs
+    ):
+        no_build_mask[row, col] = True
+    cleared = int((footprints & no_build_mask).sum())
+    return BuildingMasks(
+        buildings=footprints & ~no_build_mask,
+        sinks=sink_mask,
+        sink_points=len(sink_cells),
+        cleared=cleared,
+    )
+
+
 def condition_dem(
     dem: NDArray[np.floating[Any]],
     transform: Affine,
@@ -471,8 +859,20 @@ def condition_dem(
     min_pit_area_m2: float = MIN_PIT_AREA_M2,
     use_whitebox: bool = True,
     use_pyflwdir: bool = True,
+    sea: NDArray[np.bool_] | None = None,
+    landcover: NDArray[Any] | None = None,
+    coast_wall_m: float | None = None,
 ) -> ConditionedDem:
     """Hydro-condition a city DEM (CLAUDE.md 10.1 step 4).
+
+    With a ``sea`` mask (:mod:`varuna_city.sea`) three coastline rules join the five steps of
+    the module docstring: culvert and bridge ends on the sea do not set a breach level
+    (:func:`breach_culverts`); land held at sea level beside the sea is raised to the median of
+    the land around it (:func:`repair_flattened_land`, needs ``landcover``); and, when
+    ``coast_wall_m`` is given, the land fronting the sea - behind the intertidal zone when
+    ``landcover`` is given - is raised to it (:func:`raise_coast_wall`) and the basins that makes
+    are counted (:func:`wall_basins`). Without one the output is what it always was. When the wall
+    stands behind an intertidal zone, that zone less the sea is returned as ``intertidal_mask``.
 
     Args:
         dem: elevations on the city grid, no-data as NaN.
@@ -500,38 +900,30 @@ def condition_dem(
     work = np.asarray(dem, dtype=np.float64)
     shape = (work.shape[0], work.shape[1])
 
-    buildings_mask = rasterize_mask(buildings, transform, shape, crs=crs, all_touched=False)
     roads_mask = rasterize_mask(roads, transform, shape, crs=crs, all_touched=False)
-
-    # The sinks are resolved *before* the burn, because a protected sink must not be treated as
-    # a building. CLAUDE.md 10.1 step 4 says to "keep underpasses/subways as sinks (OSM
-    # tunnel/layer<0 + the hotspot register)", and a cell cannot be both a place water is known
-    # to pool and an impermeable obstacle. Two sourced chronic points - Khar Subway and Parel /
-    # Bharat Mata Cinema - sit under an OSM building footprint, so burning first raised them
-    # 5 m and, because `buildings_mask` is also what roughness turns into the solver's blocked
-    # mask, left them with no flux at all: the Twin could never put water on two of the ten
-    # hotspots section 3.3 names. Clearing them from the mask fixes both at once.
-    sink_cells = _point_cells(sinks, transform, shape, crs=crs)
-    sink_mask = np.zeros(shape, dtype=bool)
-    for row, col in sink_cells:
-        sink_mask[row, col] = True
-
-    # Pit protection is about topography, so it stays on the sink-flagged points. Building
-    # clearing is about evidence, so it covers the whole register: Parel / Bharat Mata Cinema
-    # is a sourced chronic point that is not a subway, and it sits on a footprint.
-    no_build_mask = sink_mask.copy()
-    for row, col in _point_cells(
-        sinks if register is None else register, transform, shape, crs=crs
-    ):
-        no_build_mask[row, col] = True
-    sinks_on_buildings = int((buildings_mask & no_build_mask).sum())
-    buildings_mask = buildings_mask & ~no_build_mask
+    masks = resolve_building_mask(
+        buildings, transform, shape, crs=crs, sinks=sinks, register=register
+    )
+    buildings_mask, sink_mask = masks.buildings, masks.sinks
 
     out = burn_buildings(work, buildings_mask, height_m=building_burn_m)
     out = carve_roads(out, roads_mask, depth_m=road_carve_m)
 
     culvert_geoms = _geometries(culverts, crs) + _geometries(bridges, crs)
-    out, culvert_stats = breach_culverts(out, transform, culvert_geoms, crs=None)
+    out, culvert_stats = breach_culverts(out, transform, culvert_geoms, crs=None, sea=sea)
+
+    # Before the pit breach, so a pit the repair leaves behind is breached like any other.
+    coast_stats: dict[str, Any] = {}
+    if sea is not None and landcover is not None:
+        out, flat_stats = repair_flattened_land(
+            out,
+            sea,
+            landcover,
+            transform,
+            buildings=buildings_mask,
+            protect=sink_mask,
+        )
+        coast_stats.update(flat_stats)
 
     out, pit_stats = breach_spurious_pits(
         out,
@@ -543,19 +935,47 @@ def condition_dem(
         use_pyflwdir=use_pyflwdir,
     )
 
+    # After the pit breach, or the breach would carve its way back through the wall.
+    intertidal: NDArray[np.bool_] | None = None
+    if sea is not None and coast_wall_m is not None:
+        unwalled = out
+        zone = None
+        if landcover is not None:
+            zone = intertidal_zone(out, sea, landcover, wall_m=coast_wall_m, blocked=buildings_mask)
+            intertidal = zone & ~np.asarray(sea, dtype=bool)
+        out, wall_stats = raise_coast_wall(
+            out,
+            sea,
+            wall_m=coast_wall_m,
+            blocked=buildings_mask,
+            landcover=landcover,
+            zone=zone,
+        )
+        coast_stats.update(wall_stats)
+        coast_stats.update(
+            wall_basins(
+                unwalled,
+                out,
+                sea,
+                blocked=buildings_mask,
+                cell_area_m2=abs(float(transform.a) * float(transform.e)),
+            )
+        )
+
     stage_ms = round((time.perf_counter() - t0) * 1000, 1)
     changes: dict[str, Any] = {
         "cells_burned": int(buildings_mask.sum()),
         "building_burn_m": building_burn_m,
         "cells_carved": int(roads_mask.sum()),
         "road_carve_m": road_carve_m,
-        "sinks_protected": len(sink_cells),
-        "sinks_cleared_of_building": sinks_on_buildings,
+        "sinks_protected": masks.sink_points,
+        "sinks_cleared_of_building": masks.cleared,
         "min_pit_area_m2": min_pit_area_m2,
         "seed": seed,
         "stage_ms": stage_ms,
         **culvert_stats,
         **pit_stats,
+        **coast_stats,
     }
     log.info("condition_dem.done", **changes)
     return ConditionedDem(
@@ -565,18 +985,27 @@ def condition_dem(
         sink_mask=sink_mask,
         changes=changes,
         stage_ms=stage_ms,
+        intertidal_mask=intertidal,
     )
 
 
 __all__ = [
     "BUILDING_BURN_M",
+    "FLATTENED_REPAIR_RADIUS_M",
     "MIN_PIT_AREA_M2",
     "ROAD_CARVE_M",
+    "WALL_BASIN_MIN_M",
+    "BuildingMasks",
     "ConditionedDem",
     "breach_culverts",
     "breach_spurious_pits",
     "burn_buildings",
     "carve_roads",
     "condition_dem",
+    "intertidal_zone",
+    "raise_coast_wall",
     "rasterize_mask",
+    "repair_flattened_land",
+    "resolve_building_mask",
+    "wall_basins",
 ]

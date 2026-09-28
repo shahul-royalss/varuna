@@ -48,6 +48,7 @@ const AMBEDKAR: StreetOption = {
 const UNNAMED: StreetOption = {
   segmentId: "seg-01902",
   name: null,
+  displayName: "Service road near Hindmata junction",
   peakDepthCm: 71,
   cause: "forecast",
   from: "2019-07-02T08:10:00+05:30",
@@ -134,9 +135,9 @@ describe("streetLabel", () => {
     expect(streetLabel(AMBEDKAR)).toBe("Dr Ambedkar Road");
   });
 
-  it("names an unnamed road by its id rather than leaving a blank row", () => {
-    // The feed said this one has no name, so saying so is true.
-    expect(streetLabel(UNNAMED)).toBe("Unnamed road seg-01902");
+  it("names a street OSM does not by the feed's display name, never 'Unnamed road'", () => {
+    expect(streetLabel(UNNAMED)).toBe("Service road near Hindmata junction (seg-01902)");
+    expect(streetLabel({ segmentId: "seg-7", name: null })).toBe("Segment seg-7");
   });
 
   it("does not call a segment unnamed when it was never looked up", () => {

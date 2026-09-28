@@ -22,12 +22,19 @@
 import type { RouteReason, RouteReasonKind } from "@/lib/api/route";
 import { formatIst, toDate } from "@/lib/format";
 import { PROFILE_THRESHOLD_CM, type PassabilityProfile } from "@/lib/ramps";
+import { A_ROAD, inSentence } from "@/lib/street-label";
 
 /** At most four lines under "Why this way" (UI_SPEC 4). A wall of streets is not an explanation. */
 export const MAX_REASONS = 4;
 
-/** What a street with no name in OpenStreetMap is called on screen; 52.6 % of Mumbai's segments. */
-export const UNNAMED_ROAD = "an unnamed road";
+/**
+ * What a street is called when the reason carries no name at all: "a road".
+ *
+ * The API names every segment now - OSM's name, else "off <street>" or "<class> near <place>"
+ * (`varuna_api.street_names`) - so this is only an older API's gap. It used to read "an unnamed
+ * road", which told the reader nothing they could find and is not said on any screen any more.
+ */
+export const UNNAMED_ROAD = A_ROAD;
 
 /** One reason, worded. `severity` is exported so the order can be pinned by a test. */
 export interface ExplainedReason {
@@ -94,15 +101,19 @@ function at(value: string | null | undefined): string | null {
  * the same rule, because an older run is still served). The first name wins: "Dr Ambedkar Road"
  * is a street a person can find, "Dr Ambedkar Road / Kalachowki Road" is a string VARUNA made up.
  * A name that merely starts with a bracket ("[Closed] Link Road") is a name and is left alone.
+ *
+ * The result is worded for the middle of a sentence: the API's proximity labels become "a road
+ * off Dr Ambedkar Road" and "a service road near Wadala Depot" (`lib/street-label`), so a reader
+ * never takes a description of where a lane is for the lane's own name.
  */
 export function streetName(raw: string | null | undefined): string {
   const first = firstOf(raw);
   if (!first) return UNNAMED_ROAD;
   const lower = first.toLowerCase();
-  if (lower === "unnamed road" || lower === "none" || lower === "nan" || lower === "null") {
+  if (/^unnamed (road|way|street)$/.test(lower) || ["none", "nan", "null"].includes(lower)) {
     return UNNAMED_ROAD;
   }
-  return first;
+  return inSentence(first);
 }
 
 function firstOf(raw: string | null | undefined): string | null {
@@ -119,7 +130,7 @@ function firstOf(raw: string | null | undefined): string | null {
   return null;
 }
 
-/** "An unnamed road" when a name opens a sentence; a no-op on a real street name. */
+/** "A road off Dr Ambedkar Road" when a label opens a sentence; a no-op on a real street name. */
 function opening(name: string): string {
   return name.charAt(0).toUpperCase() + name.slice(1);
 }

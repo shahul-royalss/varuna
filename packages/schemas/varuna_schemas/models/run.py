@@ -194,6 +194,53 @@ class GridSpec(VarunaModel):
         return self.nx * self.ny
 
 
+_DIGEST = r"^[0-9a-f]{12}$"
+
+
+class CityFingerprint(VarunaModel):
+    """Which city files a run read: the first 12 hex of a sha256 of each, ``None`` when absent.
+
+    The run id carries engine versions and nothing about the city, so a run baked before a city
+    rebuild and one baked after share an id. This is how a reader tells them apart without
+    reading the products. Each digest is of the file's content, not its bytes on disk: the
+    segment ids in order; the decoded rasters with their shape and transform; the drain tables'
+    ids and the columns that say how a node meets the sea; and ``condition.json``'s coast-wall
+    fields. A rebuild that reproduces the city reproduces every digest.
+    """
+
+    segments: str | None = Field(
+        default=None, pattern=_DIGEST, description="segments.parquet: segment ids in order."
+    )
+    sea_mask: str | None = Field(
+        default=None, pattern=_DIGEST, description="sea_mask.tif: open sea and tidal creek codes."
+    )
+    intertidal_mask: str | None = Field(
+        default=None,
+        pattern=_DIGEST,
+        description="intertidal_mask.tif, when the city build writes one.",
+    )
+    drain_nodes: str | None = Field(
+        default=None,
+        pattern=_DIGEST,
+        description="drain_nodes.parquet: node ids, cells and outfall, tidal and flap flags.",
+    )
+    drain_edges: str | None = Field(
+        default=None,
+        pattern=_DIGEST,
+        description="drain_edges.parquet: edge ids and the nodes each joins.",
+    )
+    coast_wall: str | None = Field(
+        default=None,
+        pattern=_DIGEST,
+        description="condition.json: the coast wall's level, rule, ring, raise and basins.",
+    )
+    dem_conditioned: str | None = Field(
+        default=None,
+        pattern=_DIGEST,
+        description="dem_conditioned.tif: the ground the Twin runs on, wall included.",
+    )
+
+
 class RunMeta(VarunaModel):
     """``run.json``: provenance for one cycle's artifacts (CLAUDE.md 10.3, blueprint 9.1 ``run``)."""
 
@@ -248,6 +295,21 @@ class RunMeta(VarunaModel):
             "What-if scales it, so a run without it can only answer 'what if' about pipes."
         ),
     )
+    twin_revision: str | None = Field(
+        default=None,
+        description=(
+            "The Twin revision that computed the run, finer than the version in the run id - "
+            "for example 1.0+coast-2026-09-28, the Twin with the city's own coastline. None on "
+            "a run baked before run.json carried it."
+        ),
+    )
+    city_fingerprint: CityFingerprint | None = Field(
+        default=None,
+        description=(
+            "Digests of the city files the run read, so a run baked on another build of the "
+            "city can be told apart under the same id. None on a run baked before."
+        ),
+    )
 
     @field_validator("run_id")
     @classmethod
@@ -279,6 +341,7 @@ class RunMeta(VarunaModel):
 
 
 __all__ = [
+    "CityFingerprint",
     "EngineVersions",
     "GridSpec",
     "ReplayMode",

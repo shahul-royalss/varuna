@@ -520,9 +520,12 @@ def build_reconstruction_bundle(
     stations = _station_pixels(_observatory_accumulations(accumulation, domain, inputs.gauge_sites))
 
     gauges = streams.gauge_rows(inputs.gauge_sites, truth, truth_times, domain, start, seed=seed)
+    # The tide alone runs past `end`: it is the boundary the last cycle forecasts against, out
+    # to its three-hour horizon (`members.TIDE_LOOKAHEAD_MIN`), not a stream observed in the
+    # window. The rows inside the window are the same ones a window-only series would hold.
     tide = streams.tide_rows(
         start,
-        float(window_min),
+        float(window_min + members.TIDE_LOOKAHEAD_MIN),
         high_water_m=evidence.TIDE_HIGH_WATER_M,
         high_water_at=evidence.TIDE_HIGH_WATER_IST,
         period_min=evidence.TIDE_PERIOD_MIN,

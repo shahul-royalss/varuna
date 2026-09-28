@@ -286,7 +286,7 @@ test.describe("the console's address bar", () => {
       // The old initialiser read `window.location` once, so the console stayed pinned to the
       // cycle it had; read from the router, it goes back to the opening cycle the demo starts
       // from (CLAUDE.md 15).
-      await page.getByRole("link", { name: "Console", exact: true }).click();
+      await page.getByRole("link", { name: "Drishti, command console", exact: true }).click();
       await expect.poll(() => page.url(), { timeout: 30_000 }).not.toContain("run=");
       await expect.poll(() => stampedRun(page), { timeout: 60_000 }).toBe(opening);
     },

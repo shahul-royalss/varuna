@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { UNNAMED_ROAD, honestyLine, nearbyStreets } from "./map-screen";
+import { createTranslator } from "next-intl";
+
+import en from "@/messages/en.json";
+import hi from "@/messages/hi.json";
+import mr from "@/messages/mr.json";
+import { intlLocale, mergeMessages, type PublicMessages } from "@/lib/i18n";
+import { streetLabelParts } from "@/lib/street-label";
+
+import { UNLISTED_ROAD, honestyLine, nearbyStreets, streetRowName } from "./map-screen";
 
 const run = {
   // Two 5-minute steps at 06:45 and 06:50 IST.
@@ -13,12 +21,19 @@ const run = {
 };
 
 describe("nearbyStreets", () => {
-  it("prints the OSM name, or 'Unnamed road' where OSM has none", () => {
-    const rows = nearbyStreets(run, 30, new Map([["S-named", "Dr Ambedkar Road"]]));
-    expect(rows.map((r) => [r.id, r.name])).toEqual([
-      ["S-unnamed", UNNAMED_ROAD],
+  it("prints the layer's display name, and never 'Unnamed road'", () => {
+    const names = new Map([
+      ["S-named", "Dr Ambedkar Road"],
+      ["S-unnamed", "off Dr Ambedkar Road"],
+    ]);
+    expect(nearbyStreets(run, 30, names).map((r) => [r.id, r.name])).toEqual([
+      ["S-unnamed", "off Dr Ambedkar Road"],
       ["S-named", "Dr Ambedkar Road"],
     ]);
+    // A street the layer does not carry reads as a road, not as an unnamed one.
+    const partial = nearbyStreets(run, 30, new Map([["S-named", "Dr Ambedkar Road"]]));
+    expect(partial.find((r) => r.id === "S-unnamed")?.name).toBe(UNLISTED_ROAD);
+    expect(partial.some((r) => /unnamed/i.test(r.name ?? ""))).toBe(false);
   });
 
   it("claims no name at all while the names are still loading", () => {
@@ -54,5 +69,71 @@ describe("honestyLine", () => {
 
   it("keeps the run's time when a later reload fails", () => {
     expect(honestyLine("2019-07-02T06:40:00+05:30", "error")).toMatch(/06:40/);
+  });
+});
+
+describe("streetRowName", () => {
+  type Tree = Parameters<typeof mergeMessages>[0];
+  const translator = (locale: "hi" | "mr") =>
+    createTranslator<PublicMessages, "map">({
+      locale: intlLocale(locale),
+      messages: mergeMessages(
+        en as unknown as Tree,
+        (locale === "hi" ? hi : mr) as unknown as Tree,
+      ) as unknown as PublicMessages,
+      namespace: "map",
+    });
+  const off = streetLabelParts("off Kokri Agar Road", {
+    display_kind: "off",
+    display_anchor: "Kokri Agar Road",
+    class: "residential",
+  });
+  const near = streetLabelParts("Residential street near Saki Naka", {
+    display_kind: "near",
+    display_anchor: "Saki Naka",
+    class: "residential",
+  });
+  const inCity = streetLabelParts("Service road in Mumbai", {
+    display_kind: "in",
+    display_anchor: "Mumbai",
+    class: "service",
+  });
+
+  it("prints the API's label unchanged in English", () => {
+    expect(streetRowName("off Kokri Agar Road", off)).toBe("off Kokri Agar Road");
+    expect(streetRowName("Residential street near Saki Naka", near)).toBe(
+      "Residential street near Saki Naka",
+    );
+    expect(streetRowName(UNLISTED_ROAD, null)).toBe("Road");
+  });
+
+  it("words a built label in Hindi and Marathi, keeping only the proper noun in Latin", () => {
+    for (const locale of ["hi", "mr"] as const) {
+      const t = translator(locale);
+      const rows = [
+        streetRowName("off Kokri Agar Road", off, locale, t),
+        streetRowName("Residential street near Saki Naka", near, locale, t),
+        streetRowName("Service road in Mumbai", inCity, locale, t),
+      ];
+      expect(rows[0]).toContain("Kokri Agar Road");
+      expect(rows[1]).toContain("Saki Naka");
+      expect(rows[2]).toContain("Mumbai");
+      for (const row of rows) {
+        // No English connective or class word left in the Devanagari sentence.
+        expect(row, `${locale}: ${row}`).not.toMatch(
+          /\b(off|near|in|Residential|Service|street|road)\b/,
+        );
+        expect(row).toMatch(/\p{Script=Devanagari}/u);
+      }
+      // An OSM name is a proper noun and stays as OSM wrote it.
+      expect(streetRowName("Dr Ambedkar Road", null, locale, t)).toBe("Dr Ambedkar Road");
+      expect(streetRowName(UNLISTED_ROAD, null, locale, t)).toBe(t("unnamedRoad"));
+    }
+    expect(streetRowName("off Kokri Agar Road", off, "hi", translator("hi"))).toBe(
+      "Kokri Agar Road से लगी सड़क",
+    );
+    expect(streetRowName("Residential street near Saki Naka", near, "mr", translator("mr"))).toBe(
+      "Saki Naka जवळील निवासी रस्ता",
+    );
   });
 });

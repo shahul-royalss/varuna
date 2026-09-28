@@ -239,6 +239,37 @@ def test_refinement_must_be_a_whole_number() -> None:
         build_nest(parent, _spec(parent, res_m=7.0))
 
 
+def test_a_window_holding_the_sea_is_refused_and_a_sea_outside_it_is_not() -> None:
+    """A nest has no sea boundary, so the city's sea inside its window would be street water."""
+    from varuna_twin.city import CityTerrain
+
+    plain = _parent()
+
+    def with_sea(col: int) -> CityTerrain:
+        sea = np.zeros(plain.shape, dtype=bool)
+        sea[:, col] = True
+        return CityTerrain(
+            z=plain.z,
+            manning_n=plain.manning_n,
+            blocked=plain.blocked,
+            imperviousness=plain.imperviousness,
+            cn=plain.cn,
+            res_m=plain.res_m,
+            crs=plain.crs,
+            transform=plain.transform,
+            sea=sea,
+        )
+
+    inside = with_sea(6)
+    with pytest.raises(ValueError, match="sea cells"):
+        build_nest(inside, _spec(inside))
+    # The 300 m window is ten parent cells centred on a twelve-cell grid; column 0 is outside it.
+    outside = with_sea(0)
+    nest = build_nest(outside, _spec(outside))
+    assert nest.col0 > 0
+    np.testing.assert_array_equal(nest.terrain.z, build_nest(plain, _spec(plain)).terrain.z)
+
+
 def test_window_snaps_to_whole_parent_cells() -> None:
     """CLAUDE.md 3.3 asks for 1 km2 and 30 m does not divide 1000 m, so the window rounds up."""
     parent = _parent(n=40)

@@ -228,7 +228,7 @@ export async function loadHotspots(
     hotspots: (body.hotspots ?? []).map((h, i) => ({
       rank: h.rank ?? i + 1,
       id: h.hotspot_id ?? h.slug ?? `hotspot-${i}`,
-      name: h.name ?? "Unnamed hotspot",
+      name: h.name ?? "Chronic spot",
       slug: h.slug ?? null,
       lon: h.lon ?? 0,
       lat: h.lat ?? 0,

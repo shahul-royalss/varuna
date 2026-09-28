@@ -166,7 +166,7 @@ def test_templates_come_from_the_alert() -> None:
     live = whatsapp_text({**ALERT, "cap_status": "Actual"})
     assert "(exercise)" not in live
     sms = sms_text({**ALERT, "headline": "x" * 300})
-    assert len(sms) <= notify.SMS_LIMIT and sms.endswith("...")
+    assert len(sms) <= notify.SMS_LIMIT and sms.endswith("... Avoid the street.")
     assert sms_text(ALERT).startswith("VARUNA severe exercise: Hindmata junction")
 
 

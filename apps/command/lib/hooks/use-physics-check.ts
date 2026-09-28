@@ -53,6 +53,8 @@ export function usePhysicsCheck(runId: string | null | undefined): PhysicsCheckS
           rainScale: values.rainScale,
           tideOffsetM: values.tideOffsetM,
           cleanedSegments: values.cleanedSegments,
+          pumpPlan: values.pumpPlan,
+          cleanTop: values.cleanTop14,
           runId: runId ?? undefined,
         },
         controller.signal,

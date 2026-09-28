@@ -163,6 +163,105 @@
         "title": "BundleSource",
         "type": "object"
       },
+      "CityFingerprint": {
+        "additionalProperties": false,
+        "description": "Which city files a run read: the first 12 hex of a sha256 of each, ``None`` when absent.\n\nThe run id carries engine versions and nothing about the city, so a run baked before a city\nrebuild and one baked after share an id. This is how a reader tells them apart without\nreading the products. Each digest is of the file's content, not its bytes on disk: the\nsegment ids in order; the decoded rasters with their shape and transform; the drain tables'\nids and the columns that say how a node meets the sea; and ``condition.json``'s coast-wall\nfields. A rebuild that reproduces the city reproduces every digest.",
+        "properties": {
+          "coast_wall": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "condition.json: the coast wall's level, rule, ring, raise and basins.",
+            "title": "Coast Wall"
+          },
+          "dem_conditioned": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "dem_conditioned.tif: the ground the Twin runs on, wall included.",
+            "title": "Dem Conditioned"
+          },
+          "drain_edges": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "drain_edges.parquet: edge ids and the nodes each joins.",
+            "title": "Drain Edges"
+          },
+          "drain_nodes": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "drain_nodes.parquet: node ids, cells and outfall, tidal and flap flags.",
+            "title": "Drain Nodes"
+          },
+          "intertidal_mask": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "intertidal_mask.tif, when the city build writes one.",
+            "title": "Intertidal Mask"
+          },
+          "sea_mask": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "sea_mask.tif: open sea and tidal creek codes.",
+            "title": "Sea Mask"
+          },
+          "segments": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{12}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "segments.parquet: segment ids in order.",
+            "title": "Segments"
+          }
+        },
+        "title": "CityFingerprint",
+        "type": "object"
+      },
       "ClosureRequest": {
         "additionalProperties": false,
         "description": "Body of ``POST /v1/ops/closures``.",
@@ -1142,6 +1241,548 @@
           "city"
         ],
         "title": "OnboardRequest",
+        "type": "object"
+      },
+      "Outlook": {
+        "description": "Today's next three hours of street depth from live rain, labelled as what it is.",
+        "properties": {
+          "baseline_removed": {
+            "$ref": "#/components/schemas/OutlookBaseline"
+          },
+          "blockage": {
+            "$ref": "#/components/schemas/OutlookBlockage"
+          },
+          "cached": {
+            "description": "True when this answer was computed for an earlier request.",
+            "title": "Cached",
+            "type": "boolean"
+          },
+          "city": {
+            "title": "City",
+            "type": "string"
+          },
+          "compute_ms": {
+            "title": "Compute Ms",
+            "type": "integer"
+          },
+          "expired": {
+            "description": "True once `valid_to` has passed (a stale weather copy).",
+            "title": "Expired",
+            "type": "boolean"
+          },
+          "issued_at": {
+            "format": "date-time",
+            "title": "Issued At",
+            "type": "string"
+          },
+          "members": {
+            "title": "Members",
+            "type": "integer"
+          },
+          "method": {
+            "default": "reduced-order emulator (Flash-lite) on Open-Meteo NWP rain, AOI-uniform; not a radar nowcast",
+            "title": "Method",
+            "type": "string"
+          },
+          "mode": {
+            "const": "outlook",
+            "default": "outlook",
+            "title": "Mode",
+            "type": "string"
+          },
+          "n_segments_over_1cm": {
+            "title": "N Segments Over 1Cm",
+            "type": "integer"
+          },
+          "n_steps": {
+            "title": "N Steps",
+            "type": "integer"
+          },
+          "no_rain_response": {
+            "description": "Streets the emulator has no rain response for (never wet in training); they read 0 cm here whatever the rain.",
+            "title": "No Rain Response",
+            "type": "integer"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "rain_mm_h": {
+            "description": "AOI-uniform rain rate per step, mm/h.",
+            "items": {
+              "type": "number"
+            },
+            "title": "Rain Mm H",
+            "type": "array"
+          },
+          "rain_total_mm": {
+            "title": "Rain Total Mm",
+            "type": "number"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Always null: an outlook is not a run and is not registered.",
+            "title": "Run Id"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/OutlookSegment"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "skill": {
+            "$ref": "#/components/schemas/OutlookSkill"
+          },
+          "source": {
+            "$ref": "#/components/schemas/OutlookSource"
+          },
+          "steps_min": {
+            "default": 5,
+            "title": "Steps Min",
+            "type": "integer"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/OutlookSummary"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          },
+          "unmatched_streets": {
+            "description": "The emulator's streets whose id the city's current street table does not carry: forecast, but with no name and no geometry in today's street layer.",
+            "title": "Unmatched Streets",
+            "type": "integer"
+          },
+          "valid_from": {
+            "format": "date-time",
+            "title": "Valid From",
+            "type": "string"
+          },
+          "valid_to": {
+            "format": "date-time",
+            "title": "Valid To",
+            "type": "string"
+          },
+          "valid_ts": {
+            "description": "End of each 5-minute step.",
+            "items": {
+              "format": "date-time",
+              "type": "string"
+            },
+            "title": "Valid Ts",
+            "type": "array"
+          }
+        },
+        "required": [
+          "city",
+          "issued_at",
+          "valid_from",
+          "valid_to",
+          "expired",
+          "n_steps",
+          "valid_ts",
+          "rain_mm_h",
+          "rain_total_mm",
+          "members",
+          "source",
+          "segments",
+          "n_segments_over_1cm",
+          "truncated",
+          "summary",
+          "baseline_removed",
+          "blockage",
+          "skill",
+          "no_rain_response",
+          "unmatched_streets",
+          "notes",
+          "compute_ms",
+          "cached"
+        ],
+        "title": "Outlook",
+        "type": "object"
+      },
+      "OutlookBaseline": {
+        "description": "The base state taken out: what the emulator would have drawn with no rain at all.",
+        "properties": {
+          "max_cm": {
+            "title": "Max Cm",
+            "type": "number"
+          },
+          "n_ge_15": {
+            "title": "N Ge 15",
+            "type": "integer"
+          },
+          "n_ge_30": {
+            "title": "N Ge 30",
+            "type": "integer"
+          },
+          "n_ge_5": {
+            "title": "N Ge 5",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "n_ge_5",
+          "n_ge_15",
+          "n_ge_30",
+          "max_cm"
+        ],
+        "title": "OutlookBaseline",
+        "type": "object"
+      },
+      "OutlookBlockage": {
+        "description": "Which blockage the members were drawn around, street by street.",
+        "properties": {
+          "flat": {
+            "description": "Streets with no pipe at all, run at a flat 0.20.",
+            "title": "Flat",
+            "type": "integer"
+          },
+          "from_posterior": {
+            "title": "From Posterior",
+            "type": "integer"
+          },
+          "from_prior": {
+            "title": "From Prior",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "pulse_posterior",
+              "city_prior"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The run whose Pulse posterior was read, if any.",
+            "title": "Run Id"
+          }
+        },
+        "required": [
+          "kind",
+          "run_id",
+          "from_posterior",
+          "from_prior",
+          "flat"
+        ],
+        "title": "OutlookBlockage",
+        "type": "object"
+      },
+      "OutlookSegment": {
+        "description": "One street's three hours, per step, above the emulator's base state.",
+        "properties": {
+          "display_name": {
+            "default": "",
+            "description": "The name to print: OSM's, else 'off <street>', else '<class> near <place>', else '<class> in <city>'. Never 'Unnamed road'.",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OSM street name, or null when OSM names none.",
+            "title": "Name"
+          },
+          "p50_cm": {
+            "items": {
+              "type": "number"
+            },
+            "title": "P50 Cm",
+            "type": "array"
+          },
+          "p90_cm": {
+            "items": {
+              "type": "number"
+            },
+            "title": "P90 Cm",
+            "type": "array"
+          },
+          "p_gt_15": {
+            "items": {
+              "type": "number"
+            },
+            "title": "P Gt 15",
+            "type": "array"
+          },
+          "p_gt_30": {
+            "items": {
+              "type": "number"
+            },
+            "title": "P Gt 30",
+            "type": "array"
+          },
+          "p_gt_45": {
+            "items": {
+              "type": "number"
+            },
+            "title": "P Gt 45",
+            "type": "array"
+          },
+          "peak_p50_cm": {
+            "title": "Peak P50 Cm",
+            "type": "number"
+          },
+          "peak_p90_cm": {
+            "title": "Peak P90 Cm",
+            "type": "number"
+          },
+          "peak_ts": {
+            "description": "Valid time of the p50 peak.",
+            "format": "date-time",
+            "title": "Peak Ts",
+            "type": "string"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "segment_id",
+          "name",
+          "p50_cm",
+          "p90_cm",
+          "p_gt_15",
+          "p_gt_30",
+          "p_gt_45",
+          "peak_p50_cm",
+          "peak_p90_cm",
+          "peak_ts"
+        ],
+        "title": "OutlookSegment",
+        "type": "object"
+      },
+      "OutlookSkill": {
+        "description": "The emulator's measured skill against the Twin, from the fit that ran.",
+        "properties": {
+          "csi_30cm": {
+            "title": "Csi 30Cm",
+            "type": "number"
+          },
+          "fitted_segments": {
+            "title": "Fitted Segments",
+            "type": "integer"
+          },
+          "n_segments": {
+            "title": "N Segments",
+            "type": "integer"
+          },
+          "n_training_runs": {
+            "title": "N Training Runs",
+            "type": "integer"
+          },
+          "rmse_cm": {
+            "title": "Rmse Cm",
+            "type": "number"
+          }
+        },
+        "required": [
+          "rmse_cm",
+          "csi_30cm",
+          "n_training_runs",
+          "fitted_segments",
+          "n_segments"
+        ],
+        "title": "OutlookSkill",
+        "type": "object"
+      },
+      "OutlookSource": {
+        "description": "Where the rain came from, and how old the copy is at this request.",
+        "properties": {
+          "age_s": {
+            "description": "Seconds since `fetched_at`, computed per request.",
+            "title": "Age S",
+            "type": "number"
+          },
+          "attribution": {
+            "default": "Weather data by Open-Meteo.com (CC BY 4.0)",
+            "title": "Attribution",
+            "type": "string"
+          },
+          "fetched_at": {
+            "format": "date-time",
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "grid_cell_km": {
+            "description": "Distance from the AOI centre to the centre of the Open-Meteo grid cell that answered, km. The rain is that cell's, applied to every street.",
+            "title": "Grid Cell Km",
+            "type": "number"
+          },
+          "grid_point": {
+            "$ref": "#/components/schemas/GeoPoint"
+          },
+          "licence": {
+            "default": "CC BY 4.0",
+            "title": "Licence",
+            "type": "string"
+          },
+          "licence_url": {
+            "default": "https://creativecommons.org/licenses/by/4.0/",
+            "title": "Licence Url",
+            "type": "string"
+          },
+          "name": {
+            "default": "Open-Meteo",
+            "title": "Name",
+            "type": "string"
+          },
+          "series": {
+            "default": "hourly",
+            "description": "Which Open-Meteo series the rain was built from. Always `hourly` for India, where the 15-minute series is interpolated from the hourly models and adds no timing; each hourly value is held for the hour before its timestamp.",
+            "enum": [
+              "hourly",
+              "minutely_15"
+            ],
+            "title": "Series",
+            "type": "string"
+          },
+          "series_note": {
+            "title": "Series Note",
+            "type": "string"
+          },
+          "stale": {
+            "description": "True once the weather copy is past its 15-minute window.",
+            "title": "Stale",
+            "type": "boolean"
+          },
+          "url": {
+            "default": "https://open-meteo.com/",
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "fetched_at",
+          "age_s",
+          "stale",
+          "grid_cell_km",
+          "grid_point",
+          "series_note"
+        ],
+        "title": "OutlookSource",
+        "type": "object"
+      },
+      "OutlookStreet": {
+        "description": "A street named in the summary.",
+        "properties": {
+          "display_name": {
+            "default": "",
+            "description": "The name to print; never 'Unnamed road'.",
+            "title": "Display Name",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "peak_p50_cm": {
+            "title": "Peak P50 Cm",
+            "type": "number"
+          },
+          "peak_p90_cm": {
+            "title": "Peak P90 Cm",
+            "type": "number"
+          },
+          "peak_ts": {
+            "format": "date-time",
+            "title": "Peak Ts",
+            "type": "string"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "segment_id",
+          "name",
+          "peak_p50_cm",
+          "peak_p90_cm",
+          "peak_ts"
+        ],
+        "title": "OutlookStreet",
+        "type": "object"
+      },
+      "OutlookSummary": {
+        "description": "The answer in counts and one sentence. Counts are by each street's peak p50.",
+        "properties": {
+          "max_cm": {
+            "description": "Deepest p50 on any street at any step, cm.",
+            "title": "Max Cm",
+            "type": "number"
+          },
+          "max_p90_cm": {
+            "title": "Max P90 Cm",
+            "type": "number"
+          },
+          "n_ge_15": {
+            "title": "N Ge 15",
+            "type": "integer"
+          },
+          "n_ge_30": {
+            "title": "N Ge 30",
+            "type": "integer"
+          },
+          "n_ge_5": {
+            "title": "N Ge 5",
+            "type": "integer"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "worst": {
+            "items": {
+              "$ref": "#/components/schemas/OutlookStreet"
+            },
+            "title": "Worst",
+            "type": "array"
+          }
+        },
+        "required": [
+          "max_cm",
+          "max_p90_cm",
+          "n_ge_5",
+          "n_ge_15",
+          "n_ge_30",
+          "worst",
+          "sentence"
+        ],
+        "title": "OutlookSummary",
         "type": "object"
       },
       "Point": {
@@ -2591,6 +3232,138 @@
         "title": "ReplaySpeedRequest",
         "type": "object"
       },
+      "ReportRequest": {
+        "description": "Body of ``POST /v1/reports``.\n\nUnknown fields are ignored rather than refused: a report queued offline by an older build of\nthe report flow is still a report when the connection comes back.",
+        "properties": {
+          "depth_hint": {
+            "description": "ankle (about 10 cm), knee (about 45 cm) or waist (about 90 cm).",
+            "enum": [
+              "ankle",
+              "knee",
+              "waist"
+            ],
+            "title": "Depth Hint",
+            "type": "string"
+          },
+          "lat": {
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat",
+            "type": "number"
+          },
+          "lon": {
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lon",
+            "type": "number"
+          },
+          "photo_data_url": {
+            "anyOf": [
+              {
+                "maxLength": 700000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "data:image/jpeg|png|webp;base64,... - re-encoded without metadata if kept.",
+            "title": "Photo Data Url"
+          },
+          "source": {
+            "default": "public-map",
+            "maxLength": 40,
+            "title": "Source",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 280,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The reporter's own words.",
+            "title": "Text"
+          },
+          "ts": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the water was seen, ISO 8601 with an offset. Omitted means now.",
+            "title": "Ts"
+          }
+        },
+        "required": [
+          "lat",
+          "lon",
+          "depth_hint"
+        ],
+        "title": "ReportRequest",
+        "type": "object"
+      },
+      "ReportStatusRequest": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /v1/ops/reports/{report_id}/status``.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Shown to the reporter beside the status, so write it for them.",
+            "title": "Note"
+          },
+          "role": {
+            "default": "ward officer",
+            "description": "What the reporter sees in place of the name.",
+            "enum": [
+              "ward officer",
+              "control room",
+              "field crew"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "received",
+              "seen",
+              "crew_sent",
+              "resolved",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "user": {
+            "default": "ward officer",
+            "description": "Kept on the desk only.",
+            "maxLength": 80,
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "ReportStatusRequest",
+        "type": "object"
+      },
       "RunList": {
         "additionalProperties": false,
         "description": "``GET /v1/runs``.",
@@ -2629,6 +3402,24 @@
         "additionalProperties": false,
         "description": "``run.json``: provenance for one cycle's artifacts (CLAUDE.md 10.3, blueprint 9.1 ``run``).",
         "properties": {
+          "aoi_depth_band": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "p10, p50 and p90 of mean street depth in cm at each forecast step, taken across the ensemble's members: the band the time bar draws (CLAUDE.md 7.2). None when the run has fewer than two members, so a deterministic run never draws a band of no width.",
+            "title": "Aoi Depth Band"
+          },
           "bundle": {
             "anyOf": [
               {
@@ -2645,6 +3436,17 @@
             "description": "City slug, e.g. mumbai.",
             "title": "City",
             "type": "string"
+          },
+          "city_fingerprint": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CityFingerprint"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Digests of the city files the run read, so a run baked on another build of the city can be told apart under the same id. None on a run baked before."
           },
           "created_at": {
             "description": "When the run directory was written (IST).",
@@ -2783,6 +3585,18 @@
             "readOnly": true,
             "title": "Total Ms",
             "type": "integer"
+          },
+          "twin_revision": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The Twin revision that computed the run, finer than the version in the run id - for example 1.0+coast-2026-09-28, the Twin with the city's own coastline. None on a run baked before run.json carried it.",
+            "title": "Twin Revision"
           },
           "versions": {
             "$ref": "#/components/schemas/EngineVersions"
@@ -3215,6 +4029,14 @@
             "title": "Licence Url",
             "type": "string"
           },
+          "minutely_15": {
+            "description": "Open-Meteo's 15-minute precipitation for the next four hours. Outside Europe and North America it is interpolated from hourly models; empty in copies fetched before it was asked for.",
+            "items": {
+              "$ref": "#/components/schemas/WeatherStep"
+            },
+            "title": "Minutely 15",
+            "type": "array"
+          },
           "notes": {
             "description": "Why this copy is what it is; printed by the UI.",
             "items": {
@@ -3348,7 +4170,7 @@
         "type": "object"
       },
       "WeatherStep": {
-        "description": "One hourly step of the short forecast.",
+        "description": "One step of the short forecast: hourly, or 15-minutely in `Weather.minutely_15`.",
         "properties": {
           "precipitation_mm": {
             "anyOf": [
@@ -3359,6 +4181,7 @@
                 "type": "null"
               }
             ],
+            "description": "Precipitation summed over the interval before `ts` (the preceding hour for `hourly`, the preceding 15 minutes for `minutely_15`), millimetres.",
             "title": "Precipitation Mm"
           },
           "precipitation_probability_pct": {
@@ -3373,6 +4196,7 @@
             "title": "Precipitation Probability Pct"
           },
           "ts": {
+            "description": "End of the interval the precipitation was summed over.",
             "format": "date-time",
             "title": "Ts",
             "type": "string"
@@ -4388,7 +5212,7 @@
     },
     "/v1/drains/health": {
       "get": {
-        "description": "Every pipe with its posterior blockage, its spread and what moved it (CLAUDE.md 11.6).\n\nMumbai's inferred graph has 49,770 edges and the drain X-ray draws the ones that matter, so\nthe response is capped and ordered worst-first. `n_edges` is the true total; the cap is what\nwas sent. Each feature carries `confidence: \"inferred\"`, which is why the map draws them\ndashed - the geometry is a synthesis from roads and terrain, not a municipal record.",
+        "description": "Every pipe with its posterior blockage, its spread and what moved it (CLAUDE.md 11.6).\n\nMumbai's inferred graph has 49,770 edges and the drain X-ray draws the ones that matter, so\nthe response is capped and ordered worst-first. `n_edges` is the true total; the cap is what\nwas sent. By default (`order=blockage`) the cap keeps the worst pipes by posterior blockage,\nso `limit=25` is the 25 worst pipes of the written product. `order=learned` fills the cap\nwith every pipe Pulse moved this cycle (`moved`, up or down) before any pipe that merely sits\nat a high land-use prior - the rule the product is written with - and still sends them worst\nfirst; a limit below the number moved keeps the worst of the moved.\n\nEach feature carries `confidence: \"inferred\"`, which is why the map draws them dashed - the\ngeometry is a synthesis from roads and terrain, not a municipal record - and `display_name`\n(\"off Eastern Freeway\") and `locality` (\"near Wadala\") where the bake could place it.\n\n`summary` is what this cycle learned: pipes moved up and down, the largest rise, capacity\nlost at the land-use prior and after learning (weighted by full-flow capacity over the whole\nnetwork), and the observations by kind, synthetic and real. A run baked before the product\ncarried it gets one rebuilt from its written pipes, with `source: \"written_features\"` and a\n`note` saying what that leaves out.",
         "operationId": "drains_health_v1_drains_health_get",
         "parameters": [
           {
@@ -4447,6 +5271,20 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "blockage",
+              "enum": [
+                "blockage",
+                "learned"
+              ],
+              "title": "Order",
+              "type": "string"
             }
           }
         ],
@@ -5452,7 +6290,7 @@
     },
     "/v1/onboard": {
       "post": {
-        "description": "Build a city and run its first forecast.\n\nValidated through `OnboardRequest`, the documented shape (CLAUDE.md 12), so a malformed body\ngets the 422 envelope rather than a message about the city not existing.\n\nAnswers 202 with the job straight away: the build is minutes of work and holding the request\nopen for it would time out behind any proxy, and the wizard wants to render its first step\nimmediately anyway.\n\nA request for a city that is already building returns that job rather than starting a second\none - on stage, a double-click on \"Start\" must not raise a dialog.",
+        "description": "Build a city and run its first forecast.\n\nValidated through `OnboardRequest`, the documented shape (CLAUDE.md 12), so a malformed body\ngets the 422 envelope rather than a message about the city not existing.\n\nAnswers 202 with the job straight away: the build is minutes of work and holding the request\nopen for it would time out behind any proxy, and the wizard wants to render its first step\nimmediately anyway.\n\nA request for a city that is already building returns that job rather than starting a second\none - on stage, a double-click on \"Start\" must not raise a dialog.\n\nA request for the configured replay city (``VARUNA_CITY``, Mumbai) answers 409\n``city_is_replay_city`` and starts nothing.",
         "operationId": "onboard_v1_onboard_post",
         "requestBody": {
           "content": {
@@ -5496,7 +6334,7 @@
     },
     "/v1/onboard/city/{city}": {
       "get": {
-        "description": "What the wizard asks on load, so a reopened tab rejoins a build already running.",
+        "description": "What the wizard asks on load, so a reopened tab rejoins a build already running.\n\nWith no job in this process the answer is ``status: \"none\"`` plus ``previous``: the city's\nlast good build as `city/<city>/onboard_last.json` recorded it (its log lines, each with the\ninstant it was captured, its per-step milliseconds and its first run), or null when no build\nwas ever recorded. ``last_attempt`` is set when a later build did not finish, so the wizard\ncan say that it failed without losing the forecast the good one made.",
         "operationId": "onboard_latest_v1_onboard_city__city__get",
         "parameters": [
           {
@@ -5541,7 +6379,7 @@
     },
     "/v1/onboard/{job_id}": {
       "get": {
-        "description": "Poll one job. ``latest`` in place of an id returns the most recent job for a city.",
+        "description": "Poll one job.\n\nA job this process no longer holds - the API restarted since it ran - is answered from the\ncity's persisted record when that record names the same job (``from_record: true``), so a\nreopened wizard still shows the build's own log and timings rather than a 404.",
         "operationId": "onboard_job_v1_onboard__job_id__get",
         "parameters": [
           {
@@ -5807,7 +6645,7 @@
     },
     "/v1/ops/log": {
       "get": {
-        "description": "Every authority edit for a city, newest first - the audit trail the desk is judged on.",
+        "description": "Every authority edit for a city, newest first - the audit trail the desk is judged on.\n\nUngated, with one exception: a report status's officer name is printed only when the request\ncarries the desk passphrase. Without it the entry keeps its role and says the name was\nwithheld; a wrong passphrase is not refused, it just gets the public answer.",
         "operationId": "ops_log_v1_ops_log_get",
         "parameters": [
           {
@@ -5854,6 +6692,24 @@
               ],
               "description": "Filter to one entry kind.",
               "title": "Kind"
+            }
+          },
+          {
+            "description": "Optional. With the desk passphrase, report statuses keep the name.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. With the desk passphrase, report statuses keep the name.",
+              "title": "X-Varuna-Ops"
             }
           }
         ],
@@ -5960,6 +6816,284 @@
         ]
       }
     },
+    "/v1/ops/reports": {
+      "get": {
+        "description": "Every report, dismissed and out-of-area ones included, with exact coordinates and names.\n\nBehind the passphrase because a reporter's exact position is often their home. Not counted\nagainst the write window.",
+        "operationId": "ops_reports_v1_ops_reports_get",
+        "parameters": [
+          {
+            "description": "mumbai or chennai.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "mumbai or chennai.",
+              "title": "City"
+            }
+          },
+          {
+            "description": "min_lon,min_lat,max_lon,max_lat",
+            "in": "query",
+            "name": "bbox",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "min_lon,min_lat,max_lon,max_lat",
+              "title": "Bbox"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "received",
+                    "seen",
+                    "crew_sent",
+                    "resolved",
+                    "dismissed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Received at or after, ISO 8601.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Received at or after, ISO 8601.",
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "citizen",
+                    "seed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Ops Reports V1 Ops Reports Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Citizen reports as the desk sees them (exact coordinates; gated)",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/v1/ops/reports/{report_id}/status": {
+      "post": {
+        "description": "Tell a reporter what the desk did: seen, crew sent, resolved, or dismissed.\n\nAn append, like every desk act: the report stays exactly as it was sent, and ``GET\n/v1/reports`` folds the latest status onto it when it is read. A dismissed report leaves\nevery public list and its photo stops being served; it stays here, and a later status brings\nit back.",
+        "operationId": "post_report_status_v1_ops_reports__report_id__status_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The desk passphrase.",
+            "in": "header",
+            "name": "x-varuna-ops",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The desk passphrase.",
+              "title": "X-Varuna-Ops"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportStatusRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Post Report Status V1 Ops Reports  Report Id  Status Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set a citizen report's status (recorded in the ops log)",
+        "tags": [
+          "ops"
+        ]
+      }
+    },
+    "/v1/outlook": {
+      "get": {
+        "description": "A labelled live outlook: Open-Meteo NWP rain, AOI-uniform, through Flash-lite at 50 members.\n\nDepth is reported **above** the emulator's stored base state, never with it: that base state\nis a training window's tide and upstream runoff and would draw a flood on a dry day. Cached\nwith the weather copy it came from (15 minutes); a stale copy is served with its age and its\nown window, never shifted onto the present.",
+        "operationId": "outlook_v1_outlook_get",
+        "parameters": [
+          {
+            "description": "City slug; Mumbai is the only one fitted.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "default": "mumbai",
+              "description": "City slug; Mumbai is the only one fitted.",
+              "title": "City",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Outlook"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "No emulator is fitted to this city's streets (Chennai)"
+          },
+          "503": {
+            "description": "No weather copy, no fitted emulator, the city is not built, or the emulator was fitted to an older build of it"
+          }
+        },
+        "summary": "Today's next 3 h of street depth from live Open-Meteo rain, through the emulator",
+        "tags": [
+          "weather"
+        ]
+      }
+    },
     "/v1/pumps": {
       "get": {
         "description": "The greedy assignment of the synthetic pump fleet to the hotspots that flood.\n\nThe inventory is synthetic and the response says so in `inventory`; the benefit is a\ndocumented reduced model, labelled in `benefit_label` and printed beside every number the\nboard shows (CLAUDE.md rule 6, 11.10).",
@@ -6031,6 +7165,58 @@
         ]
       }
     },
+    "/v1/pumps/cycles": {
+      "get": {
+        "description": "Every run of the city with a ``pump_plan.json``, oldest first, with its counts.\n\nFor the cycle that sends no pump: Jalayantra names the cycles that do and offers the one whose\nplan avoids the most minutes above 45 cm (``busiest_run_id``). Read-only and ungated; nothing\nis recomputed.",
+        "operationId": "pumps_cycles_v1_pumps_cycles_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pumps Cycles V1 Pumps Cycles Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Which cycles carry a pump plan, and how many pumps each sends",
+        "tags": [
+          "pumps"
+        ]
+      }
+    },
     "/v1/pumps/dispatch": {
       "post": {
         "description": "Record a dispatch order for the current plan, and return it in plain language.\n\n202 rather than 200: the order is accepted and recorded, and nothing downstream of this\nprototype moves because of it. The inventory is synthetic, and the response says so.",
@@ -6090,6 +7276,84 @@
           }
         },
         "summary": "Dispatch the plan (records the order; sends no lorry)",
+        "tags": [
+          "pumps"
+        ]
+      }
+    },
+    "/v1/pumps/map": {
+      "get": {
+        "description": "Each assignment of the run's own ``pump_plan.json``, drawn (Jalayantra, CLAUDE.md 7.6).\n\nPer leg: the depot and the place with coordinates, the plan's ETA, the depth series at the\nplace with and without the pump (recomputed with the optimiser's own functions, with\n``agrees`` saying whether the recount reproduces the plan's minutes), its window above 45 cm,\nand - with ``routes`` - the road a truck would take at the cycle time and what the pump buys\nif it arrives when that road says. Read-only and ungated; the first answer for a run is slow\n(the city's segment table and twelve routes) and is remembered, ``cached`` says which.",
+        "operationId": "pumps_map_v1_pumps_map_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "routes",
+            "required": false,
+            "schema": {
+              "default": true,
+              "title": "Routes",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Pumps Map V1 Pumps Map Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The run's pump plan on the city: depots, roads, and depth with and without each pump",
         "tags": [
           "pumps"
         ]
@@ -6966,15 +8230,115 @@
     },
     "/v1/reports": {
       "get": {
-        "description": "The inbox, newest first. What the drain X-ray's timeline reads before a cycle has run.",
+        "description": "Reports newest first, each with its latest status and the history that led to it.\n\nWhat the drain X-ray's timeline, the citizen dashboard and the desk's public inbox read. Every\ncoordinate is rounded; the exact ones are in ``GET /v1/ops/reports``, behind the passphrase.",
         "operationId": "list_reports_v1_reports_get",
         "parameters": [
+          {
+            "description": "mumbai or chennai.",
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "mumbai or chennai.",
+              "title": "City"
+            }
+          },
+          {
+            "description": "min_lon,min_lat,max_lon,max_lat",
+            "in": "query",
+            "name": "bbox",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "min_lon,min_lat,max_lon,max_lat",
+              "title": "Bbox"
+            }
+          },
+          {
+            "description": "Only reports whose latest status is this.",
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "received",
+                    "seen",
+                    "crew_sent",
+                    "resolved"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Only reports whose latest status is this.",
+              "title": "Status"
+            }
+          },
+          {
+            "description": "Received at or after, ISO 8601.",
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Received at or after, ISO 8601.",
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "origin",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "citizen",
+                    "seed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Origin"
+            }
+          },
           {
             "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
               "default": 50,
+              "maximum": 500,
+              "minimum": 1,
               "title": "Limit",
               "type": "integer"
             }
@@ -7004,7 +8368,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Reports received since the service started",
+        "summary": "Citizen reports with their status (public: rounded coordinates)",
         "tags": [
           "observations"
         ]
@@ -7016,9 +8380,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "additionalProperties": true,
-                "title": "Body",
-                "type": "object"
+                "$ref": "#/components/schemas/ReportRequest"
               }
             }
           },
@@ -7048,7 +8410,105 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Citizen or field observation (depth chips ankle/knee/waist)",
+        "summary": "Citizen or field observation (depth chips ankle/knee/waist, optional photo)",
+        "tags": [
+          "observations"
+        ]
+      }
+    },
+    "/v1/reports/{report_id}": {
+      "get": {
+        "description": "What the reporter polls after pressing Send: the report, its status and who set it, by role.\n\nA dismissed report answers with its status and none of its content. One from outside the\nforecast areas answers in full, so the reporter can see it was kept and why it is not mapped.",
+        "operationId": "get_report_v1_reports__report_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Report V1 Reports  Report Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One report and its status history (public)",
+        "tags": [
+          "observations"
+        ]
+      }
+    },
+    "/v1/reports/{report_id}/photo": {
+      "get": {
+        "description": "The stored photo, 330 px (``thumb``) or 1280 px (``full``) on its longest side.\n\nOnly ids this API minted reach the file system. A dismissed report's photo is not served.\nSeed reports' photos are Wikimedia Commons links and are never served from here.",
+        "operationId": "report_photo_v1_reports__report_id__photo_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "report_id",
+            "required": true,
+            "schema": {
+              "title": "Report Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "size",
+            "required": false,
+            "schema": {
+              "default": "thumb",
+              "enum": [
+                "thumb",
+                "full"
+              ],
+              "title": "Size",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "image/jpeg": {}
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A report's photo, re-encoded without metadata (JPEG)",
         "tags": [
           "observations"
         ]
@@ -7148,7 +8608,7 @@
     },
     "/v1/runs": {
       "get": {
-        "description": "Runs for one city, newest first.\n\n**Defaults to the configured city rather than to every city.** Onboarding Chennai put its runs\nin the same directory, and since ids sort chronologically `CHN-` came out above `MUM-` - so the\nconsole's run stamp, which reads `latest_run_id` from here, began naming a Chennai run over a\nmap of Mumbai. `city=all` is the way to ask for the whole registry.",
+        "description": "Runs for one city, newest first.\n\n**Defaults to the configured city rather than to every city.** Onboarding Chennai put its runs\nin the same directory, and since ids sort chronologically `CHN-` came out above `MUM-` - so the\nconsole's run stamp, which reads `latest_run_id` from here, began naming a Chennai run over a\nmap of Mumbai. `city=all` is the way to ask for the whole registry.\n\nAn onboarded city (Chennai) reports its onboarding build's first forecast as `latest_run_id`\nwhen that run is on disk, the same run the wizard and its finish card open on\n(`runs_util.onboarded_run_for`). Name order alone had let a superseded run win.",
         "operationId": "list_runs_v1_runs_get",
         "parameters": [
           {
@@ -7328,6 +8788,54 @@
         ]
       }
     },
+    "/v1/verification/rain-skill": {
+      "get": {
+        "description": "Rain CSI, POD and FAR at 10, 20 and 40 mm/h by lead, pooled over the event's baked cycles.\n\nScored for the ensemble mean, the ensemble median and persistence (the analysis each nowcast\nstarted from, held), with the Brier score and reliability of the members' exceedance\nprobability, the sample size behind every lead and the useful skill horizon it computes. An\nevent whose bundle has no truth field or no baked rain answers ``available: false`` with the\nreason; an unknown event is a 404.",
+        "operationId": "verification_rain_skill_v1_verification_rain_skill_get",
+        "parameters": [
+          {
+            "description": "Bundle id, e.g. MUM-2019-07-02",
+            "in": "query",
+            "name": "event",
+            "required": false,
+            "schema": {
+              "default": "MUM-2019-07-02",
+              "description": "Bundle id, e.g. MUM-2019-07-02",
+              "title": "Event",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verification Rain Skill V1 Verification Rain Skill Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rain skill by lead time against the bundle's reconstructed truth field",
+        "tags": [
+          "verification"
+        ]
+      }
+    },
     "/v1/weather": {
       "get": {
         "description": "Live weather for the city's AOI centre, cached for fifteen minutes.\n\nDegrades rather than fails: an upstream error, a timeout or `VARUNA_OFFLINE=1` serves the last\ngood copy with its true age and `stale: true`. Only when no copy has ever been fetched does\nthis answer 503, with the reason named.",
@@ -7376,7 +8884,7 @@
     },
     "/v1/whatif": {
       "post": {
-        "description": "Scale the rain, clean pipes or run pumps, and report what changes.\n\nBody: ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}``.\n\nA tide offset is refused: the emulator is a perturbation around a base state measured at one\ntide series, so it has no representation of a different sea level, and returning a number\nanyway would be inventing one.\n\n``cleaned_segments`` are road-segment ids. Ids this city has no segment for are reported in\n``cleaned_unmatched`` and never counted as cleaned; a request where *none* of them match is\nrefused with 422 ``unknown_segments`` rather than answered for a scenario nobody asked for.",
+        "description": "Scale the rain, clean pipes or run the pump plan, and report every street that changes.\n\nBody: ``{run_id?, rain_scale?, cleaned_segments?, clean_top?, pump_plan?, tide_offset_m?}``.\n\n* ``cleaned_segments`` are road-segment ids. Ids this city has no segment for are reported in\n  ``cleaned_unmatched`` and never counted as cleaned; a request where *none* of them match is\n  refused with 422 ``unknown_segments`` rather than answered for a scenario nobody asked for.\n* ``clean_top`` (``true`` or a number) desilts the worst pipes in the run's learned blockage,\n  city-wide - section 7.7's \"Clean top 14\".\n* ``pump_plan: true`` runs the cycle's own ``pump_plan.json`` from each pump's arrival, and\n  the answer is labelled a lower bound.\n* ``tide_offset_m`` is **neither refused nor applied**: the emulator has no sea level, so the\n  answer is the other levers with the tide left out, and ``tide`` says so and names\n  ``POST /v1/whatif/twin``, which answers the tide on the full-city Twin.\n\nEvery street whose peak moves by :data:`CHANGE_CM` or more is in ``segments``, including\nstreets the run had dry, and every count is counted from that list. A scenario with no lever\nset answers \"Nothing changed\" without running the emulator.",
         "operationId": "whatif_v1_whatif_post",
         "requestBody": {
           "content": {
@@ -7422,7 +8930,7 @@
     },
     "/v1/whatif/physics-check": {
       "post": {
-        "description": "Run the coupled Twin twice on a window around the hotspots and print the disagreement.\n\nBody: the same ``{run_id?, rain_scale?, cleaned_segments?, tide_offset_m?}`` ``/v1/whatif``\ntakes, plus ``hotspot_ids?`` and ``pad_cells?``, so the console can post the scenario object\nit already has.\n\n**What is compared.** The what-if's answer at a hotspot is the Twin's own level plus the\nemulator's delta. The check's answer is the Twin's delta between two crop runs of the same\nscenario. So the number reported per hotspot is ``|emulator delta - Twin delta|``, and the\nheadline is section 7.7's sentence over the hotspots inside the window. Comparing *levels*\nwould be comparing a 990 m crop against the whole AOI, which the crop sweep in this module\nmeasured at 87 cm against 123 cm on the same storm - a disagreement about the window, not\nabout the emulator.\n\n**Two samplings of one junction.** The Twin's delta is read at the hotspot's own 30 m cell;\nthe emulator's is the mean over the road segments the hotspot register lists, each of which\nis the 90th percentile of the cells within 15 m of it (CLAUDE.md 11.8). They are two\ndifferent ways to say \"the depth at this junction\", and the response says so rather than\nletting the difference between them be read as emulator error.\n\nA tide offset is refused for the same reason ``/v1/whatif`` refuses it: the emulator has no\nrepresentation of a different sea level, so there would be no emulator answer to check.",
+        "description": "Run the coupled Twin twice on a window around the hotspots and print the disagreement.\n\nBody: the same ``{run_id?, rain_scale?, cleaned_segments?, clean_top?, pump_plan?,\ntide_offset_m?}`` ``/v1/whatif`` takes, plus ``hotspot_ids?`` and ``pad_cells?``, so the\nconsole can post the scenario object it already has. ``clean_top`` desilts the same pipes in\nboth models; ``pump_plan`` is run by neither, because the Twin has no pump sink, and is named\nin ``levers_not_checked`` rather than dropped.\n\n**What is compared.** The what-if's answer at a hotspot is the Twin's own level plus the\nemulator's delta. The check's answer is the Twin's delta between two crop runs of the same\nscenario. So the number reported per hotspot is ``|emulator delta - Twin delta|``, and the\nheadline is section 7.7's sentence over the hotspots inside the window. Comparing *levels*\nwould be comparing a 990 m crop against the whole AOI, which the crop sweep in this module\nmeasured at 87 cm against 123 cm on the same storm - a disagreement about the window, not\nabout the emulator.\n\n**Two samplings of one junction.** The Twin's delta is read at the hotspot's own 30 m cell;\nthe emulator's is the mean over the road segments the hotspot register lists, each of which\nis the 90th percentile of the cells within 15 m of it (CLAUDE.md 11.8). They are two\ndifferent ways to say \"the depth at this junction\", and the response says so rather than\nletting the difference between them be read as emulator error.\n\n**A tide offset is answered, not refused, and not checked.** The emulator has no sea level,\nso there is no emulator answer to compare; the scenario runs on the full-city Twin\n(``POST /v1/whatif/twin``), and that answer *is* the physics. The response says so with\n``runs_on_twin: true``, ``agrees: null`` and the job body to start, rather than a 422 that\nsent the user back to the what-if that had sent them here.",
         "operationId": "physics_check_v1_whatif_physics_check_post",
         "requestBody": {
           "content": {
@@ -7461,6 +8969,138 @@
           }
         },
         "summary": "Re-run the Twin on a what-if scenario and report the disagreement",
+        "tags": [
+          "whatif"
+        ]
+      }
+    },
+    "/v1/whatif/twin": {
+      "post": {
+        "description": "Start a full-city coupled Twin at the cycle's inputs with the scenario applied.\n\nBody: ``{run_id?, rain_scale?, tide_offset_m?, cleaned_segments?}``; a ``pump_plan`` or\n``clean_top`` from the what-if is not run here and is named in ``scenario.levers_left_out``.\nAnswers **202** with the\njob (``job_id``, ``expected_ms`` from the run's own stage timings); poll\n``GET /v1/whatif/twin/{job_id}`` or listen for ``whatif.progress`` on ``WS /v1/live``. A\nscenario already computed for this exact run answers **200** with ``state: done`` and the\nresult, saying which cache it came from.",
+        "operationId": "whatif_twin_v1_whatif_twin_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "title": "Body",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Run one scenario on the full-city Twin (the tide lever), as a job",
+        "tags": [
+          "whatif"
+        ]
+      }
+    },
+    "/v1/whatif/twin/{job_id}": {
+      "get": {
+        "description": "State (``running``, ``done``, ``failed``, ``cancelled``), step ``k`` of ``n``, and the\nresult once done.",
+        "operationId": "whatif_twin_job_v1_whatif_twin__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Whatif Twin Job V1 Whatif Twin  Job Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A full-city Twin what-if job: progress and result",
+        "tags": [
+          "whatif"
+        ]
+      }
+    },
+    "/v1/whatif/twin/{job_id}/cancel": {
+      "post": {
+        "description": "Stop the job at its next output step. Nothing it computed is stored.",
+        "operationId": "whatif_twin_cancel_v1_whatif_twin__job_id__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Whatif Twin Cancel V1 Whatif Twin  Job Id  Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel a running full-city Twin what-if",
         "tags": [
           "whatif"
         ]

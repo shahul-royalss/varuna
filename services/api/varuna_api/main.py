@@ -37,6 +37,7 @@ from varuna_api.routers import (
     nowcast,
     onboard,
     ops,
+    outlook,
     replay,
     reports,
     route,
@@ -209,6 +210,9 @@ def create_app(
     )
     app.state.varuna = state
 
+    # Added before CORS so CORS wraps it: a browser can only read a 413 that carries CORS headers.
+    # It refuses a report body over 1 MB before FastAPI parses a byte of it.
+    app.add_middleware(reports.ReportBodyLimit)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(state.settings.cors_origins),
@@ -266,6 +270,7 @@ def create_app(
     app.include_router(onboard.router)
     app.include_router(verify.router)
     app.include_router(weather.router)
+    app.include_router(outlook.router)
     app.include_router(nowcast.router)
     # Before the stubs: ops serves the alert and pump actions that were 501 there (task D-07).
     app.include_router(ops.router)

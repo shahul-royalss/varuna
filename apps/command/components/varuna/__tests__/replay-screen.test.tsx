@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ReplayScreen } from "@/app/replay/replay-screen";
@@ -85,12 +85,35 @@ describe("ReplayScreen", () => {
     stub();
     renderWithProviders(<ReplayScreen />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "Replay" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Smriti" })).toBeInTheDocument();
+    // The Sanskrit name is answered on the page: its English gloss sits under the title (ADR-0085).
+    expect(screen.getByRole("heading", { level: 1, name: "Smriti" })).toHaveAccessibleDescription(
+      /^Replay/,
+    );
     expect(await screen.findByRole("button", { name: /MUM-2019-07-02/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /CHN-IDF-25yr/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /MUM-2019-07-02/ })).toHaveTextContent(
       "2 July 2019, 05:40 to 09:40 IST",
     );
+  });
+
+  it("labels the header with the selected bundle's kind and names no event of its own", async () => {
+    // Section 6.8 and rule 7: the header's first statement about the replay is its honesty label,
+    // and the Sanskrit gloss under it neither claims fidelity nor names 2 July 2019, because the
+    // same screen plays the design storms.
+    stub();
+    renderWithProviders(<ReplayScreen />);
+
+    const heading = screen.getByRole("heading", { level: 1, name: "Smriti" });
+    expect(heading).not.toHaveAccessibleDescription(/2 July|remembered/);
+    const header = heading.parentElement as HTMLElement;
+    expect(await within(header).findByText("Reconstructed replay")).toBeInTheDocument();
+
+    // Read straight after the click: the stubbed clock still names the demo bundle, so its next
+    // poll points the store back at it.
+    fireEvent.click(screen.getByRole("button", { name: /CHN-IDF-25yr/ }));
+    expect(within(header).getByText("Design storm")).toBeInTheDocument();
+    expect(within(header).queryByText("Reconstructed replay")).not.toBeInTheDocument();
   });
 
   it("says a bundle is not on disk yet rather than pretending it is", async () => {

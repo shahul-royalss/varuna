@@ -35,6 +35,25 @@ interface Manifest {
   frames: string[];
 }
 
+/**
+ * The team's logo, emblem over the lettered name, from `public/brand/` (see
+ * `components/varuna/wordmark.tsx`). Its background is transparent, so it sits on `--ink` here as
+ * it does on the landing page. Null when the file is missing, and the card falls back to the name
+ * in type rather than failing to render.
+ */
+async function brandLockup(): Promise<string | null> {
+  try {
+    const bytes = await readFile(join(process.cwd(), "public", "brand", "varuna-lockup.png"));
+    return `data:image/png;base64,${bytes.toString("base64")}`;
+  } catch {
+    return null;
+  }
+}
+
+/** The lockup's intrinsic proportions (640 x 497), drawn 200 px wide on the card. */
+const LOCKUP_WIDTH = 200;
+const LOCKUP_HEIGHT = Math.round((LOCKUP_WIDTH * 497) / 640);
+
 async function heroFrame(): Promise<{ src: string; manifest: Manifest } | null> {
   try {
     const dir = join(process.cwd(), "public", "hero");
@@ -49,7 +68,7 @@ async function heroFrame(): Promise<{ src: string; manifest: Manifest } | null> 
 }
 
 export default async function OpenGraphImage() {
-  const frame = await heroFrame();
+  const [frame, lockup] = await Promise.all([heroFrame(), brandLockup()]);
   const lead = frame ? HERO_STEP * frame.manifest.step_min : null;
 
   return new ImageResponse(
@@ -94,26 +113,26 @@ export default async function OpenGraphImage() {
           padding: 64,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <svg width="52" height="52" viewBox="0 0 64 64" fill="none">
-            <g stroke={TIDE} strokeWidth="4.6" strokeLinecap="round">
-              <path d="M8 18.7c6-6.4 12-6.4 18 0s12 6.4 18 0 6-6.4 12 0" />
-              <path d="M8 32c6-6.4 12-6.4 18 0s12 6.4 18 0 6-6.4 12 0" opacity="0.7" />
-              <path d="M8 45.3c6-6.4 12-6.4 18 0s12 6.4 18 0 6-6.4 12 0" opacity="0.4" />
-            </g>
-          </svg>
-          <div style={{ color: TEXT, fontSize: 42, fontWeight: 700, letterSpacing: -1 }}>
-            VARUNA
-          </div>
-        </div>
+        {lockup ? (
+          // eslint-disable-next-line @next/next/no-img-element -- Satori renders plain <img>.
+          <img
+            src={lockup}
+            alt="VARUNA"
+            width={LOCKUP_WIDTH}
+            height={LOCKUP_HEIGHT}
+            style={{ width: LOCKUP_WIDTH, height: LOCKUP_HEIGHT, marginLeft: -8, marginTop: -16 }}
+          />
+        ) : (
+          <div style={{ display: "flex", color: TEXT, fontSize: 42, fontWeight: 700 }}>VARUNA</div>
+        )}
 
         <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
           <div
             style={{
               color: TEXT,
-              fontSize: 80,
+              fontSize: 72,
               fontWeight: 700,
-              letterSpacing: -2.2,
+              letterSpacing: -2,
               lineHeight: 1.04,
               maxWidth: 620,
             }}

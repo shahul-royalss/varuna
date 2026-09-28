@@ -11,6 +11,7 @@ const eslintConfig = defineConfig([
     ".next/**",
     // The production build the performance pass serves beside `next dev` (P10.4).
     ".next-perf/**",
+    ".next-*/**",
     // Diagnostic scripts that prototyped the performance instruments; git-ignored too.
     ".perf-*.mjs",
     // loaders.gl's Draco and Basis workers, copied out of node_modules by

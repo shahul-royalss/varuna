@@ -13,12 +13,12 @@ depth: they are civic logs and news reports that say a street was waterlogged, n
 * **Depth MAE is not.** No pin carries a depth, so there is nothing to take a difference against.
   It is reported as unavailable with that reason rather than as a number, because a depth error
   computed against depths nobody published would be an invention (rule 6).
-* **Brier and reliability are not, yet.** This used to say the baked runs were deterministic
-  (``ensemble_n`` 1). Since 13 September 2026 the demo runs carry a 20-member street ensemble -
-  the Sky members through Flash-lite - and ``segments_wet.json`` holds its exceedance
-  probabilities, but this scorer reads only the depth series and never those probabilities, so no
-  probabilistic score is computed. They are also 20 members rather than 11.7's 50: the Pulse
-  parameter draws that multiply them are not built.
+* **Brier and reliability of street depth are not, yet.** The demo runs carry a street ensemble
+  (20 members from 13 September 2026, 50 since the 26 September re-bake, ADR-0076) and
+  ``segments_wet.json`` holds its exceedance probabilities, but this scorer reads only the depth
+  series and never those probabilities, so no probabilistic depth score is computed. The served
+  reason reads the member count from each run's ``run.json`` rather than stating one. The
+  probability of *rain* is scored, Brier and reliability both, by :mod:`varuna_verify.rain_event`.
 
 **A false alarm needs care.** Absence of a pin is not absence of flooding: nobody logged most of
 Mumbai that morning. Counting every unpinned wet street as a false alarm would score the city's
@@ -194,6 +194,24 @@ def _runs_for(event: str) -> list[Path]:
     ]
 
 
+def _ensemble_sizes(root: Path, run_ids: list[str]) -> list[int]:
+    """The distinct ``ensemble_n`` the scored runs record, ascending; unreadable runs are left out.
+
+    Read from each run's ``run.json`` so the text served beside the scores says what the runs are,
+    not what they were when the text was written.
+    """
+    sizes: set[int] = set()
+    for run_id in run_ids:
+        try:
+            meta = json.loads((root / run_id / "run.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        n = meta.get("ensemble_n") if isinstance(meta, dict) else None
+        if isinstance(n, int) and not isinstance(n, bool) and n > 0:
+            sizes.add(n)
+    return sorted(sizes)
+
+
 @dataclass(frozen=True, slots=True)
 class _Wet:
     """One run's wet streets, with each street's position and its series."""
@@ -354,18 +372,29 @@ def score_event(event: str = "MUM-2019-07-02", threshold_cm: float = THRESHOLD_C
     }
     scores.false_alarms = len(near_any_pin - flagged_near_a_pin)
 
+    sizes = _ensemble_sizes(runs_dir(), scores.run_ids)
+    if not sizes:
+        ensemble = "a street ensemble"
+    elif len(sizes) == 1:
+        ensemble = f"a {sizes[0]}-member street ensemble"
+    else:
+        ensemble = f"street ensembles of {sizes[0]} to {sizes[-1]} members"
     scores.unavailable = {
         "depth_mae_cm": (
             "None of the 29 sourced pins states a depth - they are civic logs and news reports, "
             "not gauges - so there is nothing to take a difference against."
         ),
         "brier_score": (
-            "The demo runs carry a 20-member street ensemble and its exceedance probabilities, but "
-            "this scorer reads only the depth series and does not score probabilities yet. The "
-            "members are Sky's twenty through the emulator, not the 50 of Pulse draws the spec "
-            "asks for."
+            f"The runs carry {ensemble} and its probabilities of street depth above each "
+            "threshold, but this scorer reads only the depth series and does not score those "
+            "probabilities yet. The probability of rain is scored: Rain skill by lead time "
+            "serves its Brier score."
         ),
-        "reliability_diagram": "Needs the scorer to read the same probabilities as the Brier score.",
+        "reliability_diagram": (
+            "For street depth, this needs the scorer to read the same probabilities as the Brier "
+            "score. The reliability of the rain probability is drawn under Rain skill by lead "
+            "time."
+        ),
     }
     scores.notes = [
         f"Scored at {threshold_cm:.0f} cm, the depth at which cars stop.",

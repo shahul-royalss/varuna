@@ -5,6 +5,7 @@ import { Copy, Download, FileCode2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { EmptyState } from "@/components/varuna/empty-state";
+import { Skeleton } from "@/components/varuna/skeleton";
 import { useCopyToClipboard } from "@/lib/hooks";
 import { cssVar } from "@/lib/ramps";
 import { cn } from "@/lib/utils";
@@ -79,6 +80,13 @@ export interface CapViewerProps {
   xml: string | null;
   /** Download name, e.g. "MUM-20190702T1745-hindmata.cap.xml". */
   filename?: string;
+  /**
+   * A shorter box, for a document opened inside an alert's details rather than given a column
+   * of its own: it scrolls past 320 px instead of 60 % of the viewport.
+   */
+  compact?: boolean;
+  /** True while the document is being read: a skeleton instead of the empty state. */
+  loading?: boolean;
   className?: string;
 }
 
@@ -86,7 +94,13 @@ export interface CapViewerProps {
  * CAP 1.2 viewer (CLAUDE.md section 7.5): the document in Geist Mono with tag, attribute and
  * text colouring, plus "Copy CAP" and "Download .xml". Replay alerts carry status Exercise.
  */
-export function CapViewer({ xml, filename = "alert.cap.xml", className }: CapViewerProps) {
+export function CapViewer({
+  xml,
+  filename = "alert.cap.xml",
+  compact = false,
+  loading = false,
+  className,
+}: CapViewerProps) {
   const { copy } = useCopyToClipboard();
   const hasXml = typeof xml === "string" && xml.trim().length > 0;
 
@@ -151,7 +165,10 @@ export function CapViewer({ xml, filename = "alert.cap.xml", className }: CapVie
           tabIndex={0}
           role="region"
           // Sized by the document, capped so a long one scrolls rather than pushing the page.
-          className="max-h-[60vh] min-h-0 overflow-auto rounded-control border border-line bg-ink p-4 type-mono text-text focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-tide/50"
+          className={cn(
+            "rounded-control border-line bg-ink type-mono text-text focus-visible:ring-tide/50 min-h-0 overflow-auto border p-4 focus-visible:ring-3 focus-visible:outline-none",
+            compact ? "max-h-80" : "max-h-[60vh]",
+          )}
           aria-label="CAP 1.2 document"
         >
           <code>
@@ -167,8 +184,10 @@ export function CapViewer({ xml, filename = "alert.cap.xml", className }: CapVie
             })}
           </code>
         </pre>
+      ) : loading ? (
+        <Skeleton className="h-40 w-full" />
       ) : (
-        <div className="flex min-h-0 items-center justify-center rounded-control border border-line bg-ink py-10">
+        <div className="rounded-control border-line bg-ink flex min-h-0 items-center justify-center border py-10">
           <EmptyState
             icon={FileCode2}
             title="No CAP document yet"

@@ -2,6 +2,7 @@
 
 import { DepthChip } from "@/components/varuna/depth-chip";
 import { formatBeta, formatIst } from "@/lib/format";
+import { atPlace } from "@/lib/street-label";
 import { cssVar } from "@/lib/ramps";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,8 @@ export interface Observation {
   betaBefore?: number;
   /** Posterior blockage after it. */
   betaAfter?: number;
+  /** True for the replay's synthetic streams (rule 7: labelled in the data and in the UI). */
+  synthetic?: boolean;
 }
 
 /** "0.31 → 0.48" for the blockage an observation moved. */
@@ -57,11 +60,11 @@ export function ObservationCard({ obs, className }: ObservationCardProps) {
 
   return (
     <article
-      className={cn("rounded-panel border border-line bg-well p-3", className)}
-      aria-label={`${KIND_LABELS[obs.kind]} at ${obs.place}`}
+      className={cn("rounded-panel border-line bg-well border p-3", className)}
+      aria-label={`${KIND_LABELS[obs.kind]}${atPlace(obs.place)}`}
     >
       <header className="flex flex-wrap items-center justify-between gap-2">
-        <span className="inline-flex items-center gap-2 rounded-chip border border-line px-2 py-0.5 type-micro text-text-2">
+        <span className="rounded-chip border-line type-micro text-text-2 inline-flex items-center gap-2 border px-2 py-0.5">
           <span
             aria-hidden="true"
             className="size-2 shrink-0 rounded-full"
@@ -69,19 +72,22 @@ export function ObservationCard({ obs, className }: ObservationCardProps) {
           />
           {KIND_LABELS[obs.kind]}
         </span>
-        <time dateTime={obs.ts} className="num type-micro text-text-3">
-          {formatIst(obs.ts)}
-        </time>
+        <span className="inline-flex items-center gap-2">
+          {obs.synthetic ? <span className="type-micro text-text-3">Synthetic</span> : null}
+          <time dateTime={obs.ts} className="num type-micro text-text-3">
+            {formatIst(obs.ts)}
+          </time>
+        </span>
       </header>
 
-      <p className="mt-2 type-small font-medium text-text">{obs.place}</p>
+      <p className="type-small text-text mt-2 font-medium">{obs.place}</p>
 
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <DepthChip cm={obs.inferredDepthCm ?? null} size="sm" />
         <span className="type-micro text-text-3">inferred depth</span>
       </div>
 
-      <p className="mt-2 type-micro text-text-2">
+      <p className="type-micro text-text-2 mt-2">
         {hasChange ? (
           <>
             Blockage{obs.pipeId ? ` on ${obs.pipeId}` : ""}{" "}

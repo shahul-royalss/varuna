@@ -34,6 +34,12 @@ export interface HotspotDrawerProps {
   focusWhyKey?: string | number | null;
 }
 
+/**
+ * The attribution cell for a row that carries neither a pipe id nor a road segment: what is true,
+ * in the words `STREET_NOT_RECORDED` uses for a street, and never "unnamed".
+ */
+export const PIPE_NOT_RECORDED = "Pipe not recorded";
+
 /** The order the safe-until table reads in: lightest vehicle first, rescue last. */
 const PROFILES: readonly { key: PassabilityProfile; label: string }[] = [
   { key: "two-wheeler", label: "Two-wheeler" },
@@ -306,11 +312,14 @@ export function HotspotDrawer({
               <tbody className="divide-line divide-y">
                 {hotspot.attribution.map((row) => (
                   // A row from a run baked before P7.7 has no pipe id, only the road segment it
-                  // was keyed on; it is named by that rather than left blank.
-                  <tr key={row.pipeId ?? row.segmentId ?? row.rank} className="h-8">
+                  // was keyed on; it is named by that rather than left blank. A row with neither
+                  // is kept - its depth is a measurement, and dropping it would leave a gap in
+                  // the ranks - and says what is true. `||`, not `??`: the parser writes an
+                  // absent pipe id as "".
+                  <tr key={row.pipeId || row.segmentId || `rank-${row.rank}`} className="h-8">
                     <td className="num type-micro text-text-3">{row.rank}</td>
                     <td className="type-small text-text-2 min-w-0 truncate">
-                      {row.pipeId ?? row.segmentId ?? "unnamed"}
+                      {row.pipeId || row.segmentId || PIPE_NOT_RECORDED}
                       {row.pipeId && row.segmentId ? (
                         <span className="type-micro text-text-3"> · {row.segmentId}</span>
                       ) : null}
@@ -411,8 +420,8 @@ export function HotspotDrawer({
           </div>
         ) : (
           <p className="type-micro text-text-3">
-            No road segments are recorded for this junction, so there is nothing to send to the
-            what-if lab.
+            No road segments are recorded for this junction, so there is nothing to send to{" "}
+            <span translate="no">Kalpana</span>, the what-if lab.
           </p>
         )}
         <div className="flex items-center justify-between gap-3">

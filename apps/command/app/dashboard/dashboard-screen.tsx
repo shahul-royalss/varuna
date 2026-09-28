@@ -26,19 +26,45 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CitizenMap, STOPS_AT_CM, type MapPoint } from "@/components/citizen/citizen-map";
 import { DashboardIntro } from "@/components/citizen/dashboard-intro";
+import {
+  DEFAULT_LEAD_MIN,
+  LEAD_DEFAULT_REASON,
+  LeadTimeControl,
+  stepForLead,
+  stepLabel,
+  type LeadMinutes,
+} from "@/components/citizen/lead-time";
+import {
+  ComplaintsNearYou,
+  MyReportsPanel,
+  SelectedReportCard,
+} from "@/components/citizen/report-panels";
 import { RouteAnswer } from "@/components/citizen/route-answer";
+import {
+  TIME_BASE_LABEL,
+  TimeBaseSwitch,
+  type TimeBase,
+} from "@/components/citizen/time-base-switch";
+import { useDashboardRun } from "@/components/citizen/use-dashboard-run";
+import { useMyReports, usePublicReports } from "@/components/citizen/use-report-feeds";
 import { WeatherChip } from "@/components/citizen/weather-chip";
+import { CAUTION_FRACTION } from "@/components/map/layers/palette";
+import { REPORT_FOCUS_ZOOM } from "@/components/map/layers/reports";
+import type { MapFocus } from "@/components/map/layers/types";
 import { Button } from "@/components/ui/button";
 import { BottomSheet } from "@/components/varuna/bottom-sheet";
 import { EmptyState } from "@/components/varuna/empty-state";
+import { LiveOutlookCard } from "@/components/varuna/live-outlook-card";
 import { PublicLegend } from "@/components/varuna/public-legend";
 import { Skeleton } from "@/components/varuna/skeleton";
 import { VehicleSelector, type PublicProfile } from "@/components/varuna/vehicle-selector";
 import { Wordmark } from "@/components/varuna/wordmark";
+import { reportToPin } from "@/lib/api/reports";
 import { loadPlaces, planRoute, type Place, type RoutePlan } from "@/lib/api/route";
 import { formatDate, formatIst, shortenRunId } from "@/lib/format";
 import { useMediaQuery } from "@/lib/hooks";
 import type { CitizenRun } from "@/lib/maps/citizen-run";
+import { LIST_ROAD } from "@/lib/street-label";
 
 const REPORT_ROUTE = "/report" as Route;
 
@@ -51,8 +77,12 @@ export const NEARBY_RADIUS_M = 1_500;
 /** Rows in the list. More than this on a phone and nobody reaches the bottom. */
 const NEARBY_LIMIT = 8;
 
-/** What OSM calls a road with no `name` tag; 52.6 % of Mumbai's segments have none. */
-export const UNNAMED_ROAD = "Unnamed road";
+/**
+ * A street's row name when neither the API's `display_name` nor OSM names it: only a segment the
+ * city's street layer does not carry. OSM names none of 52.6 % of Mumbai's segments; the layer's
+ * `display_name` ("off Dr Ambedkar Road", "Service road near Wadala Depot") names every one.
+ */
+export const UNLISTED_ROAD = LIST_ROAD;
 
 /**
  * The tolerance a citizen route is planned at: **the profile's own, chosen by the API**.
@@ -68,6 +98,13 @@ const CITIZEN_RISK_TOLERANCE = Number.NaN;
 /** UI_SPEC 3's split: a rail beside the map at 1024 px and up, the bottom sheet below it. */
 const RAIL_BREAKPOINT = "(min-width: 1024px)";
 
+/**
+ * The phone's stack over the map, bottom up: the collapsed sheet (96 px), the time strip on top
+ * of it, and the floating Report water button above the strip.
+ */
+const TIME_STRIP_BOTTOM_PX = 104;
+const REPORT_BUTTON_BOTTOM_PX = 196;
+
 /** Metres per degree of latitude; longitude is scaled by the cosine at the reader's latitude. */
 const METRES_PER_DEGREE = 111_320;
 
@@ -81,47 +118,82 @@ export function distanceM(from: MapPoint, to: readonly [number, number]): number
 export interface NearbyStreet {
   id: string;
   name: string;
+  /** Depth at the step the map is coloured at, so the row and the street's colour agree. */
+  cm: number;
+  /** The deepest it gets from that step to the end of the forecast. */
   peakCm: number;
-  /** Last step still passable for this vehicle, as IST; null when it is impassable already. */
+  /** Last step still passable for this vehicle, as IST; null when it is impassable at the step. */
   passableUntil: string | null;
+  /** True when it never reaches the vehicle's stopping depth before the forecast ends. */
+  throughEnd: boolean;
 }
 
 /**
- * The streets this run wets worst, with the last time each is still passable for this vehicle.
+ * The streets near the reader that matter for this vehicle **at the step the map shows**.
+ *
+ * A street is listed when the map paints it caution or impassable at that step - the same
+ * {@link CAUTION_FRACTION} of the stopping depth the three-colour map uses - or when it is passable
+ * there but closes later in the forecast, because "passable until 09:25" is the one fact a reader
+ * needs about a street that is still blue. Impassable streets come first, then caution, deepest
+ * first, then the ones that close, soonest first.
  *
  * With a position, only streets within {@link NEARBY_RADIUS_M} of it; without one - geolocation
  * refused, unavailable, or not yet answered - every street in the AOI, and the caller says so in
  * words rather than calling the city's worst street "near you".
  */
 export function nearbyStreets(
-  segments: readonly { id: string; path: [number, number][]; depthCm: number[]; name?: string }[],
+  segments: readonly {
+    id: string;
+    path: [number, number][];
+    depthCm: number[];
+    name?: string;
+    displayName?: string;
+  }[],
   validTs: readonly string[],
   stopsAtCm: number,
   at: MapPoint | null,
+  step = 0,
   limit = NEARBY_LIMIT,
 ): NearbyStreet[] {
-  const rows: NearbyStreet[] = [];
+  const rows: { row: NearbyStreet; rank: number; closesAt: number }[] = [];
   for (const segment of segments) {
-    const peak = segment.depthCm.length ? Math.max(...segment.depthCm) : 0;
-    // Only streets this vehicle would have to think about: half its stopping depth or more.
-    if (peak < stopsAtCm * 0.5) continue;
+    const series = segment.depthCm;
+    const cm = series[step] ?? 0;
+    let firstOver = -1;
+    for (let i = step; i < series.length; i += 1) {
+      if (series[i] >= stopsAtCm) {
+        firstOver = i;
+        break;
+      }
+    }
+    const caution = cm >= stopsAtCm * CAUTION_FRACTION;
+    if (!caution && firstOver < 0) continue;
     if (at && !segment.path.some((point) => distanceM(at, point) <= NEARBY_RADIUS_M)) continue;
 
-    const firstOver = segment.depthCm.findIndex((cm) => cm >= stopsAtCm);
+    const ahead = series.slice(step);
+    const last = validTs[validTs.length - 1] ?? "";
     rows.push({
-      id: segment.id,
-      name: segment.name || UNNAMED_ROAD,
-      peakCm: peak,
-      passableUntil:
-        firstOver < 0
-          ? formatIst(validTs[validTs.length - 1] ?? "")
-          : firstOver === 0
+      row: {
+        id: segment.id,
+        name: segment.displayName || segment.name || UNLISTED_ROAD,
+        cm,
+        peakCm: ahead.length ? Math.max(...ahead) : cm,
+        passableUntil:
+          firstOver === step
             ? null
-            : formatIst(validTs[firstOver - 1] ?? validTs[0] ?? ""),
+            : formatIst(firstOver < 0 ? last : (validTs[firstOver - 1] ?? last)),
+        throughEnd: firstOver < 0,
+      },
+      rank: firstOver === step ? 0 : caution ? 1 : 2,
+      closesAt: firstOver < 0 ? Number.POSITIVE_INFINITY : firstOver,
     });
   }
-  rows.sort((a, b) => b.peakCm - a.peakCm);
-  return rows.slice(0, limit);
+  rows.sort((a, b) => {
+    if (a.rank !== b.rank) return a.rank - b.rank;
+    if (a.rank === 2 && a.closesAt !== b.closesAt) return a.closesAt - b.closesAt;
+    return b.row.cm - a.row.cm || b.row.peakCm - a.row.peakCm;
+  });
+  return rows.slice(0, limit).map((entry) => entry.row);
 }
 
 /** The header's honesty line: which run drew this map, and for when. */
@@ -245,12 +317,50 @@ function PlaceField({
   );
 }
 
+/** The cycle the map is drawn from, as a native select: a phone opens it as its own picker. */
+function ForecastCycleSelect({
+  value,
+  cycles,
+  onChange,
+}: {
+  value: string;
+  cycles: readonly { runId: string; cycleTs: string }[];
+  onChange: (runId: string) => void;
+}) {
+  if (cycles.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      <label htmlFor="dashboard-cycle" className="type-micro text-text-2">
+        Forecast cycle, {formatDate(cycles[0]?.cycleTs)}
+      </label>
+      <select
+        id="dashboard-cycle"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        className="num border-line bg-well text-text type-small rounded-control focus-visible:border-line-strong h-11 w-full border px-3 outline-none focus-visible:ring-2 focus-visible:ring-[var(--tide)]"
+      >
+        {value && !cycles.some((c) => c.runId === value) ? (
+          <option value={value}>The run on the map</option>
+        ) : null}
+        {cycles.map((c) => (
+          <option key={c.runId} value={c.runId}>
+            {`Forecast from ${formatIst(c.cycleTs)} IST`}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 export function DashboardScreen() {
   const city = "mumbai";
   const [profile, setProfile] = useState<PublicProfile>("car");
   const [run, setRun] = useState<CitizenRun | null>(null);
   const [runFailed, setRunFailed] = useState(false);
   const [introDone, setIntroDone] = useState(false);
+  const [lead, setLead] = useState<LeadMinutes>(DEFAULT_LEAD_MIN);
+  const [timeBase, setTimeBase] = useState<TimeBase>("replay");
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
 
   const [places, setPlaces] = useState<Place[]>([]);
   const [fromId, setFromId] = useState("");
@@ -265,6 +375,10 @@ export function DashboardScreen() {
   const stageRef = useRef<HTMLDivElement>(null);
   const [sheetHeight, setSheetHeight] = useState(600);
 
+  const cycle = useDashboardRun(city);
+  const publicReports = usePublicReports(city);
+  const mine = useMyReports();
+
   // **The rail exists once, not twice.** Rendering both shapes and hiding one with `lg:hidden`
   // puts two "From" comboboxes, two "To" comboboxes and two copies of every id in the document,
   // which is a real accessibility defect and not a styling detail. The server assumes the phone
@@ -276,6 +390,21 @@ export function DashboardScreen() {
     setRun(loaded);
     setRunFailed(false);
   }, []);
+
+  const { pick: pickRun, runId: pickedRunId } = cycle;
+  const shownRunId = pickedRunId ?? run?.provenance.runId ?? "";
+  const pickCycle = useCallback(
+    (runId: string) => {
+      if (!runId || runId === shownRunId) return;
+      // The header stops naming the old run the moment another is asked for, and a trip priced
+      // on the old run's streets is not left on screen over the new one's.
+      setRun(null);
+      setPlan(null);
+      setPlanError(null);
+      pickRun(runId);
+    },
+    [pickRun, shownRunId],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -306,6 +435,64 @@ export function DashboardScreen() {
     return () => window.clearTimeout(timer);
   }, [run]);
 
+  // **Showing a report from the list puts the phone's sheet down.** On a phone the list lives in
+  // the sheet, and a sheet left fully open covers the map: measured at 390 x 844, "Show on the map"
+  // turned into "Shown on the map" over a card of which one line showed above the sheet and a pin
+  // nobody could see. `BottomSheet` keeps its snap to itself, so a new key mounts it again at its
+  // default, collapsed - a cut, not a motion (section 8 has no row for a sheet that closes itself).
+  // The button that had focus goes with the old sheet, so focus moves to the card it opened.
+  const [sheetKey, setSheetKey] = useState(0);
+  const [focusCard, setFocusCard] = useState(false);
+  // "Show on the map" also brings the pin into view: the list is ordered by distance from the
+  // reader, not by what the map is showing, so the report chosen may be off screen or a dot among
+  // many at the city's zoom. The desk's focus, at the desk's zoom, applied once per press.
+  const [reportFocus, setReportFocus] = useState<MapFocus | null>(null);
+  const showReportOnMap = useCallback(
+    (id: string) => {
+      setSelectedReportId(id);
+      const report = publicReports.reports.find((r) => r.id === id);
+      if (report) {
+        setReportFocus({
+          lon: report.lon,
+          lat: report.lat,
+          key: `report-${id}-${Date.now()}`,
+          zoom: REPORT_FOCUS_ZOOM,
+        });
+      }
+      if (wide) return;
+      setSheetKey((key) => key + 1);
+      setFocusCard(true);
+    },
+    [wide, publicReports.reports],
+  );
+  const pickReportOnMap = useCallback((id: string) => {
+    setSelectedReportId(id);
+    // A pin tapped on the map keeps focus where the reader is: on the map.
+    setFocusCard(false);
+  }, []);
+
+  // Escape puts away the card a pin opened, as it would any other popover.
+  useEffect(() => {
+    if (!selectedReportId) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSelectedReportId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedReportId]);
+
+  /** The step the map is coloured at: the chosen lead, read off this run's own valid times. */
+  const step = run ? stepForLead(run.validTs, run.provenance.cycleTs, lead) : 0;
+  const stepTime = run ? stepLabel(run.validTs, run.provenance.cycleTs, step) : null;
+  /** The instant a trip planned now departs at: the step on the map, never this laptop's clock. */
+  const departAt = run ? (run.validTs[step] ?? run.provenance.cycleTs ?? null) : null;
+
+  const pins = useMemo(() => publicReports.reports.map(reportToPin), [publicReports.reports]);
+  const selectedReport = useMemo(
+    () => publicReports.reports.find((report) => report.id === selectedReportId) ?? null,
+    [publicReports.reports, selectedReportId],
+  );
+
   const byId = useMemo(() => new Map(places.map((p) => [p.id, p])), [places]);
 
   /** Where "near you" is centred: the reader's fix, else the place they named as their start. */
@@ -316,56 +503,95 @@ export function DashboardScreen() {
   }, [position, byId, fromId]);
 
   const nearby = useMemo(
-    () => (run ? nearbyStreets(run.segments, run.validTs, STOPS_AT_CM[profile], centre) : []),
-    [run, profile, centre],
+    () => (run ? nearbyStreets(run.segments, run.validTs, STOPS_AT_CM[profile], centre, step) : []),
+    [run, profile, centre, step],
   );
 
   const origin = fromId === MY_LOCATION ? position : (byId.get(fromId) ?? null);
   const destination = toId === PICKED_ON_MAP ? picked : (byId.get(toId) ?? null);
-  const canPlan = Boolean(origin && destination && run && !planning);
+  const canPlan = Boolean(origin && destination && run && departAt && !planning);
 
   const pickPoint = useCallback((point: MapPoint) => {
     setPicked(point);
     setToId(PICKED_ON_MAP);
   }, []);
 
-  const findRoute = useCallback(() => {
-    if (!origin || !destination || !run) return;
-    setPlanning(true);
-    setPlanError(null);
-    // The map is a reconstruction of 2 July 2019, so the trip departs at the cycle the map is
-    // drawing. Costing it against the clock on this laptop would price a 2019 storm in 2026.
-    const departAt = run.provenance.cycleTs ?? new Date().toISOString();
-    planRoute({
-      origin: { id: "from", name: "From", kind: "hotspot", lon: origin.lon, lat: origin.lat },
-      destination: {
-        id: "to",
-        name: "To",
-        kind: "hotspot",
-        lon: destination.lon,
-        lat: destination.lat,
-      },
-      departAt,
-      profile,
-      riskTolerance: CITIZEN_RISK_TOLERANCE,
-      runId: run.provenance.runId || undefined,
-      spread: true,
-      explain: true,
-      tripId: tripId(),
-    })
-      .then((next) => {
-        setPlan(next);
-        setCorridorId(next.corridors.find((c) => c.assigned)?.id ?? null);
+  /** Plan the trip, departing at the step on the map unless a new lead's step is passed in. */
+  const planAt = useCallback(
+    (at: string | null) => {
+      if (!origin || !destination || !run || !at) return;
+      setPlanning(true);
+      setPlanError(null);
+      // The map is a reconstruction of 2 July 2019, so the trip departs at the step the map is
+      // drawing. Costing it against the clock on this laptop would price a 2019 storm in 2026.
+      planRoute({
+        origin: { id: "from", name: "From", kind: "hotspot", lon: origin.lon, lat: origin.lat },
+        destination: {
+          id: "to",
+          name: "To",
+          kind: "hotspot",
+          lon: destination.lon,
+          lat: destination.lat,
+        },
+        departAt: at,
+        profile,
+        riskTolerance: CITIZEN_RISK_TOLERANCE,
+        runId: run.provenance.runId || undefined,
+        spread: true,
+        explain: true,
+        tripId: tripId(),
       })
-      .catch((error: unknown) => {
-        setPlan(null);
-        setPlanError(error instanceof Error ? error.message : String(error));
-      })
-      .finally(() => setPlanning(false));
-  }, [origin, destination, run, profile]);
+        .then((next) => {
+          setPlan(next);
+          setCorridorId(next.corridors.find((c) => c.assigned)?.id ?? null);
+        })
+        .catch((error: unknown) => {
+          setPlan(null);
+          setPlanError(error instanceof Error ? error.message : String(error));
+        })
+        .finally(() => setPlanning(false));
+    },
+    [origin, destination, run, profile],
+  );
+  const findRoute = useCallback(() => planAt(departAt), [planAt, departAt]);
+
+  // A trip on screen departs at the step on the map, so moving the lead re-prices it rather than
+  // leaving a route for 09:40 under a map of 11:40.
+  const changeLead = useCallback(
+    (next: LeadMinutes) => {
+      setLead(next);
+      if (!plan || !run) return;
+      planAt(run.validTs[stepForLead(run.validTs, run.provenance.cycleTs, next)] ?? null);
+    },
+    [plan, run, planAt],
+  );
+
+  const forecastSection =
+    timeBase === "replay" ? (
+      <section aria-labelledby="forecast-when" className="flex flex-col gap-2">
+        <h2 id="forecast-when" className="type-small text-text font-medium">
+          The map: {TIME_BASE_LABEL.replay}
+        </h2>
+        <ForecastCycleSelect value={shownRunId} cycles={cycle.cycles} onChange={pickCycle} />
+        <p className="type-micro text-text-2">{LEAD_DEFAULT_REASON}</p>
+      </section>
+    ) : (
+      <section aria-label={TIME_BASE_LABEL.today} className="flex flex-col gap-2">
+        <LiveOutlookCard city={city} collapsible={false} />
+        <p className="type-micro text-text-2">
+          The map stays on the 2 July 2019 replay. Today&apos;s outlook is a separate forecast and
+          is not drawn on it.
+        </p>
+      </section>
+    );
 
   const rail = (
     <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-3">
+        <TimeBaseSwitch value={timeBase} onValueChange={setTimeBase} />
+        {forecastSection}
+      </div>
+
       <section aria-labelledby="trip" className="flex flex-col gap-3">
         <h2 id="trip" className="font-display text-h3 text-text">
           Can I get there?
@@ -404,11 +630,15 @@ export function DashboardScreen() {
             <Button className="h-11" onClick={findRoute} disabled={!canPlan}>
               {planning ? "Finding the safe way" : "Find the safe way"}
             </Button>
-            {!run ? (
+            {run && stepTime ? (
+              <p className="num type-micro text-text-3">
+                Departs at {stepTime} on the 2 July 2019 replay, the step on the map.
+              </p>
+            ) : (
               <p className="type-micro text-text-3">
                 A trip can be planned once a VARUNA run has scored the streets.
               </p>
-            ) : null}
+            )}
             {locationState !== "granted" ? (
               <Button variant="outline" className="h-11" onClick={ask}>
                 <LocateFixed aria-hidden="true" />
@@ -444,21 +674,41 @@ export function DashboardScreen() {
     </div>
   );
 
-  const nearbyTitle = centre ? "Streets near you" : "The worst streets in the city right now";
+  const reportSections = (
+    <>
+      <ComplaintsNearYou
+        reports={publicReports.reports}
+        centre={centre}
+        selectedId={selectedReportId}
+        onSelect={showReportOnMap}
+        loaded={publicReports.loaded}
+        error={publicReports.error}
+        notes={publicReports.notes}
+      />
+      <MyReportsPanel items={mine.items} ready={mine.ready} />
+    </>
+  );
+
+  const at = stepTime ? ` at ${stepTime}` : "";
+  const nearbyTitle = centre ? `Streets near you${at}` : `The worst streets in the city${at}`;
   const nearbyEmpty = centre
-    ? "No street within 1.5 km of you is near this vehicle's stopping depth in this run."
-    : "This run wets no street near this vehicle's stopping depth.";
+    ? "No street within 1.5 km of you is near this vehicle's stopping depth at this step or closes later in the forecast."
+    : "No street is near this vehicle's stopping depth at this step or closes later in the forecast.";
   const untilLabel = (street: NearbyStreet) =>
-    street.passableUntil ? `Passable until ${street.passableUntil}` : "Impassable now";
+    street.passableUntil === null
+      ? `Impassable at ${formatIst(run?.validTs[step])}`
+      : street.throughEnd
+        ? `Passable through ${street.passableUntil}`
+        : `Passable until ${street.passableUntil}`;
 
   /** The sheet's shape: a column, because a phone has height and no width. */
   const streetColumn = (
     <section aria-labelledby="near-you-sheet" className="flex min-w-0 flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <h2 id="near-you-sheet" className="type-small text-text font-medium">
+        <h2 id="near-you-sheet" className="num type-small text-text font-medium">
           {nearbyTitle}
         </h2>
-        <span className="type-micro text-text-3">passable until</span>
+        <span className="type-micro text-text-3 shrink-0">depth then</span>
       </div>
       {!run ? (
         <div className="flex flex-col gap-2">
@@ -475,9 +725,7 @@ export function DashboardScreen() {
                 <span className="type-small text-text block truncate">{street.name}</span>
                 <span className="num type-micro text-text-2 block">{untilLabel(street)}</span>
               </span>
-              <span className="num type-small text-text-2 shrink-0">
-                {street.peakCm.toFixed(0)} cm
-              </span>
+              <span className="num type-small text-text-2 shrink-0">{street.cm.toFixed(0)} cm</span>
             </li>
           ))}
         </ul>
@@ -495,11 +743,11 @@ export function DashboardScreen() {
       aria-labelledby="near-you-band"
       className="flex min-w-0 flex-1 items-center gap-4 overflow-hidden"
     >
-      <div className="w-[170px] shrink-0">
-        <h2 id="near-you-band" className="type-small text-text font-medium">
+      <div className="w-[200px] shrink-0">
+        <h2 id="near-you-band" className="num type-small text-text font-medium">
           {nearbyTitle}
         </h2>
-        <span className="type-micro text-text-3">passable until</span>
+        <span className="type-micro text-text-3">depth then, and until when</span>
       </div>
       {!run ? (
         <div className="flex flex-1 gap-2">
@@ -523,7 +771,7 @@ export function DashboardScreen() {
                 {street.name}
               </span>
               <span className="num type-micro text-text-2 block">
-                {street.peakCm.toFixed(0)} cm · {untilLabel(street)}
+                {street.cm.toFixed(0)} cm · {untilLabel(street)}
               </span>
             </li>
           ))}
@@ -532,9 +780,34 @@ export function DashboardScreen() {
     </section>
   );
 
+  /** Over the map: which clock it is on, the step it shows, and the six leads to choose from. */
+  const timeStrip = (
+    <div
+      data-slot="dashboard-time-strip"
+      className={
+        wide
+          ? "border-line bg-ink/90 rounded-panel absolute right-[60px] bottom-8 z-10 flex w-[400px] flex-col gap-1.5 border p-2"
+          : "border-line bg-ink/90 rounded-panel absolute right-3 left-3 z-10 flex flex-col gap-1.5 border p-2"
+      }
+      style={wide ? undefined : { bottom: TIME_STRIP_BOTTOM_PX }}
+    >
+      <p className="num type-micro text-text-2 px-1" aria-live="polite">
+        {TIME_BASE_LABEL.replay}
+        {stepTime ? `: streets at ${stepTime}` : ""}
+      </p>
+      <LeadTimeControl
+        value={lead}
+        onValueChange={changeLead}
+        validTs={run?.validTs}
+        cycleTs={run?.provenance.cycleTs}
+      />
+    </div>
+  );
+
   return (
     <main className="flex h-full min-h-0 flex-col">
       <header className="border-line bg-deep shrink-0 border-b px-4 py-2 lg:px-6">
+        <h1 className="sr-only">Citizen flood dashboard, Mumbai</h1>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           <div className="flex min-w-0 items-center gap-3">
             <Wordmark size="sm" withMark />
@@ -566,15 +839,29 @@ export function DashboardScreen() {
           data-handover={introDone ? "done" : "playing"}
           className="relative min-h-0 flex-1"
         >
-          <CitizenMap
-            city={city}
-            profile={profile}
-            route={plan}
-            corridors={plan?.corridors ?? null}
-            selectedCorridorId={corridorId}
-            onPickPoint={pickPoint}
-            onRunLoaded={onRunLoaded}
-          />
+          {/* Held until the registry says which cycle to open on, so the map loads 08:40 once
+              rather than loading 09:10 and then swapping. */}
+          {cycle.resolved ? (
+            <CitizenMap
+              city={city}
+              runId={cycle.runId}
+              profile={profile}
+              step={step}
+              route={plan}
+              corridors={plan?.corridors ?? null}
+              selectedCorridorId={corridorId}
+              onPickPoint={pickPoint}
+              onRunLoaded={onRunLoaded}
+              reports={pins}
+              selectedReportId={selectedReportId}
+              onPickReport={pickReportOnMap}
+              focus={reportFocus}
+            />
+          ) : (
+            <div className="bg-ink absolute inset-0" aria-hidden>
+              <Skeleton className="size-full rounded-none" />
+            </div>
+          )}
 
           {/* Over the map on a desktop, above its attribution credit. On a phone the bottom of
               the map is the sheet, so the legend goes in the header instead - where `/map`
@@ -586,13 +873,28 @@ export function DashboardScreen() {
             />
           ) : null}
 
+          {timeStrip}
+
+          {selectedReport ? (
+            <SelectedReportCard
+              report={selectedReport}
+              focusOnOpen={focusCard}
+              onClose={() => setSelectedReportId(null)}
+              className={
+                wide
+                  ? "absolute top-3 left-3 z-20 max-h-[calc(100%-120px)] w-[360px] overflow-y-auto"
+                  : "absolute top-3 right-3 left-3 z-20 max-h-[calc(100%-240px)] overflow-y-auto"
+              }
+            />
+          ) : null}
+
           {wide ? null : (
             <>
               <Button
                 size="lg"
-                // Under the sheet (z-20), so an opened sheet is not read through a button.
+                // Under the sheet (z-20) and above the time strip, so neither is read through it.
                 className="absolute right-4 z-10 h-11"
-                style={{ bottom: 112 }}
+                style={{ bottom: REPORT_BUTTON_BOTTOM_PX }}
                 render={<Link href={REPORT_ROUTE} />}
                 nativeButton={false}
               >
@@ -600,7 +902,7 @@ export function DashboardScreen() {
                 Report water
               </Button>
 
-              <BottomSheet containerHeight={sheetHeight} title="Your way there">
+              <BottomSheet key={sheetKey} containerHeight={sheetHeight} title="Your way there">
                 <div className="flex flex-col gap-5">
                   {/* The floating button sits under an opened sheet, so it carries its own. */}
                   <div className="self-start">
@@ -608,6 +910,7 @@ export function DashboardScreen() {
                   </div>
                   {rail}
                   {streetColumn}
+                  {reportSections}
                 </div>
               </BottomSheet>
             </>
@@ -630,8 +933,9 @@ export function DashboardScreen() {
         </div>
 
         {wide ? (
-          <aside className="border-line bg-deep min-h-0 w-[380px] shrink-0 overflow-y-auto border-l p-4">
+          <aside className="border-line bg-deep flex min-h-0 w-[380px] shrink-0 flex-col gap-6 overflow-y-auto border-l p-4">
             {rail}
+            {reportSections}
           </aside>
         ) : null}
       </div>

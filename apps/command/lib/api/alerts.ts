@@ -6,6 +6,7 @@
  */
 
 import { api, apiUrl } from "@/lib/api/client";
+import { formatIst, formatTimeWithLead, minutesBetween, toIstIso } from "@/lib/format";
 
 export type AlertLevel = "severe" | "moderate" | "watch";
 
@@ -34,6 +35,17 @@ export interface RunAlert {
   headline: string;
   instruction: string | null;
   areaDesc: string;
+  /**
+   * The place without the sentence around it ("Pipeline Road"), for a row that lays itself out.
+   * Null on a run baked before the product carried it; `areaDesc` is then the place.
+   */
+  name: string | null;
+  /**
+   * "near Hindmata junction": the closest registered hotspot within 1.5 km of a street the
+   * register does not name, since no Mumbai segment carries a ward. Null for a register alert,
+   * for a street with no hotspot that close, and on older runs.
+   */
+  locality: string | null;
   /** "hotspot" for a chronic spot from the register, "segment" for any other street. */
   scope: string;
   hotspotId: string | null;
@@ -41,15 +53,30 @@ export interface RunAlert {
   lat: number | null;
   peakCm: number;
   windowFrom: string;
+  /** The last step over the threshold, which is the forecast horizon when `windowOpenEnded`. */
   windowTo: string;
+  /**
+   * True when the place is still over its threshold at the forecast's last step, so `windowTo`
+   * is where the forecast stops, not where the water goes. Null on a run baked before the product
+   * said so.
+   */
+  windowOpenEnded: boolean | null;
+  /**
+   * Of `membersTotal` ensemble members, how many also keep the street over this level's
+   * threshold for two steps in a row. Reported beside the raise, never used for it: every alert
+   * is raised on the Twin's own run. Null when the run carried no member count.
+   */
+  membersAbove: number | null;
+  membersTotal: number | null;
   raisedTs: string;
   /**
-   * Consecutive cycles the level has held at P >= 0.6 (CLAUDE.md 11.10). A run baked before the
+   * Consecutive cycles the level has held (CLAUDE.md 11.10): the Twin's street depth above the
+   * threshold for two 5-minute steps in a row, cycle after cycle. A run baked before the
    * cross-cycle rule counts forecast steps instead, and `persistsUnit` says which.
    */
   persistsCycles: number;
   persistsUnit: string;
-  /** The cycle the level was first seen at P >= 0.6 (one cycle before it raised); null on old runs. */
+  /** The cycle the level first crossed its threshold (one cycle before it raised); null on old runs. */
   firstSeenTs: string | null;
   /** When this cycle's document went out; the raise time is kept in `raisedTs`. */
   sentTs: string | null;
@@ -58,6 +85,10 @@ export interface RunAlert {
   /** Pumps the desk dispatched to this place, and the sentence the phone carries for them. */
   pumps: string[];
   dispatchNote: string | null;
+  /**
+   * The product's `trigger_p`. 1.0 on every alert: the raise is the Twin's deterministic run, so
+   * this is not a probability and no screen prints it. `membersAbove` is the ensemble's word.
+   */
   triggerP: number;
   /** "Exercise" on every replay alert — the document says on its face that it is a drill. */
   capStatus: string;
@@ -73,15 +104,26 @@ export interface RunAlert {
   history: AlertAction[];
 }
 
-/** A level that crossed P >= 0.6 this cycle and raises next cycle if it holds. */
+/** A level that crossed its threshold this cycle for the first time and raises next cycle if it holds. */
 export interface PendingAlert {
   id: string;
   level: AlertLevel;
   headline: string;
   areaDesc: string;
+  name: string | null;
+  locality: string | null;
   scope: string;
   peakCm: number;
+  membersAbove: number | null;
+  membersTotal: number | null;
   sinceTs: string;
+  /**
+   * The level the place is already raised at, or null when this would be its first. Only
+   * meaningful when `raisedLevelKnown`: an API that predates the field cannot say, and a place
+   * with no listed row may then be raised below the queue's cap.
+   */
+  raisedLevel: AlertLevel | null;
+  raisedLevelKnown: boolean;
 }
 
 /** A level that was raised and fell to P <= 0.3 this cycle. */
@@ -95,12 +137,32 @@ export interface ClearedAlert {
   persistsCycles: number;
 }
 
+/** The product lists at most this many alerts, and this many pending places, worst first. */
+export const MAX_LISTED = 60;
+
 export interface AlertSet {
   runId: string;
   cycleTs: string | null;
   alerts: RunAlert[];
+  /**
+   * Every alert the cycle raised, uncapped: at 08:40 on 2 July, 213 against the 60 listed. Null
+   * when the API does not say, and `capped` then means only that the list is full.
+   */
+  nRaised: number | null;
+  /** `nRaised` by each alert's worst raised level: Severe 13, Moderate 35, Watch 165 at 08:40. */
+  nRaisedByLevel: Record<AlertLevel, number> | null;
+  /** True when the list may be missing raised alerts: more raised than listed, or a full list. */
+  capped: boolean;
+  /**
+   * The earliest window over every raised alert. Null when the API does not carry it, which a
+   * capped list cannot stand in for: the cap keeps the worst levels, not the earliest.
+   */
+  firstOnset: { ts: string; place: string; level: AlertLevel } | null;
   pending: PendingAlert[];
   nPending: number;
+  /** Of `nPending`, places raised at nothing yet, and places going up from a raised level. */
+  nPendingNew: number | null;
+  nPendingStepUp: number | null;
   cleared: ClearedAlert[];
   nCleared: number;
   /**
@@ -120,6 +182,8 @@ interface RawAlert {
   headline?: string;
   instruction?: string | null;
   area_desc?: string;
+  name?: string | null;
+  locality?: string | null;
   scope?: string;
   hotspot_id?: string | null;
   lon?: number | null;
@@ -127,6 +191,9 @@ interface RawAlert {
   peak_cm?: number;
   window_from?: string;
   window_to?: string;
+  window_open_ended?: boolean | null;
+  members_above?: number | null;
+  members_total?: number | null;
   raised_ts?: string;
   persists_cycles?: number;
   persists_unit?: string;
@@ -158,9 +225,14 @@ interface RawPending {
   level?: string;
   headline?: string;
   area_desc?: string;
+  name?: string | null;
+  locality?: string | null;
   scope?: string;
   peak_cm?: number;
+  members_above?: number | null;
+  members_total?: number | null;
   since_ts?: string;
+  raised_level?: string | null;
 }
 
 interface RawCleared {
@@ -182,10 +254,30 @@ function toState(raw: string | undefined): AlertState {
   return (STATES.includes(raw ?? "") ? raw : "raised") as AlertState;
 }
 
-/** Fetch a run's alerts. Returns null when the run predates the alert product. */
-export async function loadAlerts(runId?: string, signal?: AbortSignal): Promise<AlertSet | null> {
-  const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
-  const response = await fetch(apiUrl(`/v1/alerts${query}`), { signal });
+/**
+ * `?run_id=&city=` for the alert routes. A run id names its own city, so `city` only decides
+ * which run is newest when no run is named; it is sent anyway so a city the API does not know is
+ * refused rather than answered with Mumbai's queue.
+ */
+function alertQuery(runId?: string, city?: string): string {
+  const params = new URLSearchParams();
+  if (runId) params.set("run_id", runId);
+  if (city) params.set("city", city);
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
+/**
+ * Fetch a run's alerts. Returns null when the run predates the alert product.
+ *
+ * `city` is the screen's `?city=`; omitted, the API's own city stands, which is Mumbai.
+ */
+export async function loadAlerts(
+  runId?: string,
+  signal?: AbortSignal,
+  city?: string,
+): Promise<AlertSet | null> {
+  const response = await fetch(apiUrl(`/v1/alerts${alertQuery(runId, city)}`), { signal });
   if (!response.ok) {
     if (response.status === 404) return null;
     throw new Error(`Alerts failed: HTTP ${response.status}`);
@@ -194,8 +286,13 @@ export async function loadAlerts(runId?: string, signal?: AbortSignal): Promise<
     run_id?: string;
     cycle_ts?: string | null;
     alerts?: RawAlert[];
+    n_raised?: number | null;
+    n_raised_by_level?: Partial<Record<string, number>> | null;
+    first_onset?: { ts?: string; name?: string | null; level?: string } | null;
     pending?: RawPending[];
     n_pending?: number;
+    n_pending_new?: number | null;
+    n_pending_step_up?: number | null;
     cleared?: RawCleared[];
     n_cleared?: number;
     hysteresis?: { previous_run_id?: string | null } | null;
@@ -207,9 +304,15 @@ export async function loadAlerts(runId?: string, signal?: AbortSignal): Promise<
     level: toLevel(p.level),
     headline: p.headline ?? "",
     areaDesc: p.area_desc ?? "",
+    name: p.name ?? null,
+    locality: p.locality ?? null,
     scope: p.scope ?? "segment",
     peakCm: p.peak_cm ?? 0,
+    membersAbove: p.members_above ?? null,
+    membersTotal: p.members_total ?? null,
     sinceTs: p.since_ts ?? "",
+    raisedLevel: p.raised_level ? toLevel(p.raised_level) : null,
+    raisedLevelKnown: p.raised_level !== undefined,
   }));
   const cleared = (body.cleared ?? []).map((c, i) => ({
     situation: c.situation ?? `cleared-${i}`,
@@ -221,11 +324,26 @@ export async function loadAlerts(runId?: string, signal?: AbortSignal): Promise<
     persistsCycles: c.persists_cycles ?? 0,
   }));
 
+  const listed = body.alerts?.length ?? 0;
+  const nRaised = typeof body.n_raised === "number" ? body.n_raised : null;
+  const byLevel = body.n_raised_by_level;
+  const onset = body.first_onset;
+
   return {
     runId: body.run_id ?? "",
     cycleTs: body.cycle_ts ?? null,
+    nRaised,
+    nRaisedByLevel: byLevel
+      ? { severe: byLevel.severe ?? 0, moderate: byLevel.moderate ?? 0, watch: byLevel.watch ?? 0 }
+      : null,
+    capped: nRaised !== null ? nRaised > listed : listed >= MAX_LISTED,
+    firstOnset: onset?.ts
+      ? { ts: onset.ts, place: onset.name ?? "", level: toLevel(onset.level) }
+      : null,
     pending,
     nPending: body.n_pending ?? pending.length,
+    nPendingNew: typeof body.n_pending_new === "number" ? body.n_pending_new : null,
+    nPendingStepUp: typeof body.n_pending_step_up === "number" ? body.n_pending_step_up : null,
     cleared,
     nCleared: body.n_cleared ?? cleared.length,
     crossCycle: Boolean(body.hysteresis),
@@ -239,6 +357,8 @@ export async function loadAlerts(runId?: string, signal?: AbortSignal): Promise<
       headline: a.headline ?? "",
       instruction: a.instruction ?? null,
       areaDesc: a.area_desc ?? "",
+      name: a.name ?? null,
+      locality: a.locality ?? null,
       scope: a.scope ?? (a.hotspot_id ? "hotspot" : "segment"),
       hotspotId: a.hotspot_id ?? null,
       lon: a.lon ?? null,
@@ -246,6 +366,9 @@ export async function loadAlerts(runId?: string, signal?: AbortSignal): Promise<
       peakCm: a.peak_cm ?? 0,
       windowFrom: a.window_from ?? "",
       windowTo: a.window_to ?? "",
+      windowOpenEnded: a.window_open_ended ?? null,
+      membersAbove: a.members_above ?? null,
+      membersTotal: a.members_total ?? null,
       raisedTs: a.raised_ts ?? "",
       persistsCycles: a.persists_cycles ?? 1,
       persistsUnit: a.persists_unit ?? "forecast steps of 5 minutes",
@@ -276,8 +399,9 @@ export async function loadCap(
   alertId: string,
   runId?: string,
   signal?: AbortSignal,
+  city?: string,
 ): Promise<string> {
-  const query = runId ? `?run_id=${encodeURIComponent(runId)}` : "";
+  const query = alertQuery(runId, city);
   const response = await fetch(apiUrl(`/v1/alerts/${encodeURIComponent(alertId)}.cap${query}`), {
     signal,
   });
@@ -381,6 +505,12 @@ export interface DeliveryRow {
   toMasked: string | null;
   error: string | null;
   user: string | null;
+  /**
+   * What the channel carried, rendered by the API from the alert (`notify.whatsapp_text`,
+   * `notify.sms_text`): the WhatsApp card on the WhatsApp row, the SMS on the SMS row, null on the
+   * dashboard row. Null on an API that predates it.
+   */
+  text: string | null;
 }
 
 export interface DeliveryLog {
@@ -390,10 +520,16 @@ export interface DeliveryLog {
   notes: string[];
 }
 
+/**
+ * The delivery log for a run's queue. `limit` counts alerts, in queue order, not rows: each alert
+ * brings three mock renders plus any real attempt. The alert centre asks for the whole queue (the
+ * product caps it at 60) and filters per alert, because the endpoint has no `alert_id` filter.
+ */
 export async function loadDelivery(
   runId?: string,
   signal?: AbortSignal,
   limit = 20,
+  city?: string,
 ): Promise<DeliveryLog> {
   const body = await api.get<{
     run_id?: string;
@@ -409,8 +545,9 @@ export async function loadDelivery(
       to_masked?: string | null;
       error?: string | null;
       user?: string | null;
+      text?: string | null;
     }[];
-  }>("/v1/alerts/delivery", { query: { run_id: runId, limit }, signal });
+  }>("/v1/alerts/delivery", { query: { run_id: runId, limit, city }, signal });
   return {
     runId: body.run_id ?? "",
     nReal: body.n_real ?? 0,
@@ -425,6 +562,277 @@ export async function loadDelivery(
       toMasked: r.to_masked ?? null,
       error: r.error ?? null,
       user: r.user ?? null,
+      text: r.text ?? null,
     })),
   };
+}
+
+// ---------------------------------------------------------------------------------------------
+// How the alert centre reads a queue (CLAUDE.md 7.5). Pure, so the rows and their tests agree.
+// ---------------------------------------------------------------------------------------------
+
+/** Minutes from the cycle to the forecast's last step: 36 steps of 5 minutes (CLAUDE.md 11.1). */
+export const FORECAST_HORIZON_MIN = 180;
+
+const LEVEL_RANK: Record<AlertLevel, number> = { severe: 0, moderate: 1, watch: 2 };
+
+/** The place an alert is about, without the sentence around it. */
+export function alertPlace(alert: Pick<RunAlert, "name" | "areaDesc">): string {
+  return alert.name ?? alert.areaDesc;
+}
+
+/**
+ * True when the place is still over its threshold where the forecast stops, so the window's end
+ * is the horizon rather than the water going. The product says so on runs baked since the copy
+ * change; an older run is read by comparing `windowTo` with the cycle's horizon.
+ */
+export function isOpenEnded(
+  alert: Pick<RunAlert, "windowOpenEnded" | "windowTo">,
+  cycleTs: string | null,
+): boolean {
+  if (alert.windowOpenEnded !== null) return alert.windowOpenEnded;
+  if (!cycleTs) return false;
+  const lead = minutesBetween(cycleTs, alert.windowTo);
+  return lead !== null && lead >= FORECAST_HORIZON_MIN;
+}
+
+/**
+ * The row's window: "09:20 (+40 min) until the end of the forecast", or "09:20 (+40 min) to
+ * 10:10" when the forecast has the water going below the threshold before it stops.
+ */
+export function alertWindowLine(
+  alert: Pick<RunAlert, "windowFrom" | "windowTo" | "windowOpenEnded">,
+  cycleTs: string | null,
+): string {
+  const lead = cycleTs ? minutesBetween(cycleTs, alert.windowFrom) : null;
+  const from =
+    lead === null ? formatIst(alert.windowFrom) : formatTimeWithLead(alert.windowFrom, lead);
+  return isOpenEnded(alert, cycleTs)
+    ? `${from} until the end of the forecast`
+    : `${from} to ${formatIst(alert.windowTo)}`;
+}
+
+export type AlertStatusKind = "new" | "held" | "acknowledged" | "escalated";
+
+/** A step's recipient in running text: "control room", not "Control room". */
+export function recipientInText(recipient: string): string {
+  return recipient ? recipient.charAt(0).toLowerCase() + recipient.slice(1) : recipient;
+}
+
+/**
+ * The row's status pill, from the desk's state first and the hysteresis second: "Escalated to
+ * control room", "Acknowledged 08:52", "New" (raised on this cycle), "Held 3 cycles".
+ */
+export function alertStatus(
+  alert: Pick<
+    RunAlert,
+    | "state"
+    | "escalatedTo"
+    | "acknowledgedBy"
+    | "acknowledgedTs"
+    | "raisedTs"
+    | "persistsCycles"
+    | "persistsUnit"
+  >,
+  cycleTs: string | null,
+  steps: readonly EscalationStep[] | null,
+): { kind: AlertStatusKind; label: string } {
+  if (alert.state === "escalated") {
+    const step = steps?.find((s) => s.id === alert.escalatedTo);
+    const to = step
+      ? recipientInText(step.recipient)
+      : (alert.escalatedTo ?? "the next step").replace(/_/g, " ");
+    return { kind: "escalated", label: `Escalated to ${to}` };
+  }
+  if (alert.acknowledgedBy || alert.state === "acknowledged") {
+    return {
+      kind: "acknowledged",
+      label: alert.acknowledgedTs
+        ? `Acknowledged ${formatIst(alert.acknowledgedTs)}`
+        : "Acknowledged",
+    };
+  }
+  if (cycleTs && alert.raisedTs && minutesBetween(cycleTs, alert.raisedTs) === 0) {
+    return { kind: "new", label: "New" };
+  }
+  const unit = persistenceUnit(alert.persistsUnit);
+  const n = alert.persistsCycles;
+  return { kind: "held", label: `Held ${n} ${n === 1 ? unit : `${unit}s`}` };
+}
+
+/** The cross-cycle situation a raised or pending entry belongs to: scope and place. */
+function situationOf(entry: { scope: string; areaDesc: string }): string {
+  return `${entry.scope}|${entry.areaDesc}`;
+}
+
+/**
+ * Where each pending entry belongs on the screen:
+ *
+ * - `upgrades`: a listed alert's next level up ("Severe next cycle if it holds"), keyed by alert
+ *   id. Measured on the 08:40 cycle, 28 of the 60 listed pending places were already in the queue
+ *   one level lower; listing them again as separate headlines read as 28 more places.
+ * - `stepUps`: places already raised at a lower level that the capped list does not show. At
+ *   08:40 the queue lists 60 of 213 raised, and 24 of the 32 pending places with no listed row are
+ *   these; calling them "not raised yet" was untrue.
+ * - `pendingOnly`: places raised at nothing yet.
+ * - `unplaced`: no listed row, a capped queue and an API that does not say the raised level, so
+ *   the screen cannot tell a step-up from a first raise and says so.
+ *
+ * `capped` is `AlertSet.capped`. Uncapped, a place with no listed row is not raised.
+ */
+export function splitPending(
+  alerts: readonly RunAlert[],
+  pending: readonly PendingAlert[],
+  capped = false,
+): {
+  upgrades: Map<string, PendingAlert>;
+  stepUps: PendingAlert[];
+  pendingOnly: PendingAlert[];
+  unplaced: PendingAlert[];
+} {
+  const raisedBySituation = new Map(alerts.map((a) => [situationOf(a), a]));
+  const upgrades = new Map<string, PendingAlert>();
+  const stepUps: PendingAlert[] = [];
+  const pendingOnly: PendingAlert[] = [];
+  const unplaced: PendingAlert[] = [];
+  for (const entry of pending) {
+    const raised = raisedBySituation.get(situationOf(entry));
+    if (raised) {
+      if (LEVEL_RANK[entry.level] < LEVEL_RANK[raised.level]) upgrades.set(raised.id, entry);
+    } else if (entry.raisedLevel !== null) stepUps.push(entry);
+    else if (entry.raisedLevelKnown || !capped) pendingOnly.push(entry);
+    else unplaced.push(entry);
+  }
+  return { upgrades, stepUps, pendingOnly, unplaced };
+}
+
+/**
+ * What floods first, then what floods deepest: the order an officer reads a level's alerts in.
+ * The API sorts by peak; onset is the question a ward officer asks first.
+ */
+export function sortByOnset<T extends Pick<RunAlert, "windowFrom" | "peakCm" | "id">>(
+  alerts: readonly T[],
+): T[] {
+  return [...alerts].sort(
+    (a, b) =>
+      a.windowFrom.localeCompare(b.windowFrom) || b.peakCm - a.peakCm || a.id.localeCompare(b.id),
+  );
+}
+
+export interface QueueSummary {
+  counts: Record<AlertLevel, number>;
+  unacknowledged: number;
+  /** The deepest peak in the queue. */
+  worst: RunAlert | null;
+  /** The earliest window start, and its lead from the cycle in minutes. */
+  firstOnset: { ts: string; leadMin: number | null } | null;
+}
+
+/** Counts per level, what nobody has acknowledged, the deepest place and the first onset. */
+export function summariseQueue(alerts: readonly RunAlert[], cycleTs: string | null): QueueSummary {
+  const counts: Record<AlertLevel, number> = { severe: 0, moderate: 0, watch: 0 };
+  let worst: RunAlert | null = null;
+  let first: string | null = null;
+  let unacknowledged = 0;
+  for (const alert of alerts) {
+    counts[alert.level] += 1;
+    if (isUnacknowledged(alert)) unacknowledged += 1;
+    if (!worst || alert.peakCm > worst.peakCm) worst = alert;
+    if (alert.windowFrom && (first === null || alert.windowFrom.localeCompare(first) < 0)) {
+      first = alert.windowFrom;
+    }
+  }
+  return {
+    counts,
+    unacknowledged,
+    worst,
+    firstOnset:
+      first === null
+        ? null
+        : { ts: first, leadMin: cycleTs ? minutesBetween(cycleTs, first) : null },
+  };
+}
+
+/** Nobody at the desk has acknowledged or escalated it yet. */
+export function isUnacknowledged(alert: Pick<RunAlert, "acknowledgedBy" | "state">): boolean {
+  return !alert.acknowledgedBy && alert.state === "raised";
+}
+
+/** A filename-safe slug of a place: "Sant Shitolebaba Maharaj Marg" to "sant-shitolebaba-maharaj-marg". */
+export function placeSlug(place: string): string {
+  const slug = place
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    .replace(/-+$/g, "");
+  return slug || "alert";
+}
+
+/**
+ * "20190702-0840-sant-shitolebaba-maharaj-marg-severe.cap.xml": the cycle in IST, the place and
+ * the level. The alert id carries the full run id and made an 80-character filename.
+ */
+export function capFilename(
+  cycleTs: string | null,
+  alert: Pick<RunAlert, "name" | "areaDesc" | "level">,
+): string {
+  const iso = cycleTs ? toIstIso(cycleTs) : null;
+  const cycle = iso
+    ? `${iso.slice(0, 10).replace(/-/g, "")}-${iso.slice(11, 16).replace(":", "")}-`
+    : "";
+  return `${cycle}${placeSlug(alertPlace(alert))}-${alert.level}.cap.xml`;
+}
+
+/** The WhatsApp card and the SMS the API rendered for one alert, from its delivery rows. */
+export function alertMessages(
+  rows: readonly DeliveryRow[] | null | undefined,
+  alertId: string,
+): { whatsapp: string | null; sms: string | null } {
+  let whatsapp: string | null = null;
+  let sms: string | null = null;
+  for (const row of rows ?? []) {
+    if (row.alertId !== alertId || !row.text) continue;
+    if (row.label === "WhatsApp mock") whatsapp = row.text;
+    else if (row.label === "SMS mock") sms = row.text;
+  }
+  return { whatsapp, sms };
+}
+
+/**
+ * How many alerts a run raised, and how many of them are severe, for the alert centre's "open
+ * the cycle with the most alerts" when the cycle on screen raises nothing. Asks for the severe
+ * level only, so the payload is the severe queue.
+ *
+ * `n_raised` is every alert raised; `n_total` is how many the product listed, which is capped at
+ * 60, so 08:10 and 08:40 both read 60 on it while 08:40 raised 213. The listed count is the
+ * fallback on an API that does not serve `n_raised`, and `listedOnly` says so.
+ */
+export async function loadAlertCount(
+  runId: string,
+  signal?: AbortSignal,
+  city?: string,
+): Promise<{ total: number; severe: number; listedOnly: boolean } | null> {
+  const params = new URLSearchParams({ run_id: runId, level: "severe" });
+  if (city) params.set("city", city);
+  const response = await fetch(apiUrl(`/v1/alerts?${params.toString()}`), { signal });
+  if (!response.ok) return null;
+  const body = (await response.json()) as {
+    n_total?: number;
+    n_raised?: number | null;
+    n_raised_by_level?: Partial<Record<string, number>> | null;
+    alerts?: { level?: string }[];
+  };
+  const alerts = body.alerts ?? [];
+  const listedSevere = alerts.filter((a) => a.level === "severe").length;
+  if (typeof body.n_raised === "number") {
+    return {
+      total: body.n_raised,
+      severe: body.n_raised_by_level?.severe ?? listedSevere,
+      listedOnly: false,
+    };
+  }
+  return { total: body.n_total ?? alerts.length, severe: listedSevere, listedOnly: true };
 }

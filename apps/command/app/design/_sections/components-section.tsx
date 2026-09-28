@@ -46,6 +46,7 @@ import {
 } from "@/components/varuna/whatif-controls";
 import { addMinutesIso } from "@/lib/format";
 import { useMotionPref } from "@/lib/motion";
+import { navItem } from "@/lib/nav";
 import { useUiStore } from "@/lib/stores/ui";
 import { useRunStore, type RunMeta } from "@/lib/stores/run";
 
@@ -473,17 +474,41 @@ export function ComponentsSection() {
       description="Every component of components/varuna in its states, with the sample data the console would show on 2 July 2019. Screens compose these; they never copy them."
     >
       <div className="flex flex-col gap-6">
-        <Panel title="Page header" description="Title, description, honesty label and actions.">
-          <PageHeader
-            title="Drain X-ray"
-            description="The learned blockage map, the observations that taught it, and the desilting priority list."
-            honesty="Drain graph inferred from roads and terrain"
-            actions={
-              <Button size="sm" variant="outline">
-                Export desilting priority
-              </Button>
-            }
-          />
+        <Panel
+          title="Page header"
+          description="Title, description, honesty label and actions. A screen with a Sanskrit name also carries its English gloss, the Devanagari and what the word means (ADR-0085)."
+        >
+          <div className="flex flex-col gap-6">
+            <Demo label="Sanskrit-named screen" bare>
+              <PageHeader
+                title={navItem("drains").label}
+                screen={navItem("drains")}
+                description="The learned blockage map, the observations that taught it, and the desilting priority list."
+                honesty="Inferred drain graph"
+                actions={
+                  <Button size="sm" variant="outline">
+                    Export desilting priority
+                  </Button>
+                }
+              />
+            </Demo>
+            <Demo label="Alert centre" note="Sanket, the screen that raises the alerts." bare>
+              <PageHeader
+                title={navItem("alerts").label}
+                screen={navItem("alerts")}
+                description="Street flooding alerts for Mumbai, as CAP 1.2 and as the ward officer's WhatsApp card."
+              />
+            </Demo>
+          </div>
+        </Panel>
+
+        <Panel
+          title="Screen nav"
+          description="Rides in the top bar. From 1280 px each screen is named beside its icon; below that the name, gloss, Devanagari and key appear on hover and focus."
+        >
+          <div className="rounded-panel border-line bg-deep h-top-bar flex items-center overflow-x-auto border px-3">
+            <IconRail />
+          </div>
         </Panel>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -619,15 +644,8 @@ export function ComponentsSection() {
           </div>
         </Panel>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Panel
-            title="Screen nav"
-            description="Rides in the top bar; labels and keys appear on hover and focus."
-          >
-            <div className="rounded-panel border-line bg-deep h-top-bar flex items-center overflow-x-auto border px-3">
-              <IconRail />
-            </div>
-          </Panel>
+        {/* Half the width, as the console's right rail is beside the map. */}
+        <div className="grid grid-cols-1 gap-4 lg:w-1/2">
           <Panel title="Hotspot rail" description="Ranked rows with a depth chip and time to peak.">
             <div className="flex flex-col gap-4">
               <Demo label="Three hotspots" bare>

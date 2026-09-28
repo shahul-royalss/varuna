@@ -14,7 +14,7 @@ version: 1
 tiers:
   - id: ward_officer
     recipient: Ward officer
-    trigger: "Watch raised in the ward: P(> 15 cm) at or above 0.6 for two cycles"
+    trigger: "Watch raised in the ward: forecast street depth above 15 cm for two cycles running"
     channel: Dashboard, WhatsApp
     levels: [watch, moderate, severe]
   - id: control_room

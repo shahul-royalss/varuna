@@ -38,7 +38,9 @@ __all__ = [
     "DEDUPE_MINUTES",
     "DEDUPE_RADIUS_M",
     "DEPTH_CHIPS",
+    "REPORT_AOIS",
     "ReportObservation",
+    "city_for_point",
     "observations_from",
     "read_reports",
 ]
@@ -52,6 +54,35 @@ DEPTH_CHIPS: dict[str, tuple[float, float]] = {
 
 DEDUPE_RADIUS_M = 50.0
 DEDUPE_MINUTES = 10.0
+
+REPORT_AOIS: dict[str, tuple[float, float, float, float]] = {
+    "mumbai": (72.815, 18.995, 72.905, 19.135),
+    "chennai": (80.20, 12.96, 80.28, 13.05),
+}
+"""Each city's computation box, ``(min_lon, min_lat, max_lon, max_lat)`` in WGS84.
+
+The same numbers as ``services/city/configs/<city>.yaml`` and CLAUDE.md 3.3 (MUM-CENTRAL,
+CHN-SOUTH); ``services/api/tests/test_reports.py`` holds them equal. They are repeated here rather
+than read from the city config because Pulse does not depend on ``varuna_city``, and a report's
+city has to be decidable before any city has been built.
+
+A report is evidence about the city whose box it falls in and no other. Pulse snaps each report
+to its nearest drain node with no distance cutoff, so a report from Pune or from Chennai reaching
+a Mumbai cycle became a knee-deep observation at whichever Mumbai node was least far away."""
+
+
+def city_for_point(lon: float, lat: float) -> str | None:
+    """The city whose box holds a point, or ``None`` when no forecast covers it.
+
+    Boxes are closed: a point on an edge belongs to the city. The two boxes are 1,000 km apart,
+    so no point can be in both.
+    """
+    if not (math.isfinite(lon) and math.isfinite(lat)):
+        return None
+    for city, (min_lon, min_lat, max_lon, max_lat) in REPORT_AOIS.items():
+        if min_lon <= lon <= max_lon and min_lat <= lat <= max_lat:
+            return city
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +208,11 @@ def observations_from(rows: list[dict[str, Any]], *, until: datetime) -> list[Re
 
 
 def read_reports(
-    bundle_dir: Path, *, until: datetime, inbox: Path | None = None
+    bundle_dir: Path,
+    *,
+    until: datetime,
+    inbox: Path | None = None,
+    city: str | None = None,
 ) -> list[ReportObservation]:
     """Read the bundle's report stream and the live inbox, and de-duplicate the two together.
 
@@ -186,6 +221,14 @@ def read_reports(
     than after: a citizen report and the bundle's synthetic report about the same junction in the
     same ten minutes are one piece of evidence about that junction, and assimilating both would
     let the same water vote twice.
+
+    **Only this city's reports.** The inbox is one file for every city, so an inbox row is kept
+    only when it lies inside the box of the city this cycle runs for (:data:`REPORT_AOIS`) and
+    was not marked ``outside_aoi`` by the API. ``city`` defaults to the bundle manifest's
+    ``city``; with neither, a row is kept when it lies inside *some* city's box, which still drops
+    a report from anywhere VARUNA does not forecast. A city this module has no box for keeps only
+    the rows the API tagged with that city. The bundle's own stream is not filtered: it was
+    generated inside its city.
 
     A row that does not say whether it is synthetic is treated as a real report, because that is
     what arrives through the API; the bundle's own stream labels itself (rule 7).
@@ -198,10 +241,54 @@ def read_reports(
     """
     rows = _read_jsonl(bundle_dir / "reports.jsonl")
     if inbox is not None:
+        target = city if city is not None else _bundle_city(bundle_dir)
+        kept = 0
+        dropped = 0
         for row in _read_jsonl(inbox):
+            if not _belongs_to(row, target):
+                dropped += 1
+                continue
             row.setdefault("synthetic", False)
             rows.append(row)
+            kept += 1
+        if dropped:
+            log.info("pulse.reports.other_city", city=target, kept=kept, dropped=dropped)
     return observations_from(rows, until=until)
+
+
+def _bundle_city(bundle_dir: Path) -> str | None:
+    """The ``city`` a bundle's manifest names, or ``None`` when it has no readable manifest."""
+    manifest = bundle_dir / "manifest.json"
+    if not manifest.is_file():
+        return None
+    try:
+        body = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    value = body.get("city") if isinstance(body, dict) else None
+    name = str(value).strip().lower() if value else ""
+    return name or None
+
+
+def _belongs_to(row: dict[str, Any], city: str | None) -> bool:
+    """Whether an inbox row is evidence about ``city`` (see :func:`read_reports`)."""
+    if row.get("outside_aoi") is True:
+        return False
+    try:
+        lon = float(row["lon"])
+        lat = float(row["lat"])
+    except (KeyError, TypeError, ValueError):
+        return False
+    where = city_for_point(lon, lat)
+    tagged = row.get("city")
+    if tagged is not None and where is not None and str(tagged) != where:
+        # The API tags a row by the same boxes; a disagreement means the row was edited.
+        return False
+    if city is None:
+        return where is not None
+    if city in REPORT_AOIS:
+        return where == city
+    return tagged is not None and str(tagged) == city
 
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:

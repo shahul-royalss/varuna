@@ -38,16 +38,21 @@ civil warning.
 from __future__ import annotations
 
 import json
+import math
 import re
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 from xml.etree import ElementTree as ET
 
+import numpy as np
 import structlog
+from varuna_schemas.constants import IST
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
-    from collections.abc import Mapping
+    from collections.abc import Mapping, Sequence
     from pathlib import Path
+
+    from numpy.typing import NDArray
 
 log = structlog.get_logger("varuna.products.alerts")
 
@@ -55,6 +60,7 @@ __all__ = [
     "CLEAR_P",
     "ESCALATION_PATH",
     "LEVELS",
+    "LOCALITY_RADIUS_M",
     "MAX_ALERTS",
     "MAX_CYCLE_GAP_MIN",
     "MIN_PERSIST_STEPS",
@@ -66,10 +72,16 @@ __all__ = [
     "build_alerts",
     "cap_xml",
     "escalation_by_level",
+    "forecast_phrase",
+    "landmark",
     "load_escalation",
+    "members_crossing",
+    "nearest_locality",
     "previous_record",
     "run_cycle_ts",
+    "served_queue",
     "situation_key",
+    "street_member_series",
     "street_series",
     "write_alerts",
 ]
@@ -228,12 +240,36 @@ def _level_alerts(
     lat: float | None = None,
     source_url: str | None = None,
     escalation: Mapping[str, list[str]] | None = None,
+    locality: str | None = None,
+    members: NDArray[np.floating] | None = None,
 ) -> dict[str, dict[str, Any]]:
     """One candidate alert per level this series crosses for :data:`MIN_PERSIST_STEPS`, worst first.
 
     Every level, not only the worst, because the cross-cycle rule runs per level: a junction that
     has been over 30 cm for two cycles and over 45 cm for one is a raised *moderate* and a pending
     *severe*, and only a per-level record can say so.
+
+    **The window's end is said as what it is.** Measured on the 2 July cycles, 59 of 60 alerts at
+    08:40 (60 of 60 at 08:10, 32 of 32 at 09:10) are still over their threshold at the last step
+    of the forecast, so "from 09:20 to 11:40" read as a forecast that the water goes at 11:40 when
+    it only means the forecast stops there. Such a headline says "from 09:20 until at least
+    11:40" instead: the water is still over the threshold where the forecast stops. ``window_to``
+    and the CAP ``expires`` keep the horizon.
+
+    The phrase is the short one on purpose. The SMS is one 160-character segment
+    (``notify.sms_text``), and the longer "still above at 11:40, the end of the forecast" cut the
+    instruction off 29 of the 152 listed SMS across the seven demo cycles once the locality was in
+    the headline; this form cuts none of them, the longest headline being 116 characters.
+
+    ``locality`` is a short "near Hindmata junction" for a street the register does not name
+    (:func:`nearest_locality`); it goes into the headline after the street and into its own
+    field, and never into ``area_desc``, which is half of the alert's cross-cycle identity.
+
+    ``members`` is this place's depth per ensemble member, ``(n_members, n_steps)`` in cm
+    (:func:`street_member_series`). With it each level says how many members also cross it by the
+    same rule the raise uses (``members_above`` of ``members_total``, :func:`members_crossing`);
+    without it both are None. **It is reported, never used to raise**: the raise and ``trigger_p``
+    stay the Twin's own series, so which alerts a cycle raises is the same with or without it.
     """
     out: dict[str, dict[str, Any]] = {}
     for level, threshold in LEVELS:
@@ -245,6 +281,14 @@ def _level_alerts(
         peak = max(series[start : end + 1])
         from_ts = times[start] if start < len(times) else cycle_ts
         to_ts = times[end] if end < len(times) else cycle_ts
+        # Over the threshold at the forecast's last step: the window does not end, the forecast does.
+        open_ended = len(times) > 0 and end >= len(times) - 1
+        place = f"{name}, {locality}" if locality else name
+        when = (
+            f"from {from_ts.strftime('%H:%M')} until at least {to_ts.strftime('%H:%M')}"
+            if open_ended
+            else f"from {from_ts.strftime('%H:%M')} to {to_ts.strftime('%H:%M')}"
+        )
 
         alert: dict[str, Any] = {
             "id": f"VARUNA-{run_id}-{key}-{level}".upper().replace("_", "-"),
@@ -254,19 +298,28 @@ def _level_alerts(
             "hotspot_id": hotspot_id,
             "level": level,
             "threshold_cm": threshold,
-            "headline": (
-                f"{name}: depth above {threshold} cm from "
-                f"{from_ts.strftime('%H:%M')} to {to_ts.strftime('%H:%M')}"
-            ),
+            "headline": f"{place}: depth above {threshold} cm {when}",
             "instruction": (
-                f"Avoid {name} for the window. Peak forecast {peak:.0f} cm. Route emergency "
+                f"Avoid {name}. Peak forecast {peak:.0f} cm. Route emergency "
                 "vehicles around it; see the reachability tab for the affected catchment."
             ),
             "area_desc": area,
+            # The place without the sentence around it, for a screen that lays the row out
+            # itself, and the locality a street is read against when the register has no name
+            # for it.
+            "name": name,
+            "locality": locality,
+            "window_open_ended": open_ended,
             "lon": lon,
             "lat": lat,
             # 0 or 1 on a deterministic run. Reported rather than dressed up.
             "trigger_p": 1.0,
+            # How much of the ensemble agrees, beside the deterministic raise: "32 of 50 members
+            # also go over 45 cm here". None when the products stage had no member stack.
+            "members_above": (
+                members_crossing(members, threshold) if members is not None else None
+            ),
+            "members_total": int(members.shape[0]) if members is not None else None,
             "window_from": from_ts.isoformat(),
             "window_to": to_ts.isoformat(),
             "peak_cm": round(peak, 1),
@@ -283,6 +336,145 @@ def _level_alerts(
             alert["notify"] = list(escalation.get(level, []))
         out[level] = alert
     return out
+
+
+EARTH_RADIUS_M = 6_371_008.8
+"""Mean Earth radius (IUGG), for :func:`nearest_locality`."""
+
+LOCALITY_RADIUS_M = 1500.0
+"""How close a registered hotspot must be for a street alert to be read as "near" it.
+
+Measured on 2 July at 08:40: every one of the 60 queued alerts is an ordinary street, none is a
+register name, and ``ward`` is null on all 21,296 Mumbai segments - so without this a ward officer
+reads "Pipeline Road" with nothing to place it by. 1.5 km is about the walk from one chronic
+junction to the next along Dadar's arterials, close enough to be a landmark and no further."""
+
+
+def landmark(name: str) -> str:
+    """A register name cut to the landmark a reader knows it by, for "near <landmark>".
+
+    The register's names carry their disambiguation - "Hindmata junction (Hindmata Cinema, Dr B.
+    Ambedkar Marg)", "King's Circle / Maheshwari Udyan junction", "Postal Colony, Chembur" - which
+    is right on the register and too long after a street name in a headline, where a comma would
+    also read as the end of the place. The landmark is the text before the first bracket, slash
+    or comma: "Hindmata junction", "King's Circle", "Postal Colony". All 28 Mumbai names keep a
+    non-empty landmark; a name that would not keeps itself.
+    """
+    short = re.split(r"\s*[(/,]", name, maxsplit=1)[0].strip()
+    return short or name.strip()
+
+
+def nearest_locality(
+    lon: float | None,
+    lat: float | None,
+    hotspots: list[dict[str, Any]],
+    *,
+    radius_m: float = LOCALITY_RADIUS_M,
+) -> str | None:
+    """The closest registered hotspot within ``radius_m`` as "near <landmark>", else None.
+
+    The distance is equirectangular on the WGS84 point, which is exact to well under a metre at
+    this range and latitude. Ties go to the name that sorts first, so the answer is a function of
+    the register and never of its order (rule 8). The name is cut by :func:`landmark`.
+    """
+    if lon is None or lat is None:
+        return None
+    best: tuple[float, str] | None = None
+    k = math.cos(math.radians(lat))
+    for hotspot in hotspots:
+        hlon, hlat, name = hotspot.get("lon"), hotspot.get("lat"), hotspot.get("name")
+        if hlon is None or hlat is None or not name:
+            continue
+        dx = math.radians(float(hlon) - lon) * k * EARTH_RADIUS_M
+        dy = math.radians(float(hlat) - lat) * EARTH_RADIUS_M
+        distance = math.hypot(dx, dy)
+        if distance > radius_m:
+            continue
+        if best is None or (distance, str(name)) < best:
+            best = (distance, str(name))
+    return f"near {landmark(best[1])}" if best else None
+
+
+def members_crossing(members: NDArray[np.floating], threshold: float) -> int:
+    """How many members stay above ``threshold`` for :data:`MIN_PERSIST_STEPS` consecutive steps.
+
+    ``members`` is ``(n_members, n_steps)`` in cm. The rule is the raise rule applied to each
+    member on its own - strictly above, for two 5-minute steps in a row, anywhere in the forecast
+    - so a member counts exactly when the deterministic series would have counted had it been
+    that member's.
+    """
+    above = np.asarray(members) > threshold
+    if above.ndim != 2:
+        msg = f"members must be (n_members, n_steps); got shape {above.shape}"
+        raise ValueError(msg)
+    n_steps = above.shape[1]
+    if n_steps < MIN_PERSIST_STEPS:
+        return 0
+    width = n_steps - MIN_PERSIST_STEPS + 1
+    held = above[:, :width].copy()
+    for k in range(1, MIN_PERSIST_STEPS):
+        held &= above[:, k : k + width]
+    return int(held.any(axis=1).sum())
+
+
+def street_member_series(
+    depth_cm: NDArray[np.floating],
+    member_depth_cm: NDArray[np.floating],
+    segment_ids: Sequence[str],
+    names: Mapping[str, str],
+) -> dict[str, NDArray[np.float32]]:
+    """Each named street's depth per ensemble member, ``(n_members, n_steps)``, deepest segment.
+
+    The member analogue of :func:`street_series`: the street takes, step by step and member by
+    member, its deepest segment, so ``members_above`` is counted on the same collapse as the
+    Twin series the alert is raised from. The members are the products stage's own - the Twin
+    level plus each member's spread, re-centred by ``depth._member_levels`` itself so the two
+    cannot drift (ADR-0025) - which puts the member mean on the Twin and makes the count an
+    agreement with the deterministic raise rather than a second forecast. Unnamed segments are
+    dropped, as :func:`street_series` drops them.
+
+    Cost: the re-centred stack is the stage's largest array (153 MB at 50 x 36 x 21,296 in
+    float32), and this makes it a second time, then reduces it member by member into ``n_steps x
+    n_streets``. Measured on a synthetic float64 stack at Mumbai's full width and its 1,238 named
+    streets: 0.50-1.24 s over 13 calls, on a machine running other work. Cutting to the 10,096
+    named segments before re-centring was measured beside it and was no faster (0.55-2.0 s):
+    gathering columns from the last axis of the whole stack costs about what it saves.
+
+    Raises:
+        ValueError: if the stack, the ids and ``depth_cm`` do not share one segment axis.
+    """
+    from varuna_products.depth import _member_levels
+
+    depth = np.asarray(depth_cm)
+    members = np.asarray(member_depth_cm)
+    if (
+        members.ndim != 3
+        or members.shape[2] != depth.shape[1]
+        or len(segment_ids) != depth.shape[1]
+    ):
+        msg = (
+            f"member_depth_cm {members.shape} and segment_ids ({len(segment_ids)}) must share "
+            f"depth_cm's segment axis {depth.shape}"
+        )
+        raise ValueError(msg)
+    columns: dict[str, list[int]] = {}
+    for k, segment_id in enumerate(segment_ids):
+        name = names.get(segment_id)
+        if name:
+            columns.setdefault(name, []).append(k)
+    if not columns:
+        return {}
+    streets = sorted(columns)
+    order = np.fromiter((k for s in streets for k in columns[s]), dtype=np.intp)
+    sizes = np.fromiter((len(columns[s]) for s in streets), dtype=np.intp)
+    starts = np.concatenate(([0], np.cumsum(sizes)[:-1])).astype(np.intp)
+    level = _member_levels(depth, members)
+    out = np.empty((level.shape[0], level.shape[1], len(streets)), dtype=np.float32)
+    for m in range(level.shape[0]):
+        # One member's (n_steps, n_segments) slab, its named columns grouped by street, then the
+        # deepest of each group: small and contiguous, where a gather from the whole stack is not.
+        out[m] = np.maximum.reduceat(level[m][:, order], starts, axis=1)
+    return {street: out[:, :, j] for j, street in enumerate(streets)}
 
 
 def _alert_from_series(series: list[float], **kwargs: Any) -> dict[str, Any] | None:
@@ -320,8 +512,12 @@ class AlertQueue(list[dict[str, Any]]):
     pending: list[dict[str, Any]]
     cleared: list[dict[str, Any]]
     n_raised: int
+    n_raised_by_level: dict[str, int]
     n_pending: int
+    n_pending_new: int
+    n_pending_step_up: int
     n_cleared: int
+    first_onset: dict[str, Any] | None
     record: dict[str, Any] | None
 
     def __init__(self, items: list[dict[str, Any]] | None = None) -> None:
@@ -333,8 +529,12 @@ class AlertQueue(list[dict[str, Any]]):
         self.pending = []
         self.cleared = []
         self.n_raised = 0
+        self.n_raised_by_level = {level: 0 for level, _ in LEVELS}
         self.n_pending = 0
+        self.n_pending_new = 0
+        self.n_pending_step_up = 0
         self.n_cleared = 0
+        self.first_onset = None
         self.record = None
 
 
@@ -357,6 +557,7 @@ def build_alerts(
     *,
     previous: Mapping[str, Any] | None = None,
     escalation: Mapping[str, list[str]] | None = None,
+    street_members: Mapping[str, NDArray[np.floating]] | None = None,
 ) -> AlertQueue:
     """The run's alert queue: the chronic register first, then the streets behind it.
 
@@ -368,6 +569,12 @@ def build_alerts(
 
     ``escalation`` is level to the tiers it reaches (:func:`escalation_by_level`); absent, it is
     read from ``config/escalation.yaml`` when that file exists.
+
+    ``street_members`` is :func:`street_member_series` of the products stage's member stack. It
+    only adds ``members_above`` and ``members_total`` to street alerts; the queue, its order and
+    every raise are the same with or without it. Register alerts carry None: a junction's series
+    is its cells' 90th percentile, not a street's deepest segment, and a count taken on another
+    collapse would not be the same question.
     """
     if escalation is None:
         escalation = escalation_by_level()
@@ -399,6 +606,7 @@ def build_alerts(
             candidates[situation_key(next(iter(levels.values())))] = levels
 
     for index, (street, series) in enumerate(sorted((streets or {}).items())):
+        lon, lat = STREET_POINTS.get(street, (None, None))
         levels = _level_alerts(
             list(series),
             key=f"street-{index:04d}",
@@ -410,9 +618,13 @@ def build_alerts(
             mode=mode,
             scope="segment",
             scope_id=None,
-            lon=STREET_POINTS.get(street, (None, None))[0],
-            lat=STREET_POINTS.get(street, (None, None))[1],
+            lon=lon,
+            lat=lat,
             escalation=escalation,
+            # A street carries no ward (null on every Mumbai segment), so it is placed by the
+            # nearest chronic junction instead, when one is close enough to be a landmark.
+            locality=nearest_locality(lon, lat, hotspots),
+            members=None if street_members is None else street_members.get(street),
         )
         if levels:
             candidates.setdefault(situation_key(next(iter(levels.values()))), levels)
@@ -452,6 +664,19 @@ def run_cycle_ts(run_id: str) -> tuple[str, datetime] | None:
         return None
     moment = datetime.strptime(match["ts"], "%Y%m%dT%H%M").replace(tzinfo=UTC)
     return match["city"], moment
+
+
+def forecast_phrase(run_id: str) -> str:
+    """ "Forecast from 08:40 IST, 2 Jul 2019": when the run spoke, in the words an officer reads.
+
+    The run id stays in the CAP identifier and the API; a message to a person names the time
+    instead of an 80-character id. An id that does not parse gives the id itself.
+    """
+    parsed = run_cycle_ts(run_id)
+    if parsed is None:
+        return f"Forecast run {run_id}"
+    local = parsed[1].astimezone(IST)
+    return f"Forecast from {local:%H:%M} IST, {local.day} {local:%b %Y}"
 
 
 def _record_from_legacy(alerts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -583,7 +808,10 @@ def apply_cycle_hysteresis(queue: AlertQueue, previous: Mapping[str, Any]) -> Al
             or (prior_situations.get(key) or {}).get("hotspot_id"),
             "area_desc": (sample or {}).get("area_desc")
             or (prior_situations.get(key) or {}).get("area_desc"),
-            "name": (prior_situations.get(key) or {}).get("name")
+            # The candidate's own name first: since the locality went into the headline, its
+            # prefix reads "Pipeline Road, near Sion Circle" and is no longer the place's name.
+            "name": (sample or {}).get("name")
+            or (prior_situations.get(key) or {}).get("name")
             or ((sample or {}).get("headline", "").split(":", 1)[0] or None),
         }
         levels: dict[str, dict[str, Any]] = {}
@@ -664,12 +892,20 @@ def apply_cycle_hysteresis(queue: AlertQueue, previous: Mapping[str, Any]) -> Al
                     "level": worst_pending,
                     "threshold_cm": candidate["threshold_cm"],
                     "headline": candidate["headline"],
+                    "name": candidate.get("name"),
+                    "locality": candidate.get("locality"),
                     "peak_cm": candidate["peak_cm"],
                     "trigger_p": candidate["trigger_p"],
+                    "members_above": candidate.get("members_above"),
+                    "members_total": candidate.get("members_total"),
                     "since_ts": levels[worst_pending]["since_ts"],
                     "persists_cycles": int(levels[worst_pending]["cycles"]),
                     "persists_unit": "cycles",
                     "state": "pending",
+                    # The level the place is already raised at, or None when this would be its
+                    # first. The queue is capped at MAX_ALERTS, so a place raised at watch can be
+                    # missing from it; without this a screen read "no row" as "not raised yet".
+                    "raised_level": worst_raised,
                 }
             )
 
@@ -682,11 +918,42 @@ def apply_cycle_hysteresis(queue: AlertQueue, previous: Mapping[str, Any]) -> Al
     # The lists are capped for a reader like the queue is; the counts are not, so a screen can say
     # "and 180 more" rather than implying sixty was all there was.
     out.n_raised = len(raised)
+    out.n_raised_by_level = {level: 0 for level in order}
+    for card in raised:
+        out.n_raised_by_level[card["level"]] += 1
     out.n_pending = len(pending)
+    out.n_pending_step_up = sum(1 for p in pending if p["raised_level"] is not None)
+    out.n_pending_new = out.n_pending - out.n_pending_step_up
     out.n_cleared = len(cleared)
+    # The first onset over every raised alert, not the listed sixty: the cap keeps the worst
+    # levels, so an early watch street can fall off the list while being the first to flood.
+    earliest = min(
+        (c for c in raised if c.get("window_from")),
+        key=lambda c: (c["window_from"], level_rank[c["level"]], -c["peak_cm"], c["id"]),
+        default=None,
+    )
+    out.first_onset = (
+        {
+            "ts": earliest["window_from"],
+            "name": earliest.get("name") or earliest.get("area_desc"),
+            "level": earliest["level"],
+        }
+        if earliest is not None
+        else None
+    )
+    # A pending level above a place the queue already shows comes first: the alert centre prints
+    # it on that place's row ("Severe next cycle if it holds"), and a cap that dropped it would
+    # leave the row saying nothing about the step up. At most one per shown alert, so they fit.
+    shown = {(a["scope"], a["area_desc"]) for a in out}
     out.pending = sorted(
         pending,
-        key=lambda a: (level_rank[a["level"]], a["scope"] != "hotspot", -a["peak_cm"], a["id"]),
+        key=lambda a: (
+            (a["scope"], a["area_desc"]) not in shown,
+            level_rank[a["level"]],
+            a["scope"] != "hotspot",
+            -a["peak_cm"],
+            a["id"],
+        ),
     )[:MAX_ALERTS]
     out.cleared = sorted(cleared, key=lambda a: (level_rank[a["level"]], str(a["situation"])))[
         :MAX_ALERTS
@@ -706,6 +973,96 @@ def apply_cycle_hysteresis(queue: AlertQueue, previous: Mapping[str, Any]) -> Al
         "situations": record,
     }
     return out
+
+
+def _worst_state(levels: Mapping[str, Any], state: str) -> str | None:
+    return next(
+        (lv for lv, _ in LEVELS if (levels.get(lv) or {}).get("state") == state),
+        None,
+    )
+
+
+def served_queue(body: Mapping[str, Any]) -> dict[str, Any]:
+    """What ``GET /v1/alerts`` serves beside the capped lists, from a written ``alerts.json``.
+
+    The product lists at most :data:`MAX_ALERTS` alerts and pending places for a reader, and a
+    screen that counts the lists presents the cap as the cycle: at 08:40 on 2 July the queue
+    lists 60 of 213 raised (Severe 13, Moderate 35, Watch 165), and 24 of the 32 pending places
+    with no listed row were already raised at a lower level. This returns the uncapped counts and
+    the pending list with each entry's ``raised_level``:
+
+    - ``n_raised``, ``n_raised_by_level``: every raised alert, by its worst raised level.
+    - ``n_pending_new``, ``n_pending_step_up``: pending places raised at nothing yet, and pending
+      levels above a place already raised at a lower one.
+    - ``first_onset``: the earliest window over every raised alert, or None when the product did
+      not record it - a queue cannot recover it, since the cap may have dropped it.
+    - ``pending``: the listed pending entries, each with ``raised_level`` (None when not raised).
+    - ``counts_source``: ``"product"`` when the file carries them, ``"hysteresis_record"`` when
+      they are rebuilt from the per-situation record a run written before them keeps (exact:
+      the record holds every situation, uncapped), ``"listed"`` on a run from before the
+      cross-cycle rule, where the list is all there is.
+    """
+    alerts = list(body.get("alerts") or [])
+    pending = [dict(p) for p in body.get("pending") or []]
+    record = body.get("hysteresis")
+    situations: Mapping[str, Any] = (
+        record.get("situations") or {} if isinstance(record, dict) else {}
+    )
+
+    if "n_raised_by_level" in body:
+        return {
+            "n_raised": int(body.get("n_raised", len(alerts))),
+            "n_raised_by_level": dict(body["n_raised_by_level"]),
+            "n_pending_new": body.get("n_pending_new"),
+            "n_pending_step_up": body.get("n_pending_step_up"),
+            "first_onset": body.get("first_onset"),
+            "pending": pending,
+            "counts_source": "product",
+        }
+
+    if situations:
+        by_level = {level: 0 for level, _ in LEVELS}
+        order = [level for level, _ in LEVELS]
+        n_new = n_step_up = 0
+        for entry in situations.values():
+            levels = (entry or {}).get("levels") or {}
+            worst_raised = _worst_state(levels, "raised")
+            worst_pending = _worst_state(levels, "pending")
+            if worst_raised is not None:
+                by_level[worst_raised] += 1
+            if worst_pending is not None and (
+                worst_raised is None or order.index(worst_pending) < order.index(worst_raised)
+            ):
+                if worst_raised is None:
+                    n_new += 1
+                else:
+                    n_step_up += 1
+        for entry in pending:
+            levels = (situations.get(str(entry.get("situation"))) or {}).get("levels") or {}
+            entry["raised_level"] = _worst_state(levels, "raised")
+        return {
+            "n_raised": sum(by_level.values()),
+            "n_raised_by_level": by_level,
+            "n_pending_new": n_new,
+            "n_pending_step_up": n_step_up,
+            "first_onset": None,
+            "pending": pending,
+            "counts_source": "hysteresis_record",
+        }
+
+    by_level = {level: 0 for level, _ in LEVELS}
+    for alert in alerts:
+        if alert.get("level") in by_level:
+            by_level[alert["level"]] += 1
+    return {
+        "n_raised": len(alerts),
+        "n_raised_by_level": by_level,
+        "n_pending_new": None,
+        "n_pending_step_up": None,
+        "first_onset": None,
+        "pending": pending,
+        "counts_source": "listed",
+    }
 
 
 # ---- escalation matrix -------------------------------------------------------------------------
@@ -813,6 +1170,9 @@ def cap_xml(alert: dict[str, Any]) -> str:
     child(info, "onset", _cap_datetime(alert["window_from"]))
     child(info, "expires", _cap_datetime(alert["window_to"]))
     child(info, "headline", alert["headline"])
+    # Unchanged since the documents in demo/runs were written: the test that holds each of them
+    # to this function byte for byte is what makes their validation a statement about the
+    # generator (rule 8). A friendlier description lands with those documents regenerated.
     child(info, "description", f"VARUNA nowcast run {alert['run_id']}.")
     if alert.get("instruction"):
         child(info, "instruction", alert["instruction"])
@@ -856,8 +1216,12 @@ def write_alerts(
     body: dict[str, Any] = {"alerts": list(queue)}
     if isinstance(queue, AlertQueue) and queue.final:
         body["n_raised"] = queue.n_raised
+        body["n_raised_by_level"] = queue.n_raised_by_level
+        body["first_onset"] = queue.first_onset
         body["pending"] = queue.pending
         body["n_pending"] = queue.n_pending
+        body["n_pending_new"] = queue.n_pending_new
+        body["n_pending_step_up"] = queue.n_pending_step_up
         body["cleared"] = queue.cleared
         body["n_cleared"] = queue.n_cleared
         body["hysteresis"] = queue.record
