@@ -1,26 +1,26 @@
-rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
-1,MUM-E037896,,0.4926,0.2348,67.7,0,,inferred
-2,MUM-E037914,,0.4356,0.2401,61.4,0,,inferred
-3,MUM-E046339,,0.4186,0.1465,59.5,0,,inferred
-4,MUM-E046403,,0.406,0.142,58.0,0,,inferred
-5,MUM-E025674,,0.3648,0.1346,53.1,0,,inferred
-6,MUM-E004660,,0.3645,0.1344,53.0,0,,inferred
-7,MUM-E015038,,0.3645,0.1397,53.0,0,,inferred
-8,MUM-E004659,,0.3632,0.1418,52.9,0,,inferred
-9,MUM-E011219,,0.3639,0.1408,52.9,0,,inferred
-10,MUM-E015041,,0.3632,0.1429,52.9,1,,inferred
-11,MUM-E018095,Khodadad Circle,0.3636,0.2218,52.9,0,,inferred
-12,MUM-E025673,,0.3636,0.1409,52.9,0,,inferred
-13,MUM-E004658,,0.363,0.1412,52.8,1,,inferred
-14,MUM-E004661,,0.3626,0.1457,52.8,0,,inferred
-15,MUM-E015040,,0.363,0.1431,52.8,0,,inferred
-16,MUM-E025671,,0.3626,0.1418,52.8,0,,inferred
-17,MUM-E025672,,0.3623,0.1431,52.8,0,,inferred
-18,MUM-E046944,,0.3624,0.1419,52.8,0,,inferred
-19,MUM-E011221,,0.3616,0.1434,52.7,0,,inferred
-20,MUM-E015039,,0.3618,0.145,52.7,0,,inferred
-21,MUM-E000008,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
-22,MUM-E000009,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
-23,MUM-E000010,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
-24,MUM-E000103,Road No 5,0.35,0.15,51.2,0,,inferred
-25,MUM-E000104,Road No 5,0.35,0.15,51.2,0,,inferred
+rank,edge_id,street,locality,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E018763,off D S Babrekar Marg,,0.4505,0.1926,63.1,0,,inferred
+2,MUM-E005209,D S Babrekar Marg,,0.4112,0.2017,58.6,0,,inferred
+3,MUM-E005212,D S Babrekar Marg,,0.4064,0.1866,58.1,0,,inferred
+4,MUM-E045779,off D S Babrekar Marg,,0.384,0.1946,55.4,0,,inferred
+5,MUM-E017287,off Mathuradas Vasanji Road (Andheri Kurla Road),,0.3725,0.1368,54.0,0,,inferred
+6,MUM-E020632,off Mahadev Palav Marg,near Parel / Bharat Mata Cinema,0.3701,0.2288,53.7,0,,inferred
+7,MUM-E008026,off Dattaji Salvi Marg,,0.3692,0.1429,53.6,0,,inferred
+8,MUM-E017286,off Mathuradas Vasanji Road (Andheri Kurla Road),,0.368,0.1437,53.5,0,,inferred
+9,MUM-E017285,off Mathuradas Vasanji Road (Andheri Kurla Road),,0.3665,0.1379,53.3,0,,inferred
+10,MUM-E019055,off BKC - CST Link Road,,0.366,0.1859,53.2,0,,inferred
+11,MUM-E020504,off Sion Panvel Highway,near Chunabhatti railway station,0.3632,0.1425,52.9,0,,inferred
+12,MUM-E020505,off Sion Panvel Highway,near Chunabhatti railway station,0.3637,0.1437,52.9,0,,inferred
+13,MUM-E020507,off Sion Panvel Highway,near Chunabhatti railway station,0.3636,0.1402,52.9,0,,inferred
+14,MUM-E020508,off Sion Panvel Highway,near Chunabhatti railway station,0.3632,0.1427,52.9,0,,inferred
+15,MUM-E008541,off Road No 28A,near Sion Koliwada,0.3623,0.1404,52.8,0,,inferred
+16,MUM-E008544,off Road No 28A,near Sion Koliwada,0.3627,0.1423,52.8,1,,inferred
+17,MUM-E008542,off Road No 28A,near Sion Koliwada,0.3622,0.1455,52.7,0,,inferred
+18,MUM-E008543,off Road No 28A,near Sion Koliwada,0.3622,0.1445,52.7,0,,inferred
+19,MUM-E016769,off Alfred Creado Lane,,0.3622,0.1381,52.7,0,,inferred
+20,MUM-E020506,off Sion Panvel Highway,near Chunabhatti railway station,0.3616,0.1416,52.7,0,,inferred
+21,MUM-E046647,off Jawaharlal Nehru Road,near Kalina,0.3619,0.1434,52.7,0,,inferred
+22,MUM-E016768,off Alfred Creado Lane,,0.3603,0.1356,52.5,0,,inferred
+23,MUM-E017288,off Mathuradas Vasanji Road (Andheri Kurla Road),,0.3579,0.1445,52.2,0,,inferred
+24,MUM-E008025,off Dattaji Salvi Marg,,0.3574,0.1464,52.1,0,,inferred
+25,MUM-E005472,Raobahadur S.K. Bole Marg,,0.3551,0.215,51.9,0,,inferred

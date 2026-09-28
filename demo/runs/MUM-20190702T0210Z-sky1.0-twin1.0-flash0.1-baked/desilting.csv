@@ -1,26 +1,26 @@
-rank,edge_id,street,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
-1,MUM-E017479,Nahar Amrit Shakti Road,0.5244,0.199,71.0,0,,inferred
-2,MUM-E025674,,0.3648,0.1346,53.1,0,,inferred
-3,MUM-E004660,,0.3645,0.1344,53.0,0,,inferred
-4,MUM-E015038,,0.3645,0.1397,53.0,0,,inferred
-5,MUM-E004659,,0.3632,0.1418,52.9,0,,inferred
-6,MUM-E015041,,0.3632,0.1429,52.9,1,,inferred
-7,MUM-E021763,,0.3638,0.1383,52.9,0,,inferred
-8,MUM-E025673,,0.3636,0.1409,52.9,0,,inferred
-9,MUM-E004658,,0.363,0.1412,52.8,1,,inferred
-10,MUM-E004661,,0.3626,0.1457,52.8,0,,inferred
-11,MUM-E015040,,0.363,0.1431,52.8,0,,inferred
-12,MUM-E025671,,0.3626,0.1418,52.8,0,,inferred
-13,MUM-E025672,,0.3623,0.1431,52.8,0,,inferred
-14,MUM-E015039,,0.3618,0.145,52.7,0,,inferred
-15,MUM-E023250,,0.3619,0.1348,52.7,0,,inferred
-16,MUM-E020333,Gulmohar Road,0.3568,0.1855,52.1,1,,inferred
-17,MUM-E000008,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
-18,MUM-E000009,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
-19,MUM-E000010,Sewri Cemetery Road,0.35,0.15,51.2,0,,inferred
-20,MUM-E000103,Road No 5,0.35,0.15,51.2,0,,inferred
-21,MUM-E000104,Road No 5,0.35,0.15,51.2,0,,inferred
-22,MUM-E000105,Road No 5,0.35,0.15,51.2,0,,inferred
-23,MUM-E000106,Road No 5,0.35,0.15,51.2,0,,inferred
-24,MUM-E000107,Road No 5,0.35,0.15,51.2,0,,inferred
-25,MUM-E000127,Sir Pochkhanwala Marg,0.35,0.15,51.2,0,,inferred
+rank,edge_id,street,locality,beta_mean,beta_sd,capacity_reduction_pct,observations,hotspots_explained,confidence
+1,MUM-E020504,off Sion Panvel Highway,near Chunabhatti railway station,0.3632,0.1425,52.9,0,,inferred
+2,MUM-E020505,off Sion Panvel Highway,near Chunabhatti railway station,0.3637,0.1437,52.9,0,,inferred
+3,MUM-E020507,off Sion Panvel Highway,near Chunabhatti railway station,0.3636,0.1402,52.9,0,,inferred
+4,MUM-E020508,off Sion Panvel Highway,near Chunabhatti railway station,0.3632,0.1427,52.9,0,,inferred
+5,MUM-E007650,off Anant Kanekar Marg,,0.3628,0.1426,52.8,0,,inferred
+6,MUM-E008541,off Road No 28A,near Sion Koliwada,0.3623,0.1404,52.8,0,,inferred
+7,MUM-E008544,off Road No 28A,near Sion Koliwada,0.3627,0.1423,52.8,1,,inferred
+8,MUM-E008542,off Road No 28A,near Sion Koliwada,0.3622,0.1455,52.7,0,,inferred
+9,MUM-E008543,off Road No 28A,near Sion Koliwada,0.3622,0.1445,52.7,0,,inferred
+10,MUM-E020506,off Sion Panvel Highway,near Chunabhatti railway station,0.3616,0.1416,52.7,0,,inferred
+11,MUM-E007649,off Anant Kanekar Marg,,0.3612,0.1423,52.6,0,,inferred
+12,MUM-E013063,off Masonet Road,,0.3583,0.1889,52.3,0,,inferred
+13,MUM-E000218,off Sharada Devi Road,,0.35,0.15,51.2,0,,inferred
+14,MUM-E000219,off Sharada Devi Road,,0.35,0.15,51.2,0,,inferred
+15,MUM-E000220,off JL Shirshekar Marg,,0.35,0.15,51.2,0,,inferred
+16,MUM-E000221,off JL Shirshekar Marg,,0.35,0.15,51.2,0,,inferred
+17,MUM-E000222,Bandra Bus Station (E),,0.35,0.15,51.2,0,,inferred
+18,MUM-E000223,Bandra Bus Station (E),,0.35,0.15,51.2,0,,inferred
+19,MUM-E000224,Bandra Bus Station (E),,0.35,0.15,51.2,0,,inferred
+20,MUM-E000225,Bandra Bus Station (E),,0.35,0.15,51.2,0,,inferred
+21,MUM-E000226,Bandra Bus Station (E),,0.35,0.15,51.2,0,,inferred
+22,MUM-E000275,off Anant Kanekar Marg,,0.35,0.15,51.2,0,,inferred
+23,MUM-E000965,off Sahar Elevated Road,,0.35,0.15,51.2,0,,inferred
+24,MUM-E000966,off Sahar Elevated Road,,0.35,0.15,51.2,0,,inferred
+25,MUM-E000967,off Sahar Elevated Road,,0.35,0.15,51.2,0,,inferred

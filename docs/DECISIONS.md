@@ -683,3 +683,67 @@ Five lines each: context, decision, alternatives, consequence, date. Newest at t
 - Alternatives: `load_dotenv` at startup (exports every secret in `.env` into the process environment, and still needs a restart to close the gate); the cached settings (a removed passphrase keeps working until restart). The draft this was salvaged from also refused a hand-moved pump with no depot as 422 `moved_needs_a_depot`; that guard was not ported.
 - Consequence: `services/api/tests/test_ops_passphrase_settings.py` covers `.env`, a wrong passphrase, precedence, a passphrase removed while the API runs, and that it never reaches a repr or log. An autouse fixture in `services/api/tests/conftest.py` stops the gate from reading the developer's real `.env`, without which a passphrase set on the demo laptop turned two of `test_ops.py`'s 503 tests into 403s. The refusal text is unchanged word for word.
 - Date: 2026-09-26
+
+## ADR-0085 Every operator screen carries a Sanskrit name with its English gloss
+
+- Context: the user asked for screen names that make a judge ask what they mean. The nav, palette, titles and footer used plain English.
+- Decision: nine names in `lib/nav.ts` NAV_ITEMS: Drishti (command console), Nadi (drain health), Marga (route planner), Sanket (alert centre), Jalayantra (pump dispatch), Kalpana (what-if lab), Smriti (replay), Pramana (verification), Pravesh (city onboarding). Each is plain romanised text (Geist carries no IAST diacritics), with the English gloss beside it and a Devanagari accent (`lang="sa"`, aria-hidden). URLs, order and Alt+1..9 are unchanged; the palette still matches the English words.
+- Alternatives: IAST spellings (the UI font cannot draw them); Devanagari only (unreadable to most judges); English only (the user's request).
+- Consequence: accessible names read "Drishti, command console" and so on, and the e2e selector moved with them. The nine names fit a 796 px nav at 1280 px with 0 px overflow. The Devanagari spellings await a native reader, as the P9.9 drafts do.
+- Date: 2026-09-28
+
+## ADR-0086 The coastline: a sea the Twin holds at the tide, a wall behind the mangroves, and neither read as a street
+
+- Context: a +1 m tide moved one street and no hotspot, because only 3 cells were sea and 2 of 3 tidal outlets stood above any tide. The coastline review then found seven leaks: inlets on sea cells took in seawater, tidal outfalls on land became Dirichlet cells, rain on the sea was booked as the city's, one deep sea pit set the CFL step, the wall trapped 212 cells in 19 basins, the depth PNGs painted the sea, and the segment index was rebuilt from a stale table.
+- Decision: `sea_mask.tif` (open sea plus the Mithi tidal creek) is held at the stage. Drain nodes on sea cells exchange nothing (`compute_exchange(..., sea=)`), rain on the sea is not booked, and the CFL step reads land cells and shoreline faces only. The 2.72 m coast wall (sourced 4.92 m CD high water plus 0.5 m freeboard, an assumption) stands behind the intertidal zone, which is WorldCover water, wetland and mangrove connected to the sea. That zone is persisted as `intertidal_mask.tif`: the Twin floods it as land, and the segment table, hotspot windows, depth PNGs and the cycle's land peak leave it out, as they leave out the sea. Outfalls within 2 cells of the sea are tidal, with invert 0.0 m (an assumption).
+- Alternatives: a wall on the shore ring (212 trapped cells); wall the open sea only (86 land cells opened to +1.236 m); breach the wall's basins (lowers land by metres, traps more); a 2.22 m crest-level wall (2 mm freeboard over the replay crest).
+- Consequence: the wall leaves 54 cells (0.049 km2) in 12 closed basins, 28,995 m3, deepest 1.77 m; streets touching them include Sewri Fort Road, the MTHL ramps and BKC Road. On Chennai `sea_to_land` fell from -498,972 to -88,789 m3 once the sea's own rain was dropped, and the CFL calls from 1,440 to 822. With the intertidal zone excluded, no street reads tidal water at any stage (it was 18 streets at 5 cm or more at the +2.218 m crest). The seven demo cycles were re-baked on 2026-09-28 at 0.000 % mass balance.
+- Date: 2026-09-28
+
+## ADR-0087 A run records the city it was computed on, without changing its id
+
+- Context: the coastline changed the Twin's answers, but 281 tracked files pin run ids of the form `...-twin1.0-...`, 208 of them under demo/runs.
+- Decision: TWIN_VERSION stays "1.0". `TWIN_REVISION = "1.0+coast-2026-09-28"` sits beside it, and run.json carries `twin_revision` plus a `city_fingerprint`: 12-hex sha256 digests of the segment ids, sea and intertidal rasters, the drain nodes' coupling columns, the drain edges, the conditioned DEM and condition.json's coast-wall fields. `varuna_cycle.provenance.stale_runs()` lists runs whose fingerprint differs from the city on disk.
+- Alternatives: bump the Twin version (a 281-file rename of the demo ids); record nothing (a stale run is indistinguishable from a fresh one).
+- Consequence: a run baked before the rebuild says so. The cycle's `peak_depth_cm` is now the land's peak: Chennai's onboarding log had read "peak 529.1 cm", its -5.29 m sea cell.
+- Date: 2026-09-28
+
+## ADR-0088 Every street has a name a person can read, and none is "Unnamed road"
+
+- Context: OSM names only 47.4 % of Mumbai's 21,296 segments, so lists, popovers, route reasons and the public map printed "Unnamed road" for most of the city.
+- Decision: `varuna_api.street_names` gives each segment a display name: its OSM name; else "off <nearest named street>" within 200 m; else "<road class> near <nearest register spot or station>" within 1.5 km; else "<road class> in Mumbai". It is served as `display_name`, with `display_kind` and `display_anchor` so Hindi and Marathi rebuild the label from translated templates. The route, road-conditions, observations, outlook and what-if responses use it. Map labels still draw only real OSM names, and a label reads as a place in a sentence ("a road off Dr Ambedkar Road").
+- Alternatives: segment ids (not a place); leaving the name blank (a list of blanks).
+- Consequence: 10,096 OSM names, 10,376 "off", 679 "near" and 145 "in Mumbai"; building the names takes 0.65-0.99 s warm. No screen string reads "Unnamed".
+- Date: 2026-09-28
+
+## ADR-0089 Maps open on the flood, and Full view shows all of it
+
+- Context: every map opened on the whole 9.5 x 15.5 km AOI, where the flooded streets are small. The user asked that Drishti, Nadi, Marga, Kalpana, Smriti and Pravesh open on the main affected area, and that the console get a full view.
+- Decision: `lib/map/affected-bounds.ts` frames the densest 7 km window of streets at 15 cm or more at the run's peak (falling back to 5 cm, then the chronic spots, then the AOI). It trims 2 % of the weight from each side, grows the frame to hold the rail's top five spots, and pads each side clear of the floating panels. Full view (button or F; Esc to leave) frames every qualifying street at the peak, uses the Fullscreen API with a layout fallback, and restores the operator's camera on exit. Smriti's radar preview opens on the AOI plus a 25 % margin, with a toggle for the 60 km domain. Kalpana draws the cycle's forecast before a what-if has been run. Re-framing is an instant cut (M23).
+- Alternatives: a 6 km window (holds 54-68 % of the deep streets against 70-86 %); fly-to re-framing (needs a section 8 row).
+- Consequence: on the old 06:40 run the opening frame held 86 % of 22.7 km and put King's Circle, Sion Circle, Gandhi Market and Milan subway on screen; the frame is recomputed from each run, so the re-bake moves it with the water.
+- Date: 2026-09-28
+
+## ADR-0090 Sky tracks the storm, not the edge of the radar's range
+
+- Context: the rain-skill scorer found the ensemble mean matched the truth from 10 minutes earlier better than the truth at its own time. On the 06:40 cycle, CSI at 20 mm/h was 0.47 at a -10 min offset against 0.12 at no offset.
+- Decision: the decoded frames are `nan` beyond the radar's range, and `rain_history` floored that to dry, drawing a still disc edge that pySTEPS' corner detector preferred. That edge anchored the Lucas-Kanade field. `optical_flow` now receives the QC coverage mask and hands the out-of-range pixels to pySTEPS as missing.
+- Alternatives: tuning the detector's thresholds (treats the symptom); a fixed advection from the storm designer's wind (not an estimate).
+- Consequence: on 2 July, cycles 06:40 to 09:10, the mean flow over wet pixels rose from 0.17-0.36 to 0.71-1.15 of the storm designer's 8 m/s, against 0.72-1.27 for the same tracker on the truth field. The runs re-baked on 2026-09-28 carry the correction.
+- Date: 2026-09-28
+
+## ADR-0091 Pramana scores rain skill by lead against persistence and states its own horizon
+
+- Context: section 7.10 asks for rain CSI at 20 and 40 mm/h by lead and expects "confidence decays after 90 minutes" to be visible; the tab said "Not served yet".
+- Decision: `varuna_verify.rain_event` scores every baked cycle against the reconstructed truth (`truth/rain.zarr`) on the Sky grid, over the AOI and the whole radar domain. It scores the ensemble mean, the median and persistence (the analysis each nowcast started from, recomputed through Sky's own QC, Z-R and gauge merge), with CSI/POD/FAR at 10, 20 and 40 mm/h, Brier by lead, reliability in three lead bands and sample sizes on every row. The useful-skill horizon is computed: the lead before CSI at 20 mm/h first falls below persistence or below 0.5. It is served at `GET /v1/verification/rain-skill` and drawn by SkillByLeadChart, BrierByLeadChart and a reliability diagram. `uv run varuna verify` writes the landing copy from the same scorers.
+- Alternatives: typing the 90-minute line (rule 6); scoring against gauges only (too few for a skill curve).
+- Consequence: the tab states whatever the data says, including "No useful lead" where that is the answer. Any slide quoting 90 minutes must quote the computed horizon instead. The shipped demo runs omit the 15 MB rain cube, so a deployment without local bakes shows the scorer's own "not scored" state with the command that fixes it.
+- Date: 2026-09-28
+
+## ADR-0092 Jalayantra shows the dispatch as a race on the map, and the brand is the team's logo
+
+- Context: the pump board was a kanban judges could not read in ten seconds. Separately, the team supplied its own logo.
+- Decision: `GET /v1/pumps/map` returns each assignment of the run's own `pump_plan.json` with depot and place coordinates, a truck route from the router, and the depth series with and without the pump, recomputed with the optimiser's own functions. An `agrees` flag marks any recount that differs from the plan. The screen opens on the busiest cycle. Optimise sends each lorry along its road (M33), drains each place's gauge as its pump arrives (M34) and slides the arrivals onto the flood-window timeline (M35). The kanban stays as the Plan board. The logo's V emblem and lockup are generated deterministically by `tools/brand_assets.py` from `docs/brand/varuna-logo.png`, for the top bar, favicon, app icons, landing hero and OG image.
+- Alternatives: animating the kanban (still unreadable); straight-line lorries (every road route was shorter than the plan's straight line at 18 km/h).
+- Consequence: before the re-bake, 12 pumps at 08:40 saved 915 minutes above 45 cm, summed across places from 985 to 70. The inventory stays labelled synthetic and the benefit an emulator estimate.
+- Date: 2026-09-28
