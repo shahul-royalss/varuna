@@ -381,7 +381,10 @@ def write_inp(
     to_node = np.asarray(network.to_node, dtype=np.intp)
 
     max_depth = z_ground - z_invert
-    clamped_depth = int(np.count_nonzero(max_depth <= 0.0))
+    # Only a junction carries a maximum depth in the .inp; an outfall has none. A tidal outfall
+    # standing on ground below the sea's datum has its invert capped at that ground (drains.py),
+    # so its depth is 0 by design and is not a clamp.
+    clamped_depth = int(np.count_nonzero((max_depth <= 0.0) & (boundary == 0)))
     max_depth = np.maximum(max_depth, MIN_MAX_DEPTH_M)
 
     clamped_length = int(np.count_nonzero(length < MIN_CONDUIT_LENGTH_M))
