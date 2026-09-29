@@ -470,7 +470,7 @@ describe("DrainsScreen", () => {
     expect(s0).toBeLessThanOrEqual(19.01);
     expect(n0).toBeGreaterThanOrEqual(19.012);
     unmount();
-    mapProps.last = null;
+    mapProps.last = null as Record<string, unknown> | null;
 
     stub({
       "/v1/runs": { body: RUNS },
