@@ -4,8 +4,10 @@
 name: live
 
 on:
+  # Every 15 minutes: GitHub's free schedule runs late or skips slots under load (this repo's
+  # weekly CodeQL has started up to five hours late), so asking often keeps a live run fresh.
   schedule:
-    - cron: "7,37 * * * *"
+    - cron: "2,17,32,47 * * * *"
   workflow_dispatch:
 
 concurrency:
