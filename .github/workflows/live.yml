@@ -1,0 +1,60 @@
+# Live flood map (ADR-0094, ADR-0095): every 30 minutes, run one VARUNA cycle on today's rain
+# ensemble and sea level, and publish the run to the hosted API. The cycle needs about 1.5 GB,
+# more than the API's container has beside the API, so it runs here and the API only stores it.
+name: live
+
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: live-cycle
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  VARUNA_API: https://varuna-api-production-f577.up.railway.app
+  CITY_RELEASE: city-mumbai-2026-09-28
+  NUMBA_CACHE_DIR: ${{ github.workspace }}/.numba-cache
+
+jobs:
+  cycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - run: uv sync --frozen
+
+      - name: Numba cache
+        uses: actions/cache@v4
+        with:
+          path: .numba-cache
+          key: numba-${{ runner.os }}-${{ hashFiles('uv.lock', 'services/twin/**/*.py', 'services/flash/**/*.py') }}
+
+      - name: City build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p city
+          gh release download "$CITY_RELEASE" --pattern city-mumbai.tar.gz --dir /tmp
+          tar -xzf /tmp/city-mumbai.tar.gz -C city
+
+      - name: Citizen reports from the API
+        run: uv run python tools/live_ci.py pull-reports --api "$VARUNA_API"
+
+      - name: Live cycle
+        run: uv run python -m varuna_cycle.live --city mumbai --once
+
+      - name: Publish the run
+        env:
+          VARUNA_RUN_UPLOAD_TOKEN: ${{ secrets.VARUNA_RUN_UPLOAD_TOKEN }}
+        run: uv run python tools/live_ci.py push --api "$VARUNA_API"
