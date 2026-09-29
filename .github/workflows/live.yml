@@ -1,4 +1,4 @@
-# Live flood map (ADR-0094, ADR-0095): every 30 minutes, run one VARUNA cycle on today's rain
+# Live flood map (ADR-0094, ADR-0095): on GitHub's schedule, run one VARUNA cycle on today's rain
 # ensemble and sea level, and publish the run to the hosted API. The cycle needs about 1.5 GB,
 # more than the API's container has beside the API, so it runs here and the API only stores it.
 name: live
