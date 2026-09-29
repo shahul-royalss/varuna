@@ -662,6 +662,8 @@ Global easing: `cubic-bezier(0.2, 0.8, 0.2, 1)` for UI; springs (`stiffness 400,
 | M33 | Jalayantra dispatch map (added 2026-09-27) | Each dispatched pump travels its road route from depot to hotspot over 1.2 s, the route drawing behind it, staggered 150 ms per pump | deck.gl `PathLayer` draw-on with a moving marker on deck's animation clock | Optimise / dispatch | pumps at their hotspots and routes drawn, no travel |
 | M34 | Jalayantra hotspot gauges (added 2026-09-27) | A hotspot's water gauge drains from the no-pump level to the planned level over 900 ms as its pump arrives, and its minutes above 45 cm roll down | CSS `transform: scaleY` on the gauge fill; NumberFlow | pump arrival | gauge and number at the final value, no drain |
 | M35 | Jalayantra arrival timeline (added 2026-09-27) | Each pump's arrival marker slides onto the flood-window timeline in 300 ms when the plan lands | `motion` layout on the markers | Optimise | markers at their times, no slide |
+| M36 | Pramana contingency by threshold (added 2026-09-29) | Each threshold's column fills from the bottom like rising water, hits then misses then false alarms (600 ms per band, 150 ms stagger across thresholds), under a wave crest whose amplitude decays to flat within 1.2 s; the counts and CSI/POD/FAR roll to their values; choosing another threshold drains and re-pours the columns | SVG clip rects tweened with `motion`; the crest an SVG path with a decaying sine on rAF, stopped when flat; NumberFlow | in view / threshold change | columns at their final heights, flat crest, final numbers |
+| M37 | Theme switch (added 2026-09-29) | None: dark and light swap in one frame | CSS variables under `[data-theme]` | toggle | same |
 
 ---
 
