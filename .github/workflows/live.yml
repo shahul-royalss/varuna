@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 env:
-  VARUNA_API: https://varuna-api-production-f577.up.railway.app
+  VARUNA_API: https://varuna-api-production.up.railway.app
   CITY_RELEASE: city-mumbai-2026-09-28
   NUMBA_CACHE_DIR: ${{ github.workspace }}/.numba-cache
 
