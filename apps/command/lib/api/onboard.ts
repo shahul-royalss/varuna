@@ -203,6 +203,12 @@ export interface OnboardJob {
   fromRecord: boolean;
   /** Whether `city/<city>/segments.parquet` already exists, so a built city reads as built. */
   built: boolean;
+  /**
+   * Whether this API builds cities at all. False on a deployment with city-in-a-box switched off,
+   * where the wizard shows the recorded build and a disabled Start. Absent (an older API) reads
+   * as true, which is what such an API did.
+   */
+  enabled: boolean;
   /** With no job in the API's memory: the city's last recorded build, or null when none was. */
   previous: OnboardBuild | null;
   lastAttempt: OnboardAttempt | null;
@@ -354,6 +360,7 @@ export function parseOnboardJob(body: Record<string, unknown>): OnboardJob {
     designStorm: text(body.design_storm),
     fromRecord: body.from_record === true,
     built: Boolean(body.built),
+    enabled: body.enabled !== false,
     previous: parseBuild(body.previous),
     lastAttempt: parseAttempt(body.last_attempt),
   };
