@@ -38,7 +38,7 @@ dev = [
   "httpx>=0.27",
   "pre-commit>=3.8",
   "types-PyYAML",
-  "pypdf>=5",
+  "pypdf>=6.21.1",
   "pyswmm>=2.1",
 ]
 
